@@ -111,6 +111,10 @@ class AnalizadorEstadisticoProfesional {
 
         this.datos = datos;
         this.columnas = Object.keys(datos[0]);
+        // Una base de datos nueva invalida la configuración de dimensiones y los
+        // resultados anteriores (los ítems podrían no existir en estos datos).
+        this.dimensiones = {};
+        this.resultados = {};
         return true;
     }
 

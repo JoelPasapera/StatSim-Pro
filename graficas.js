@@ -650,7 +650,11 @@ class ScientificCharts {
             const width = xScale.bandwidth();
             
             // Calcular densidad
-            const bandwidth = 1.06 * d3.deviation(dataset.data) * Math.pow(dataset.data.length, -0.2);
+            // Regla de Silverman; si la desviación es 0 (datos constantes) el
+            // ancho de banda sería 0 y la densidad daría NaN, así que se usa un
+            // mínimo positivo.
+            const desviacion = d3.deviation(dataset.data) || 0;
+            const bandwidth = (1.06 * desviacion * Math.pow(dataset.data.length, -0.2)) || 1;
             const density = kde(dataset.data, bandwidth);
             
             const maxDensity = d3.max(density, d => d.y);
