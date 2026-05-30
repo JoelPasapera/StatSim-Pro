@@ -383,6 +383,7 @@ function ejecutarAnalisis() {
             mostrarPruebasNormalidad(var1, var2, resultado);
             mostrarCorrelacion(var1, var2, resultado);
             mostrarDecision(var1, var2, resultado);
+            mostrarDimensionesSiAplica(var1, var2, tipoPrueba);
             mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto);
 
             // Mostrar referencias bibliográficas
@@ -660,6 +661,68 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto) 
     container.style.display = 'block';
 }
 
+// Análisis por dimensiones: solo se ejecuta si el usuario configuró
+// dimensiones para AMBAS variables. Es opcional y no debe interrumpir el
+// análisis principal, por lo que cualquier error se reporta por toast.
+function mostrarDimensionesSiAplica(var1, var2, tipoPrueba) {
+    const container = document.getElementById('resultadosDimensiones');
+    if (!container) return;
+
+    const dim1 = document.getElementById('dimensionesVar1').value.trim();
+    const dim2 = document.getElementById('dimensionesVar2').value.trim();
+
+    // Si no hay dimensiones para ambas variables, ocultar la sección
+    if (!dim1 || !dim2) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+
+    try {
+        AnalizadorEstadistico.parsearDimensionesDesdeString(var1, dim1);
+        AnalizadorEstadistico.parsearDimensionesDesdeString(var2, dim2);
+        const resultados = AnalizadorEstadistico.calcularCorrelacionPorDimensiones(var1, var2, tipoPrueba);
+        mostrarTablaDimensiones(container, var1, var2, resultados);
+    } catch (error) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        mostrarToast('Dimensiones: ' + error.message, 'warning');
+    }
+}
+
+function mostrarTablaDimensiones(container, var1, var2, resultados) {
+    const filas = resultados.map(r => `
+                    <tr>
+                        <td>${r.dimension1}</td>
+                        <td>${r.dimension2}</td>
+                        <td><strong>${r.tipoCorrelacion}</strong></td>
+                        <td>${r.coeficiente.toFixed(4)}</td>
+                        <td>${r.pValor.toFixed(4)}</td>
+                        <td>${r.pValor < 0.05 ? 'Significativa (p < .05)' : 'No significativa (p ≥ .05)'}</td>
+                    </tr>`).join('');
+
+    container.innerHTML = `
+        <div class="result-section">
+            <h3 class="section-title">Análisis por Dimensiones</h3>
+            <p class="result-subtitle">Correlación entre cada dimensión de ${var1} y cada dimensión de ${var2}. Para cada par de dimensiones, el coeficiente (Pearson o Spearman) se elige según el cumplimiento del supuesto de normalidad, con el mismo criterio que el análisis global.</p>
+            <div class="result-box">
+                <table class="result-table">
+                    <tr>
+                        <th>Dimensión (${var1})</th>
+                        <th>Dimensión (${var2})</th>
+                        <th>Coeficiente</th>
+                        <th>Valor</th>
+                        <th>p</th>
+                        <th>Significancia (α = .05)</th>
+                    </tr>
+                    ${filas}
+                </table>
+            </div>
+        </div>
+    `;
+    container.style.display = 'block';
+}
+
 function mostrarReferencias(var1, var2, resultado) {
     // ✅ DECLARA EL CONTENEDOR PRINCIPAL
     const container = document.getElementById('resultadosContainer');
@@ -704,6 +767,7 @@ function descargarResultados() {
     const normalidad = textoContenedor('pruebasNormalidadContainer');
     const correlacion = textoContenedor('resultadosCorrelacion');
     const decision = textoContenedor('resultadosDecision');
+    const dimensiones = textoContenedor('resultadosDimensiones');
     const discusion = textoContenedor('resultadosDiscusion');
 
     // Evitar descargar un archivo vacío si aún no se ejecutó el análisis
@@ -724,8 +788,8 @@ ${correlacion}
 
 3. PRUEBA DE HIPÓTESIS
 ${decision}
-
-4. DISCUSIÓN (PLANTILLA)
+${dimensiones ? `\n4. ANÁLISIS POR DIMENSIONES\n${dimensiones}\n` : ''}
+${dimensiones ? '5' : '4'}. DISCUSIÓN (PLANTILLA)
 ${discusion}
 
 ----

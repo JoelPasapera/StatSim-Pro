@@ -534,6 +534,13 @@ label {
     padding: var(--spacing-xs) var(--spacing-sm);
 }
 
+.result-table th {
+    padding: var(--spacing-xs) var(--spacing-sm);
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 1px solid var(--color-border);
+}
+
 .result-table td:first-child {
     font-weight: 500;
     color: var(--color-text-secondary);
