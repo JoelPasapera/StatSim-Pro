@@ -1134,7 +1134,7 @@ function inicializarGraficos() {
                 height: 300,
                 primaryColor: '#2E5BBA'
             });
-            chartViolin.createViolinPlot(datosParaGraficos.violin, datosParaGraficos.labels, {
+            chartViolin.createViolinPlot(datosParaGraficos.violin, datosParaGraficos.labelsViolin, {
                 title: 'Densidad de Distribución por Prueba'
             });
         }
@@ -1221,12 +1221,17 @@ function prepararDatosParaGraficos(datos) {
         )
     );
 
+    const labels = columnas.slice();
+
     return {
         distribucion,
         correlaciones,
         cajas: valoresPorColumna,
+        labels,
+        // El violín usa solo las dos primeras columnas: sus etiquetas deben
+        // coincidir con esas dos series, no con todas las columnas.
         violin: valoresPorColumna.slice(0, 2),
-        labels: columnas.slice()
+        labelsViolin: labels.slice(0, 2)
     };
 }
 
