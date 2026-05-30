@@ -528,6 +528,52 @@ label {
     border-left: 4px solid var(--color-accent);
 }
 
+/* Cajas de interpretación estadística. El color de cada variante se define
+   con variables CSS para no repetir los estilos en cada bloque. */
+.interpretation-box {
+    padding: 1.5rem;
+    margin-top: 1rem;
+    background: var(--ib-fondo);
+    border-left: 4px solid var(--ib-borde);
+}
+
+.interpretation-title {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+    color: var(--ib-titulo);
+}
+
+.interpretation-title svg {
+    margin-right: 0.5rem;
+}
+
+.interpretation-text {
+    margin: 0;
+    line-height: 1.8;
+    text-align: justify;
+    color: #1e293b;
+}
+
+.interpretation-box--normalidad {
+    --ib-fondo: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+    --ib-borde: #3b82f6;
+    --ib-titulo: #1e40af;
+}
+
+.interpretation-box--correlacion {
+    --ib-fondo: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    --ib-borde: #22c55e;
+    --ib-titulo: #15803d;
+}
+
+.interpretation-box--hipotesis {
+    --ib-fondo: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    --ib-borde: #f59e0b;
+    --ib-titulo: #b45309;
+}
+
 .result-table {
     width: 100%;
     margin: var(--spacing-md) 0;

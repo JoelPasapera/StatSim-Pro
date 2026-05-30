@@ -516,14 +516,14 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
                 </table>
             </div>
             <!-- Interpretación de Normalidad -->
-            <div class="result-box interpretation-box" style="background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%); border-left: 4px solid #3b82f6; padding: 1.5rem; margin-top: 1rem;">
-                <h5 style="margin-bottom: 0.75rem; color: #1e40af; font-weight: 600; display: flex; align-items: center;">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style="margin-right: 0.5rem;">
+            <div class="result-box interpretation-box interpretation-box--normalidad">
+                <h5 class="interpretation-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
                         <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/>
                     </svg>
                     Interpretación Estadística
                 </h5>
-                <p style="margin: 0; line-height: 1.8; text-align: justify; color: #1e293b;">
+                <p class="interpretation-text">
                     ${InterpretacionesEstadisticas.generarInterpretacionNormalidad(var1, var2, resultado)}
                 </p>
             </div>
@@ -579,14 +579,14 @@ function mostrarCorrelacion(var1, var2, resultado) {
                 </table>
             </div>
             <!-- Interpretación de Correlación -->
-            <div class="result-box interpretation-box" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-left: 4px solid #22c55e; padding: 1.5rem; margin-top: 1rem;">
-                <h5 style="margin-bottom: 0.75rem; color: #15803d; font-weight: 600; display: flex; align-items: center;">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style="margin-right: 0.5rem;">
+            <div class="result-box interpretation-box interpretation-box--correlacion">
+                <h5 class="interpretation-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
                         <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/>
                     </svg>
                     Interpretación Estadística
                 </h5>
-                <p style="margin: 0; line-height: 1.8; text-align: justify; color: #1e293b;">
+                <p class="interpretation-text">
                     ${InterpretacionesEstadisticas.generarInterpretacionCorrelacion(var1, var2, resultado)}
                 </p>
             </div>
@@ -641,14 +641,14 @@ function mostrarDecision(var1, var2, resultado) {
                 </div>
             </div>
             <!-- Interpretación de Prueba de Hipótesis -->
-            <div class="result-box interpretation-box" style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-left: 4px solid #f59e0b; padding: 1.5rem; margin-top: 1rem;">
-                <h5 style="margin-bottom: 0.75rem; color: #b45309; font-weight: 600; display: flex; align-items: center;">
-                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" style="margin-right: 0.5rem;">
+            <div class="result-box interpretation-box interpretation-box--hipotesis">
+                <h5 class="interpretation-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
                         <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/>
                     </svg>
                     Interpretación Estadística
                 </h5>
-                <p style="margin: 0; line-height: 1.8; text-align: justify; color: #1e293b;">
+                <p class="interpretation-text">
                     ${InterpretacionesEstadisticas.generarInterpretacionHipotesis(var1, var2, resultado, prueba)}
                 </p>
             </div>
