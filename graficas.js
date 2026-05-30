@@ -454,7 +454,9 @@ class ScientificCharts {
             .range([0, this.config.width - this.config.margin.left - this.config.margin.right])
             .padding(0.3);
 
-        const allValues = boxData.flatMap(d => d.data);
+        // Los valores se toman de `datasets` (que conserva `.data`); `boxData`
+        // solo guarda estadísticos resumidos, no las observaciones originales.
+        const allValues = datasets.flatMap(d => d.data);
         const yScale = d3.scaleLinear()
             .domain([d3.min(allValues) * 0.9, d3.max(allValues) * 1.1])
             .range([this.config.height - this.config.margin.top - this.config.margin.bottom, 0]);
