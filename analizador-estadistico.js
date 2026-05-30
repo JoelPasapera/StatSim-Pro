@@ -140,7 +140,27 @@ class AnalizadorEstadisticoProfesional {
     }
 
     parsearLineaCSV(linea, delimitador) {
-        return linea.split(delimitador).map(v => v.trim());
+        // Respeta los campos entrecomillados para no partir un valor que
+        // contenga el delimitador (p. ej. "Lima, Perú").
+        const valores = [];
+        let dentroComillas = false;
+        let actual = '';
+
+        for (let i = 0; i < linea.length; i++) {
+            const caracter = linea[i];
+
+            if (caracter === '"') {
+                dentroComillas = !dentroComillas;
+            } else if (caracter === delimitador && !dentroComillas) {
+                valores.push(actual.trim());
+                actual = '';
+            } else {
+                actual += caracter;
+            }
+        }
+
+        valores.push(actual.trim());
+        return valores;
     }
 
     obtenerColumnas() {
