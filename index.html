@@ -626,16 +626,19 @@
     <input type="file" id="importPruebasInput" accept=".csv" style="display: none;">
     <input type="file" id="importSocioInput" accept=".csv" style="display: none;">
 
+    <!-- d3 vendorizado: lo requiere graficas.js, debe cargarse antes -->
+    <script src="d3.v7.min.js"></script>
+
     <!-- Scripts generador de datos -->
     <script src="generador-datos.js"></script>
 
-    <!-- Cargar analizador principal -->
+    <!-- Analizador estadístico principal -->
     <script src="analizador-estadistico.js"></script>
 
     <!-- Módulo de interpretaciones estadísticas -->
     <script src="interpretaciones-estadisticas.js"></script>
 
-    <!-- Cargar analizador principal -->
+    <!-- Librería de gráficos científicos (depende de d3) -->
     <script src="graficas.js"></script>
 
     <!-- Código de app.js -->
