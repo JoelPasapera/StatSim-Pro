@@ -398,6 +398,7 @@ function ejecutarAnalisis() {
             mostrarPruebasNormalidad(var1, var2, resultado);
             mostrarCorrelacion(var1, var2, resultado);
             mostrarRegresion(var1, var2, resultado);
+            mostrarDispersion(var1, var2, resultado);
             mostrarDecision(var1, var2, resultado);
             mostrarReporteAPA(var1, var2, resultado);
             mostrarDimensionesSiAplica(var1, var2, tipoPrueba);
@@ -690,6 +691,47 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto) 
 
     container.innerHTML = html;
     container.style.display = 'block';
+}
+
+function mostrarDispersion(var1, var2, resultado) {
+    const container = document.getElementById('resultadosDispersion');
+    if (!container) return;
+
+    const pares = resultado.valoresPareados;
+    if (!pares || !Array.isArray(pares.x) || pares.x.length < 2) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="result-section">
+            <h3 class="section-title">Diagrama de Dispersión</h3>
+            <p class="result-subtitle">Relación entre ${var1} y ${var2}, con la recta de regresión por mínimos cuadrados y el coeficiente de determinación R². Permite valorar visualmente la forma, dirección y dispersión de la asociación.</p>
+            <div class="result-box" style="display: flex; justify-content: center;">
+                <div id="graficoDispersion"></div>
+            </div>
+        </div>`;
+    container.style.display = 'block';
+
+    // El gráfico se dibuja con la librería ScientificCharts (D3); si fallara,
+    // no debe interrumpir el resto del reporte.
+    try {
+        const chart = new ScientificCharts('graficoDispersion', {
+            width: 520,
+            height: 380,
+            primaryColor: '#2E5BBA'
+        });
+        chart.createScatterPlot(pares.x, pares.y, {
+            title: `${var1} vs ${var2}`,
+            xLabel: var1,
+            yLabel: var2
+        });
+    } catch (error) {
+        console.error('Error al crear el diagrama de dispersión:', error);
+        container.querySelector('#graficoDispersion').textContent =
+            'No se pudo generar el diagrama de dispersión.';
+    }
 }
 
 function mostrarRegresion(var1, var2, resultado) {

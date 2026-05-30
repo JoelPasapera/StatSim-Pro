@@ -51,7 +51,8 @@
 
         /* Los gráficos SVG tienen tamaño fijo; en pantallas estrechas se
            escalan proporcionalmente para no desbordar su contenedor. */
-        #contenedorGraficos svg {
+        #contenedorGraficos svg,
+        #graficoDispersion svg {
             max-width: 100%;
             height: auto;
         }
@@ -503,6 +504,7 @@
                 <!-- Resultados de análisis -->
                 <div id="resultadosCorrelacion" style="display: none;"></div>
                 <div id="resultadosRegresion" style="display: none;"></div>
+                <div id="resultadosDispersion" style="display: none;"></div>
                 <div id="resultadosDecision" style="display: none;"></div>
                 <div id="resultadosReporteAPA" style="display: none;"></div>
                 <div id="resultadosDimensiones" style="display: none;"></div>

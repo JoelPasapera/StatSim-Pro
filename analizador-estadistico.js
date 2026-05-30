@@ -693,6 +693,9 @@ class AnalizadorEstadisticoProfesional {
             resultado.regresion = this.calcularRegresionLineal(valores1, valores2);
         }
 
+        // Pares de valores (para el diagrama de dispersión de las dos variables).
+        resultado.valoresPareados = { x: valores1, y: valores2 };
+
         return resultado;
     }
 
