@@ -1,7 +1,10 @@
 // ========================================
 // GENERADOR DE BASE DE DATOS SIMULADA
 // ========================================
- 
+
+// Tope superior del tamaño muestral para evitar congelar el navegador.
+const TAMANO_MUESTRAL_MAXIMO = 100000;
+
 class GeneradorDatos {
     constructor() {
         this.datosGenerados = null;
@@ -21,6 +24,11 @@ class GeneradorDatos {
         const tamano = parseInt(document.getElementById('tamanoMuestra').value);
         if (isNaN(tamano) || tamano < 2) {
             throw new Error('El tamaño muestral debe ser al menos 2');
+        }
+        // Tope superior para evitar congelar el navegador ante un valor enorme
+        // (p. ej. un error tipográfico como 1000000).
+        if (tamano > TAMANO_MUESTRAL_MAXIMO) {
+            throw new Error(`El tamaño muestral máximo permitido es ${TAMANO_MUESTRAL_MAXIMO}`);
         }
         this.configuracion.tamanoMuestra = tamano;
 
