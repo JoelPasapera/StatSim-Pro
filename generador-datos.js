@@ -1,7 +1,10 @@
 // ========================================
 // GENERADOR DE BASE DE DATOS SIMULADA
 // ========================================
- 
+
+// Tope superior del tamaño muestral para evitar congelar el navegador.
+const TAMANO_MUESTRAL_MAXIMO = 100000;
+
 class GeneradorDatos {
     constructor() {
         this.datosGenerados = null;
@@ -22,6 +25,11 @@ class GeneradorDatos {
         if (isNaN(tamano) || tamano < 2) {
             throw new Error('El tamaño muestral debe ser al menos 2');
         }
+        // Tope superior para evitar congelar el navegador ante un valor enorme
+        // (p. ej. un error tipográfico como 1000000).
+        if (tamano > TAMANO_MUESTRAL_MAXIMO) {
+            throw new Error(`El tamaño muestral máximo permitido es ${TAMANO_MUESTRAL_MAXIMO}`);
+        }
         this.configuracion.tamanoMuestra = tamano;
 
         // Pruebas aplicadas
@@ -41,8 +49,9 @@ class GeneradorDatos {
 
     recolectarPruebas() {
         const pruebas = [];
+        const nombresCortosUsados = new Set();
         const filas = document.querySelectorAll('#bodyPruebas .fila-prueba');
-        
+
         filas.forEach((fila, index) => {
             const inputs = fila.querySelectorAll('input');
             const nombre = inputs[0].value.trim();
@@ -69,7 +78,7 @@ class GeneradorDatos {
 
                 pruebas.push({
                     nombre: nombre,
-                    nombreCorto: this.generarNombreCorto(nombre),
+                    nombreCorto: this.generarNombreCortoUnico(nombre, nombresCortosUsados),
                     numItems: numItems,
                     media: media,
                     desviacion: desviacion,
@@ -84,8 +93,9 @@ class GeneradorDatos {
 
     recolectarSociodemograficos() {
         const socio = [];
+        const nombresCortosUsados = new Set();
         const filas = document.querySelectorAll('#bodySocio .fila-socio');
-        
+
         filas.forEach((fila, index) => {
             const inputs = fila.querySelectorAll('input');
             const categoria = inputs[0].value.trim();
@@ -118,7 +128,7 @@ class GeneradorDatos {
 
                 socio.push({
                     categoria: categoria,
-                    categoriaCorta: this.generarNombreCorto(categoria),
+                    categoriaCorta: this.generarNombreCortoUnico(categoria, nombresCortosUsados),
                     promedio: promedio,
                     desviacion: desviacion,
                     minimo: !isNaN(minimo) ? minimo : null,
@@ -139,8 +149,26 @@ class GeneradorDatos {
             .split(/\s+/) // Separar por espacios
             .map(palabra => palabra.charAt(0).toUpperCase()) // Primera letra
             .join('');
-        
+
         return corto.substring(0, 10); // Máximo 10 caracteres
+    }
+
+    // Devuelve un nombre corto único respecto a `usados`, agregando un sufijo
+    // numérico si hay colisión. Evita que dos pruebas/variables con iniciales
+    // iguales generen el mismo prefijo de columna y se sobrescriban entre sí.
+    generarNombreCortoUnico(nombre, usados) {
+        let base = this.generarNombreCorto(nombre);
+        if (!base) base = 'V'; // Respaldo si el nombre no tiene caracteres alfanuméricos
+
+        let corto = base;
+        let sufijo = 2;
+        while (usados.has(corto)) {
+            corto = `${base}_${sufijo}`;
+            sufijo++;
+        }
+
+        usados.add(corto);
+        return corto;
     }
 
     // ========================================
@@ -199,29 +227,36 @@ class GeneradorDatos {
         return datos;
     }
 
-    generarPuntajesPrueba(numItems, mediaPorItem, desviacionPorItem, minItem = null, maxItem = null) {
-        // IMPORTANTE: mediaPorItem y desviacionPorItem son los valores PROMEDIO de cada ítem
-        // NO son el total de la prueba
-        
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null) {
+        // IMPORTANTE: mediaTotal y desviacionTotal son los parámetros del puntaje TOTAL
+        // de la prueba (lo que el usuario introduce en "Media (M)" y "DE"), NO valores por ítem.
+        // Cada ítem se genera de forma independiente alrededor de su media esperada:
+        //   mediaPorItem      = mediaTotal / numItems
+        //   desviacionPorItem = desviacionTotal / sqrt(numItems)
+        // (ver CORRECCIONES_APLICADAS.md). Así la suma de los ítems aproxima la media y la DE
+        // objetivo del total, en lugar de saturar cada ítem en su valor máximo.
+
         // Establecer límites por defecto si no se especifican
         if (minItem === null) minItem = 1;
         if (maxItem === null) maxItem = 7;
-        
+
+        // Derivar parámetros por ítem a partir de los parámetros del total
+        const mediaPorItem = mediaTotal / numItems;
+        const desviacionPorItem = desviacionTotal / Math.sqrt(numItems);
+
         const items = [];
-        
+
         // Generar cada ítem de forma independiente con distribución normal
-        // Cada ítem tiene su propia media y desviación
         for (let i = 0; i < numItems; i++) {
-            // Generar valor usando distribución normal
-            // La media es directamente la media por ítem (no dividir entre numItems)
+            // Generar valor usando distribución normal centrada en la media por ítem
             let valor = this.generarValorNormal(mediaPorItem, desviacionPorItem);
-            
+
             // Aplicar límites del rango
             valor = Math.max(minItem, Math.min(maxItem, valor));
-            
+
             // Redondear al entero más cercano
             valor = Math.round(valor);
-            
+
             items.push(valor);
         }
         
@@ -248,7 +283,6 @@ class GeneradorDatos {
         return valor; // NO redondear aquí, se redondeará después según el contexto
     }
 
-    // autor: Joel pasapera
     // ========================================
     // EXPORTACIÓN A CSV
     // ========================================
@@ -292,6 +326,7 @@ class GeneradorDatos {
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+            URL.revokeObjectURL(url);
         }
     }
 
