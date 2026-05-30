@@ -85,6 +85,66 @@ function configurarGenerador() {
             eliminarFilaSocio(e.target.closest('tr'));
         }
     });
+
+    // Correlaciones objetivo
+    const btnCorrelacion = document.getElementById('btnAgregarCorrelacion');
+    if (btnCorrelacion) {
+        btnCorrelacion.addEventListener('click', agregarFilaCorrelacion);
+    }
+    const bodyCorrelaciones = document.getElementById('bodyCorrelaciones');
+    if (bodyCorrelaciones) {
+        bodyCorrelaciones.addEventListener('click', function (e) {
+            if (e.target.closest('.btn-delete')) {
+                e.target.closest('tr').remove();
+            }
+        });
+    }
+}
+
+// Lista de variables que pueden correlacionarse: nombres de las escalas y de
+// las sociodemográficas continuas (Normal/Asimétrica).
+function obtenerVariablesCorrelacionables() {
+    const nombres = [];
+    document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
+        const nombre = fila.querySelector('input').value.trim();
+        if (nombre) nombres.push(nombre);
+    });
+    document.querySelectorAll('#bodySocio .fila-socio').forEach(fila => {
+        const select = fila.querySelector('select');
+        const dist = select ? select.value : 'normal';
+        if (dist === 'normal' || dist === 'asimetrica') {
+            const categoria = fila.querySelector('input').value.trim();
+            if (categoria) nombres.push(categoria);
+        }
+    });
+    return nombres;
+}
+
+function agregarFilaCorrelacion() {
+    const nombres = obtenerVariablesCorrelacionables();
+    if (nombres.length < 2) {
+        mostrarToast('Define al menos 2 variables cuantitativas (escalas o continuas) antes de añadir correlaciones', 'warning');
+        return;
+    }
+
+    const tbody = document.getElementById('bodyCorrelaciones');
+    const fila = document.createElement('tr');
+    fila.className = 'fila-correlacion';
+
+    const opciones = nombres.map(n => `<option value="${n}">${n}</option>`).join('');
+    fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Variable A"><option value="">Variable A...</option>${opciones}</select></td>
+        <td><select class="input input-sm" aria-label="Variable B"><option value="">Variable B...</option>${opciones}</select></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" placeholder="Ej: 0.5" aria-label="Correlación objetivo"></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
 }
 
 function agregarFilaPrueba() {

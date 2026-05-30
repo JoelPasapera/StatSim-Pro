@@ -301,6 +301,38 @@
                     </p>
                 </div>
 
+                <!-- Tabla III: Correlaciones objetivo (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">III. Correlaciones Objetivo (opcional)</h3>
+                        <button id="btnAgregarCorrelacion" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Correlación
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaCorrelaciones">
+                            <thead>
+                                <tr>
+                                    <th>Variable A</th>
+                                    <th>Variable B</th>
+                                    <th>Correlación objetivo (r)</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyCorrelaciones"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Define la correlación deseada entre dos variables <strong>cuantitativas</strong> (totales de
+                        escala o sociodemográficas continuas: Normal/Asimétrica). El generador construye los datos para
+                        que la correlación observada se acerque a la pedida (corrige la atenuación por la fiabilidad de
+                        las escalas). Para escalas, usa un α objetivo &gt; 0. Sin filas = variables independientes.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">

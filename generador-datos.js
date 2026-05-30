@@ -74,7 +74,35 @@ class GeneradorDatos {
             throw new Error('Debe agregar al menos un dato sociodemográfico');
         }
 
+        // Correlaciones objetivo (opcionales)
+        this.configuracion.correlaciones = this.recolectarCorrelaciones();
+
         return this.configuracion;
+    }
+
+    // Lee las correlaciones objetivo de la tabla (pares de variables + r).
+    recolectarCorrelaciones() {
+        const correlaciones = [];
+        const filas = document.querySelectorAll('#bodyCorrelaciones .fila-correlacion');
+
+        filas.forEach(fila => {
+            const selects = fila.querySelectorAll('select');
+            const inputR = fila.querySelector('input');
+            if (selects.length < 2 || !inputR) return;
+
+            const a = selects[0].value;
+            const b = selects[1].value;
+            const r = parseFloat(inputR.value);
+
+            if (a && b && a !== b && !isNaN(r)) {
+                if (r <= -1 || r >= 1) {
+                    throw new Error(`Correlación entre "${a}" y "${b}": r debe estar entre -1 y 1`);
+                }
+                correlaciones.push({ a: a, b: b, r: r });
+            }
+        });
+
+        return correlaciones;
     }
 
     recolectarPruebas() {
@@ -229,6 +257,12 @@ class GeneradorDatos {
         // Inicializar la fuente de aleatoriedad (sembrada si hay semilla)
         this.inicializarAleatorio(this.configuracion.semilla);
 
+        // Preparar correlaciones objetivo (si las hay)
+        const hayCorrelaciones = (this.configuracion.correlaciones || []).length > 0;
+        if (hayCorrelaciones) {
+            this.prepararCorrelaciones();
+        }
+
         const n = this.configuracion.tamanoMuestra;
         const datos = [];
 
@@ -236,20 +270,28 @@ class GeneradorDatos {
         for (let i = 0; i < n; i++) {
             const participante = { ID: i + 1 };
 
+            // Valores normales correlacionados (driver) por variable, si aplica
+            const drivers = hayCorrelaciones ? this.generarVectorCorrelacionado() : {};
+
             // Generar datos sociodemográficos según su distribución
             this.configuracion.sociodemograficos.forEach(socio => {
-                participante[socio.categoriaCorta] = this.generarValorSociodemografico(socio);
+                const driver = drivers['socio:' + socio.categoriaCorta];
+                participante[socio.categoriaCorta] = this.generarValorSociodemografico(
+                    socio, driver !== undefined ? driver : null
+                );
             });
 
             // Generar datos de cada prueba
             this.configuracion.pruebas.forEach(prueba => {
+                const driverEscala = drivers['escala:' + prueba.nombreCorto];
                 const puntajes = this.generarPuntajesPrueba(
                     prueba.numItems,
                     prueba.media,
                     prueba.desviacion,
                     prueba.minimo,
                     prueba.maximo,
-                    prueba.alfa
+                    prueba.alfa,
+                    driverEscala !== undefined ? driverEscala : null
                 );
 
                 // Agregar cada ítem
@@ -328,9 +370,10 @@ class GeneradorDatos {
         return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
     }
 
-    generarValorNormal(media, desviacion) {
-        // NO redondear aquí, se redondeará después según el contexto
-        return media + desviacion * this.generarNormalEstandar();
+    generarValorNormal(media, desviacion, z = null) {
+        // z permite inyectar un valor normal estándar "driver" (correlaciones).
+        const normal = z !== null ? z : this.generarNormalEstandar();
+        return media + desviacion * normal;
     }
 
     // Valor uniforme continuo en [min, max].
@@ -340,12 +383,13 @@ class GeneradorDatos {
 
     // Valor log-normal (asimetría positiva) calibrado para que su media y su
     // desviación estándar sean aproximadamente las pedidas. Requiere media > 0.
-    generarAsimetrico(media, desviacion) {
+    generarAsimetrico(media, desviacion, z = null) {
         const m = Math.max(1e-6, media);
         const sigma2 = Math.log(1 + (desviacion * desviacion) / (m * m));
         const sigma = Math.sqrt(sigma2);
         const mu = Math.log(m) - sigma2 / 2;
-        return Math.exp(mu + sigma * this.generarNormalEstandar());
+        const normal = z !== null ? z : this.generarNormalEstandar();
+        return Math.exp(mu + sigma * normal);
     }
 
     // Valor de una distribución de Poisson con media lambda (algoritmo de Knuth).
@@ -373,7 +417,9 @@ class GeneradorDatos {
     }
 
     // Genera un valor para una variable sociodemográfica según su distribución.
-    generarValorSociodemografico(socio) {
+    // `normalEstandar` permite inyectar un valor normal "driver" (correlaciones)
+    // en las distribuciones normal y asimétrica.
+    generarValorSociodemografico(socio, normalEstandar = null) {
         const dist = socio.distribucion || 'normal';
 
         // Tipos discretos → enteros (sin redondeo decimal)
@@ -392,9 +438,9 @@ class GeneradorDatos {
         if (dist === 'uniforme') {
             valor = this.generarUniforme(socio.minimo, socio.maximo);
         } else if (dist === 'asimetrica') {
-            valor = this.generarAsimetrico(socio.promedio, socio.desviacion);
+            valor = this.generarAsimetrico(socio.promedio, socio.desviacion, normalEstandar);
         } else {
-            valor = this.generarValorNormal(socio.promedio, socio.desviacion);
+            valor = this.generarValorNormal(socio.promedio, socio.desviacion, normalEstandar);
         }
 
         if (socio.minimo !== null && socio.maximo !== null) {
@@ -402,6 +448,105 @@ class GeneradorDatos {
         }
         const factor = Math.pow(10, socio.decimales);
         return Math.round(valor * factor) / factor;
+    }
+
+    // ========================================
+    // CORRELACIONES OBJETIVO (CHOLESKY)
+    // ========================================
+
+    // Descomposición de Cholesky (L·Lᵀ = A) de una matriz simétrica. Si la
+    // matriz no es definida positiva (correlaciones inconsistentes), los
+    // elementos diagonales se acotan a un mínimo para no producir NaN.
+    descomposicionCholesky(A) {
+        const n = A.length;
+        const L = Array.from({ length: n }, () => new Array(n).fill(0));
+        let noDefinidaPositiva = false;
+
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j <= i; j++) {
+                let suma = 0;
+                for (let k = 0; k < j; k++) suma += L[i][k] * L[j][k];
+
+                if (i === j) {
+                    const d = A[i][i] - suma;
+                    if (d <= 0) noDefinidaPositiva = true;
+                    L[i][j] = Math.sqrt(Math.max(d, 1e-9));
+                } else {
+                    L[i][j] = (A[i][j] - suma) / (L[j][j] || 1e-9);
+                }
+            }
+        }
+
+        this.matrizNoDefinidaPositiva = noDefinidaPositiva;
+        return L;
+    }
+
+    /**
+     * Prepara la estructura de correlaciones: la lista de variables
+     * correlacionables (totales de escala y sociodemográficas continuas), la
+     * matriz de correlaciones objetivo y su factor de Cholesky. Para las
+     * escalas se desatenúa la correlación objetivo por la fiabilidad del total
+     * (corr(F,Total)), de modo que la correlación OBSERVADA entre totales se
+     * acerque a la pedida.
+     */
+    prepararCorrelaciones() {
+        const variables = [];
+
+        this.configuracion.pruebas.forEach(prueba => {
+            // Carga factorial λ y c = corr(Factor, Total)
+            let lambda = 0;
+            const k = prueba.numItems;
+            if (prueba.alfa > 0 && prueba.alfa < 1 && k >= 2) {
+                const rMedia = prueba.alfa / (k - prueba.alfa * (k - 1));
+                lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
+            }
+            const c = lambda > 0 ? (lambda * Math.sqrt(k)) / Math.sqrt(1 + (k - 1) * lambda * lambda) : 0;
+            variables.push({ tipo: 'escala', clave: prueba.nombreCorto, nombre: prueba.nombre, c: c });
+        });
+
+        this.configuracion.sociodemograficos.forEach(socio => {
+            if (socio.distribucion === 'normal' || socio.distribucion === 'asimetrica') {
+                variables.push({ tipo: 'socio', clave: socio.categoriaCorta, nombre: socio.categoria, c: 1 });
+            }
+        });
+
+        const indicePorNombre = {};
+        variables.forEach((v, i) => { indicePorNombre[v.nombre] = i; });
+
+        const m = variables.length;
+        const R = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
+
+        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+            const i = indicePorNombre[a];
+            const j = indicePorNombre[b];
+            if (i === undefined || j === undefined || i === j) return;
+            // Desatenuar por la fiabilidad de cada total (c = 1 para continuas)
+            const ci = variables[i].c || 1e-6;
+            const cj = variables[j].c || 1e-6;
+            let rFactor = r / (ci * cj);
+            rFactor = Math.max(-0.99, Math.min(0.99, rFactor));
+            R[i][j] = rFactor;
+            R[j][i] = rFactor;
+        });
+
+        this.correlVariables = variables;
+        this.correlL = m > 0 ? this.descomposicionCholesky(R) : [];
+    }
+
+    // Genera el vector de valores normales correlacionados (uno por variable
+    // correlacionable) para un participante: y = L·z con z ~ N(0,1) i.i.d.
+    generarVectorCorrelacionado() {
+        const m = this.correlVariables.length;
+        const z = [];
+        for (let i = 0; i < m; i++) z.push(this.generarNormalEstandar());
+
+        const drivers = {};
+        for (let i = 0; i < m; i++) {
+            let y = 0;
+            for (let k = 0; k <= i; k++) y += this.correlL[i][k] * z[k];
+            drivers[this.correlVariables[i].tipo + ':' + this.correlVariables[i].clave] = y;
+        }
+        return drivers;
     }
 
     // ========================================
