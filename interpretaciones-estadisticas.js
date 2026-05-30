@@ -20,13 +20,17 @@ const InterpretacionesEstadisticas = {
         const prueba = norm1.prueba; // Ambas deberían usar la misma prueba
         const razonPrueba = n >= 50 ? 'n ≥ 50' : 'n < 50';
 
+        // Símbolo del estadístico según la prueba: W para Shapiro-Wilk,
+        // D para Kolmogorov-Smirnov.
+        const simbolo = norm => (norm.prueba && norm.prueba.includes('Shapiro')) ? 'W' : 'D';
+
         // Introducción metodológica
         interpretacion += `Se evaluó el supuesto de normalidad mediante ${prueba} (${razonPrueba}) para ${var1} y ${var2}. `;
 
         // Evaluar cada variable
         if (!norm1.normal && !norm2.normal) {
             // Ambas no normales
-            interpretacion += `Ambas variables presentaron distribuciones no normales (${var1}: D=${norm1.estadistico.toFixed(4)}, p=${norm1.pValor.toFixed(3)}; ${var2}: D=${norm2.estadistico.toFixed(4)}, p=${norm2.pValor.toFixed(3)}), incumpliendo el supuesto para estadística paramétrica. `;
+            interpretacion += `Ambas variables presentaron distribuciones no normales (${var1}: ${simbolo(norm1)}=${norm1.estadistico.toFixed(4)}, p=${norm1.pValor.toFixed(3)}; ${var2}: ${simbolo(norm2)}=${norm2.estadistico.toFixed(4)}, p=${norm2.pValor.toFixed(3)}), incumpliendo el supuesto para estadística paramétrica. `;
             interpretacion += `Por tanto, se empleó el coeficiente de correlación de Spearman (ρ) como método robusto no paramétrico. `;
             interpretacion += `Según Hernández-Sampieri y Mendoza (2023), cuando los datos no cumplen con el criterio de normalidad, los métodos no paramétricos son más apropiados para evitar conclusiones erróneas.`;
         } else if (!norm1.normal || !norm2.normal) {
@@ -35,7 +39,7 @@ const InterpretacionesEstadisticas = {
             const normData = !norm1.normal ? norm1 : norm2;
             const varNormal = norm1.normal ? var1 : var2;
 
-            interpretacion += `${varNoNormal} presentó distribución no normal (D=${normData.estadistico.toFixed(4)}, p=${normData.pValor.toFixed(3)}), mientras que ${varNormal} cumplió con el supuesto de normalidad. `;
+            interpretacion += `${varNoNormal} presentó distribución no normal (${simbolo(normData)}=${normData.estadistico.toFixed(4)}, p=${normData.pValor.toFixed(3)}), mientras que ${varNormal} cumplió con el supuesto de normalidad. `;
             interpretacion += `Dado que al menos una variable no cumple el supuesto de normalidad, se optó por el coeficiente de correlación de Spearman (ρ), `;
             interpretacion += `garantizando así la robustez del análisis ante desviaciones de la normalidad (Cohen, 2013).`;
         } else {
