@@ -1059,10 +1059,15 @@ function agregarFilaSocioConDatos(datos) {
 // ========================================
 
 function inicializarGraficos() {
-    const datos = generadorDatos.obtenerDatosGenerados();
-    // Verificar que existan los datos generados
+    // Usar los datos realmente cargados en el analizador (sirve tanto para
+    // datos generados como para un CSV subido); con respaldo al generador.
+    const datos = (window.AnalizadorEstadistico && window.AnalizadorEstadistico.obtenerDatos())
+        || window.datosGenerados
+        || generadorDatos.obtenerDatosGenerados();
+
+    // Verificar que existan los datos
     if (!datos || datos.length === 0) {
-        console.warn('No hay datos generados para mostrar gráficos');
+        console.warn('No hay datos para mostrar gráficos');
         return;
     }
 
@@ -1094,8 +1099,12 @@ function inicializarGraficos() {
             }
         });
 
-        // Preparar datos para gráficos desde los datos generados
-        const datosParaGraficos = prepararDatosParaGraficos(window.datosGenerados);
+        // Preparar datos para gráficos a partir de los datos cargados
+        const datosParaGraficos = prepararDatosParaGraficos(datos);
+        if (!datosParaGraficos) {
+            console.warn('No hay columnas numéricas para graficar');
+            return;
+        }
 
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
@@ -1147,61 +1156,94 @@ function inicializarGraficos() {
             });
         }
 
+        // Mostrar la rejilla de gráficos (oculta por defecto con .chart-grid)
+        const grid = document.getElementById('contenedorGraficos');
+        if (grid) {
+            grid.classList.add('show');
+        }
+
     } catch (error) {
         console.error('Error al inicializar gráficos:', error);
     }
 }
 
-// Función para preparar datos de los gráficos desde los datos generados
-function prepararDatosParaGraficos(datosGenerados) {
-    // Extraer todas las columnas numéricas
-    const columnasNumericas = [];
-    const labels = [];
+// Número máximo de columnas a graficar (legibilidad de matriz/diagramas)
+const MAX_COLUMNAS_GRAFICOS = 8;
 
-    if (datosGenerados.length > 0) {
-        const primeraFila = datosGenerados[0];
-        Object.keys(primeraFila).forEach(key => {
-            if (typeof primeraFila[key] === 'number') {
-                columnasNumericas.push(key);
-                labels.push(key);
-            }
-        });
+// Selecciona columnas numéricas significativas para los gráficos: prioriza los
+// puntajes totales (Total_*); si no hay al menos dos, usa el resto de columnas
+// numéricas. Excluye el identificador (ID) y limita la cantidad por legibilidad.
+function seleccionarColumnasGraficos(datos) {
+    if (!datos || datos.length === 0) return [];
+
+    const primera = datos[0];
+    const numericas = Object.keys(primera).filter(key => {
+        if (key === 'ID') return false;
+        return typeof primera[key] === 'number' || !isNaN(parseFloat(primera[key]));
+    });
+
+    const totales = numericas.filter(key => key.startsWith('Total_'));
+    const base = totales.length >= 2 ? totales : numericas;
+
+    return base.slice(0, MAX_COLUMNAS_GRAFICOS);
+}
+
+// Coeficiente de correlación de Pearson; devuelve 0 si alguna variable es
+// constante (varianza nula) o no hay pares suficientes.
+function correlacionPearsonSimple(a, b) {
+    const n = Math.min(a.length, b.length);
+    if (n < 2) return 0;
+
+    let sumaX = 0, sumaY = 0;
+    for (let i = 0; i < n; i++) {
+        sumaX += a[i];
+        sumaY += b[i];
+    }
+    const mediaX = sumaX / n;
+    const mediaY = sumaY / n;
+
+    let numerador = 0, varX = 0, varY = 0;
+    for (let i = 0; i < n; i++) {
+        const dx = a[i] - mediaX;
+        const dy = b[i] - mediaY;
+        numerador += dx * dy;
+        varX += dx * dx;
+        varY += dy * dy;
     }
 
-    // Datos para distribución gaussiana (usar la primera columna numérica)
-    const distribucion = datosGenerados.map(fila =>
-        fila[columnasNumericas[0]] || Math.random() * 100
+    if (varX === 0 || varY === 0) return 0;
+    return numerador / Math.sqrt(varX * varY);
+}
+
+// Prepara los datos para los gráficos a partir de la base cargada/generada.
+// Devuelve null si no hay columnas numéricas que graficar.
+function prepararDatosParaGraficos(datos) {
+    const columnas = seleccionarColumnasGraficos(datos);
+    if (columnas.length === 0) return null;
+
+    // Valores numéricos por columna (descartando no numéricos)
+    const valoresPorColumna = columnas.map(col =>
+        datos.map(fila => parseFloat(fila[col])).filter(valor => !isNaN(valor))
     );
 
-    // Matriz de correlaciones de ejemplo
-    const correlaciones = [];
-    for (let i = 0; i < columnasNumericas.length; i++) {
-        const fila = [];
-        for (let j = 0; j < columnasNumericas.length; j++) {
-            if (i === j) {
-                fila.push(1.00);
-            } else {
-                // Correlación aleatoria para ejemplo
-                fila.push(Math.round((Math.random() * 0.8 + 0.1) * 100) / 100);
-            }
-        }
-        correlaciones.push(fila);
-    }
+    // Distribución gaussiana: valores de la primera columna seleccionada
+    const distribucion = valoresPorColumna[0];
 
-    // Datos para diagrama de cajas
-    const cajas = columnasNumericas.map(col =>
-        datosGenerados.map(fila => fila[col]).filter(val => typeof val === 'number')
+    // Matriz de correlaciones REAL (Pearson) entre las columnas seleccionadas
+    const correlaciones = columnas.map((_, i) =>
+        columnas.map((__, j) =>
+            i === j
+                ? 1
+                : Math.round(correlacionPearsonSimple(valoresPorColumna[i], valoresPorColumna[j]) * 100) / 100
+        )
     );
-
-    // Datos para diagrama de violín
-    const violin = cajas.slice(0, 2); // Usar las primeras 2 columnas
 
     return {
         distribucion,
-        correlaciones: correlaciones.length > 0 ? correlaciones : [[1.00, 0.65], [0.65, 1.00]],
-        cajas: cajas.length > 0 ? cajas : [[85, 92, 98, 102, 108, 115, 120]],
-        violin: violin.length > 0 ? violin : [[85, 92, 98, 102, 108, 115, 120], [78, 88, 95, 100, 105, 112, 118]],
-        labels: labels.length > 0 ? labels : ['Prueba A', 'Prueba B', 'Prueba C', 'Prueba D']
+        correlaciones,
+        cajas: valoresPorColumna,
+        violin: valoresPorColumna.slice(0, 2),
+        labels: columnas.slice()
     };
 }
 
