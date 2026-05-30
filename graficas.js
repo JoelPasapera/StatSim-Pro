@@ -267,9 +267,10 @@ class ScientificCharts {
         g.append('g')
             .call(d3.axisLeft(yScale));
 
-        // Leyenda con estadísticas
+        // Leyenda con estadísticas, anclada a la esquina superior derecha
+        // (zona libre: en las colas la densidad es baja y la curva queda abajo).
         const legend = g.append('g')
-            .attr('transform', `translate(${this.config.width - this.config.margin.left - this.config.margin.right - 150}, 20)`);
+            .attr('transform', `translate(${this.config.width - this.config.margin.left - this.config.margin.right}, 0)`);
 
         const legendData = [
             `μ = ${mu.toFixed(3)}`,
@@ -279,7 +280,8 @@ class ScientificCharts {
 
         legendData.forEach((text, i) => {
             legend.append('text')
-                .attr('y', i * 20)
+                .attr('y', i * 18 + 12)
+                .attr('text-anchor', 'end')
                 .attr('font-size', this.config.fontSize)
                 .text(text);
         });
@@ -304,14 +306,27 @@ class ScientificCharts {
             throw new Error('Todas las filas deben tener la misma longitud');
         }
 
-        // Configurar dimensiones
+        // Reservar espacio para las etiquetas: un margen a la izquierda para las
+        // etiquetas de fila y otro arriba para las de columna (que se rotan para
+        // no solaparse cuando hay varias columnas o nombres largos). El tamaño de
+        // celda se calcula con el espacio RESTANTE, de modo que ni las celdas ni
+        // las etiquetas se salgan del área del gráfico.
+        const anchoContenido = this.config.width - this.config.margin.left - this.config.margin.right;
+        const altoContenido = this.config.height - this.config.margin.top - this.config.margin.bottom;
+        const margenEtiquetasFila = 72;
+        const margenEtiquetasColumna = 56;
+        const espacioLeyenda = 44;
+
         const cellSize = Math.min(
-            (this.config.width - this.config.margin.left - this.config.margin.right) / n,
-            (this.config.height - this.config.margin.top - this.config.margin.bottom) / n
+            (anchoContenido - margenEtiquetasFila) / n,
+            (altoContenido - margenEtiquetasColumna - espacioLeyenda) / n
         );
 
         const width = cellSize * n;
         const height = cellSize * n;
+
+        // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
+        const acortarEtiqueta = t => (typeof t === 'string' && t.length > 12) ? t.slice(0, 11) + '…' : t;
 
         // Escala de color para correlaciones
         const colorScale = d3.scaleSequential()
@@ -325,16 +340,9 @@ class ScientificCharts {
             options.yLabel || ''
         );
 
-        // Desplazar la matriz para que las etiquetas de columna (en y = -10) no
-        // se solapen con el título superior y, sobre todo, para que las
-        // etiquetas de fila (en x = -10, ancladas a la derecha) no se recorten
-        // por el borde izquierdo. Se reserva espacio a la izquierda según la
-        // holgura horizontal disponible (sin que la matriz se salga a la derecha).
-        const anchoContenido = this.config.width - this.config.margin.left - this.config.margin.right;
-        const desplazamientoSuperior = this.config.fontSize + 8;
-        const desplazamientoIzquierdo = Math.min(Math.max(anchoContenido - width, 0), 80);
+        // Subgrupo de la matriz, desplazado para dejar sitio a las etiquetas.
         const gMatriz = g.append('g')
-            .attr('transform', `translate(${desplazamientoIzquierdo}, ${desplazamientoSuperior})`);
+            .attr('transform', `translate(${margenEtiquetasFila}, ${margenEtiquetasColumna})`);
 
         // Crear celdas del heatmap
         const cells = gMatriz.selectAll('.cell')
@@ -363,8 +371,8 @@ class ScientificCharts {
             .attr('fill', d => Math.abs(d.value) > 0.5 ? '#FFFFFF' : '#000000')
             .text(d => d.value.toFixed(2));
 
-        // Etiquetas de filas
-        gMatriz.selectAll('.row-label')
+        // Etiquetas de filas (ancladas a la derecha, dentro del margen izquierdo)
+        const rowLabels = gMatriz.selectAll('.row-label')
             .data(labels)
             .enter().append('text')
             .attr('class', 'row-label')
@@ -373,18 +381,20 @@ class ScientificCharts {
             .attr('text-anchor', 'end')
             .attr('dominant-baseline', 'middle')
             .attr('font-size', this.config.fontSize)
-            .text(d => d);
+            .text(d => acortarEtiqueta(d));
+        rowLabels.append('title').text(d => d);
 
-        // Etiquetas de columnas
-        gMatriz.selectAll('.col-label')
+        // Etiquetas de columnas (rotadas -45° para no solaparse entre sí)
+        const colLabels = gMatriz.selectAll('.col-label')
             .data(labels)
             .enter().append('text')
             .attr('class', 'col-label')
-            .attr('x', (d, i) => i * cellSize + cellSize / 2)
-            .attr('y', -10)
-            .attr('text-anchor', 'middle')
+            .attr('transform', (d, i) => `translate(${i * cellSize + cellSize / 2}, -8) rotate(-45)`)
+            .attr('text-anchor', 'start')
+            .attr('dominant-baseline', 'middle')
             .attr('font-size', this.config.fontSize)
-            .text(d => d);
+            .text(d => acortarEtiqueta(d));
+        colLabels.append('title').text(d => d);
 
         // Leyenda de color
         const legendWidth = 200;
