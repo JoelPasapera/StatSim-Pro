@@ -25,7 +25,7 @@ Each module attaches a singleton or class to `window`:
 
 - **`generador-datos.js`** — `class GeneradorDatos`, instance `generadorDatos`. Reads the "Pruebas Aplicadas" + "Sociodemográficos" tables, generates per-item normal values (see *Generation algorithm* below), exposes `datosGenerados`.
 - **`analizador-estadistico.js`** — `class AnalizadorEstadisticoProfesional`, singleton `window.AnalizadorEstadistico`. The statistical core. Implements (by hand, no libraries) Shapiro-Wilk, Kolmogorov-Smirnov, Pearson, Spearman, p-values via incomplete beta / t-distribution (`betaIncompleta`, `lnGamma`), descriptives, skew/kurtosis, dimension-level correlations, and prose generators (`generarHipotesis`, `generarMarcoMetodologico`, `generarDiscusion`, `generarReporteCompleto`).
-- **`interpretaciones-estadisticas.js`** — `const InterpretacionesEstadisticas` (+ `GraficosEstadisticos`) on `window`. Turns numeric results into narrative Spanish interpretation text with academic citations (Sampieri, Cohen, etc.).
+- **`interpretaciones-estadisticas.js`** — `const InterpretacionesEstadisticas` on `window`. Turns numeric results into narrative Spanish interpretation text with academic citations (Sampieri, Cohen, etc.).
 - **`graficas.js`** — `class ScientificCharts` + `ScientificChartsBuilder` on `window`. D3-based APA/IEEE-styled charts (gaussian, correlation matrix, boxplot, violin). Builder pattern.
 - **`app.js`** — UI coordinator. No business logic of its own: wires DOM events, owns navigation between `#simulador`/`#analizador`/`#ayuda`/`#contacto` sections, and passes data between modules. Cross-module hand-off goes through **`window.datosGenerados`** (the generator writes it; the analyzer reads it via "Usar Datos Generados").
 
