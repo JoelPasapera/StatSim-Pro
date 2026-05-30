@@ -519,6 +519,14 @@ class AnalizadorEstadisticoProfesional {
         const valores1 = pares.map(par => par[0]);
         const valores2 = pares.map(par => par[1]);
 
+        // Una variable sin variabilidad (todos sus valores iguales) hace que la
+        // desviación sea 0 y el coeficiente quede indefinido (NaN). Se avisa con
+        // un mensaje claro en lugar de mostrar "NaN".
+        if (this.esConstante(valores1) || this.esConstante(valores2)) {
+            const nombreConstante = this.esConstante(valores1) ? nombreColumna1 : nombreColumna2;
+            throw new Error(`La variable "${nombreConstante}" no tiene variabilidad (todos sus valores son iguales); no es posible calcular la correlación.`);
+        }
+
         const normalidad1 = this.evaluarNormalidad(valores1);
         const normalidad2 = this.evaluarNormalidad(valores2);
 
@@ -964,6 +972,11 @@ class AnalizadorEstadisticoProfesional {
     // ========================================
     // UTILIDADES
     // ========================================
+
+    // Indica si todos los valores del arreglo son iguales (varianza cero).
+    esConstante(valores) {
+        return valores.length > 0 && valores.every(v => v === valores[0]);
+    }
 
     obtenerValoresNumericos(nombreColumna) {
         if (!this.datos) return [];
