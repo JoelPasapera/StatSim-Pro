@@ -737,11 +737,23 @@ function mostrarReferencias(var1, var2, resultado) {
 }
 
 function descargarResultados() {
-    // Obtener el contenido de resultados
-    const normalidad = document.getElementById('resultadosNormalidad').innerText;
-    const correlacion = document.getElementById('resultadosCorrelacion').innerText;
-    const decision = document.getElementById('resultadosDecision').innerText;
-    const discusion = document.getElementById('resultadosDiscusion').innerText;
+    // Obtener el contenido de resultados (texto de cada contenedor, vacío si no existe)
+    const textoContenedor = id => {
+        const elem = document.getElementById(id);
+        return elem ? elem.innerText.trim() : '';
+    };
+
+    // El contenedor de normalidad es 'pruebasNormalidadContainer' (no 'resultadosNormalidad')
+    const normalidad = textoContenedor('pruebasNormalidadContainer');
+    const correlacion = textoContenedor('resultadosCorrelacion');
+    const decision = textoContenedor('resultadosDecision');
+    const discusion = textoContenedor('resultadosDiscusion');
+
+    // Evitar descargar un archivo vacío si aún no se ejecutó el análisis
+    if (!correlacion && !normalidad && !decision && !discusion) {
+        mostrarToast('Primero ejecuta un análisis para descargar resultados', 'warning');
+        return;
+    }
 
     const contenido = `
 RESULTADOS DEL ANÁLISIS ESTADÍSTICO
