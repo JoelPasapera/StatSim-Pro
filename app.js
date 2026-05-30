@@ -836,29 +836,23 @@ function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
     return columnas;
 }
 
+let temporizadorToast = null;
+
 function mostrarToast(mensaje, tipo = 'success') {
     const toast = document.getElementById('toast');
     toast.textContent = mensaje;
     toast.className = `toast ${tipo}`;
     toast.classList.add('show');
 
-    setTimeout(() => {
+    // Cancelar el temporizador previo para que un toast nuevo no se oculte
+    // antes de tiempo por el setTimeout de uno anterior.
+    if (temporizadorToast) {
+        clearTimeout(temporizadorToast);
+    }
+    temporizadorToast = setTimeout(() => {
         toast.classList.remove('show');
+        temporizadorToast = null;
     }, 3000);
-}
-
-// ========================================
-// FORMATEO DE NÚMEROS
-// ========================================
-
-function formatearNumero(numero, decimales = 2) {
-    return Number(numero).toFixed(decimales);
-}
-
-function formatearPValor(p) {
-    if (p < 0.001) return '< .001';
-    if (p < 0.01) return p.toFixed(3);
-    return p.toFixed(4);
 }
 
 // ========================================
