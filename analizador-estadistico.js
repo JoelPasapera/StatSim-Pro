@@ -777,18 +777,13 @@ class AnalizadorEstadisticoProfesional {
     }
 
     calcularPValorSpearman(rho, n, tipoPrueba) {
-        if (n > 10) {
-            const z = rho * Math.sqrt(n - 1);
-            let pValor = 1 - this.distribucionNormalAcumulada(Math.abs(z));
-
-            if (tipoPrueba === 'bilateral') {
-                pValor = pValor * 2;
-            }
-
-            return Math.min(1, pValor);
-        } else {
-            return this.calcularPValorPearson(rho, n, tipoPrueba);
-        }
+        // Significancia de Spearman mediante la aproximación t:
+        //   t = r_s · √((n − 2) / (1 − r_s²)), con gl = n − 2.
+        // Es la prueba asintótica estándar (SPSS, R cor.test) y resulta
+        // coherente con aplicar Pearson sobre los rangos. Antes se usaba
+        // z = r_s·√(n−1) para n > 10 y la t para n ≤ 10, lo que era
+        // inconsistente y menos preciso.
+        return this.calcularPValorPearson(rho, n, tipoPrueba);
     }
 
     /**
