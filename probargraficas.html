@@ -4,663 +4,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ScientificCharts D3.js Example</title>
+    <title>Prueba de ScientificCharts (graficas.js)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            max-width: 1100px;
+            margin: 20px auto;
             padding: 20px;
+            background: #f5f5f5;
         }
 
-        #chart-container {
-            border: 1px solid #ccc;
+        h1 {
+            color: #333;
+        }
+
+        .grid-graficos {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+            gap: 20px;
             margin-top: 20px;
+        }
+
+        .grafico-card {
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .grafico-card h2 {
+            font-size: 16px;
+            margin: 0 0 10px;
+            color: #2E5BBA;
+        }
+
+        .error {
+            color: #b00020;
+            font-weight: bold;
         }
     </style>
 
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <!-- d3 vendorizado localmente (sin dependencia de CDN, coherente con el resto del proyecto) -->
+    <script src="d3.v7.min.js"></script>
 </head>
 
 <body>
 
-    <h1>📊 Gráfico de Caja y Bigotes (Box Plot) - Ejemplo</h1>
+    <h1>📊 Prueba de la librería de gráficos (graficas.js)</h1>
+    <p>Esta página ejercita la clase real <code>ScientificCharts</code> con datos de ejemplo.</p>
 
-    <div id="chart-container">
+    <div class="grid-graficos">
+        <div class="grafico-card">
+            <h2>Distribución Gaussiana</h2>
+            <div id="grafico-gaussiana"></div>
+        </div>
+        <div class="grafico-card">
+            <h2>Matriz de Correlación</h2>
+            <div id="grafico-correlacion"></div>
+        </div>
+        <div class="grafico-card">
+            <h2>Diagrama de Caja y Bigotes</h2>
+            <div id="grafico-caja"></div>
+        </div>
+        <div class="grafico-card">
+            <h2>Diagrama de Violín</h2>
+            <div id="grafico-violin"></div>
+        </div>
     </div>
-    <script src="https://d3js.org/d3.v7.min.js"></script>
-    <script>
 
-        // Pega aquí todo el código de tu clase ScientificCharts
-
-        /**
-         * ScientificCharts - Librería de Visualización Científica
-         * Arquitectura: Patrón Builder con Clases ES6
-         * Estilo: Publicación Científica (APA/IEEE)
-         * Autor: Ingeniero de Software Principal
-         * Versión: 1.0.0
-         */
-
-        class ScientificCharts {
-            /**
-             * Constructor principal de la clase ScientificCharts
-             * @param {string} containerId - ID del contenedor DOM
-             * @param {object} config - Configuración del gráfico
-             */
-            constructor(containerId, config = {}) {
-                // Validación básica
-                if (!containerId || typeof containerId !== 'string') {
-                    throw new Error('El ID del contenedor es requerido y debe ser un string');
-                }
-
-                this.container = document.getElementById(containerId);
-                if (!this.container) {
-                    throw new Error(`No se encontró el contenedor con ID: ${containerId}`);
-                }
-
-                // Configuración por defecto con estilo APA/IEEE
-                this.config = {
-                    width: 800,
-                    height: 600,
-                    margin: { top: 40, right: 40, bottom: 60, left: 60 },
-                    fontFamily: 'Arial, Helvetica, sans-serif',
-                    fontSize: 12,
-                    titleFontSize: 16,
-                    axisColor: '#333333',
-                    gridColor: '#E5E5E5',
-                    primaryColor: '#2E5BBA',
-                    secondaryColor: '#D32F2F',
-                    backgroundColor: '#FFFFFF',
-                    ...config
-                };
-
-                // Estado interno
-                this.data = null;
-                this.svg = null;
-                this.scales = {};
-                this.elements = {};
-
-                // Inicializar SVG base
-                this._initializeSVG();
-            }
-
-            /**
-             * Inicializa el elemento SVG base
-             * @private
-             */
-            _initializeSVG() {
-                this.svg = d3.select(this.container)
-                    .append('svg')
-                    .attr('width', this.config.width)
-                    .attr('height', this.config.height)
-                    .attr('font-family', this.config.fontFamily)
-                    .style('background-color', this.config.backgroundColor);
-
-                // Añadir definiciones para gradientes y patrones
-                this.defs = this.svg.append('defs');
-                this._createGradients();
-            }
-
-            /**
-             * Crea gradientes y patrones comunes
-             * @private
-             */
-            _createGradients() {
-                // Gradiente para áreas sombreadas
-                const gradient = this.defs.append('linearGradient')
-                    .attr('id', 'areaGradient')
-                    .attr('x1', '0%')
-                    .attr('y1', '0%')
-                    .attr('x2', '0%')
-                    .attr('y2', '100%');
-
-                gradient.append('stop')
-                    .attr('offset', '0%')
-                    .attr('stop-color', this.config.primaryColor)
-                    .attr('stop-opacity', 0.3);
-
-                gradient.append('stop')
-                    .attr('offset', '100%')
-                    .attr('stop-color', this.config.primaryColor)
-                    .attr('stop-opacity', 0.1);
-            }
-
-            /**
-             * Valida que los arrays tengan la misma longitud
-             * @param {...Array} arrays - Arrays a validar
-             * @private
-             */
-            _validateArrays(...arrays) {
-                if (arrays.length < 2) return true;
-                const length = arrays[0].length;
-                return arrays.every(arr => Array.isArray(arr) && arr.length === length);
-            }
-
-            /**
-             * Calcula estadísticas básicas
-             * @param {Array} data - Array de números
-             * @returns {object} - Objeto con estadísticas
-             * @private
-             */
-            _calculateStats(data) {
-                const sorted = [...data].sort((a, b) => a - b);
-                const n = data.length;
-                const mean = d3.mean(data);
-                const median = d3.median(data);
-                const std = d3.deviation(data) || 0;
-                const min = d3.min(data);
-                const max = d3.max(data);
-                const q1 = d3.quantile(sorted, 0.25);
-                const q3 = d3.quantile(sorted, 0.75);
-                const iqr = q3 - q1;
-
-                return { mean, median, std, min, max, q1, q3, iqr, n };
-            }
-
-            /**
-             * Crea la estructura base del gráfico (ejes, títulos)
-             * @param {string} title - Título del gráfico
-             * @param {string} xLabel - Etiqueta del eje X
-             * @param {string} yLabel - Etiqueta del eje Y
-             * @private
-             */
-            _createChartBase(title, xLabel, yLabel) {
-                // Limpiar contenido previo
-                this.svg.selectAll('.chart-content').remove();
-
-                const g = this.svg.append('g')
-                    .attr('class', 'chart-content')
-                    .attr('transform', `translate(${this.config.margin.left},${this.config.margin.top})`);
-
-                // Título
-                if (title) {
-                    this.svg.append('text')
-                        .attr('x', this.config.width / 2)
-                        .attr('y', 25)
-                        .attr('text-anchor', 'middle')
-                        .attr('font-size', this.config.titleFontSize)
-                        .attr('font-weight', 'bold')
-                        .text(title);
-                }
-
-                // Etiquetas de ejes
-                const contentWidth = this.config.width - this.config.margin.left - this.config.margin.right;
-                const contentHeight = this.config.height - this.config.margin.top - this.config.margin.bottom;
-
-                if (yLabel) {
-                    g.append('text')
-                        .attr('transform', 'rotate(-90)')
-                        .attr('y', 0 - this.config.margin.left)
-                        .attr('x', 0 - contentHeight / 2)
-                        .attr('dy', '1em')
-                        .style('text-anchor', 'middle')
-                        .attr('font-size', this.config.fontSize)
-                        .text(yLabel);
-                }
-
-                if (xLabel) {
-                    g.append('text')
-                        .attr('transform', `translate(${contentWidth / 2}, ${contentHeight + this.config.margin.bottom - 10})`)
-                        .style('text-anchor', 'middle')
-                        .attr('font-size', this.config.fontSize)
-                        .text(xLabel);
-                }
-
-                return g;
-            }
-
-            /**
-             * Crea una distribución gaussiana con área sombreada
-             * @param {Array} data - Datos numéricos
-             * @param {number} mean - Media (opcional)
-             * @param {number} std - Desviación estándar (opcional)
-             * @param {object} options - Opciones adicionales
-             * @returns {ScientificCharts} - Instancia para chaining
-             */
-            createGaussianDistribution(data, mean = null, std = null, options = {}) {
-                if (!Array.isArray(data) || data.length === 0) {
-                    throw new Error('Los datos deben ser un array no vacío');
-                }
-
-                const stats = this._calculateStats(data);
-                const mu = mean !== null ? mean : stats.mean;
-                const sigma = std !== null ? std : stats.std;
-
-                // Generar puntos para la curva gaussiana
-                const xMin = mu - 4 * sigma;
-                const xMax = mu + 4 * sigma;
-                const xValues = d3.range(xMin, xMax, (xMax - xMin) / 100);
-
-                const gaussianData = xValues.map(x => ({
-                    x: x,
-                    y: (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2))
-                }));
-
-                // Configurar escalas
-                const contentWidth = this.config.width - this.config.margin.left - this.config.margin.right;
-                const contentHeight = this.config.height - this.config.margin.top - this.config.margin.bottom;
-
-                const xScale = d3.scaleLinear()
-                    .domain([xMin, xMax])
-                    .range([0, contentWidth]);
-
-                const yScale = d3.scaleLinear()
-                    .domain([0, d3.max(gaussianData, d => d.y)])
-                    .range([contentHeight, 0]);
-
-                // Crear base del gráfico
-                const g = this._createChartBase(
-                    options.title || 'Distribución Gaussiana',
-                    options.xLabel || 'Valor',
-                    options.yLabel || 'Densidad de Probabilidad'
-                );
-
-                // Área sombreada
-                const area = d3.area()
-                    .x(d => xScale(d.x))
-                    .y0(contentHeight)
-                    .y1(d => yScale(d.y))
-                    .curve(d3.curveBasis);
-
-                g.append('path')
-                    .datum(gaussianData)
-                    .attr('fill', 'url(#areaGradient)')
-                    .attr('d', area);
-
-                // Línea de la curva
-                const line = d3.line()
-                    .x(d => xScale(d.x))
-                    .y(d => yScale(d.y))
-                    .curve(d3.curveBasis);
-
-                g.append('path')
-                    .datum(gaussianData)
-                    .attr('fill', 'none')
-                    .attr('stroke', this.config.primaryColor)
-                    .attr('stroke-width', 2)
-                    .attr('d', line);
-
-                // Líneas verticales para desviaciones estándar
-                [-2, -1, 0, 1, 2].forEach(sd => {
-                    const x = mu + sd * sigma;
-                    g.append('line')
-                        .attr('x1', xScale(x))
-                        .attr('x2', xScale(x))
-                        .attr('y1', contentHeight)
-                        .attr('y2', 0)
-                        .attr('stroke', this.config.secondaryColor)
-                        .attr('stroke-width', 1)
-                        .attr('stroke-dasharray', '3,3')
-                        .attr('opacity', 0.5);
-                });
-
-                // Ejes
-                g.append('g')
-                    .attr('transform', `translate(0,${contentHeight})`)
-                    .call(d3.axisBottom(xScale));
-
-                g.append('g')
-                    .call(d3.axisLeft(yScale));
-
-                // Leyenda con estadísticas
-                const legend = g.append('g')
-                    .attr('transform', `translate(${contentWidth - 150}, 20)`);
-
-                const legendData = [
-                    `μ = ${mu.toFixed(3)}`,
-                    `σ = ${sigma.toFixed(3)}`,
-                    `N = ${stats.n}`
-                ];
-
-                legendData.forEach((text, i) => {
-                    legend.append('text')
-                        .attr('y', i * 20)
-                        .attr('font-size', this.config.fontSize)
-                        .text(text);
-                });
-
-                return this;
-            }
-
-            /**
-             * Crea una matriz de correlación (heatmap)
-             * @param {Array} data - Matriz de correlaciones
-             * @param {Array} labels - Etiquetas de variables
-             * @param {object} options - Opciones adicionales
-             * @returns {ScientificCharts} - Instancia para chaining
-             */
-            createCorrelationMatrix(data, labels, options = {}) {
-                if (!Array.isArray(data) || !Array.isArray(labels)) {
-                    throw new Error('Los datos y etiquetas deben ser arrays');
-                }
-
-                const n = labels.length;
-                if (!this._validateArrays(...data)) {
-                    throw new Error('Todas las filas deben tener la misma longitud');
-                }
-
-                const contentWidth = this.config.width - this.config.margin.left - this.config.margin.right;
-                const contentHeight = this.config.height - this.config.margin.top - this.config.margin.bottom;
-
-                // Configurar dimensiones
-                const cellSize = Math.min(
-                    contentWidth / n,
-                    contentHeight / n
-                );
-
-                const width = cellSize * n;
-                const height = cellSize * n;
-
-                // Escala de color para correlaciones
-                const colorScale = d3.scaleSequential()
-                    .domain([-1, 1])
-                    .interpolator(d3.interpolateRdBu);
-
-                // Crear base del gráfico
-                const g = this._createChartBase(
-                    options.title || 'Matriz de Correlación',
-                    options.xLabel || '',
-                    options.yLabel || ''
-                );
-
-                // Crear celdas del heatmap
-                const cells = g.selectAll('.cell')
-                    .data(data.flatMap((row, i) =>
-                        row.map((value, j) => ({ value, i, j }))
-                    ))
-                    .enter().append('g')
-                    .attr('class', 'cell')
-                    .attr('transform', d => `translate(${d.j * cellSize}, ${d.i * cellSize})`);
-
-                // Rectángulos de las celdas
-                cells.append('rect')
-                    .attr('width', cellSize)
-                    .attr('height', cellSize)
-                    .attr('fill', d => colorScale(d.value))
-                    .attr('stroke', '#FFFFFF')
-                    .attr('stroke-width', 1);
-
-                // Texto con valores de correlación
-                cells.append('text')
-                    .attr('x', cellSize / 2)
-                    .attr('y', cellSize / 2)
-                    .attr('text-anchor', 'middle')
-                    .attr('dominant-baseline', 'middle')
-                    .attr('font-size', Math.min(cellSize * 0.3, 14))
-                    .attr('fill', d => Math.abs(d.value) > 0.5 ? '#FFFFFF' : '#000000')
-                    .text(d => d.value.toFixed(2));
-
-                // Etiquetas de filas
-                g.selectAll('.row-label')
-                    .data(labels)
-                    .enter().append('text')
-                    .attr('class', 'row-label')
-                    .attr('x', -10)
-                    .attr('y', (d, i) => i * cellSize + cellSize / 2)
-                    .attr('text-anchor', 'end')
-                    .attr('dominant-baseline', 'middle')
-                    .attr('font-size', this.config.fontSize)
-                    .text(d => d);
-
-                // Etiquetas de columnas
-                g.selectAll('.col-label')
-                    .data(labels)
-                    .enter().append('text')
-                    .attr('class', 'col-label')
-                    .attr('x', (d, i) => i * cellSize + cellSize / 2)
-                    .attr('y', -10)
-                    .attr('text-anchor', 'middle')
-                    .attr('font-size', this.config.fontSize)
-                    .text(d => d);
-
-                // Leyenda de color
-                const legendWidth = 200;
-                const legendHeight = 20;
-                const legendX = contentWidth - legendWidth;
-                const legendY = contentHeight + 40;
-
-                const legendScale = d3.scaleLinear()
-                    .domain([-1, 1])
-                    .range([0, legendWidth]);
-
-                const legendAxis = d3.axisBottom(legendScale)
-                    .ticks(5)
-                    .tickFormat(d3.format('.1f'));
-
-                const legend = this.svg.append('g')
-                    .attr('transform', `translate(${this.config.margin.left + (contentWidth - legendWidth) / 2}, ${this.config.margin.top + contentHeight + 40})`);
-
-                // Gradientes para la leyenda
-                const legendGradient = this.defs.append('linearGradient')
-                    .attr('id', 'legend-gradient')
-                    .attr('x1', '0%')
-                    .attr('x2', '100%')
-                    .attr('y1', '0%')
-                    .attr('y2', '0%');
-
-                [-1, -0.5, 0, 0.5, 1].forEach((value, i) => {
-                    legendGradient.append('stop')
-                        .attr('offset', `${i * 25}%`)
-                        .attr('stop-color', colorScale(value));
-                });
-
-                legend.append('rect')
-                    .attr('width', legendWidth)
-                    .attr('height', legendHeight)
-                    .style('fill', 'url(#legend-gradient)');
-
-                legend.append('g')
-                    .attr('transform', `translate(0, ${legendHeight})`)
-                    .call(legendAxis);
-
-                return this;
-            }
-
-            /**
-             * Crea un diagrama de caja y bigotes (boxplot)
-             * @param {Array} data - Datos numéricos o array de arrays
-             * @param {Array} labels - Etiquetas para múltiples boxplots
-             * @param {object} options - Opciones adicionales
-             * @returns {ScientificCharts} - Instancia para chaining
-             */
-            createBoxPlot(data, labels = null, options = {}) {
-                let datasets;
-
-                if (Array.isArray(data[0])) {
-                    datasets = data.map((d, i) => ({
-                        data: d,
-                        label: labels ? labels[i] : `Grupo ${i + 1}`
-                    }));
-                } else {
-                    datasets = [{
-                        data: data,
-                        label: labels ? labels[0] : 'Datos'
-                    }];
-                }
-
-                // Calcular estadísticas para cada dataset
-                const boxData = datasets.map(dataset => {
-                    const sorted = [...dataset.data].sort((a, b) => a - b);
-                    const stats = this._calculateStats(dataset.data);
-
-                    const whiskerTop = Math.min(stats.max, stats.q3 + 1.5 * stats.iqr);
-                    const whiskerBottom = Math.max(stats.min, stats.q1 - 1.5 * stats.iqr);
-
-                    return {
-                        ...stats,
-                        whiskerTop,
-                        whiskerBottom,
-                        label: dataset.label,
-                        outliers: dataset.data.filter(d =>
-                            d > whiskerTop || d < whiskerBottom
-                        )
-                    };
-                });
-
-                const contentWidth = this.config.width - this.config.margin.left - this.config.margin.right;
-                const contentHeight = this.config.height - this.config.margin.top - this.config.margin.bottom;
-
-                // Configurar escalas
-                const xScale = d3.scaleBand()
-                    .domain(boxData.map(d => d.label))
-                    .range([0, contentWidth])
-                    .padding(0.3);
-
-                const allValues = boxData.flatMap(d => d.data);
-                const yScale = d3.scaleLinear()
-                    .domain([d3.min(allValues) * 0.9, d3.max(allValues) * 1.1])
-                    .range([contentHeight, 0]);
-
-                // Crear base del gráfico
-                const g = this._createChartBase(
-                    options.title || 'Diagrama de Caja y Bigotes',
-                    options.xLabel || '',
-                    options.yLabel || 'Valor'
-                );
-
-                // Crear boxplots
-                boxData.forEach((d, i) => {
-                    const x = xScale(d.label);
-                    const width = xScale.bandwidth();
-
-                    // Caja principal (IQR)
-                    g.append('rect')
-                        .attr('x', x)
-                        .attr('y', yScale(d.q3))
-                        .attr('width', width)
-                        .attr('height', yScale(d.q1) - yScale(d.q3))
-                        .attr('fill', this.config.primaryColor)
-                        .attr('opacity', 0.3)
-                        .attr('stroke', this.config.primaryColor)
-                        .attr('stroke-width', 1);
-
-                    // Línea media (Mediana)
-                    g.append('line')
-                        .attr('x1', x)
-                        .attr('x2', x + width)
-                        .attr('y1', yScale(d.median))
-                        .attr('y2', yScale(d.median))
-                        .attr('stroke', this.config.primaryColor)
-                        .attr('stroke-width', 2);
-
-                    // Línea central de bigotes
-                    g.append('line')
-                        .attr('x1', x + width / 2)
-                        .attr('x2', x + width / 2)
-                        .attr('y1', yScale(d.whiskerBottom))
-                        .attr('y2', yScale(d.whiskerTop))
-                        .attr('stroke', this.config.primaryColor)
-                        .attr('stroke-width', 1);
-
-                    // Límites de bigotes (barras)
-                    g.append('line')
-                        .attr('x1', x + width * 0.3)
-                        .attr('x2', x + width * 0.7)
-                        .attr('y1', yScale(d.whiskerBottom))
-                        .attr('y2', yScale(d.whiskerBottom))
-                        .attr('stroke', this.config.primaryColor)
-                        .attr('stroke-width', 1);
-
-                    g.append('line')
-                        .attr('x1', x + width * 0.3)
-                        .attr('x2', x + width * 0.7)
-                        .attr('y1', yScale(d.whiskerTop))
-                        .attr('y2', yScale(d.whiskerTop))
-                        .attr('stroke', this.config.primaryColor)
-                        .attr('stroke-width', 1);
-
-                    // Outliers
-                    if (d.outliers.length > 0) {
-                        g.selectAll(`.outlier-${i}`)
-                            .data(d.outliers)
-                            .enter().append('circle')
-                            .attr('class', `outlier-${i}`)
-                            .attr('cx', x + width / 2)
-                            .attr('cy', d => yScale(d))
-                            .attr('r', 4)
-                            .attr('fill', this.config.secondaryColor)
-                            .attr('stroke', '#FFFFFF')
-                            .attr('stroke-width', 1);
-                    }
-                });
-
-                // Ejes
-                g.append('g')
-                    .attr('transform', `translate(0,${contentHeight})`)
-                    .call(d3.axisBottom(xScale));
-
-                g.append('g')
-                    .call(d3.axisLeft(yScale));
-
-                return this;
-            }
-
-            // ... (Incluye el resto de métodos: createViolinPlot, createScatterPlot, createHistogram, etc.)
-            // NOTE: He acortado intencionalmente el código de la clase aquí por concisión en el ejemplo de la respuesta, pero DEBES INCLUIR TODOS TUS MÉTODOS en tu archivo HTML real.
-
-            /**
-             * Crea un diagrama de violín
-             * ... (código completo del método)
-             */
-            createViolinPlot(data, labels = null, options = {}) {
-                // ... (Implementación completa)
-                return this;
-            }
-
-            /**
-             * Crea un scatter plot con línea de regresión
-             * ... (código completo del método)
-             */
-            createScatterPlot(xData, yData, options = {}) {
-                // ... (Implementación completa)
-                return this;
-            }
-
-            /**
-             * Crea un histograma con curva de densidad
-             * ... (código completo del método)
-             */
-            createHistogram(data, bins = null, options = {}) {
-                // ... (Implementación completa)
-                return this;
-            }
-
-            // ... (Otros métodos que hayas definido)
-        }
-    </script>
+    <!-- Librería real de gráficos (la misma que usa la app) -->
+    <script src="graficas.js"></script>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Datos de ejemplo para el Box Plot
-            const groupA = [10, 12, 15, 14, 18, 11, 13, 16, 25]; // 25 es un outlier
-            const groupB = [20, 22, 25, 24, 28, 21, 23, 26, 1]; // 1 es un outlier
-            const groupC = [30, 32, 35, 34, 38, 31, 33, 36];
-
-            const allData = [groupA, groupB, groupC];
-            const allLabels = ['Test Control', 'Test Experimental', 'Grupo C'];
-
-            try {
-                // 1. Instanciar la clase, pasando el ID del contenedor
-                const myChart = new ScientificCharts('chart-container', {
-                    width: 700,
-                    height: 500
-                });
-
-                // 2. Usar una de las funciones para generar un gráfico
-                myChart.createBoxPlot(allData, allLabels, {
-                    title: 'Comparación de Puntuaciones entre Grupos',
-                    xLabel: 'Grupo de Estudio',
-                    yLabel: 'Puntuación'
-                });
-
-            } catch (error) {
-                console.error("Error al crear el gráfico:", error);
-                document.getElementById('chart-container').innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+            // Renderiza un gráfico de forma aislada: cualquier error se muestra
+            // dentro de su propia tarjeta sin interrumpir a los demás.
+            function renderizar(containerId, dibujar) {
+                try {
+                    const chart = new ScientificCharts(containerId, { width: 460, height: 340 });
+                    dibujar(chart);
+                } catch (error) {
+                    console.error(`Error en ${containerId}:`, error);
+                    const cont = document.getElementById(containerId);
+                    if (cont) {
+                        cont.innerHTML = `<p class="error">Error: ${error.message}</p>`;
+                    }
+                }
             }
+
+            // Datos de ejemplo
+            const grupoA = [10, 12, 15, 14, 18, 11, 13, 16, 25]; // 25 es un outlier
+            const grupoB = [20, 22, 25, 24, 28, 21, 23, 26, 1];  // 1 es un outlier
+            const grupoC = [30, 32, 35, 34, 38, 31, 33, 36];
+
+            // Muestra aproximadamente normal para la distribución gaussiana
+            const muestraGaussiana = [];
+            for (let i = 0; i < 200; i++) {
+                const u1 = Math.random() || 1e-9;
+                const u2 = Math.random();
+                const z = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+                muestraGaussiana.push(100 + 15 * z);
+            }
+
+            // Matriz de correlación simétrica de ejemplo
+            const matrizCorrelacion = [
+                [1.00, 0.65, -0.20],
+                [0.65, 1.00, 0.10],
+                [-0.20, 0.10, 1.00]
+            ];
+            const etiquetas = ['Variable A', 'Variable B', 'Variable C'];
+
+            renderizar('grafico-gaussiana', chart =>
+                chart.createGaussianDistribution(muestraGaussiana, null, null, {
+                    title: 'Distribución de Puntajes',
+                    xLabel: 'Puntaje',
+                    yLabel: 'Densidad'
+                }));
+
+            renderizar('grafico-correlacion', chart =>
+                chart.createCorrelationMatrix(matrizCorrelacion, etiquetas, {
+                    title: 'Matriz de Correlaciones'
+                }));
+
+            renderizar('grafico-caja', chart =>
+                chart.createBoxPlot([grupoA, grupoB, grupoC], ['Control', 'Experimental', 'Grupo C'], {
+                    title: 'Comparación entre Grupos',
+                    xLabel: 'Grupo',
+                    yLabel: 'Puntuación'
+                }));
+
+            renderizar('grafico-violin', chart =>
+                chart.createViolinPlot([grupoA, grupoB], ['Control', 'Experimental'], {
+                    title: 'Densidad por Grupo',
+                    yLabel: 'Puntuación'
+                }));
         });
     </script>
-
 
 </body>
 
