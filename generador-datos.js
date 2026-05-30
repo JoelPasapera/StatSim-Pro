@@ -199,29 +199,36 @@ class GeneradorDatos {
         return datos;
     }
 
-    generarPuntajesPrueba(numItems, mediaPorItem, desviacionPorItem, minItem = null, maxItem = null) {
-        // IMPORTANTE: mediaPorItem y desviacionPorItem son los valores PROMEDIO de cada ítem
-        // NO son el total de la prueba
-        
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null) {
+        // IMPORTANTE: mediaTotal y desviacionTotal son los parámetros del puntaje TOTAL
+        // de la prueba (lo que el usuario introduce en "Media (M)" y "DE"), NO valores por ítem.
+        // Cada ítem se genera de forma independiente alrededor de su media esperada:
+        //   mediaPorItem      = mediaTotal / numItems
+        //   desviacionPorItem = desviacionTotal / sqrt(numItems)
+        // (ver CORRECCIONES_APLICADAS.md). Así la suma de los ítems aproxima la media y la DE
+        // objetivo del total, en lugar de saturar cada ítem en su valor máximo.
+
         // Establecer límites por defecto si no se especifican
         if (minItem === null) minItem = 1;
         if (maxItem === null) maxItem = 7;
-        
+
+        // Derivar parámetros por ítem a partir de los parámetros del total
+        const mediaPorItem = mediaTotal / numItems;
+        const desviacionPorItem = desviacionTotal / Math.sqrt(numItems);
+
         const items = [];
-        
+
         // Generar cada ítem de forma independiente con distribución normal
-        // Cada ítem tiene su propia media y desviación
         for (let i = 0; i < numItems; i++) {
-            // Generar valor usando distribución normal
-            // La media es directamente la media por ítem (no dividir entre numItems)
+            // Generar valor usando distribución normal centrada en la media por ítem
             let valor = this.generarValorNormal(mediaPorItem, desviacionPorItem);
-            
+
             // Aplicar límites del rango
             valor = Math.max(minItem, Math.min(maxItem, valor));
-            
+
             // Redondear al entero más cercano
             valor = Math.round(valor);
-            
+
             items.push(valor);
         }
         
