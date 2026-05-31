@@ -279,15 +279,16 @@ La aplicación combina:
 ## 📞 Soporte
 
 Para reportar errores o sugerir mejoras, revisa el código fuente y personalízalo según tus necesidades.
+gmail: joelpasapera101@gmail.com
 
 ---
 
 ## 📄 Licencia
 
-Este proyecto es de código abierto para fines educativos.
+Apache License 2.0
 
 ---
 
 **¡Éxito en tus investigaciones!** 🎓📊
 
-*Última actualización: Noviembre 2024*
+*Última actualización: Mayo 2026*
