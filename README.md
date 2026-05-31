@@ -108,15 +108,9 @@ Los resultados arrojados por **StatSim Pro** fueron comparados directamente con 
 
 ## 🚀 Cómo Usar
 
-### 1. Abrir la Aplicación
-
-Simplemente abre el archivo `index.html` en tu navegador web moderno (Chrome, Firefox, Edge, Safari).
-
-**No requiere instalación ni servidor.**
-
 ---
 
-### 2. Generar Base de Datos
+### 1. Generar Base de Datos
 
 #### Paso 1: Configuración General
 - Ingresa el **tamaño muestral** (N) - mínimo 2 participantes
@@ -147,7 +141,7 @@ Simplemente abre el archivo `index.html` en tu navegador web moderno (Chrome, Fi
 
 ---
 
-### 3. Analizar Datos
+### 2. Analizar Datos
 
 #### Opción A: Usar Datos Generados
 1. Genera una base de datos primero
@@ -351,8 +345,6 @@ La aplicación combina:
 | **Build** | Ninguno. Zero-build, zero-config |
 | **Backend** | Ninguno. Todo el procesamiento es client-side |
 | **Hosting** | GitHub Pages (gratuito) |
-
----
 
 ---
 
