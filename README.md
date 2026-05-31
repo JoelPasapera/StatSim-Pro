@@ -162,3 +162,6 @@ Es el procedimiento más utilizado en investigación científica.
 ## 🎓 En una sola frase
 
 > El valor **"Sig."** indica qué tan compatibles son los datos observados con la hipótesis de que no existe relación entre las variables. Cuanto más pequeño sea, mayor será la evidencia estadística contra la hipótesis nula.
+
+Tambien podrias pensarlo de la siguiente manera: 
+El p-valor mide qué tan compatible es mi resultado con la idea de que no pasa nada (solo azar). Cuanto más pequeño, menos compatible, y más razones tengo para pensar que sí pasa algo.
