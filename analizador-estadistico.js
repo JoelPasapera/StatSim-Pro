@@ -1831,9 +1831,9 @@ class AnalizadorEstadisticoProfesional {
     }
 }
 
-// ========================================
+// =========================================
 // INSTANCIA GLOBAL
-// ========================================
+// =========================================
 var AnalizadorEstadistico = new AnalizadorEstadisticoProfesional();
 if (typeof window !== 'undefined') {
     window.AnalizadorEstadistico = AnalizadorEstadistico;
