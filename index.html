@@ -193,13 +193,58 @@
                             </tbody>
                         </table>
                     </div>
-                    <p class="help-text" style="margin-top: 0.5rem;">
-                        <strong>Mín/Máx por Ítem:</strong> Define el rango de valores posibles para cada ítem individual
-                        (Ej: escala Likert 0-5, 1-7, etc.). Si se deja vacío, se usa 1-7.
-                        <strong>α objetivo:</strong> consistencia interna deseada de la escala (0–0.99); con un valor
-                        (p. ej. 0.85) los ítems comparten un factor común y la escala tendrá esa fiabilidad. Vacío o 0 =
-                        ítems independientes.
-                    </p>
+                    
+                    <!-- La sección guia de que colocar en cada apartado de la sección pruebas -->
+                    <div class="help-text" style="margin-top: 0.5rem;">
+                        <p>
+                            <strong>1. Nombre de la prueba:</strong>
+                            Define el nombre de la prueba psicométrica
+                        </p>
+                        
+                        <p>
+                            <strong>2. Media (TOTAL):</strong>
+                            Define el rango de valores posibles para cada ítem individual.
+                            Es decir, representa la variabilidad esperada de los puntajes totales de la escala alrededor de la media.
+                        </p>
+                    
+                        <p>
+                            Por ejemplo, un valor de DE pequeño indica que la mayoría de los participantes obtendrán puntajes cercanos al promedio.
+                        </p>
+                    
+                        <p>
+                            <strong>3. Desviación estandar (TOTAL):</strong>
+                            Define la desviación estandar de la escala total (No por item).
+                            Es decir, representa el promedio esperado del puntaje total de la escala, no de los ítems individuales.
+                        </p>
+                    
+                        <p>
+                            (Ej: Quiero que los puntajes TOTALES se dispersen aproximadamente 12 puntos alrededor de la media).
+                        </p>
+                    
+                        <p>
+                            <strong>4. ¿Como se usan ambos?:</strong>
+                            Ejemplo: Si colocas 'Media' de '80' y 'desviación estandar' de '12'
+                            es como decirle al programa: Quiero que el puntaje TOTAL de esta prueba tenga una media de 80 puntos
+                            y una desviación estándar de 12 puntos). No significa: "Quiero que cada ítem tenga media 80.".
+                        </p>
+                    
+                        <p>
+                            <strong>5. Mín/Máx por Ítem:</strong>
+                            Define el rango de valores posibles para cada ítem individual
+                            (Ej: escala Likert 0-5, 1-7, etc.). Si se deja vacío, se usa 1-7.
+                        </p>
+                    
+                        <p>
+                            <strong>6. α objetivo:</strong>
+                            consistencia interna deseada de la escala (0–0.99); con un valor
+                            (p. ej. 0.85) los ítems comparten un factor común y la escala tendrá esa fiabilidad.
+                            Vacío o 0 = ítems independientes.
+                        </p>
+                    
+                    </div>
+                    
+
+                    
                 </div>
 
                 <!-- Tabla II: Datos Sociodemográficos -->
