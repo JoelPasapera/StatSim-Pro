@@ -138,6 +138,8 @@ class GeneradorDatos {
 
         filas.forEach((fila, index) => {
             const inputs = fila.querySelectorAll('input');
+            const selectDist = fila.querySelector('select');
+            const distribucion = selectDist ? selectDist.value : 'normal';
             const nombre = inputs[0].value.trim();
             const numItems = parseInt(inputs[1].value);
             const media = parseFloat(inputs[2].value);
@@ -170,6 +172,7 @@ class GeneradorDatos {
                     nombre: nombre,
                     nombreCorto: this.generarNombreCortoUnico(nombre, nombresCortosUsados),
                     numItems: numItems,
+                    distribucion: distribucion,
                     media: media,
                     desviacion: desviacion,
                     minimo: !isNaN(minimo) ? minimo : null,
@@ -299,15 +302,6 @@ class GeneradorDatos {
             // Valores normales correlacionados (driver) por variable, si aplica
             const drivers = hayCorrelaciones ? this.generarVectorCorrelacionado() : {};
 
-            if (i < 20) {
-                console.log(
-                    // drivers['escala:WAIS'],
-                    drivers['escala:W'],
-                    // drivers['escala:MSCEIT']
-                    drivers['escala:M']
-                );
-            }
-
             // Generar datos sociodemográficos según su distribución
             this.configuracion.sociodemograficos.forEach(socio => {
                 const driver = drivers['socio:' + socio.categoriaCorta];
@@ -326,7 +320,8 @@ class GeneradorDatos {
                     prueba.minimo,
                     prueba.maximo,
                     prueba.alfa,
-                    driverEscala !== undefined ? driverEscala : null
+                    driverEscala !== undefined ? driverEscala : null,
+                    prueba.distribucion
                 );
 
                 // Agregar cada ítem
@@ -337,10 +332,6 @@ class GeneradorDatos {
 
                 // Agregar total
                 participante[`Total_${prueba.nombreCorto}`] = puntajes.total;
-            
-            // Para depuración: mostrar los drivers usados para este participante
-            console.table(drivers);
-
             });
 
             // Aplicar diferencias por grupo (desplazan la media según el grupo)
@@ -353,58 +344,89 @@ class GeneradorDatos {
         return datos;
     }
 
-    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null) {
-        // IMPORTANTE: mediaTotal y desviacionTotal son los parámetros del puntaje TOTAL
-        // de la prueba (lo que el usuario introduce en "Media (M)" y "DE"), NO valores por ítem.
-        // Cada ítem se genera alrededor de su media esperada (mediaTotal / numItems).
-        //
-        // FACTOR LATENTE: para que la escala tenga consistencia interna realista
-        // (α de Cronbach), los ítems comparten un factor común F:
-        //   ítem_estándar = λ·F + √(1−λ²)·ε
-        // donde λ es la carga factorial derivada del α objetivo. Con α = 0 los
-        // ítems son independientes (comportamiento original). La DE por ítem se
-        // ajusta para que la DE del TOTAL siga en el objetivo aunque los ítems
-        // estén correlacionados.
-
-        if (minItem === null) minItem = 1;
-        if (maxItem === null) maxItem = 7;
-
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal') {
+        // ENFOQUE "TOTAL AUTORITATIVO":
+        // El puntaje TOTAL es la cantidad que importa para los análisis (es lo
+        // que se correlaciona y se somete a la prueba de normalidad), así que se
+        // genera DIRECTAMENTE con la forma elegida y con la Media (M) y la DE
+        // exactas. Los ítems se derivan luego del total. Así:
+        //   · "normal" produce un total realmente normal en cualquier configuración;
+        //   · el selector de forma (uniforme/asimétrica) controla DE VERDAD la
+        //     forma del total (sin que el teorema del límite central lo borre);
+        //   · la correlación objetivo entre escalas funciona aunque α = 0
+        //     (el total se gobierna por el "driver" correlacionado).
         const k = numItems;
-        const mediaPorItem = mediaTotal / k;
+        const modoLikert = (minItem !== null && maxItem !== null);
 
-        // Carga factorial λ a partir del α objetivo (fórmula de Spearman-Brown
-        // invertida): correlación media entre ítems r̄ = α / (k − α(k−1)); λ = √r̄.
+        // (1) TOTAL autoritativo con la forma pedida. Si llega un driver de
+        // correlación se usa como base estandarizada; si no, una normal nueva.
+        const base = factor !== null ? factor : this.generarNormalEstandar();
+        const zForma = this.transformarFormaZ(base, distribucion); // media 0, var 1
+        const totalObjetivo = mediaTotal + desviacionTotal * zForma;
+
+        // (2) Estructura inter-ítem para que el α de Cronbach observado se acerque
+        // al α objetivo: λ es la carga factorial (Spearman-Brown invertida).
         let lambda = 0;
         if (alfaObjetivo > 0 && alfaObjetivo < 1 && k >= 2) {
             const rMedia = alfaObjetivo / (k - alfaObjetivo * (k - 1));
             lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
         }
-
-        // DE por ítem: Var(total) = k·σ_i²·(1 + (k−1)·λ²) debe igualar DE_total²
         const desviacionPorItem = desviacionTotal / Math.sqrt(k * (1 + (k - 1) * lambda * lambda));
-
-        // Factor común de la escala (uno por participante); si se pasa, se reutiliza
-        // (lo usa el módulo de correlaciones para enlazar escalas).
-        const F = factor !== null ? factor : this.generarNormalEstandar();
         const unicidad = Math.sqrt(1 - lambda * lambda);
+        const Fitem = this.generarNormalEstandar(); // factor común propio de la escala
 
-        const items = [];
-        for (let i = 0; i < k; i++) {
-            const z = lambda * F + unicidad * this.generarNormalEstandar();
-            let valor = mediaPorItem + desviacionPorItem * z;
-            valor = Math.max(minItem, Math.min(maxItem, valor));
-            valor = Math.round(valor);
-            items.push(valor);
+        // Desviaciones de ítem (centradas a suma 0): comparten Fitem (correlación
+        // interna) más ruido idiosincrático. No afectan al nivel del total.
+        const g = new Array(k);
+        let gSuma = 0;
+        for (let i = 0; i < k; i++) { g[i] = lambda * Fitem + unicidad * this.generarNormalEstandar(); gSuma += g[i]; }
+        const gMedia = gSuma / k;
+
+        if (!modoLikert) {
+            // MEDIDA CONTINUA: ítem = total/k + desviación centrada → la suma es
+            // EXACTAMENTE el total objetivo (forma y M/DE intactas). 2 decimales.
+            const items = new Array(k);
+            for (let i = 0; i < k; i++) {
+                items[i] = Math.round((totalObjetivo / k + desviacionPorItem * (g[i] - gMedia)) * 100) / 100;
+            }
+            const total = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
+            return { items: items, total: total, factorUtilizado: base };
         }
 
-        const totalReal = items.reduce((a, b) => a + b, 0);
+        // ESCALA LIKERT (rango fijado): el total se acota al rango ALCANZABLE
+        // [k·mín, k·máx] (solo afecta a la cola extrema, poco frecuente) y se
+        // reparte en ítems ENTEROS dentro de [mín, máx]. El grueso del total
+        // conserva la forma normal.
+        const totalEntero = Math.round(Math.max(k * minItem, Math.min(k * maxItem, totalObjetivo)));
 
-        return {
-            items: items,
-            total: totalReal,
-            factorUtilizado: F
-        };
-        
+        // Ítems base con estructura inter-ítem (truncados como Likert real)...
+        const mediaPorItem = totalObjetivo / k;
+        // Dispersión por ítem: nunca por debajo de ~media unidad Likert, para que
+        // los ítems SIEMPRE varíen (evita que un total entero exacto colapse en
+        // ítems idénticos). No afecta al total: la suma se reajusta luego al total
+        // autoritativo, así que esta dispersión solo reparte los ítems alrededor
+        // de su media (su efecto es sobre el α de Cronbach observado, no sobre M/DE).
+        const dispersionItem = Math.max(desviacionPorItem, 0.6);
+        const items = new Array(k);
+        for (let i = 0; i < k; i++) {
+            let v = Math.round(mediaPorItem + dispersionItem * (g[i] - gMedia));
+            v = Math.max(minItem, Math.min(maxItem, v));
+            items[i] = v;
+        }
+        // ...y se ajusta la suma exactamente al total autoritativo moviendo ±1 en
+        // ítems que sigan dentro del rango (preserva el total normal observado).
+        let diff = totalEntero - items.reduce((a, b) => a + b, 0);
+        let guard = 0;
+        const limite = k * (maxItem - minItem) + k * 4 + 50;
+        while (diff !== 0 && guard < limite) {
+            const idx = Math.floor(this.aleatorio() * k);
+            const paso = diff > 0 ? 1 : -1;
+            const nuevo = items[idx] + paso;
+            if (nuevo >= minItem && nuevo <= maxItem) { items[idx] = nuevo; diff -= paso; }
+            guard++;
+        }
+        const total = items.reduce((a, b) => a + b, 0);
+        return { items: items, total: total, factorUtilizado: base };
     }
 
     // Valor normal estándar N(0,1) por el método de Box-Muller.
@@ -413,6 +435,47 @@ class GeneradorDatos {
         let u2 = this.aleatorio();
         while (u1 === 0) u1 = this.aleatorio(); // Evitar log(0)
         return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+    }
+
+    // Función de error (Abramowitz & Stegun 7.1.26), error < 1.5e-7.
+    erf(x) {
+        const signo = x < 0 ? -1 : 1;
+        x = Math.abs(x);
+        const t = 1 / (1 + 0.3275911 * x);
+        const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+        return signo * y;
+    }
+
+    // CDF de la normal estándar Φ(z).
+    normalCDF(z) {
+        return 0.5 * (1 + this.erf(z / Math.SQRT2));
+    }
+
+    // Transforma un z ~ N(0,1) en otra forma de distribución, devolviendo SIEMPRE
+    // un valor estandarizado (media 0, varianza 1). Así el puntaje total conserva
+    // la Media (M) y la DE objetivo, cambiando solo la FORMA de la distribución.
+    // Es monótona, de modo que la estructura de correlación (factor latente F y
+    // correlaciones objetivo) se preserva por orden de rango.
+    transformarFormaZ(z, distribucion) {
+        switch (distribucion) {
+            case 'uniforme': {
+                // z normal -> uniforme(0,1) por la CDF -> uniforme estandarizada.
+                // U(0,1) tiene media 0.5 y varianza 1/12.
+                const u = this.normalCDF(z);
+                return (u - 0.5) * Math.sqrt(12);
+            }
+            case 'asimetrica': {
+                // Log-normal estandarizada (sesgo positivo). sigma controla el sesgo.
+                const sigma = 0.6;
+                const x = Math.exp(sigma * z);
+                const mediaX = Math.exp((sigma * sigma) / 2);
+                const varX = (Math.exp(sigma * sigma) - 1) * Math.exp(sigma * sigma);
+                return (x - mediaX) / Math.sqrt(varX);
+            }
+            case 'normal':
+            default:
+                return z; // Identidad: comportamiento original intacto.
+        }
     }
 
     generarValorNormal(media, desviacion, z = null) {
@@ -538,20 +601,12 @@ class GeneradorDatos {
         const variables = [];
 
         this.configuracion.pruebas.forEach(prueba => {
-            // Carga factorial λ y c = corr(Factor, Total)
-            let lambda = 0;
-            const k = prueba.numItems;
-            if (prueba.alfa > 0 && prueba.alfa < 1 && k >= 2) {
-                const rMedia = prueba.alfa / (k - prueba.alfa * (k - 1));
-                lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
-            }
-            const c = lambda > 0 ? (lambda * Math.sqrt(k)) / Math.sqrt(1 + (k - 1) * lambda * lambda) : 0;
-            variables.push({ tipo: 'escala', clave: prueba.nombreCorto, nombre: prueba.nombre, c: c });
+            variables.push({ tipo: 'escala', clave: prueba.nombreCorto, nombre: prueba.nombre });
         });
 
         this.configuracion.sociodemograficos.forEach(socio => {
             if (socio.distribucion === 'normal' || socio.distribucion === 'asimetrica') {
-                variables.push({ tipo: 'socio', clave: socio.categoriaCorta, nombre: socio.categoria, c: 1 });
+                variables.push({ tipo: 'socio', clave: socio.categoriaCorta, nombre: socio.categoria });
             }
         });
 
@@ -564,34 +619,18 @@ class GeneradorDatos {
         (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
             const i = indicePorNombre[a];
             const j = indicePorNombre[b];
-
-            console.log(
-                "CORRELACION",
-                a,
-                b,
-                i,
-                j,
-                r
-            );
-
             if (i === undefined || j === undefined || i === j) return;
-            // Desatenuar por la fiabilidad de cada total (c = 1 para continuas)
-            const ci = variables[i].c || 1e-6;
-            const cj = variables[j].c || 1e-6;
-            let rFactor = r / (ci * cj);
-            rFactor = Math.max(-0.99, Math.min(0.99, rFactor));
+            // El TOTAL de cada escala se gobierna directamente por el driver
+            // correlacionado (modelo "total autoritativo"), de modo que la
+            // correlación OBSERVADA entre totales ≈ la pedida, sin desatenuar y
+            // sin depender de α.
+            const rFactor = Math.max(-0.99, Math.min(0.99, r));
             R[i][j] = rFactor;
             R[j][i] = rFactor;
-
-            console.table(R);
         });
 
         this.correlVariables = variables;
         this.correlL = m > 0 ? this.descomposicionCholesky(R) : [];
-
-        // Para depuración: mostrar variables correlacionables, matriz de correlaciones y su Cholesky
-        console.table(this.correlVariables);
-
     }
 
     /**
@@ -620,36 +659,48 @@ class GeneradorDatos {
             const escala = this.configuracion.pruebas.find(p => p.nombre === dif.cuantitativa);
             if (escala) {
                 const sigma = escala.desviacion;
-                // Desplazamiento del TOTAL repartido como unidades enteras entre
-                // los ítems (un desplazamiento fraccionario por ítem se perdería
-                // al redondear a entero).
-                let unidades = Math.round(dif.d * sigma * (codigo - codigoMedio));
-                const min = escala.minimo !== null ? escala.minimo : 1;
-                const max = escala.maximo !== null ? escala.maximo : 7;
+                const k = escala.numItems;
+                const desplazamientoTotal = dif.d * sigma * (codigo - codigoMedio);
+                const modoLikert = (escala.minimo !== null && escala.maximo !== null);
 
-                if (unidades !== 0) {
-                    const paso = unidades > 0 ? 1 : -1;
-                    let restantes = Math.abs(unidades);
-                    let idx = 0;
-                    let intentos = 0;
-                    const limiteIntentos = escala.numItems * 4;
-                    while (restantes > 0 && intentos < limiteIntentos) {
-                        const col = escala.nombreCorto + (idx % escala.numItems + 1);
-                        const nuevo = participante[col] + paso;
-                        if (nuevo >= min && nuevo <= max) {
-                            participante[col] = nuevo;
-                            restantes--;
+                if (!modoLikert) {
+                    // Medida continua: desplazar el total y repartirlo por igual
+                    // entre los ítems (2 decimales), sin recorte.
+                    const porItem = desplazamientoTotal / k;
+                    for (let idx = 0; idx < k; idx++) {
+                        const col = escala.nombreCorto + (idx + 1);
+                        participante[col] = Math.round((participante[col] + porItem) * 100) / 100;
+                    }
+                } else {
+                    // Likert: desplazamiento del total como unidades enteras
+                    // repartidas entre los ítems, respetando el rango.
+                    let unidades = Math.round(desplazamientoTotal);
+                    const min = escala.minimo;
+                    const max = escala.maximo;
+                    if (unidades !== 0) {
+                        const paso = unidades > 0 ? 1 : -1;
+                        let restantes = Math.abs(unidades);
+                        let idx = 0;
+                        let intentos = 0;
+                        const limiteIntentos = k * 4;
+                        while (restantes > 0 && intentos < limiteIntentos) {
+                            const col = escala.nombreCorto + (idx % k + 1);
+                            const nuevo = participante[col] + paso;
+                            if (nuevo >= min && nuevo <= max) {
+                                participante[col] = nuevo;
+                                restantes--;
+                            }
+                            idx++;
+                            intentos++;
                         }
-                        idx++;
-                        intentos++;
                     }
                 }
 
                 let total = 0;
-                for (let idx = 0; idx < escala.numItems; idx++) {
+                for (let idx = 0; idx < k; idx++) {
                     total += participante[escala.nombreCorto + (idx + 1)];
                 }
-                participante['Total_' + escala.nombreCorto] = total;
+                participante['Total_' + escala.nombreCorto] = Math.round(total * 100) / 100;
                 return;
             }
 
@@ -769,17 +820,58 @@ class GeneradorDatos {
 
         // Validar pruebas
         this.configuracion.pruebas.forEach(prueba => {
-            // Validar desviación estándar razonable
-            const rangoEsperado = prueba.numItems * 5; // Suposición de escala Likert
-            if (prueba.desviacion > rangoEsperado / 2) {
-                advertencias.push(
-                    `Prueba "${prueba.nombre}": Desviación estándar muy alta (${prueba.desviacion}) para ${prueba.numItems} ítems`
-                );
-            }
-
             // Validar que la media sea positiva
             if (prueba.media < 0) {
                 errores.push(`Prueba "${prueba.nombre}": La media no puede ser negativa`);
+            }
+
+            // FACTIBILIDAD DEL TOTAL (debe coincidir con las pistas en vivo):
+            //  · La MEDIA solo puede caer en [k·Mín, k·Máx] (rango de la suma).
+            //  · La DE máxima depende de la MEDIA: margen al tope más cercano / 3
+            //    (para que quepan ±3 DE sin recortar la campana).
+            if (prueba.minimo !== null && prueba.maximo !== null) {
+                const k = prueba.numItems;
+                const totalMin = k * prueba.minimo;
+                const totalMax = k * prueba.maximo;
+                const de = prueba.desviacion;
+
+                if (prueba.media < totalMin || prueba.media > totalMax) {
+                    // Imposible: la media cae fuera del rango que puede tomar la suma.
+                    errores.push(
+                        `Prueba "${prueba.nombre}": la Media ${prueba.media} es IMPOSIBLE. ` +
+                        `Con ${k} ítems de ${prueba.minimo} a ${prueba.maximo} el total solo puede ir de ${totalMin} a ${totalMax}. ` +
+                        `Usa una Media dentro de ese rango (cerca del centro es lo más seguro), o cambia el Mín/Máx por ítem.`
+                    );
+                } else {
+                    // La DE máxima la fija la distancia de la Media al tope más cercano.
+                    const margen = Math.min(prueba.media - totalMin, totalMax - prueba.media);
+                    const deMax = margen / 3;
+                    // Mínimo anti-escalera: un total entero con DE pequeña sale
+                    // discreto y KS lo rechaza (peor cuanto mayor es N). ~1.1·√N.
+                    const N = this.configuracion.tamanoMuestra;
+                    const deSuave = (N >= 2) ? Math.ceil(1.1 * Math.sqrt(N)) : 0;
+                    const centro = Math.round((totalMin + totalMax) / 2);
+
+                    if (de > deMax) {
+                        advertencias.push(
+                            `Prueba "${prueba.nombre}": la DE ${de} es demasiado grande para una Media de ${prueba.media} ` +
+                            `(máximo ≈ ${(Math.floor(deMax * 100) / 100)}). El total se recortará contra el tope más cercano, ` +
+                            `la DE real bajará y la distribución probablemente NO pasará la prueba de normalidad. ` +
+                            `Reduce la DE, acerca la Media al centro (~${centro}) o amplía el Mín/Máx por ítem.`
+                        );
+                    } else if (deSuave > deMax) {
+                        advertencias.push(
+                            `Prueba "${prueba.nombre}": con N=${N}, el rango por ítem [${prueba.minimo}, ${prueba.maximo}] es demasiado estrecho ` +
+                            `para un total normal (haría falta DE ≈ ${deSuave}, pero el máximo con esta Media es ${(Math.floor(deMax * 100) / 100)}). ` +
+                            `Amplía el Máx por ítem o reduce N.`
+                        );
+                    } else if (de < deSuave) {
+                        advertencias.push(
+                            `Prueba "${prueba.nombre}": la DE ${de} es muy pequeña para N=${N}; el total entero saldrá "escalonado" ` +
+                            `y probablemente NO pasará la prueba de normalidad. Usa una DE de al menos ≈ ${deSuave}.`
+                        );
+                    }
+                }
             }
         });
 
