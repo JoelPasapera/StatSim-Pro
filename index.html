@@ -142,27 +142,32 @@
 
                     <div class="orden-guia" role="note" aria-label="Orden para completar los datos">
                         <span class="orden-guia-titulo">Completa en este orden:</span>
-                        <span class="orden-paso"><span class="orden-num">1</span> Nombre</span>
+                        <span class="orden-paso"><span class="orden-num">1</span> Prueba</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">2</span> N° de ítems</span>
+                        <span class="orden-paso"><span class="orden-num">2</span> Escala</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">3</span> Mín por ítem</span>
+                        <span class="orden-paso"><span class="orden-num">3</span> N° de ítems</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">4</span> Máx por ítem</span>
+                        <span class="orden-paso"><span class="orden-num">4</span> Mín por ítem</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">5</span> α objetivo <em>(opcional)</em></span>
+                        <span class="orden-paso"><span class="orden-num">5</span> Máx por ítem</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">6</span> Media</span>
+                        <span class="orden-paso"><span class="orden-num">6</span> α objetivo <em>(opcional)</em></span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">7</span> Desviación estándar</span>
-                        <span class="orden-nota">Cada campo se desbloquea al completar el anterior. La Distribución y α son opcionales.</span>
+                        <span class="orden-paso"><span class="orden-num">7</span> Media</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">8</span> Desviación estándar</span>
+                        <span class="orden-nota">Cada fila es UNA escala (dimensión). Las filas con la misma Prueba se agrupan: el puntaje
+                            general del test será la suma de sus escalas. Cada campo se desbloquea al completar el anterior.</span>
                     </div>
+                    <datalist id="listaPruebas"></datalist>
 
                     <div class="table-container">
                         <table class="table" id="tablaPruebas">
                             <thead>
                                 <tr>
-                                    <th>Nombre de la Prueba</th>
+                                    <th>Prueba (test)</th>
+                                    <th>Escala / Dimensión</th>
                                     <th>N° de Ítems</th>
                                     <th>Distribución</th>
                                     <th>Media (M)</th>
@@ -178,7 +183,11 @@
                                 <tr class="fila-prueba">
                                     <td>
                                         <input type="text" class="input input-sm" placeholder="Ej: WAIS-IV"
-                                            maxlength="100" aria-label="Nombre de la prueba">
+                                            maxlength="100" aria-label="Nombre de la prueba" list="listaPruebas">
+                                    </td>
+                                    <td>
+                                        <input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo"
+                                            maxlength="100" aria-label="Nombre de la escala" disabled>
                                     </td>
                                     <td>
                                         <input type="number" class="input input-sm" placeholder="Ej: 60" min="1" aria-label="Número de ítems" disabled>
@@ -223,19 +232,26 @@
                         <p class="leyenda-titulo">Guía de cada campo:</p>
                         <ol>
                             <li>
-                                <strong>Nombre de la prueba:</strong> define el nombre del instrumento psicométrico
-                                (Ej: "WAIS-IV", "TMMS-24"). Es el primer campo: al completarlo se desbloquean los demás.
+                                <strong>Prueba (test):</strong> nombre del instrumento psicométrico completo
+                                (Ej: "WAIS-IV", "TMMS-24"). Escribe el mismo nombre en varias filas para agrupar sus
+                                escalas: el programa generará además el <em>puntaje general del test</em> (la suma de
+                                los totales de sus escalas).
                             </li>
                             <li>
-                                <strong>N° de ítems:</strong> cantidad de ítems (preguntas) del instrumento, según su
-                                ficha técnica. Es un valor fijo, conocido a priori, e invariable de aplicación en
-                                aplicación.
+                                <strong>Escala / Dimensión:</strong> nombre de la subescala o dimensión de esa prueba
+                                (Ej: "Memoria de trabajo", "Atención"). Cada fila representa UNA escala con sus propias
+                                medidas (ítems, rango, Media, DE). La sigla del nombre de la escala se usa para nombrar
+                                sus ítems en la base (Ej: "Memoria de trabajo" → MDT1, MDT2, … y Total_MDT).
                             </li>
                             <li>
-                                <strong>Mín / Máx por ítem:</strong> define el rango de valores posibles de <em>cada ítem
-                                individual</em> (Ej: escala Likert 0–5, 1–7, etc.), también fijo según la ficha técnica
-                                del instrumento. Son obligatorios, y juntos determinan el rango alcanzable del puntaje
-                                TOTAL: desde <em>N° de ítems × Mín</em> hasta <em>N° de ítems × Máx</em>.
+                                <strong>N° de ítems:</strong> cantidad de ítems (preguntas) de ESA escala, según la
+                                ficha técnica. Fijo a priori e invariable de aplicación en aplicación.
+                            </li>
+                            <li>
+                                <strong>Mín / Máx por ítem:</strong> rango de valores posibles de <em>cada ítem
+                                individual</em> de esa escala (Ej: Likert 0–5, 1–7). Obligatorios y fijos según la ficha
+                                técnica; determinan el rango alcanzable del puntaje directo de la escala: desde
+                                <em>N° de ítems × Mín</em> hasta <em>N° de ítems × Máx</em>.
                             </li>
                             <li>
                                 <strong>α objetivo (opcional):</strong> consistencia interna deseada de la escala
@@ -243,34 +259,45 @@
                                 aproximadamente esa fiabilidad. Vacío o 0 = ítems independientes.
                             </li>
                             <li>
-                                <strong>Distribución:</strong> forma del puntaje TOTAL. <em>Normal</em> = campana
-                                (necesaria para análisis paramétricos como Pearson); <em>Uniforme</em> = plana;
+                                <strong>Distribución:</strong> forma del puntaje directo de la escala. <em>Normal</em> =
+                                campana (necesaria para análisis paramétricos como Pearson); <em>Uniforme</em> = plana;
                                 <em>Asimétrica</em> = con cola positiva (efecto suelo, típico de escalas clínicas).
                             </li>
                             <li>
-                                <strong>Media (TOTAL):</strong> define el promedio esperado del puntaje TOTAL de la
-                                escala (la suma de los ítems de cada participante), <em>no</em> de los ítems
-                                individuales. <strong>Regla de coherencia:</strong> como el total es una suma, la Media
-                                solo puede estar entre <em>N° de ítems × Mín</em> y <em>N° de ítems × Máx</em>; la página
+                                <strong>Media (del puntaje DIRECTO de la escala):</strong> promedio esperado del puntaje
+                                directo de la escala (la suma de sus ítems en cada participante), <em>no</em> de los
+                                ítems individuales. <strong>Regla de coherencia:</strong> como es una suma, la Media solo
+                                puede estar entre <em>N° de ítems × Mín</em> y <em>N° de ítems × Máx</em>; la página
                                 calcula ese rango en vivo y no permite valores fuera de él. (Ej: si el Mín por ítem es 1,
-                                la Media nunca puede ser menor que el número de ítems, porque cada ítem aporta al menos
-                                1 punto al total.)
+                                la Media nunca puede ser menor que el número de ítems.)
                             </li>
                             <li>
-                                <strong>Desviación estándar (TOTAL):</strong> define la dispersión esperada de los
-                                puntajes TOTALES alrededor de la Media (no por ítem). Un valor de DE pequeño indica que
-                                la mayoría de los participantes obtendrá puntajes cercanos al promedio. (Ej: "quiero que
-                                los puntajes TOTALES se dispersen aproximadamente 12 puntos alrededor de la media" → DE
-                                = 12.) La página muestra su rango recomendado: el <em>máximo</em> evita que la campana se
-                                recorte contra los topes del total, y el <em>mínimo</em> (según el tamaño muestral N)
-                                evita que el total, al ser una suma de enteros, salga "escalonado" y no pase la prueba de
-                                normalidad.
+                                <strong>Desviación estándar (del puntaje DIRECTO):</strong> dispersión esperada de los
+                                puntajes directos de la escala alrededor de su Media (no por ítem). Una DE pequeña indica
+                                que la mayoría puntuará cerca del promedio. (Ej: "quiero que los puntajes se dispersen
+                                ±12 puntos" → DE = 12.) Su rango recomendado tiene <em>máximo</em> (evita el recorte
+                                contra los topes) y <em>mínimo</em> según N (evita que la suma de enteros salga
+                                "escalonada").
                             </li>
                             <li>
-                                <strong>¿Cómo se usan Media y DE juntas?</strong> Ejemplo: si colocas Media = 80 y
-                                Desviación estándar = 12, le dices al programa: "quiero que el puntaje TOTAL de esta
-                                prueba tenga una media de 80 puntos y una desviación estándar de 12 puntos". <em>No</em>
-                                significa "quiero que cada ítem tenga media 80".
+                                <strong>¿Cómo se usan Media y DE juntas?</strong> Si colocas Media = 80 y DE = 12, le
+                                dices al programa: "quiero que el puntaje directo de ESTA escala tenga media 80 y
+                                desviación estándar 12". <em>No</em> significa "cada ítem con media 80".
+                            </li>
+                            <li>
+                                <strong>Puntaje directo vs. puntaje escalar:</strong> aquí siempre configuras el
+                                <em>puntaje directo</em> (suma cruda de ítems). Los puntajes escalares o convertidos
+                                (CI = 100±15, puntuaciones T = 50±10, eneatipos, etc.) son transformaciones por baremos
+                                y NO corresponden a la suma de ítems: no uses esos valores como Media/DE aquí.
+                            </li>
+                            <li>
+                                <strong>Qué genera el programa por cada persona encuestada:</strong>
+                                (a) los <em>ítems</em> de cada escala (Ej: MDT1…MDT15);
+                                (b) el <em>puntaje directo de cada escala</em> = suma de sus ítems (Total_MDT);
+                                (c) el <em>puntaje general del test</em> = suma de los puntajes de sus escalas
+                                (Total_[sigla de la prueba], cuando la prueba tiene 2 o más escalas);
+                                y (d) los <em>percentiles</em> de cada puntaje (PC_…), es decir, la posición relativa
+                                de esa persona dentro de la muestra generada (0–100).
                             </li>
                         </ol>
                     </div>
@@ -304,6 +331,18 @@
                                 Agregar Variable
                             </button>
                         </div>
+                    </div>
+
+                    <div class="orden-guia" role="note" aria-label="Orden para completar los datos sociodemográficos">
+                        <span class="orden-guia-titulo">Completa en este orden:</span>
+                        <span class="orden-paso"><span class="orden-num">1</span> Categoría</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">2</span> Distribución</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">3</span> Promedio y Desviación</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">4</span> Mín, Máx y Decimales <em>(opcionales)</em></span>
+                        <span class="orden-nota">Los campos se desbloquean al escribir la Categoría (Ej: "Edad", "Sexo").</span>
                     </div>
 
                     <div class="table-container">
