@@ -80,6 +80,20 @@ function configurarGenerador() {
         }
     });
 
+    // Límites de Media/DE en vivo: recalcular al escribir en cualquier campo de
+    // la prueba, y ajustar al rango permitido al salir de Media/DE.
+    const tbodyPruebas = document.getElementById('bodyPruebas');
+    tbodyPruebas.addEventListener('input', function (e) {
+        const fila = e.target.closest && e.target.closest('.fila-prueba');
+        if (fila) actualizarLimitesPrueba(fila);
+    });
+    tbodyPruebas.addEventListener('change', ajustarPruebaEnCambio);
+    actualizarTodasLasPruebas(); // pase inicial sobre la fila de ejemplo
+
+    // El límite inferior de DE (anti-escalera) depende de N: recalcular al cambiarlo.
+    const inputN = document.getElementById('tamanoMuestra');
+    if (inputN) inputN.addEventListener('input', actualizarTodasLasPruebas);
+
     document.getElementById('bodySocio').addEventListener('click', function (e) {
         if (e.target.closest('.btn-delete')) {
             eliminarFilaSocio(e.target.closest('tr'));
@@ -205,16 +219,232 @@ function agregarFilaCorrelacion() {
     tbody.appendChild(fila);
 }
 
+// ============================================================
+//  LÍMITES EN VIVO DE MEDIA Y DE
+//  El total es la suma de ítems → solo puede caer en [k·Mín, k·Máx].
+//   · La MEDIA depende SOLO de las variables fijas (N° ítems, Mín, Máx):
+//     su rango permitido es [k·Mín, k·Máx] (es la cantidad más decisiva).
+//   · La DE depende de la MEDIA: el margen entre la Media y el tope más
+//     cercano (dividido entre 3, para que quepan ±3 DE) marca su máximo.
+//  Todo se calcula y se muestra ANTES de generar.
+// ============================================================
+function inputsPrueba(fila) {
+    return {
+        nombre: fila.querySelector('[aria-label="Nombre de la prueba"]'),
+        items: fila.querySelector('[aria-label="Número de ítems"]'),
+        media: fila.querySelector('[aria-label="Media (M)"]'),
+        de: fila.querySelector('[aria-label="Desviación estándar (DE)"]'),
+        min: fila.querySelector('[aria-label="Mínimo por ítem"]'),
+        max: fila.querySelector('[aria-label="Máximo por ítem"]'),
+        alfa: fila.querySelector('[aria-label="Alfa de Cronbach objetivo"]')
+    };
+}
+
+// Crea (si no existe) un <small> de pista justo después de un input.
+function pistaPara(input, clase) {
+    let s = input.parentNode.querySelector('.' + clase);
+    if (!s) {
+        s = document.createElement('small');
+        s.className = 'campo-hint ' + clase;
+        input.insertAdjacentElement('afterend', s);
+    }
+    return s;
+}
+
+function fmtNum(x) {
+    return (Math.round(x * 100) / 100).toString();
+}
+
+// Recalcula y muestra los límites de Media y DE de una fila.
+function actualizarLimitesPrueba(fila) {
+    const io = inputsPrueba(fila);
+    if (!io.media || !io.de || !io.items || !io.min || !io.max) return;
+
+    const pMedia = pistaPara(io.media, 'hint-media');
+    const pDe = pistaPara(io.de, 'hint-de');
+
+    const k = parseInt(io.items.value, 10);
+    const min = parseFloat(io.min.value);
+    const max = parseFloat(io.max.value);
+
+    // ACTIVACIÓN PROGRESIVA en el orden de la guía:
+    // Nombre → N° ítems → Mín → Máx → α (opcional) → Media → DE
+    const nombreOk = !!(io.nombre && io.nombre.value.trim() !== '');
+    const itemsOk = nombreOk && Number.isFinite(k) && k >= 1;
+    const minOk = itemsOk && Number.isFinite(min);
+    const maxOk = minOk && Number.isFinite(max) && max > min;
+
+    if (io.items) io.items.disabled = !nombreOk;
+    if (io.min) io.min.disabled = !itemsOk;
+    if (io.max) io.max.disabled = !minOk;
+    if (io.alfa) io.alfa.disabled = !maxOk; // α se activa tras Máx (es opcional)
+
+    // Marcar en rojo valores matemáticamente incoherentes en los campos fijos
+    if (io.items) io.items.classList.toggle('invalid', io.items.value !== '' && (!Number.isFinite(k) || k < 1));
+    if (io.max) io.max.classList.toggle('invalid',
+        io.max.value !== '' && Number.isFinite(max) && Number.isFinite(min) && max <= min);
+    if (io.alfa) {
+        const a = parseFloat(io.alfa.value);
+        io.alfa.classList.toggle('invalid', io.alfa.value !== '' && (!Number.isFinite(a) || a < 0 || a >= 1));
+    }
+
+    // Variables fijas incompletas → Media y DE bloqueadas
+    if (!maxOk) {
+        io.media.disabled = true;
+        io.de.disabled = true;
+        if (!nombreOk) pMedia.textContent = 'Bloqueado: empieza por el Nombre de la prueba';
+        else if (!itemsOk) pMedia.textContent = 'Bloqueado: completa el N° de ítems';
+        else if (!minOk) pMedia.textContent = 'Bloqueado: completa el Mín por ítem';
+        else pMedia.textContent = 'Bloqueado: completa el Máx por ítem (debe ser mayor que el Mín)';
+        pMedia.className = 'campo-hint hint-media';
+        pDe.textContent = 'Bloqueado: completa la Media';
+        pDe.className = 'campo-hint hint-de';
+        io.media.removeAttribute('min'); io.media.removeAttribute('max');
+        io.de.removeAttribute('min'); io.de.removeAttribute('max');
+        io.media.classList.remove('invalid'); io.de.classList.remove('invalid');
+        return;
+    }
+
+    // Variables fijas completas → la Media se activa
+    io.media.disabled = false;
+
+    const totalMin = k * min, totalMax = k * max;
+
+    // --- MEDIA: depende SOLO de las variables fijas (k, Mín, Máx) ---
+    const mMinR = Math.ceil(totalMin);
+    const mMaxR = Math.floor(totalMax);
+    io.media.min = mMinR; io.media.max = mMaxR;
+    const m = parseFloat(io.media.value);
+    const mediaFuera = Number.isFinite(m) && (m < mMinR || m > mMaxR);
+    pMedia.textContent = `Media permitida: ${mMinR} – ${mMaxR}  (suma de ${k} ítems de ${min} a ${max})`;
+    pMedia.className = 'campo-hint hint-media' + (mediaFuera ? ' invalido' : '');
+    io.media.classList.toggle('invalid', mediaFuera);
+
+    // --- DE: se activa solo cuando hay una Media VÁLIDA ---
+    io.de.min = '0.01';
+    if (!Number.isFinite(m) || mediaFuera) {
+        io.de.disabled = true;
+        pDe.textContent = Number.isFinite(m) ? 'Bloqueado: corrige la Media (fuera de rango)' : 'Bloqueado: completa la Media';
+        pDe.className = 'campo-hint hint-de';
+        io.de.removeAttribute('max');
+        io.de.classList.remove('invalid');
+        return;
+    }
+    io.de.disabled = false;
+    const margen = Math.min(m - totalMin, totalMax - m); // distancia al tope más cercano
+    const deMax = Math.floor((margen / 3) * 100) / 100;   // ±3 DE deben caber (evita recorte)
+    const deMin = 0.01;
+
+    if (deMax < deMin) {
+        // La Media está pegada a un tope: no queda margen para dispersión
+        const centro = Math.round((totalMin + totalMax) / 2);
+        pDe.textContent = `La Media ${m} está pegada a un tope: casi no hay margen para la DE. Acércala al centro (~${centro}).`;
+        pDe.className = 'campo-hint hint-de invalido';
+        io.de.max = fmtNum(deMin);
+        io.de.classList.add('invalid');
+        return;
+    }
+
+    // Límite INFERIOR por discretización: un total entero con DE pequeña sale
+    // "escalonado" y la prueba KS lo rechaza, y empeora cuanto mayor es N.
+    // Umbral empírico para ~10–14% de rechazo: DE ≳ 1.1·√N.
+    const Nmuestra = parseInt((document.getElementById('tamanoMuestra') || {}).value, 10);
+    const deSuave = (Number.isFinite(Nmuestra) && Nmuestra >= 2) ? Math.ceil(1.1 * Math.sqrt(Nmuestra)) : null;
+
+    io.de.max = fmtNum(deMax);
+    const de = parseFloat(io.de.value);
+
+    // Caso sin salida: ni siquiera la DE máxima alcanza el mínimo anti-escalera
+    if (deSuave !== null && deSuave > deMax) {
+        pDe.textContent = `Con N=${Nmuestra}, el rango [${min}, ${max}] por ítem es muy estrecho para un total normal ` +
+            `(haría falta DE ≈ ${deSuave}, pero el máximo aquí es ${fmtNum(deMax)}). Amplía el Máx por ítem o reduce N.`;
+        pDe.className = 'campo-hint hint-de invalido';
+        io.de.classList.toggle('invalid', !(Number.isFinite(de) && de >= deMin && de <= deMax));
+        return;
+    }
+
+    if (Number.isFinite(de) && de > deMax) {
+        // Demasiado grande → recorte
+        pDe.textContent = `DE recomendada: ${deSuave !== null ? deSuave : fmtNum(deMin)} – ${fmtNum(deMax)} (según la Media ${m}). ${fmtNum(de)} es demasiado grande: el total se recortará.`;
+        pDe.className = 'campo-hint hint-de invalido';
+        io.de.classList.add('invalid');
+    } else if (deSuave !== null && Number.isFinite(de) && de < deSuave) {
+        // Demasiado pequeña → escalera (válida pero probablemente no pasará KS)
+        pDe.textContent = `DE recomendada: ${deSuave} – ${fmtNum(deMax)} para N=${Nmuestra} (según la Media ${m}). ${fmtNum(de)} es muy pequeña: el total saldrá escalonado.`;
+        pDe.className = 'campo-hint hint-de aviso';
+        io.de.classList.remove('invalid');
+    } else {
+        pDe.textContent = `DE recomendada: ${deSuave !== null ? deSuave : fmtNum(deMin)} – ${fmtNum(deMax)}${deSuave !== null ? ` (para N=${Nmuestra})` : ''} · según la Media ${m}`;
+        pDe.className = 'campo-hint hint-de';
+        io.de.classList.remove('invalid');
+    }
+}
+
+function actualizarTodasLasPruebas() {
+    document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(actualizarLimitesPrueba);
+}
+
+// Al salir de un campo, ajusta el valor a su rango permitido.
+// La Media manda: si al cambiarla la DE queda fuera de rango, la DE se ajusta.
+function ajustarPruebaEnCambio(e) {
+    const inp = e.target;
+    if (!inp || inp.tagName !== 'INPUT') return;
+    const fila = inp.closest('.fila-prueba');
+    if (!fila) return;
+    const etiqueta = inp.getAttribute('aria-label');
+    const io = inputsPrueba(fila);
+
+    if (etiqueta === 'Media (M)') {
+        const min = parseFloat(inp.min), max = parseFloat(inp.max);
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v)) {
+            if (Number.isFinite(max) && v > max) { inp.value = max; mostrarToast('Media ajustada al máximo posible (k·Máx)', 'warning', 4000); }
+            else if (Number.isFinite(min) && v < min) { inp.value = min; mostrarToast('Media ajustada al mínimo posible (k·Mín)', 'warning', 4000); }
+        }
+        actualizarLimitesPrueba(fila); // recalcula el rango de DE según la nueva Media
+        // Si la DE quedó fuera del nuevo rango, ajustarla (la Media es decisiva)
+        if (io.de) {
+            const deMax = parseFloat(io.de.max);
+            const deVal = parseFloat(io.de.value);
+            if (Number.isFinite(deMax) && Number.isFinite(deVal) && deVal > deMax) {
+                io.de.value = deMax;
+                mostrarToast('DE ajustada al máximo para esta Media', 'warning', 4000);
+                actualizarLimitesPrueba(fila);
+            }
+        }
+        return;
+    }
+
+    if (etiqueta === 'Desviación estándar (DE)') {
+        const min = parseFloat(inp.min), max = parseFloat(inp.max);
+        const v = parseFloat(inp.value);
+        if (Number.isFinite(v)) {
+            if (Number.isFinite(max) && v > max) { inp.value = max; mostrarToast('DE ajustada al máximo para esta Media', 'warning', 4000); }
+            else if (Number.isFinite(min) && v < min && v >= 0) { inp.value = min; }
+        }
+        actualizarLimitesPrueba(fila);
+        return;
+    }
+
+    // Otros campos fijos (N° ítems, Mín, Máx): recalcular todo
+    actualizarLimitesPrueba(fila);
+}
+
 function agregarFilaPrueba() {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = tbody.querySelector('.fila-prueba').cloneNode(true);
 
-    // Limpiar valores
+    // Limpiar valores y estado de validación heredado del clon
     nuevaFila.querySelectorAll('input').forEach(input => {
         input.value = '';
+        input.classList.remove('invalid');
     });
+    // Reset de límites dinámicos solo en Media/DE (los de ítems y α son fijos)
+    const ioNueva = inputsPrueba(nuevaFila);
+    [ioNueva.media, ioNueva.de].forEach(inp => { if (inp) { inp.removeAttribute('min'); inp.removeAttribute('max'); } });
 
     tbody.appendChild(nuevaFila);
+    actualizarLimitesPrueba(nuevaFila);
     mostrarToast('Fila agregada', 'success');
 }
 
@@ -272,10 +502,12 @@ function generarBaseDatos() {
 
         if (validacion.advertencias.length > 0) {
             console.warn('Advertencias:', validacion.advertencias);
+            // Mostrar la primera advertencia de forma visible (la más relevante
+            // suele ser la de factibilidad de la Media/DE frente al rango).
+            mostrarToast('⚠ ' + validacion.advertencias[0], 'warning', 9000);
         }
 
         // Generar datos
-        mostrarToast('Generando base de datos...', 'success');
         const boton = document.getElementById('btnGenerar');
         boton.disabled = true; // Evitar doble ejecución mientras se procesa
 
@@ -1659,7 +1891,7 @@ function desplazarHacia(elemento) {
 
 let temporizadorToast = null;
 
-function mostrarToast(mensaje, tipo = 'success') {
+function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
     const toast = document.getElementById('toast');
     toast.textContent = mensaje;
     toast.className = `toast ${tipo}`;
@@ -1673,7 +1905,7 @@ function mostrarToast(mensaje, tipo = 'success') {
     temporizadorToast = setTimeout(() => {
         toast.classList.remove('show');
         temporizadorToast = null;
-    }, 3000);
+    }, duracion);
 }
 
 // ========================================
@@ -1691,10 +1923,12 @@ function exportarConfigPruebas() {
         }
 
         // Crear CSV con encabezados
-        let csv = 'Nombre,NumItems,Media,DE,MinItem,MaxItem,Alfa\n';
+        let csv = 'Nombre,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
 
         filas.forEach(fila => {
             const inputs = fila.querySelectorAll('input');
+            const selectDist = fila.querySelector('select');
+            const distribucion = selectDist ? selectDist.value : 'normal';
             const nombre = inputs[0].value.trim() || '';
             const numItems = inputs[1].value || '';
             const media = inputs[2].value || '';
@@ -1705,7 +1939,7 @@ function exportarConfigPruebas() {
 
             // Escapar valores con comas
             const nombreEscapado = nombre.includes(',') ? `"${nombre}"` : nombre;
-            csv += `${nombreEscapado},${numItems},${media},${de},${min},${max},${alfa}\n`;
+            csv += `${nombreEscapado},${numItems},${distribucion},${media},${de},${min},${max},${alfa}\n`;
         });
 
         // Descargar archivo
@@ -1735,9 +1969,12 @@ function importarConfigPruebas(e) {
             // Verificar encabezados
             const encabezados = lineas[0].toLowerCase();
             if (!encabezados.includes('nombre') || !encabezados.includes('numitems')) {
-                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Nombre,NumItems,Media,DE,MinItem,MaxItem', 'error');
+                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Nombre,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa', 'error');
                 return;
             }
+
+            // Compatibilidad: los CSV antiguos no tienen columna Distribucion.
+            const tieneDistribucion = encabezados.includes('distribucion');
 
             // Limpiar tabla actual
             const tbody = document.getElementById('bodyPruebas');
@@ -1751,15 +1988,29 @@ function importarConfigPruebas(e) {
                 const valores = parsearLineaCSV(linea);
 
                 if (valores.length >= 4) {
-                    agregarFilaPruebaConDatos({
-                        nombre: valores[0] || '',
-                        numItems: valores[1] || '',
-                        media: valores[2] || '',
-                        de: valores[3] || '',
-                        min: valores[4] || '',
-                        max: valores[5] || '',
-                        alfa: valores[6] || ''
-                    });
+                    if (tieneDistribucion) {
+                        agregarFilaPruebaConDatos({
+                            nombre: valores[0] || '',
+                            numItems: valores[1] || '',
+                            distribucion: valores[2] || 'normal',
+                            media: valores[3] || '',
+                            de: valores[4] || '',
+                            min: valores[5] || '',
+                            max: valores[6] || '',
+                            alfa: valores[7] || ''
+                        });
+                    } else {
+                        agregarFilaPruebaConDatos({
+                            nombre: valores[0] || '',
+                            numItems: valores[1] || '',
+                            distribucion: 'normal',
+                            media: valores[2] || '',
+                            de: valores[3] || '',
+                            min: valores[4] || '',
+                            max: valores[5] || '',
+                            alfa: valores[6] || ''
+                        });
+                    }
                 }
             }
 
@@ -1783,9 +2034,17 @@ function agregarFilaPruebaConDatos(datos) {
     const nuevaFila = document.createElement('tr');
     nuevaFila.className = 'fila-prueba';
 
+    const dist = datos.distribucion || 'normal';
+    const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
+
     nuevaFila.innerHTML = `
         <td><input type="text" class="input input-sm" placeholder="Ej: WAIS-IV" maxlength="100" value="${datos.nombre}" aria-label="Nombre de la prueba"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 60" min="1" value="${datos.numItems}" aria-label="Número de ítems"></td>
+        <td>
+            <select class="input input-sm" aria-label="Distribución">
+                ${opcion('normal', 'Normal')}${opcion('uniforme', 'Uniforme')}${opcion('asimetrica', 'Asimétrica')}
+            </select>
+        </td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 100" step="0.01" value="${datos.media}" aria-label="Media (M)"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" min="0.01" value="${datos.de}" aria-label="Desviación estándar (DE)"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 0" step="1" value="${datos.min}" aria-label="Mínimo por ítem"></td>
@@ -1801,6 +2060,7 @@ function agregarFilaPruebaConDatos(datos) {
     `;
 
     tbody.appendChild(nuevaFila);
+    actualizarLimitesPrueba(nuevaFila);
 }
 
 // SOCIODEMOGRÁFICOS
