@@ -1,9 +1,38 @@
 // ========================================
 // MÓDULO DE INTERPRETACIONES ESTADÍSTICAS
 // Sistema de interpretación dinámica basada en resultados
+// Redacción de nivel profesional: terminología precisa (lineal vs. monotónica),
+// reporte estilo APA, tamaño del efecto, IC 95%, potencia y salvaguardas.
 // ========================================
 
 const InterpretacionesEstadisticas = {
+
+    // ----------------------------------------
+    // Utilidades internas de formato
+    // ----------------------------------------
+
+    // ¿El coeficiente usado es Spearman? (el analizador guarda 'Spearman (Rho)')
+    _esSpearman(tipoCorrelacion) {
+        return typeof tipoCorrelacion === 'string' && tipoCorrelacion.includes('Spearman');
+    },
+
+    // p-valor con criterio profesional: nunca reportar p = 0.000
+    _fmtP(p) {
+        if (!Number.isFinite(p)) return 'p no disponible';
+        return p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`;
+    },
+
+    _fmtNum(x, dec = 3) {
+        return Number.isFinite(x) ? x.toFixed(dec) : '—';
+    },
+
+    // Punto de corte de Cohen (1988) para correlaciones: .10 / .30 / .50
+    _benchmarkCohen(rAbs) {
+        if (rAbs < 0.1) return 'inferior al umbral de efecto pequeño';
+        if (rAbs < 0.3) return 'pequeño';
+        if (rAbs < 0.5) return 'mediano';
+        return 'grande';
+    },
 
     // ========================================
     // INTERPRETACIONES DE NORMALIDAD
@@ -14,42 +43,47 @@ const InterpretacionesEstadisticas = {
         const norm1 = resultado.normalidad1;
         const norm2 = resultado.normalidad2;
 
-        let interpretacion = '';
-
-        // Determinar qué prueba se usó
-        const prueba = norm1.prueba; // Ambas deberían usar la misma prueba
-        const razonPrueba = n >= 50 ? 'n ≥ 50' : 'n < 50';
-
         // Símbolo del estadístico según la prueba: W para Shapiro-Wilk,
-        // D para Kolmogorov-Smirnov.
+        // D para Kolmogorov-Smirnov (Lilliefors).
         const simbolo = norm => (norm.prueba && norm.prueba.includes('Shapiro')) ? 'W' : 'D';
+        const prueba = norm1.prueba; // Ambas variables usan la misma prueba (mismo n)
+        const esShapiro = prueba && prueba.includes('Shapiro');
 
-        // Introducción metodológica
-        interpretacion += `Se evaluó el supuesto de normalidad mediante ${prueba} (${razonPrueba}) para ${var1} y ${var2}. `;
+        // Reporte breve por variable, estilo APA
+        const rep = (nombre, norm) =>
+            `${nombre}: ${simbolo(norm)} = ${this._fmtNum(norm.estadistico)}, ${this._fmtP(norm.pValor)}`;
 
-        // Evaluar cada variable
-        if (!norm1.normal && !norm2.normal) {
-            // Ambas no normales
-            interpretacion += `Ambas variables presentaron distribuciones no normales (${var1}: ${simbolo(norm1)}=${norm1.estadistico.toFixed(4)}, p=${norm1.pValor.toFixed(3)}; ${var2}: ${simbolo(norm2)}=${norm2.estadistico.toFixed(4)}, p=${norm2.pValor.toFixed(3)}), incumpliendo el supuesto para estadística paramétrica. `;
-            interpretacion += `Por tanto, se empleó el coeficiente de correlación de Spearman (ρ) como método robusto no paramétrico. `;
-            interpretacion += `Según Hernández-Sampieri y Mendoza (2023), cuando los datos no cumplen con el criterio de normalidad, los métodos no paramétricos son más apropiados para evitar conclusiones erróneas.`;
-        } else if (!norm1.normal || !norm2.normal) {
-            // Solo una no normal
-            const varNoNormal = !norm1.normal ? var1 : var2;
-            const normData = !norm1.normal ? norm1 : norm2;
-            const varNormal = norm1.normal ? var1 : var2;
+        let texto = '';
 
-            interpretacion += `${varNoNormal} presentó distribución no normal (${simbolo(normData)}=${normData.estadistico.toFixed(4)}, p=${normData.pValor.toFixed(3)}), mientras que ${varNormal} cumplió con el supuesto de normalidad. `;
-            interpretacion += `Dado que al menos una variable no cumple el supuesto de normalidad, se optó por el coeficiente de correlación de Spearman (ρ), `;
-            interpretacion += `garantizando así la robustez del análisis ante desviaciones de la normalidad (Cohen, 2013).`;
+        // 1) Método y justificación de su elección
+        texto += `Se evaluó el supuesto de normalidad de ${var1} y ${var2} mediante la prueba de ${prueba}, `;
+        texto += esShapiro
+            ? `seleccionada por tratarse de una muestra pequeña (n = ${n} < 50), contexto en el que Shapiro-Wilk presenta la mayor potencia estadística para detectar desviaciones de la normalidad (Razali y Wah, 2011). `
+            : `seleccionada por el tamaño de la muestra (n = ${n} ≥ 50), rango en el que Kolmogorov-Smirnov con la corrección de Lilliefors es el procedimiento de referencia. `;
+        texto += `El criterio de decisión fue: p > 0.05 indica que la distribución no se desvía significativamente de la normal. `;
+
+        // 2) Resultados por variable y 3) consecuencia metodológica
+        if (norm1.normal && norm2.normal) {
+            texto += `Los resultados mostraron que ambas variables cumplieron el supuesto (${rep(var1, norm1)}; ${rep(var2, norm2)}); en ambos casos p > 0.05, por lo que se retiene la hipótesis de normalidad. `;
+            texto += `En consecuencia, corresponde el uso de estadística paramétrica: se aplicó el coeficiente de correlación de Pearson (r), que cuantifica la relación LINEAL entre las variables y constituye el estimador de mayor potencia cuando la normalidad se satisface (Hernández-Sampieri y Mendoza, 2018). `;
+        } else if (!norm1.normal && !norm2.normal) {
+            texto += `Los resultados mostraron que ambas variables se desviaron significativamente de la normalidad (${rep(var1, norm1)}; ${rep(var2, norm2)}); en ambos casos p ≤ 0.05, incumpliéndose el supuesto exigido por la estadística paramétrica. `;
+            texto += `En consecuencia, se empleó el coeficiente de correlación de Spearman (ρ), un método no paramétrico basado en rangos que no requiere normalidad y cuantifica la relación MONOTÓNICA entre las variables, evitando así conclusiones distorsionadas por la forma de las distribuciones (Hernández-Sampieri y Mendoza, 2018). `;
         } else {
-            // Ambas normales
-            interpretacion += `Ambas variables cumplieron con el supuesto de normalidad (${var1}: p=${norm1.pValor.toFixed(3)}; ${var2}: p=${norm2.pValor.toFixed(3)}), `;
-            interpretacion += `lo cual justifica el uso de estadística paramétrica mediante el coeficiente de correlación de Pearson (r). `;
-            interpretacion += `Este método es óptimo cuando se satisfacen los supuestos de normalidad, ofreciendo mayor potencia estadística (Taherdoost, 2022).`;
+            const varNoNormal = !norm1.normal ? var1 : var2;
+            const normNoNormal = !norm1.normal ? norm1 : norm2;
+            const varNormal = norm1.normal ? var1 : var2;
+            const normNormal = norm1.normal ? norm1 : norm2;
+
+            texto += `Los resultados fueron mixtos: ${varNoNormal} se desvió significativamente de la normalidad (${rep(varNoNormal, normNoNormal)}, p ≤ 0.05), mientras que ${varNormal} sí cumplió el supuesto (${rep(varNormal, normNormal)}, p > 0.05). `;
+            texto += `Dado que el coeficiente de Pearson exige normalidad en AMBAS variables, basta con que una la incumpla para que el procedimiento paramétrico deje de ser apropiado. `;
+            texto += `Por ello se optó por el coeficiente de correlación de Spearman (ρ), que al operar sobre rangos es robusto frente a desviaciones de la normalidad y a valores extremos. `;
         }
 
-        return interpretacion;
+        // 4) Recomendación de corroboración visual
+        texto += `Se recomienda corroborar esta decisión inspeccionando los gráficos Q-Q: si los puntos se alinean sobre la recta de referencia, la conclusión de la prueba queda visualmente respaldada.`;
+
+        return texto;
     },
 
     // ========================================
@@ -60,76 +94,86 @@ const InterpretacionesEstadisticas = {
         const coef = resultado.coeficiente;
         const pValor = resultado.pValor;
         const n = resultado.n;
-        const tipoCoef = resultado.tipoCorrelacion === 'Pearson' ? 'r' : 'ρ';
-        const fuerza = resultado.interpretacion.fuerza;
-        const direccion = resultado.interpretacion.direccion;
-
-        let interpretacion = '';
-
-        // Presentación de resultados
-        interpretacion += `Se evaluó la correlación entre ${var1} y ${var2} (N=${n}). `;
-
-        // Mención del método usado
-        if (resultado.tipoCorrelacion === 'Spearman') {
-            interpretacion += `El sistema detectó que al menos una variable no cumple con la normalidad, ejecutando Spearman como corresponde metodológicamente. `;
-        } else {
-            interpretacion += `Ambas variables cumplieron con el supuesto de normalidad, por lo que se aplicó el coeficiente de Pearson. `;
-        }
-
-        // Interpretación del coeficiente
+        const gl = Number.isFinite(resultado.gl) ? resultado.gl : (n - 2);
+        const esSpearman = this._esSpearman(resultado.tipoCorrelacion);
+        const tipoCoef = esSpearman ? 'ρ' : 'r';
+        const tipoRelacion = esSpearman ? 'monotónica' : 'lineal';
+        const fuerza = (resultado.interpretacion && resultado.interpretacion.fuerza) || 'indeterminada';
+        const direccion = (resultado.interpretacion && resultado.interpretacion.direccion) || (coef >= 0 ? 'positiva' : 'negativa');
         const coefAbs = Math.abs(coef);
+        const r2 = Number.isFinite(resultado.r2) ? resultado.r2 : coef * coef;
+        const ic = resultado.intervaloConfianza || null;
+        const poder = Number.isFinite(resultado.poder) ? resultado.poder : null;
 
-        if (coefAbs < 0.1) {
-            interpretacion += `El coeficiente ${tipoCoef} = ${coef.toFixed(4)} denota una asociación ${direccion} mínima (prácticamente nula), `;
-        } else if (coefAbs < 0.3) {
-            interpretacion += `El coeficiente ${tipoCoef} = ${coef.toFixed(4)} indica una correlación ${fuerza} de dirección ${direccion}, `;
-        } else if (coefAbs < 0.5) {
-            interpretacion += `El coeficiente ${tipoCoef} = ${coef.toFixed(4)} revela una asociación ${fuerza} de carácter ${direccion}, `;
-        } else if (coefAbs < 0.7) {
-            interpretacion += `El coeficiente ${tipoCoef} = ${coef.toFixed(4)} evidencia una correlación ${fuerza} y ${direccion}, `;
+        let texto = '';
+
+        // 1) Método aplicado (corregido: reconoce 'Spearman (Rho)')
+        if (esSpearman) {
+            texto += `Dado que al menos una de las variables incumplió el supuesto de normalidad, se calculó el coeficiente de correlación de Spearman (ρ), que evalúa la relación monotónica entre ${var1} y ${var2} a partir de sus rangos. `;
         } else {
-            interpretacion += `El coeficiente ${tipoCoef} = ${coef.toFixed(4)} demuestra una asociación ${fuerza} muy marcada de tipo ${direccion}, `;
+            texto += `Dado que ambas variables cumplieron el supuesto de normalidad, se calculó el coeficiente de correlación de Pearson (r), que evalúa la relación lineal entre ${var1} y ${var2}. `;
         }
 
-        // Interpretación del p-valor
-        if (pValor >= 0.05) {
-            interpretacion += `y el p-valor = ${pValor.toFixed(4)} (≥ 0.05) confirma que esta relación no es estadísticamente significativa. `;
-            interpretacion += `Por tanto, se concluye que no existe evidencia de correlación sistemática entre ${var1} y ${var2} en la población estudiada. `;
-            interpretacion += `Este resultado sugiere que las variaciones en una variable no predicen cambios en la otra de manera confiable.`;
-        } else if (pValor >= 0.01) {
-            interpretacion += `siendo el p-valor = ${pValor.toFixed(4)} (< 0.05) estadísticamente significativo al nivel convencional. `;
-            interpretacion += `Esto implica que existe evidencia moderada de una relación sistemática entre ${var1} y ${var2}. `;
+        // 2) Reporte del resultado (estilo APA, con IC si está disponible)
+        texto += `El análisis arrojó ${tipoCoef}(${gl}) = ${this._fmtNum(coef)}, ${this._fmtP(pValor)} (N = ${n})`;
+        if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
+            const nivelIC = Math.round((ic.nivel || 0.95) * 100);
+            texto += `, IC ${nivelIC}% [${this._fmtNum(ic.inferior)}, ${this._fmtNum(ic.superior)}]`;
+        }
+        texto += `. `;
 
-            if (direccion === 'positiva') {
-                interpretacion += `La dirección positiva indica que incrementos en ${var1} tienden a asociarse con incrementos en ${var2}.`;
-            } else {
-                interpretacion += `La dirección negativa sugiere que incrementos en ${var1} se asocian con decrementos en ${var2}.`;
-            }
+        // 3) Dirección y magnitud
+        if (coefAbs < 0.1) {
+            texto += `El coeficiente es prácticamente nulo: no se aprecia una asociación ${tipoRelacion} apreciable entre las variables. `;
         } else {
-            interpretacion += `con un p-valor = ${pValor.toFixed(4)} (< 0.01) altamente significativo. `;
-            interpretacion += `Existe evidencia sólida de una relación estadísticamente significativa entre ${var1} y ${var2}. `;
-
+            texto += `La magnitud corresponde a una correlación ${fuerza} de dirección ${direccion}. `;
             if (direccion === 'positiva') {
-                interpretacion += `La correlación positiva indica que ambas variables varían en la misma dirección: cuando una aumenta, la otra tiende a aumentar proporcionalmente.`;
+                texto += `En términos sustantivos, las personas con puntuaciones más altas en ${var1} tienden a presentar también puntuaciones más altas en ${var2} (y viceversa). `;
             } else {
-                interpretacion += `La correlación negativa indica una relación inversa: cuando ${var1} aumenta, ${var2} tiende a disminuir de forma sistemática.`;
+                texto += `En términos sustantivos, las personas con puntuaciones más altas en ${var1} tienden a presentar puntuaciones más bajas en ${var2}: una relación inversa. `;
             }
         }
 
-        // Tamaño del efecto (interpretación práctica)
-        interpretacion += ` En términos del tamaño del efecto según Cohen (2013), esta correlación se clasifica como ${fuerza}, `;
-
-        if (coefAbs < 0.1) {
-            interpretacion += `sugiriendo que el vínculo entre las variables tiene escasa relevancia práctica para predicción o intervención.`;
-        } else if (coefAbs < 0.3) {
-            interpretacion += `lo que implica que aproximadamente ${(coefAbs * coefAbs * 100).toFixed(1)}% de la varianza en ${var2} puede explicarse por ${var1}.`;
-        } else if (coefAbs < 0.5) {
-            interpretacion += `explicando aproximadamente ${(coefAbs * coefAbs * 100).toFixed(1)}% de la varianza compartida, lo que tiene implicaciones prácticas moderadas.`;
+        // 4) Significancia estadística
+        if (pValor < 0.05) {
+            texto += pValor < 0.01
+                ? `El resultado es estadísticamente significativo incluso bajo el criterio exigente de 0.01 (${this._fmtP(pValor)}), lo que aporta evidencia sólida de que la asociación observada no se debe al azar muestral. `
+                : `El resultado es estadísticamente significativo al nivel convencional de 0.05 (${this._fmtP(pValor)}), lo que indica que la asociación observada difícilmente se explica por el azar muestral. `;
         } else {
-            interpretacion += `indicando que ${(coefAbs * coefAbs * 100).toFixed(1)}% de la variabilidad en ${var2} se asocia con ${var1}, lo cual tiene sustancial relevancia práctica.`;
+            texto += `El resultado NO alcanzó significancia estadística (${this._fmtP(pValor)} ≥ 0.05): los datos no aportan evidencia suficiente de una asociación ${tipoRelacion} en la población. `;
+            texto += `Cabe precisar la lectura correcta de este hallazgo: la ausencia de evidencia de asociación no equivale a evidencia de ausencia de asociación. `;
         }
 
-        return interpretacion;
+        // 5) Tamaño del efecto (Cohen, 1988) y varianza compartida
+        texto += `En cuanto al tamaño del efecto, |${tipoCoef}| = ${this._fmtNum(coefAbs, 2)} se clasifica como ${this._benchmarkCohen(coefAbs)} según los puntos de corte de Cohen (1988: 0.10 pequeño, 0.30 mediano, 0.50 grande). `;
+        if (esSpearman) {
+            texto += `Asimismo, ρ² = ${this._fmtNum(r2, 3)} indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de la varianza de sus RANGOS (al ser un índice basado en rangos, no debe leerse como varianza explicada en sentido lineal estricto). `;
+        } else {
+            texto += `Asimismo, el coeficiente de determinación r² = ${this._fmtNum(r2, 3)} indica que ${var1} y ${var2} comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza; el ${(100 - r2 * 100).toFixed(1)}% restante obedece a otros factores no contemplados en este análisis bivariado. `;
+        }
+
+        // 6) Intervalo de confianza: precisión y coherencia con la decisión
+        if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
+            const cruzaCero = ic.inferior <= 0 && ic.superior >= 0;
+            if (cruzaCero) {
+                texto += `El intervalo de confianza incluye el valor cero, lo que es coherente con la falta de significancia: no puede descartarse que la correlación poblacional sea nula. `;
+            } else {
+                texto += `El intervalo de confianza excluye el cero, de modo que incluso el escenario más conservador del intervalo sigue indicando una asociación ${direccion} en la población. `;
+            }
+        }
+
+        // 7) Potencia post-hoc, especialmente informativa cuando no hay significancia
+        if (poder !== null) {
+            if (pValor >= 0.05 && poder < 0.8) {
+                texto += `Adicionalmente, la potencia post-hoc estimada fue de ${(poder * 100).toFixed(0)}% (< 80%), por lo que no puede descartarse un error de Tipo II: con este tamaño muestral, un efecto real de esta magnitud podría haber pasado inadvertido.`;
+            } else if (pValor >= 0.05) {
+                texto += `Adicionalmente, la potencia post-hoc estimada fue de ${(poder * 100).toFixed(0)}%, de modo que el estudio tenía capacidad razonable para detectar el efecto si existiera; la no significancia resulta, por tanto, informativa.`;
+            } else {
+                texto += `La potencia post-hoc estimada fue de ${(poder * 100).toFixed(0)}%, lo que respalda la estabilidad del hallazgo.`;
+            }
+        }
+
+        return texto;
     },
 
     // ========================================
@@ -137,78 +181,253 @@ const InterpretacionesEstadisticas = {
     // ========================================
 
     generarInterpretacionHipotesis(var1, var2, resultado, prueba) {
-        const coef = resultado.coeficiente; // Coeficiente de correlación
-        const pValor = resultado.pValor; // Valor p obtenido
-        const alpha = prueba.alpha; // Nivel de significancia
-        const n = resultado.n; // Tamaño de la muestra
-        const tipoCoef = resultado.tipoCorrelacion === 'Pearson' ? 'r' : 'ρ'; // Tipo de coeficiente
+        const coef = resultado.coeficiente;
+        const pValor = resultado.pValor;
+        const alpha = prueba.alpha;
+        const n = resultado.n;
+        const gl = Number.isFinite(resultado.gl) ? resultado.gl : (n - 2);
+        const esSpearman = this._esSpearman(resultado.tipoCorrelacion);
+        // Distinción muestral/poblacional: r y ρ estiman el parámetro poblacional
+        const simboloPob = esSpearman ? 'ρₛ' : 'ρ';
+        const simboloMuestral = esSpearman ? 'ρ' : 'r';
+        const esBilateral = resultado.tipoPrueba !== 'unilateral';
+        const coefAbs = Math.abs(coef);
+        const poder = Number.isFinite(resultado.poder) ? resultado.poder : null;
 
-        let interpretacion = '';
+        let texto = '';
 
-        // Marco de la prueba de hipótesis
-        interpretacion += `En el marco de la prueba de hipótesis, se planteó H₀: ${tipoCoef} = 0 (no existe correlación) versus H₁: ${tipoCoef} ≠ 0 (existe correlación) `;
-        interpretacion += `con un nivel de significancia α = ${alpha}. `;
+        // 1) Planteamiento formal
+        texto += `En el marco de la prueba de hipótesis se contrastó H₀: ${simboloPob} = 0 (la correlación poblacional entre ${var1} y ${var2} es nula) `;
+        texto += esBilateral
+            ? `frente a H₁: ${simboloPob} ≠ 0 (existe correlación, en cualquier dirección), mediante una prueba bilateral `
+            : `frente a H₁ direccional (${simboloPob} ${coef >= 0 ? '>' : '<'} 0), mediante una prueba unilateral `;
+        texto += `con un nivel de significancia α = ${alpha}. `;
+        texto += `La regla de decisión fue: rechazar H₀ si p < α. `;
 
-        // Presentación del estadístico y decisión
-        interpretacion += `Con ${tipoCoef} = ${coef.toFixed(4)} y p = ${pValor.toFixed(4)}, `;
+        // 2) Evidencia y decisión
+        texto += `Con ${simboloMuestral}(${gl}) = ${this._fmtNum(coef)} y ${this._fmtP(pValor)}, `;
 
         if (prueba.decision === 'rechazar') {
-            // Rechazar H0
-            interpretacion += `la comparación ${pValor.toFixed(4)} < ${alpha} conduce a rechazar H₀. `;
-            interpretacion += `Formalmente, se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre ${var1} y ${var2} `;
-            interpretacion += `en la población es significativamente diferente de cero. `;
-            // Este procedimiento 
-            interpretacion += `Esta decisión, reportada con el estadístico (${tipoCoef} = ${coef.toFixed(4)}), p-valor (p = ${pValor.toFixed(4)}) y comparación (p < α), `;
-            interpretacion += `cumple con los estándares de la metodología de la investigación propuestos por Hernández Sampieri y colaboradores. `;
-
-            // Advertencia sobre causalidad
-            interpretacion += `Es fundamental destacar que correlación no implica causalidad; este hallazgo indica asociación sistemática, pero no establece dirección causal sin un diseño experimental apropiado.`;
-
+            texto += `el p-valor resulta inferior al nivel de significancia (${this._fmtP(pValor)}, frente a α = ${alpha}), por lo que SE RECHAZA H₀. `;
+            texto += `Se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre ${var1} y ${var2} en la población es distinta de cero. `;
+            // Salvaguardas profesionales
+            texto += `Dos precisiones son obligadas en un reporte riguroso. Primera: significancia estadística no equivale a relevancia práctica; la importancia del hallazgo debe juzgarse por el tamaño del efecto (|${simboloMuestral}| = ${this._fmtNum(coefAbs, 2)}) y no por el p-valor. `;
+            texto += `Segunda: correlación no implica causalidad; este resultado documenta covariación sistemática, pero la dirección causal solo podría establecerse con un diseño experimental o longitudinal apropiado. `;
         } else {
-            // No rechazar H0
-            interpretacion += `la comparación ${pValor.toFixed(4)} ≥ ${alpha} conduce a NO rechazar H₀. `;
-            interpretacion += `Formalmente, se concluye que no existe evidencia suficiente para afirmar que la correlación entre ${var1} y ${var2} `;
-            interpretacion += `en la población sea diferente de cero. `;
+            texto += `el p-valor no es inferior al nivel de significancia (${this._fmtP(pValor)}, frente a α = ${alpha}), por lo que NO SE RECHAZA H₀. `;
+            texto += `Se concluye que no existe evidencia suficiente para afirmar que la correlación poblacional entre ${var1} y ${var2} sea distinta de cero. `;
+            texto += `Conviene subrayar que esta decisión NO equivale a "aceptar" H₀: la prueba no demuestra que la correlación sea exactamente nula, solo que los datos no permiten descartarlo. `;
 
-            interpretacion += `Esta decisión, reportada con el estadístico (${tipoCoef} = ${coef.toFixed(4)}), p-valor (p = ${pValor.toFixed(4)}) y comparación (p ≥ α), `;
-            interpretacion += `cumple con los estándares de la metodología de la investigación propuestos por Hernández Sampieri y colaboradores. `;
-
-            // Interpretación de "no significativo"
-            const coefAbs = Math.abs(coef);
             if (coefAbs < 0.1) {
-                interpretacion += `El coeficiente cercano a cero sugiere ausencia práctica de relación lineal o monotónica entre las variables.`;
+                texto += `De hecho, el coeficiente observado es prácticamente nulo, lo que sugiere ausencia de relación apreciable también en el plano descriptivo. `;
             } else {
-                interpretacion += `Aunque se observa una tendencia (${tipoCoef} = ${coef.toFixed(4)}), la variabilidad muestral no permite generalizar esta asociación a la población con confianza.`;
+                texto += `No obstante, el coeficiente observado (${simboloMuestral} = ${this._fmtNum(coef)}) describe una tendencia que la variabilidad muestral no permite generalizar; `;
+                texto += poder !== null && poder < 0.8
+                    ? `dado que la potencia post-hoc fue limitada (${(poder * 100).toFixed(0)}%), un estudio con mayor tamaño muestral podría esclarecer si esta tendencia constituye un efecto real (posible error de Tipo II). `
+                    : `un estudio de replicación permitiría esclarecer si esta tendencia constituye un efecto real. `;
             }
         }
 
-        // Recomendaciones metodológicas
-        interpretacion += ` Para futuras investigaciones, se recomienda `;
-
-        // Recomendaciones basadas en el tamaño de la muestra (N)
+        // 3) Recomendaciones metodológicas según el tamaño muestral
+        texto += `Para futuras investigaciones se recomienda `;
         if (n < 30) {
-            interpretacion += `aumentar el tamaño muestral (N actual = ${n}), ya que muestras pequeñas tienen menor poder estadístico para detectar efectos reales. `;
+            texto += `aumentar el tamaño muestral (N actual = ${n}): por debajo de 30 casos el poder estadístico es reducido y las estimaciones del coeficiente resultan inestables. `;
         } else if (n < 100) {
-            interpretacion += `considerar incrementar el tamaño muestral para mayor precisión en la estimación del parámetro poblacional. `;
+            texto += `incrementar el tamaño muestral (N actual = ${n}) para ganar precisión en la estimación del parámetro poblacional y estrechar el intervalo de confianza. `;
         } else if (n < 200) {
-            // Muestra adecuada: Suficiente, pero se podría mejorar
-            interpretacion += `considerar incrementar más el tamaño muestral para modelos multivariados más complejos. `;
-        } else if (n < 500) {
-            // Muestra grande: Generalmente robusta
-            interpretacion += `el uso de análisis avanzados ya que el tamaño muestral (N = ${n}) proporciona un excelente poder estadístico y estabilidad en las estimaciones. `;
+            texto += `mantener o ampliar el tamaño muestral (N = ${n}), ya adecuado para análisis bivariados, si se planea escalar hacia modelos multivariados más exigentes. `;
         } else {
-            // Muestra muy grande: Excelente poder, atención a la eficiencia
-            interpretacion += `prestar atención al ejecutar pruebas más complejas, el tamaño muestral (N = ${n}) es muy grande y esto garantiza un poder estadístico óptimo. `;
+            texto += `aprovechar el tamaño muestral disponible (N = ${n}), que ofrece un poder estadístico excelente, para análisis más avanzados; con muestras grandes conviene además recordar que efectos diminutos pueden resultar significativos, por lo que el tamaño del efecto debe guiar la interpretación. `;
         }
 
-        if (prueba.decision !== 'rechazar' && Math.abs(coef) > 0.2) {
-            interpretacion += `Dado que el coeficiente observado sugiere una tendencia, un estudio con mayor potencia estadística podría revelar significancia. `;
+        // 4) Líneas de profundización
+        texto += esSpearman
+            ? `Asimismo, se sugiere explorar posibles variables mediadoras o moderadoras, considerar transformaciones o métodos robustos si se desea modelar la relación, y triangular estos hallazgos cuantitativos con evidencia cualitativa para una comprensión más completa del fenómeno (Hernández-Sampieri y Mendoza, 2018).`
+            : `Asimismo, se sugiere complementar con un análisis de regresión lineal (viable al cumplirse la normalidad), explorar posibles variables mediadoras o moderadoras, y triangular estos hallazgos cuantitativos con evidencia cualitativa para una comprensión más completa del fenómeno (Hernández-Sampieri y Mendoza, 2018).`;
+
+        return texto;
+    },
+
+    // ========================================
+    // MARCO METODOLÓGICO (prosa de investigación)
+    // Movido desde el analizador: el analizador CALCULA, este módulo REDACTA.
+    // Reciben todo por parámetro (sin estado), para poder usarse desde
+    // cualquier parte y probarse de forma aislada.
+    // ========================================
+
+    generarPreguntaInvestigacion(var1, var2, unidadAnalisis, lugarContexto) {
+        if (!unidadAnalisis || !lugarContexto) {
+            return `¿Cuál es la relación entre ${var1} y ${var2}?`;
+        }
+        return `¿Cuál es la relación entre ${var1} y ${var2} en ${unidadAnalisis} de ${lugarContexto}?`;
+    },
+
+    generarObjetivoGeneral(var1, var2, unidadAnalisis, lugarContexto) {
+        if (!unidadAnalisis || !lugarContexto) {
+            return `Determinar la relación entre ${var1} y ${var2}.`;
+        }
+        return `Determinar la relación entre ${var1} y ${var2} en ${unidadAnalisis} de ${lugarContexto}.`;
+    },
+
+    // dimensiones1/dimensiones2: objetos {nombreDimension: ...} o null.
+    generarObjetivosEspecificos(var1, var2, dimensiones1, dimensiones2) {
+        const objetivos = [];
+        if (dimensiones1 && dimensiones2) {
+            Object.keys(dimensiones1).forEach(d1 => {
+                Object.keys(dimensiones2).forEach(d2 => {
+                    objetivos.push(`Establecer el vínculo entre '${d1}' de ${var1} y '${d2}' de ${var2}.`);
+                });
+            });
+        } else if (dimensiones1) {
+            Object.keys(dimensiones1).forEach(d1 => {
+                objetivos.push(`Establecer el vínculo entre '${d1}' de ${var1} y ${var2}.`);
+            });
+        } else if (dimensiones2) {
+            Object.keys(dimensiones2).forEach(d2 => {
+                objetivos.push(`Establecer el vínculo entre ${var1} y '${d2}' de ${var2}.`);
+            });
+        } else {
+            objetivos.push(`Establecer el vínculo entre ${var1} y ${var2}.`);
+        }
+        return objetivos;
+    },
+
+    generarHipotesis(var1, var2, unidadAnalisis, lugarContexto) {
+        let contexto = '';
+        if (unidadAnalisis && lugarContexto) {
+            contexto = ` en ${unidadAnalisis} de ${lugarContexto}`;
+        }
+        return {
+            hipotesisInvestigador: `Existe una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}.`,
+            hipotesisNula: `No existe una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}.`,
+            hipotesisAlterna: `Sí existe una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}.`
+        };
+    },
+
+    // opciones: { dimensiones1, dimensiones2, configuracion }
+    generarMarcoMetodologico(var1, var2, unidadAnalisis, lugarContexto, opciones = {}) {
+        return {
+            preguntaInvestigacion: this.generarPreguntaInvestigacion(var1, var2, unidadAnalisis, lugarContexto),
+            objetivoGeneral: this.generarObjetivoGeneral(var1, var2, unidadAnalisis, lugarContexto),
+            objetivosEspecificos: this.generarObjetivosEspecificos(var1, var2, opciones.dimensiones1 || null, opciones.dimensiones2 || null),
+            hipotesis: this.generarHipotesis(var1, var2, unidadAnalisis, lugarContexto),
+            configuracion: opciones.configuracion || null
+        };
+    },
+
+    // ========================================
+    // DISCUSIÓN PROFESIONAL (plantilla para tesis)
+    // resultado: salida de calcularCorrelacion; pruebaHip: salida de pruebaHipotesis.
+    // ========================================
+
+    generarDiscusion(var1, var2, resultado, pruebaHip, unidadAnalisis, lugarContexto, opciones = {}) {
+        const marco = this.generarMarcoMetodologico(var1, var2, unidadAnalisis, lugarContexto, opciones);
+        const esSpearman = this._esSpearman(resultado.tipoCorrelacion);
+        const nombreMetodo = esSpearman ? 'Spearman (ρ)' : 'Pearson (r)';
+        const simbolo = esSpearman ? 'ρ' : 'r';
+        const gl = Number.isFinite(resultado.gl) ? resultado.gl : (resultado.n - 2);
+        const coefAbs = Math.abs(resultado.coeficiente);
+        const r2 = Number.isFinite(resultado.r2) ? resultado.r2 : resultado.coeficiente * resultado.coeficiente;
+        const ic = resultado.intervaloConfianza || null;
+        const poder = Number.isFinite(resultado.poder) ? resultado.poder : null;
+        const n1 = resultado.normalidad1, n2 = resultado.normalidad2;
+        const simNorm = norm => (norm.prueba && norm.prueba.includes('Shapiro')) ? 'W' : 'D';
+
+        let contexto = '';
+        if (unidadAnalisis && lugarContexto) {
+            contexto = ` en ${unidadAnalisis} de ${lugarContexto}`;
         }
 
-        interpretacion += `Asimismo, se sugiere complementar con análisis de regresión, explorar posibles variables mediadoras o moderadoras, `;
-        interpretacion += `y triangular estos hallazgos cuantitativos con métodos cualitativos para una comprensión más holística del problema.`;
+        let d = '';
 
-        return interpretacion;
+        // Sección 1: Marco de la investigación
+        d += `**MARCO DE INVESTIGACIÓN**\n\n`;
+        d += `**Pregunta de Investigación:**\n${marco.preguntaInvestigacion}\n\n`;
+        d += `**Objetivo General:**\n${marco.objetivoGeneral}\n\n`;
+        if (marco.objetivosEspecificos.length > 0) {
+            d += `**Objetivos Específicos:**\n`;
+            marco.objetivosEspecificos.forEach((obj, idx) => { d += `${idx + 1}. ${obj}\n`; });
+            d += '\n';
+        }
+        d += `**Hipótesis de Investigación:**\n${marco.hipotesis.hipotesisInvestigador}\n\n`;
+        d += `**Hipótesis Nula (H₀):**\n${marco.hipotesis.hipotesisNula}\n\n`;
+        d += `**Hipótesis Alterna (H₁):**\n${marco.hipotesis.hipotesisAlterna}\n\n`;
+
+        // Sección 2: Metodología
+        d += `---\n\n**METODOLOGÍA ESTADÍSTICA**\n\n`;
+        d += `El análisis correlacional se realizó mediante el coeficiente de ${nombreMetodo}, seleccionado a partir de las pruebas de normalidad. `;
+        if (n1.normal && n2.normal) {
+            d += `Ambas variables cumplieron el supuesto de normalidad (${var1}: ${simNorm(n1)} = ${this._fmtNum(n1.estadistico)}, ${this._fmtP(n1.pValor)}; ${var2}: ${simNorm(n2)} = ${this._fmtNum(n2.estadistico)}, ${this._fmtP(n2.pValor)}; criterio p > 0.05), lo que habilita la estadística paramétrica y el análisis de la relación LINEAL entre las variables.\n\n`;
+        } else {
+            d += `Al menos una variable se desvió significativamente de la normalidad (${var1}: ${this._fmtP(n1.pValor)}; ${var2}: ${this._fmtP(n2.pValor)}; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables.\n\n`;
+        }
+        d += `Se estableció un nivel de significancia de α = ${pruebaHip.alpha}, mediante una prueba ${resultado.tipoPrueba === 'unilateral' ? 'unilateral' : 'bilateral'}.\n\n`;
+
+        // Sección 3: Resultados
+        d += `---\n\n**RESULTADOS**\n\n`;
+        d += `El análisis arrojó ${simbolo}(${gl}) = ${this._fmtNum(resultado.coeficiente)}, ${this._fmtP(resultado.pValor)} (N = ${resultado.n})`;
+        if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
+            d += `, IC ${Math.round((ic.nivel || 0.95) * 100)}% [${this._fmtNum(ic.inferior)}, ${this._fmtNum(ic.superior)}]`;
+        }
+        d += `. `;
+
+        if (pruebaHip.decision === 'rechazar') {
+            d += `Dado que el p-valor es inferior a α (${this._fmtP(resultado.pValor)} frente a α = ${pruebaHip.alpha}), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre ${var1} y ${var2}${contexto}.\n\n`;
+            d += `La magnitud corresponde a una correlación **${resultado.interpretacion.fuerza}** de dirección **${resultado.interpretacion.direccion}** (tamaño del efecto ${this._benchmarkCohen(coefAbs)} según Cohen, 1988), lo que indica que ${resultado.interpretacion.direccion === 'positiva'
+                ? 'a medida que aumenta una variable, la otra tiende a aumentar'
+                : 'a medida que aumenta una variable, la otra tiende a disminuir'}. `;
+            d += esSpearman
+                ? `El coeficiente al cuadrado (ρ² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de la varianza de sus rangos.\n\n`
+                : `El coeficiente de determinación (r² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza.\n\n`;
+        } else {
+            d += `Dado que el p-valor no es inferior a α (${this._fmtP(resultado.pValor)} frente a α = ${pruebaHip.alpha}), no se rechaza la hipótesis nula: **no existe evidencia suficiente** de una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}. `;
+            d += `Cabe recordar que no rechazar H₀ no equivale a demostrar que la correlación poblacional sea nula`;
+            d += (poder !== null && poder < 0.8)
+                ? `; de hecho, la potencia post-hoc estimada fue de ${(poder * 100).toFixed(0)}% (< 80%), por lo que no puede descartarse un error de Tipo II.\n\n`
+                : `.\n\n`;
+        }
+
+        // Sección 4: Interpretación y Discusión (plantilla con espacios para el marco teórico)
+        d += `---\n\n**DISCUSIÓN E INTERPRETACIÓN**\n\n`;
+        if (pruebaHip.decision === 'rechazar') {
+            d += `Los hallazgos confirman la hipótesis de investigación planteada. `;
+            d += `Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. `;
+            d += `Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO].\n\n`;
+            d += `La relación ${resultado.interpretacion.direccion} observada sugiere que [INTERPRETACIÓN TEÓRICA]. `;
+            d += `Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. `;
+            d += `Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad.\n\n`;
+        } else {
+            d += `La ausencia de una relación estadísticamente significativa puede explicarse por diversos factores, incluyendo [POSIBLES EXPLICACIONES]. `;
+            d += `Este resultado contrasta con [AUTOR] ([AÑO]), quien reportó [HALLAZGO DIFERENTE]. `;
+            d += `Las diferencias metodológicas, contextuales o muestrales podrían explicar esta discrepancia.\n\n`;
+        }
+
+        d += `**Implicaciones:**\n- [IMPLICACIÓN TEÓRICA]\n- [IMPLICACIÓN PRÁCTICA]\n- [IMPLICACIÓN METODOLÓGICA]\n\n`;
+        d += `**Limitaciones del estudio:**\n- [LIMITACIÓN MUESTRAL/METODOLÓGICA]\n- [LIMITACIÓN DE GENERALIZACIÓN]\n- El diseño correlacional de corte transversal no permite inferencias causales.\n\n`;
+        d += `**Recomendaciones para futuras investigaciones:**\n- [RECOMENDACIÓN 1]\n- [RECOMENDACIÓN 2]\n`;
+
+        return d;
+    },
+
+    // ========================================
+    // COMPARACIÓN DE GRUPOS (movido desde app.js)
+    // resultado: salida de la comparación (descriptivas1/2, etiquetas, prueba,
+    // tamanoEfecto, decision).
+    // ========================================
+
+    generarInterpretacionComparacion(varCuantitativa, varAgrupacion, resultado) {
+        const significativa = resultado.decision === 'rechazar';
+        const d1 = resultado.descriptivas1;
+        const d2 = resultado.descriptivas2;
+        const grupoMayor = d1.media >= d2.media ? resultado.etiqueta1 : resultado.etiqueta2;
+        const prueba = resultado.prueba;
+        const ef = resultado.tamanoEfecto;
+        const pTexto = this._fmtP(prueba.pValor);
+
+        if (significativa) {
+            return `Existe una diferencia estadísticamente significativa en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). El grupo "${grupoMayor}" presenta la media más alta. La magnitud de la diferencia es de tamaño ${ef.interpretacion} (d de Cohen = ${ef.d.toFixed(2)}). Una diferencia significativa no implica causalidad cuando los grupos no se asignaron al azar.`;
+        }
+        return `No se hallaron diferencias estadísticamente significativas en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}); el tamaño del efecto es ${ef.interpretacion} (d de Cohen = ${ef.d.toFixed(2)}). Un resultado no significativo no demuestra la igualdad de los grupos: podría deberse a un tamaño muestral insuficiente para detectar la diferencia.`;
     }
 };
 
