@@ -446,11 +446,14 @@ function cargarDatosGenerados() {
 
         // Registrar etiquetas humanas y estructura de pruebas (estilo SPSS):
         // la interfaz mostrará "Inteligencia Cognitiva" en vez de "Total_IC".
+        // Con datos del simulador NO se ofrece el editor: las etiquetas son las
+        // configuradas en la sección Simulador.
         if (typeof EtiquetasVariables !== 'undefined' && generadorDatos.obtenerEtiquetas) {
             EtiquetasVariables.fijar(
                 generadorDatos.obtenerEtiquetas(),
                 generadorDatos.obtenerEstructuraEscalas()
             );
+            EtiquetasVariables.ocultarEditor('editorEtiquetas');
         }
 
         mostrarDatosCargados(datos);
@@ -479,7 +482,19 @@ function cargarArchivoCSV(e) {
         try {
             const csvText = event.target.result;
             AnalizadorEstadistico.cargarDesdeCSV(csvText);
-            mostrarDatosCargados(AnalizadorEstadistico.obtenerDatos());
+            const datos = AnalizadorEstadistico.obtenerDatos();
+
+            // Base de datos EXTERNA: no hay etiquetas del simulador. Se limpian
+            // las anteriores y se ofrece el editor para renombrar variables.
+            if (typeof EtiquetasVariables !== 'undefined') {
+                EtiquetasVariables.limpiar();
+                EtiquetasVariables.mostrarEditor('editorEtiquetas', obtenerColumnasNumericas(datos), function () {
+                    poblarSelectsVariables(AnalizadorEstadistico.obtenerDatos());
+                    mostrarToast('Etiquetas aplicadas: los textos del análisis usarán los nuevos nombres', 'success');
+                });
+            }
+
+            mostrarDatosCargados(datos);
             mostrarToast('Archivo CSV cargado exitosamente', 'success');
         } catch (error) {
             mostrarToast(error.message, 'error');
@@ -502,21 +517,39 @@ function mostrarDatosCargados(datos) {
     document.getElementById('analisisVars').textContent = Object.keys(datos[0]).length;
 
     // Crear tabla (primeras 10 filas)
-    const columnas = renderizarTablaDatos(
+    renderizarTablaDatos(
         document.getElementById('analisisHead'),
         document.getElementById('analisisBody'),
         datos
     );
 
-    // Poblar selectores de variables: solo columnas numéricas y excluyendo el
-    // identificador (ID no es una variable de análisis).
-    const columnasNumericas = columnas.filter(col => {
+    poblarSelectsVariables(datos);
+
+    // Mostrar containers
+    container.style.display = 'block';
+    seleccionContainer.style.display = 'block';
+
+    // Scroll
+    desplazarHacia(container);
+}
+
+// Columnas numéricas analizables del dataset (excluye el identificador).
+function obtenerColumnasNumericas(datos) {
+    if (!datos || datos.length === 0) return [];
+    return Object.keys(datos[0]).filter(col => {
         if (col === 'ID') return false;
         return typeof datos[0][col] === 'number' || !isNaN(parseFloat(datos[0][col]));
     });
+}
+
+// Puebla los selectores de variables del analizador. Reutilizable: se llama al
+// cargar datos y también al aplicar nuevas etiquetas (para refrescar los textos).
+function poblarSelectsVariables(datos) {
+    const columnasNumericas = obtenerColumnasNumericas(datos);
 
     const select1 = document.getElementById('variable1');
     const select2 = document.getElementById('variable2');
+    const valor1 = select1.value, valor2 = select2.value; // conservar selección
 
     select1.innerHTML = '<option value="">Seleccionar variable...</option>';
     select2.innerHTML = '<option value="">Seleccionar variable...</option>';
@@ -540,12 +573,9 @@ function mostrarDatosCargados(datos) {
         select2.appendChild(option2);
     });
 
-    // Mostrar containers
-    container.style.display = 'block';
-    seleccionContainer.style.display = 'block';
-
-    // Scroll
-    desplazarHacia(container);
+    // Restaurar la selección previa si las columnas siguen existiendo
+    if (valor1) select1.value = valor1;
+    if (valor2) select2.value = valor2;
 }
 
 // Oculta y vacía todos los contenedores de resultados antes de cada análisis,
