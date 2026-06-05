@@ -654,7 +654,14 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     const et1 = hayEtiquetas ? EtiquetasVariables.etiqueta(var1) : var1;
     const et2 = hayEtiquetas ? EtiquetasVariables.etiqueta(var2) : var2;
 
-    const marco = generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto);
+    // Criba vectorizada de candidatos dimensión↔variable: selecciona los
+    // objetivos específicos EN FUNCIÓN DE LOS DATOS (|r| ≥ umbral, top-k).
+    // Se ejecuta antes del marco para que ambos cuenten la misma historia.
+    const criba = (typeof AnalisisDimensiones !== 'undefined')
+        ? AnalisisDimensiones.cribarObjetivos(var1, var2)
+        : null;
+
+    const marco = generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto, criba);
     const resultado = AnalizadorEstadistico.calcularCorrelacion(var1, var2, tipoPrueba);
 
     mostrarMarcoMetodologico(marco);
@@ -685,20 +692,33 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
 // con estructura del simulador usa las dimensiones reales (etiquetas) y las
 // variables sociodemográficas categóricas para los objetivos comparativos;
 // sin estructura, delega en el mecanismo legado del analizador.
-function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto) {
+function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto, criba) {
     const hayEstructura = (typeof EtiquetasVariables !== 'undefined') && EtiquetasVariables.tieneEtiquetas();
     if (!hayEstructura) {
         return AnalizadorEstadistico.generarMarcoMetodologico(var1, var2, unidadAnalisis, lugarContexto);
     }
 
-    const dimsDe = col => {
-        const p = EtiquetasVariables.pruebaConGeneral(col);
-        return p ? p.dimensiones.map(d => d.etiqueta) : null;
-    };
+    // Dimensiones para los objetivos específicos: SI HAY CRIBA, solo las
+    // seleccionadas por los datos (|r| ≥ umbral, top-k, orden de magnitud);
+    // sin criba, todas las de la estructura (comportamiento clásico).
+    let dims1 = null, dims2 = null;
+    if (criba && criba.seleccionados) {
+        dims1 = criba.seleccionados.filter(s => s.columnaY === var2).map(s => s.etiquetaX);
+        dims2 = criba.seleccionados.filter(s => s.columnaY === var1).map(s => s.etiquetaX);
+        if (dims1.length === 0) dims1 = null;
+        if (dims2.length === 0) dims2 = null;
+    } else {
+        const dimsDe = col => {
+            const p = EtiquetasVariables.pruebaConGeneral(col);
+            return p ? p.dimensiones.map(d => d.etiqueta) : null;
+        };
+        dims1 = dimsDe(var1);
+        dims2 = dimsDe(var2);
+    }
 
     return InterpretacionesEstadisticas.generarMarcoMetodologico(et1, et2, unidadAnalisis, lugarContexto, {
-        dimensiones1: dimsDe(var1),
-        dimensiones2: dimsDe(var2),
+        dimensiones1: dims1,
+        dimensiones2: dims2,
         sociodemograficos: obtenerColumnasCategoricas(4),
         configuracion: AnalizadorEstadistico.obtenerMarcoInvestigacion
             ? AnalizadorEstadistico.obtenerMarcoInvestigacion()
