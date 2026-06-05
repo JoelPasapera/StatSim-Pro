@@ -2277,7 +2277,7 @@ function seleccionarColumnasGraficos(datos) {
         return typeof primera[key] === 'number' || !isNaN(parseFloat(primera[key]));
     });
 
-    const totales = numericas.filter(key => key.startsWith('Total_'));
+    const totales = numericas.filter(key => /^(Total|Dimension|General)_/i.test(key));
     const base = totales.length >= 2 ? totales : numericas;
 
     return base.slice(0, MAX_COLUMNAS_GRAFICOS);
