@@ -17,6 +17,10 @@ StatSim Pro es una aplicación web para simular bases de datos estadísticos y r
 
 [![GitHub Pages](https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge)](https://joelpasapera.github.io/StatSim-Pro)
 
+<a href="https://joelpasapera.github.io/StatSim-Pro" target="_blank" rel="noopener noreferrer">
+  <img src="https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge" alt="GitHub Pages">
+</a>
+
 ---
 
 ## 📊 Evidencia de validación
