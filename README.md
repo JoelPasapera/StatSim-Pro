@@ -15,7 +15,7 @@ StatSim Pro es una aplicación web para simular bases de datos estadísticos y r
 
 &gt; Implementado 100 % en el navegador. Sin frameworks pesados, sin backend, sin instalación. Pruebalo aqui 👇!
 
-[![GitHub Pages](https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge)](https://joelpasapera.github.io/StatSim-Pro.github.io/)
+[![GitHub Pages](https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge)](https://joelpasapera.github.io/StatSim-Pro)
 
 ---
 
