@@ -665,8 +665,9 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     const resultado = AnalizadorEstadistico.calcularCorrelacion(var1, var2, tipoPrueba);
 
     // Análisis de objetivos específicos como HTML, para incrustarlo DENTRO del
-    // bloque del marco (no como tarjeta separada al final).
-    const analisisDimensiones = (typeof AnalisisDimensiones !== 'undefined')
+    // bloque del marco. El guard (&& generarContenido) evita romper el análisis
+    // si el módulo cargado fuera una versión anterior.
+    const analisisDimensiones = (typeof AnalisisDimensiones !== 'undefined' && AnalisisDimensiones.generarContenido)
         ? AnalisisDimensiones.generarContenido(var1, var2, tipoPrueba, unidadAnalisis, lugarContexto)
         : '';
 
