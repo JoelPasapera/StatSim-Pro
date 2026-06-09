@@ -350,19 +350,19 @@ const InterpretacionesEstadisticas = {
     // criba: salida de CribaCorrelaciones.cribar.
     generarResumenCriba(criba) {
         const validos = criba.evaluados.filter(e => e.valido);
-        const superan = validos.filter(e => e.superaUmbral);
         const sel = criba.seleccionados;
-        let t = `Se evaluaron ${validos.length} pares candidatos. `;
-        if (superan.length === 0) {
-            t += `Ninguno alcanzó el umbral mínimo de |r| ≥ ${criba.umbral.toFixed(2)} (Cohen, 1988), por lo que no se formularon objetivos específicos correlacionales: con estos datos, las dimensiones no muestran asociaciones de magnitud reportable con la variable de contraste.`;
-            return t;
+        if (validos.length === 0 || sel.length === 0) {
+            return `Se evaluaron ${validos.length} pares candidatos y no fue posible seleccionar objetivos (datos insuficientes o no numéricos).`;
         }
-        t += `${superan.length} superaron el umbral de |r| ≥ ${criba.umbral.toFixed(2)} (Cohen, 1988)`;
-        if (superan.length > sel.length) {
-            t += ` y, por el criterio de parsimonia configurado (máximo ${criba.maximo}), se priorizaron los ${sel.length} de mayor magnitud absoluta`;
+        const selSobreUmbral = sel.filter(s => s.superaUmbral).length;
+        let t = `Se evaluaron ${validos.length} pares candidatos y se seleccionaron los ${sel.length} de mayor magnitud absoluta (máximo configurado: ${criba.maximo}), priorizando los pares dimensión ↔ escala general: `;
+        t += sel.map(s => `${s.etiquetaX} ↔ ${s.etiquetaY} (${this._esSpearman(s.metodo) ? 'ρ' : 'r'} = ${s.coeficiente.toFixed(3)})`).join('; ') + '. ';
+        if (selSobreUmbral === sel.length) {
+            t += `Todos alcanzan el criterio de Cohen (1988) de |r| ≥ ${criba.umbral.toFixed(2)} para un efecto al menos pequeño. `;
+        } else {
+            t += `${selSobreUmbral} de ${sel.length} alcanzan el criterio de Cohen (1988) de |r| ≥ ${criba.umbral.toFixed(2)}; los restantes deben interpretarse como asociaciones muy débiles, probablemente sin relevancia práctica. `;
         }
-        t += `: ${sel.map(s => `${s.etiquetaX} ↔ ${s.etiquetaY} (${this._esSpearman(s.metodo) ? 'ρ' : 'r'} = ${s.coeficiente.toFixed(3)})`).join('; ')}. `;
-        t += `El signo del coeficiente indica la dirección (positiva = directa; negativa = inversa); la selección se hizo por magnitud absoluta, de modo que las relaciones inversas compiten en igualdad de condiciones.`;
+        t += `El signo indica la dirección (positiva = directa; negativa = inversa); la selección compara por magnitud absoluta, de modo que las relaciones inversas compiten en igualdad de condiciones.`;
         return t;
     },
 
