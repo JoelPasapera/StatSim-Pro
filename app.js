@@ -952,7 +952,9 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
             <div class="result-box">
                 <p class="result-subtitle" style="margin-bottom: 0.5rem;">Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.</p>
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+                    <div id="histVariable1"></div>
                     <div id="qqVariable1"></div>
+                    <div id="histVariable2"></div>
                     <div id="qqVariable2"></div>
                 </div>
             </div>
@@ -984,18 +986,29 @@ function dibujarGraficosQQ(var1, var2, resultado) {
     const pares = resultado.valoresPareados;
     if (!pares) return;
 
-    const dibujar = (idContenedor, valores, etiqueta) => {
-        if (!document.getElementById(idContenedor) || !Array.isArray(valores) || valores.length < 3) return;
+    // Panel visual de normalidad por variable: histograma con la curva normal
+    // teórica superpuesta (¿la campana se ajusta a los datos?) y Q-Q plot
+    // (¿los cuantiles siguen la diagonal?). Juntos justifican visualmente la
+    // elección entre Pearson y Spearman.
+    const dibujar = (idHist, idQQ, valores, etiqueta) => {
+        if (!Array.isArray(valores) || valores.length < 3) return;
+        const cfg = { width: 360, height: 300, primaryColor: '#2E5BBA' };
         try {
-            new ScientificCharts(idContenedor, { width: 360, height: 300, primaryColor: '#2E5BBA' })
-                .createQQPlot(valores, { title: `Q-Q: ${etiqueta}` });
+            if (document.getElementById(idHist)) {
+                new ScientificCharts(idHist, cfg)
+                    .createHistogramNormal(valores, { title: `Distribución: ${etiqueta}`, xLabel: etiqueta });
+            }
+            if (document.getElementById(idQQ)) {
+                new ScientificCharts(idQQ, cfg)
+                    .createQQPlot(valores, { title: `Q-Q: ${etiqueta}` });
+            }
         } catch (error) {
-            console.error(`Error al crear el gráfico Q-Q de ${etiqueta}:`, error);
+            console.error(`Error en panel de normalidad de ${etiqueta}:`, error);
         }
     };
 
-    dibujar('qqVariable1', pares.x, var1);
-    dibujar('qqVariable2', pares.y, var2);
+    dibujar('histVariable1', 'qqVariable1', pares.x, var1);
+    dibujar('histVariable2', 'qqVariable2', pares.y, var2);
 }
 
 function mostrarCorrelacion(var1, var2, resultado) {
@@ -1474,10 +1487,22 @@ function mostrarDispersion(var1, var2, resultado) {
             height: 380,
             primaryColor: '#2E5BBA'
         });
-        chart.createScatterPlot(pares.x, pares.y, {
+        const I = InterpretacionesEstadisticas;
+        const esSp = I._esSpearman(resultado.tipoCorrelacion);
+        const r2 = Number.isFinite(resultado.r2) ? resultado.r2 : resultado.coeficiente ** 2;
+        const anot = [
+            `${esSp ? 'ρ' : 'r'} = ${resultado.coeficiente.toFixed(3)}  (${I._fmtP(resultado.pValor)})`,
+            `${esSp ? 'ρ²' : 'R²'} = ${r2.toFixed(3)}   n = ${resultado.n}`
+        ];
+        const ic = resultado.intervaloConfianza;
+        if (ic && Number.isFinite(ic.inferior)) {
+            anot.push(`IC 95% [${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]`);
+        }
+        chart.createScatterPlotPro(pares.x, pares.y, {
             title: `${var1} vs ${var2}`,
             xLabel: var1,
-            yLabel: var2
+            yLabel: var2,
+            annotationLines: anot
         });
     } catch (error) {
         console.error('Error al crear el diagrama de dispersión:', error);
