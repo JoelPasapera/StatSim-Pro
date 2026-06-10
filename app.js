@@ -1284,6 +1284,7 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
                     <tr><td>Estadístico:</td><td>${estadisticoTexto}</td></tr>
                     <tr><td>p-valor (bilateral):</td><td><strong>${prueba.pValor.toFixed(4)}</strong></td></tr>
                     <tr><td>Tamaño del efecto (d de Cohen):</td><td><strong>${ef.d.toFixed(3)}</strong> (${ef.interpretacion})</td></tr>
+                    ${resultado.tamanoEfectoRangos ? `<tr><td>Tamaño del efecto (r de rangos):</td><td><strong>${resultado.tamanoEfectoRangos.r.toFixed(3)}</strong> (${resultado.tamanoEfectoRangos.interpretacion}) — apropiado para la prueba no paramétrica</td></tr>` : ''}
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
             </div>
@@ -1431,7 +1432,9 @@ function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     }
     // t de Student o de Welch
     const decimalesGl = prueba.prueba.includes('Welch') ? 2 : 0;
-    const d = resultado.tamanoEfecto ? `, d de Cohen = ${formatearRApa(resultado.tamanoEfecto.d)}` : '';
+    const d = resultado.tamanoEfectoRangos
+        ? `, r de rangos = ${formatearRApa(resultado.tamanoEfectoRangos.r)}`
+        : (resultado.tamanoEfecto ? `, d de Cohen = ${formatearRApa(resultado.tamanoEfecto.d)}` : '');
     return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la ${prueba.prueba}: t(${prueba.gl.toFixed(decimalesGl)}) = ${prueba.estadistico.toFixed(2)}, ${pTexto}${d}.`;
 }
 
