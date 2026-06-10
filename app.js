@@ -403,6 +403,8 @@ function configurarAnalizador() {
 
     // Botón descargar resultados
     document.getElementById('btnDescargarResultados').addEventListener('click', descargarResultados);
+    const btnWord = document.getElementById('btnExportarWord');
+    if (btnWord) btnWord.addEventListener('click', () => ExportadorWord.descargar(window.ultimoAnalisis));
 }
 
 // Ajusta las etiquetas de los selectores según el tipo de análisis elegido.
@@ -680,6 +682,9 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     const analisisDimensiones = (typeof AnalisisDimensiones !== 'undefined' && AnalisisDimensiones.generarContenido)
         ? AnalisisDimensiones.generarContenido(var1, var2, tipoPrueba, unidadAnalisis, lugarContexto)
         : '';
+
+    // Contexto del último análisis (lo consume el exportador a Word)
+    window.ultimoAnalisis = { var1, var2, et1, et2, resultado, marco, criba, tipoPrueba, unidadAnalisis, lugarContexto };
 
     mostrarMarcoMetodologico(marco, analisisDimensiones);
     mostrarTablaSociodemografica();
