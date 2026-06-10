@@ -407,6 +407,37 @@ const InterpretacionesEstadisticas = {
         };
     },
 
+    // TIPO Y DISEÑO DE ESTUDIO (redacción profesional para tesis).
+    // Personalizable: variables (etiquetas humanas), contexto (unidad/lugar),
+    // instrumentos detectados de la estructura de pruebas y tamaño muestral.
+    // Citas: Arias (2021), Hernández-Sampieri y Mendoza (2023),
+    // Cvetković-Vega et al. (2021) — todas dentro de la ventana de 5 años.
+    generarTipoYDiseno(var1, var2, opciones = {}) {
+        const u = opciones.unidadAnalisis, l = opciones.lugarContexto;
+        const contexto = (u && l) ? ` en ${u} de ${l}` : (u ? ` en ${u}` : '');
+        const conj = this._conj(var2);
+        const i1 = opciones.instrumento1, i2 = opciones.instrumento2;
+
+        const p1 = `Según su finalidad, la presente investigación es de tipo básica, dado que su propósito es ampliar el conocimiento teórico sobre la relación entre ${var1} ${conj} ${var2}${contexto}, sin perseguir una aplicación inmediata de los resultados: su aporte consiste en consolidar la evidencia empírica disponible sobre el vínculo entre ambos constructos (Arias, 2021).`;
+
+        let frInstr;
+        if (i1 && i2 && i1 !== i2) {
+            frInstr = `, operacionalizadas en este estudio mediante ${i1} para la medición de ${var1} y ${i2} para ${var2}`;
+        } else if (i1 || i2) {
+            frInstr = `, operacionalizadas mediante ${i1 || i2} y los instrumentos estandarizados correspondientes`;
+        } else {
+            frInstr = `, operacionalizadas mediante instrumentos estandarizados de medición psicológica`;
+        }
+        const p2 = `El enfoque es cuantitativo, pues la aproximación al fenómeno se realiza a través de la medición numérica de las variables${frInstr}, y del análisis de los datos con procedimientos estadísticos descriptivos e inferenciales que permiten contrastar las hipótesis planteadas (Hernández-Sampieri y Mendoza, 2023).`;
+
+        const p3 = `El diseño es no experimental, en tanto las variables no fueron manipuladas ni controladas deliberadamente: se observaron y midieron tal como se manifiestan en su contexto natural, sin intervención del investigador (Hernández-Sampieri y Mendoza, 2023). Asimismo, el alcance es correlacional, ya que el objetivo central consiste en determinar el grado de asociación entre ${var1} ${conj} ${var2} mediante estadística inferencial, documentando la covariación entre los constructos sin pretender, por la propia naturaleza del diseño, el establecimiento de relaciones de causa y efecto (Arias, 2021).`;
+
+        const frN = opciones.n ? ` de los ${opciones.n} participantes` : '';
+        const p4 = `Finalmente, según su temporalidad, corresponde a un estudio de corte transversal, porque los datos${frN} se recolectaron en un único momento: ello permite obtener una caracterización del fenómeno y estimar la asociación entre las variables en ese punto del tiempo, sin requerir un seguimiento longitudinal de la muestra (Cvetković-Vega et al., 2021).`;
+
+        return [p1, p2, p3, p4].join('\n\n');
+    },
+
     // opciones: { dimensiones1, dimensiones2, configuracion }
     generarMarcoMetodologico(var1, var2, unidadAnalisis, lugarContexto, opciones = {}) {
         return {
@@ -422,6 +453,12 @@ const InterpretacionesEstadisticas = {
                     { unidadAnalisis, lugarContexto, sociodemograficos: opciones.sociodemograficos || [] }
                 ),
             hipotesis: this.generarHipotesis(var1, var2, unidadAnalisis, lugarContexto),
+            tipoYDiseno: this.generarTipoYDiseno(var1, var2, {
+                unidadAnalisis, lugarContexto,
+                instrumento1: opciones.instrumento1 || null,
+                instrumento2: opciones.instrumento2 || null,
+                n: opciones.n || null
+            }),
             configuracion: opciones.configuracion || null
         };
     },
