@@ -31,18 +31,82 @@ const ExportadorWord = {
         return `<p style="margin:0 0 0;line-height:200%;text-align:justify;text-indent:0.5in;">${texto}</p>`;
     },
 
+    _secciones: [],
+
+    // Encabezado APA nivel 1 (centrado, negrita) con ancla para el índice.
+    _h1(titulo) {
+        const id = 'sec' + (this._secciones.length + 1);
+        this._secciones.push({ id, t: titulo, nivel: 1 });
+        return `<p style="margin:18pt 0 8pt;line-height:200%;text-align:center;"><a name="${id}"></a><b>${titulo}</b></p>`;
+    },
+
+    // Encabezado APA nivel 2 (izquierda, negrita) con ancla para el índice.
     _seccion(titulo) {
-        return `<p style="margin:14pt 0 6pt;line-height:200%;"><b>${titulo}</b></p>`;
+        const id = 'sec' + (this._secciones.length + 1);
+        this._secciones.push({ id, t: titulo, nivel: 2 });
+        return `<p style="margin:14pt 0 6pt;line-height:200%;"><a name="${id}"></a><b>${titulo}</b></p>`;
+    },
+
+    // Índice con hipervínculos internos (clic → salta a la sección).
+    _indice() {
+        const filas = this._secciones.map(s =>
+            `<p style="margin:0;line-height:200%;${s.nivel === 2 ? 'margin-left:0.5in;' : ''}">
+                <a href="#${s.id}" style="color:black;">${s.t}</a></p>`).join('');
+        return `<p style="margin:0 0 8pt;line-height:200%;text-align:center;"><b>Índice</b></p>${filas}
+                <br style="page-break-after:always;">`;
+    },
+
+    // Referencias en APA 7: orden alfabético y sangría francesa.
+    _referencias() {
+        const refs = [
+            'Arias, J. L. (2021). <i>Diseño y metodología de la investigación</i>. Enfoques Consulting EIRL. https://repositorio.concytec.gob.pe/handle/20.500.12390/2260',
+            'Cohen, J. (2013). <i>Statistical power analysis for the behavioral sciences</i> (2.ª ed.). Routledge. https://doi.org/10.4324/9780203771587',
+            'Cvetković-Vega, A., Maguiña, J. L., Soto, A., Lama-Valdivia, J., & Correa, L. E. (2021). Estudios transversales. <i>Revista de la Facultad de Medicina Humana, 21</i>(1), 164-170. https://doi.org/10.25176/RFMH.v21i1.3069',
+            'Hernández, R., Fernández, C., & Baptista, P. (2010). <i>Metodología de la investigación</i> (5.ª ed.). McGraw-Hill.',
+            'Hernández-Sampieri, R., & Mendoza, C. (2023). <i>Metodología de la investigación: Las rutas cuantitativa, cualitativa y mixta</i>. McGraw-Hill.',
+            'Taherdoost, H. (2022). What are different research approaches? Comprehensive review of qualitative, quantitative, and mixed method research, their applications, types, and limitations. <i>Journal of Management Science & Engineering Research, 5</i>(1), 53-63. https://doi.org/10.30564/jmser.v5i1.4538'
+        ];
+        return refs.map(r =>
+            `<p style="margin:0 0 0;line-height:200%;text-indent:-0.5in;margin-left:0.5in;">${r}</p>`).join('');
     },
 
     generarCapitulo(ctx) {
         this._n = 0;
+        this._secciones = [];
         const I = InterpretacionesEstadisticas;
         const A = AnalizadorEstadistico;
         const datos = A.obtenerDatos() || [];
-        const { var1, var2, et1, et2, resultado, criba, tipoPrueba } = ctx;
-        let h = `<h1 style="font-size:14pt;text-align:center;">Resultados</h1>`;
+        const { var1, var2, et1, et2, resultado, criba, tipoPrueba, marco } = ctx;
+        let h = '';
 
+        // ---- Portada: título de la tesis ----
+        const portada = ctx.tituloTesis
+            ? `<p style="margin:24pt 0;line-height:200%;text-align:center;font-size:14pt;"><b>${ctx.tituloTesis}</b></p>`
+            : '';
+
+        // ---- Marco metodológico completo ----
+        if (marco) {
+            h += this._h1('Marco Metodológico');
+            h += this._seccion('Pregunta de investigación');
+            h += this._p(marco.preguntaInvestigacion);
+            h += this._seccion('Objetivo general');
+            h += this._p(marco.objetivoGeneral);
+            h += this._seccion('Objetivos específicos');
+            (marco.objetivosEspecificos || []).forEach((o, i) => {
+                h += `<p style="margin:0;line-height:200%;text-align:justify;margin-left:0.5in;text-indent:-0.25in;">${i + 1}. ${o}</p>`;
+            });
+            h += this._seccion('Hipótesis de investigación (H₁)');
+            h += this._p(marco.hipotesis.hipotesisInvestigador);
+            h += this._seccion('Hipótesis nula (H₀)');
+            h += this._p(marco.hipotesis.hipotesisNula);
+            if (marco.tipoYDiseno) {
+                h += this._seccion('Tipo y diseño de estudio');
+                marco.tipoYDiseno.split('\n\n').forEach(p => { h += this._p(p); });
+            }
+        }
+
+        // ---- Resultados ----
+        h += this._h1('Resultados');
         // ---- Tabla sociodemográfica ----
         const cats = (typeof obtenerColumnasCategoricas === 'function') ? obtenerColumnasCategoricas(6) : [];
         if (cats.length) {
@@ -130,7 +194,14 @@ const ExportadorWord = {
             h += this._p(I.generarResumenCriba(criba));
         }
 
-        return h;
+
+        // ---- Referencias APA ----
+        h += this._h1('Referencias');
+        h += this._referencias();
+
+        // El índice se arma al final (ya registradas todas las secciones) y se
+        // coloca al inicio, tras la portada.
+        return portada + this._indice() + h;
     },
 
     descargar(ctx) {
