@@ -672,6 +672,8 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
         : '';
 
     mostrarMarcoMetodologico(marco, analisisDimensiones);
+    mostrarTablaSociodemografica();
+    mostrarNiveles(var1, var2, et1, et2);
     mostrarDescriptivas(et1, et2, resultado);
     mostrarFiabilidad(var1, var2); // Cronbach accede a las columnas de ítems: nombres técnicos
     mostrarPruebasNormalidad(et1, et2, resultado);
@@ -1565,6 +1567,110 @@ function mostrarRegresion(var1, var2, resultado) {
                 </table>
                 <p class="marco-text" style="margin-top: 0.75rem;">Por cada unidad que aumenta ${var1}, ${var2} ${sentido} en promedio ${Math.abs(reg.pendiente).toFixed(3)} unidades.</p>
             </div>
+        </div>`;
+    container.style.display = 'block';
+}
+
+// ========================================
+// TABLA SOCIODEMOGRÁFICA Y NIVELES (bajo/medio/alto)
+// ========================================
+
+// Cuantil con interpolación lineal (tipo 7 de R) sobre valores YA ordenados.
+function cuantilLineal(ordenados, p) {
+    const h = (ordenados.length - 1) * p;
+    const lo = Math.floor(h), hi = Math.ceil(h);
+    return ordenados[lo] + (h - lo) * (ordenados[hi] - ordenados[lo]);
+}
+
+// Niveles por TERCILES EMPÍRICOS de la muestra (P33.3 y P66.7): bajo/medio/alto
+// con frecuencia y porcentaje. Devuelve null si hay menos de 3 valores válidos.
+function calcularNivelesDeValores(valores) {
+    const v = valores.filter(Number.isFinite).sort((a, b) => a - b);
+    if (v.length < 3) return null;
+    const c1 = cuantilLineal(v, 1 / 3), c2 = cuantilLineal(v, 2 / 3);
+    const niveles = [
+        { nivel: 'Bajo',  rango: `≤ ${c1.toFixed(2)}`,                    f: v.filter(x => x <= c1).length },
+        { nivel: 'Medio', rango: `${c1.toFixed(2)} – ${c2.toFixed(2)}`,   f: v.filter(x => x > c1 && x <= c2).length },
+        { nivel: 'Alto',  rango: `> ${c2.toFixed(2)}`,                    f: v.filter(x => x > c2).length }
+    ];
+    niveles.forEach(o => { o.pct = 100 * o.f / v.length; });
+    return { niveles, n: v.length, c1, c2 };
+}
+
+// Tabla 1 de la tesis: frecuencias y porcentajes de las variables
+// sociodemográficas (categóricas) detectadas en la base.
+function mostrarTablaSociodemografica() {
+    const container = document.getElementById('resultadosSociodemografica');
+    if (!container) return;
+    const datos = AnalizadorEstadistico.obtenerDatos() || [];
+    const categoricas = obtenerColumnasCategoricas(6);
+    if (datos.length === 0 || categoricas.length === 0) {
+        container.style.display = 'none'; container.innerHTML = ''; return;
+    }
+
+    let filas = '';
+    categoricas.forEach(col => {
+        const conteo = new Map();
+        datos.forEach(d => {
+            const k = String(d[col] ?? '').trim();
+            if (k) conteo.set(k, (conteo.get(k) || 0) + 1);
+        });
+        const total = [...conteo.values()].reduce((a, b) => a + b, 0);
+        const cats = [...conteo.entries()].sort((a, b) => b[1] - a[1]);
+        filas += `<tr><td rowspan="${cats.length}" style="vertical-align: top;"><strong>${col}</strong></td>` +
+            cats.map(([cat, f], i) =>
+                `${i === 0 ? '' : '<tr>'}<td>${cat}</td><td>${f}</td><td>${(100 * f / total).toFixed(1)}%</td></tr>`
+            ).join('');
+    });
+
+    container.innerHTML = `
+        <div class="result-section">
+            <h3 class="section-title">👥 Características Sociodemográficas de la Muestra</h3>
+            <p class="result-subtitle">Distribución de frecuencias (f) y porcentajes (%) de las variables de
+            caracterización. Corresponde a la clásica Tabla 1 del capítulo de resultados.</p>
+            <div class="result-box"><div class="table-container">
+                <table class="table">
+                    <thead><tr><th>Variable</th><th>Categoría</th><th>f</th><th>%</th></tr></thead>
+                    <tbody>${filas}</tbody>
+                </table>
+            </div>
+            <p class="help-text">N = ${datos.length}. Los porcentajes se calculan sobre los casos con dato válido en cada variable.</p>
+            </div>
+        </div>`;
+    container.style.display = 'block';
+}
+
+// Niveles descriptivos (bajo/medio/alto) de las dos variables analizadas.
+function mostrarNiveles(var1, var2, et1, et2) {
+    const container = document.getElementById('resultadosNiveles');
+    if (!container) return;
+    const datos = AnalizadorEstadistico.obtenerDatos() || [];
+    if (datos.length === 0) { container.style.display = 'none'; return; }
+
+    const bloque = (col, etiqueta) => {
+        const r = calcularNivelesDeValores(datos.map(d => +d[col]));
+        if (!r) return '';
+        return `
+            <div class="result-box" style="margin-top: 0.75rem;">
+                <h4>Niveles de ${etiqueta}</h4>
+                <div class="table-container"><table class="table">
+                    <thead><tr><th>Nivel</th><th>Rango de puntajes</th><th>f</th><th>%</th></tr></thead>
+                    <tbody>${r.niveles.map(o =>
+                        `<tr><td><strong>${o.nivel}</strong></td><td>${o.rango}</td><td>${o.f}</td><td>${o.pct.toFixed(1)}%</td></tr>`
+                    ).join('')}</tbody>
+                </table></div>
+            </div>`;
+    };
+
+    const b1 = bloque(var1, et1), b2 = bloque(var2, et2);
+    if (!b1 && !b2) { container.style.display = 'none'; return; }
+    container.innerHTML = `
+        <div class="result-section">
+            <h3 class="section-title">📶 Niveles Descriptivos de las Variables</h3>
+            <p class="result-subtitle">Clasificación de los participantes en niveles bajo, medio y alto. Los puntos de
+            corte corresponden a los terciles empíricos de la muestra (percentiles 33.3 y 66.7), criterio habitual
+            cuando el instrumento no aporta baremos normativos propios.</p>
+            ${b1}${b2}
         </div>`;
     container.style.display = 'block';
 }
