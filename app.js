@@ -490,7 +490,17 @@ function cargarArchivoCSV(e) {
                 EtiquetasVariables.limpiar();
                 EtiquetasVariables.mostrarEditor('editorEtiquetas', obtenerColumnasNumericas(datos), function () {
                     poblarSelectsVariables(AnalizadorEstadistico.obtenerDatos());
-                    mostrarToast('Etiquetas aplicadas: los textos del análisis usarán los nuevos nombres', 'success');
+                    // Si ya hay un análisis en pantalla y las dos variables siguen
+                    // seleccionadas, se regenera solo con los nuevos nombres.
+                    const marcoVisible = document.getElementById('marcoMetodologicoContainer');
+                    const v1 = document.getElementById('variable1').value;
+                    const v2 = document.getElementById('variable2').value;
+                    if (marcoVisible && marcoVisible.style.display !== 'none' && v1 && v2) {
+                        ejecutarAnalisis();
+                        mostrarToast('Etiquetas aplicadas: el reporte se regeneró con los nuevos nombres', 'success');
+                    } else {
+                        mostrarToast('Etiquetas aplicadas: los textos del análisis usarán los nuevos nombres', 'success');
+                    }
                 });
             }
 
