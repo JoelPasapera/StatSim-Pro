@@ -684,7 +684,8 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
         : '';
 
     // Contexto del último análisis (lo consume el exportador a Word)
-    window.ultimoAnalisis = { var1, var2, et1, et2, resultado, marco, criba, tipoPrueba, unidadAnalisis, lugarContexto };
+    const tituloTesis = (document.getElementById('tituloTesis') || { value: '' }).value.trim();
+    window.ultimoAnalisis = { var1, var2, et1, et2, resultado, marco, criba, tipoPrueba, unidadAnalisis, lugarContexto, tituloTesis };
 
     mostrarMarcoMetodologico(marco, analisisDimensiones);
     mostrarTablaSociodemografica();
