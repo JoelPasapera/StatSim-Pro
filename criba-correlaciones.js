@@ -1,151 +1,160 @@
 // ========================================
-// CRIBA VECTORIZADA DE CORRELACIONES
-// Evalúa MUCHOS pares candidatos a bajo costo para seleccionar los objetivos
-// específicos EN FUNCIÓN DE LOS DATOS, y deja el reporte fino de los elegidos
-// al motor estadístico validado (cero duplicación de matemática reportada).
-//
-// Eficiencia (n = casos, c = columnas distintas, m = pares):
-//   · Extracción de columnas a Float64Array (memoria contigua): O(n·c), UNA vez
-//   · Normalidad: UNA por columna (caché), no por par → 2m pruebas pasan a ser c
-//   · Rangos de Spearman: UNA por columna (caché), O(n log n)
-//   · Coeficiente por par: UNA pasada fusionada de 5 acumuladores, O(n), sin
-//     arreglos intermedios
-//   · Selección top-k: una pasada con inserción acotada (k constante), O(m)
-// Total: O(c·n log n + m·n), frente al ingenuo O(m·(n log n + normalidades)).
+// CRIBA SOCIODEMOGRÁFICA (hallazgos según variables de caracterización)
+// Para cada dato sociodemográfico detectado en la base, evalúa su relación
+// con las DOS variables del análisis usando la prueba correcta:
+//   · Categórico con 2 grupos → comparación de medias (t de Student o
+//     U de Mann-Whitney según normalidad; motor validado del analizador),
+//     con el tamaño del efecto apropiado (d de Cohen o r de rangos).
+//   · Numérico (p. ej., Edad) → correlación (Pearson/Spearman automático).
+//   · Categórico con 3+ grupos → se informa que requiere ANOVA/Kruskal-Wallis
+//     (función planificada), sin inventar pruebas.
+// Toda la familia de p-valores se ajusta con la corrección de Holm.
+// Eficiencia: clasificación de columnas en UNA pasada, extracción de valores
+// una vez por par, y cero matemática propia (reutiliza el motor validado).
 // ========================================
 
-const CribaCorrelaciones = {
+const CribaSociodemografica = {
 
-    // CONFIGURACIÓN (hardcodeada y conmutable al instante):
-    // Umbral mínimo de |r| para que un par sea candidato a objetivo específico.
-    // Cohen (1988): |r| ≥ .10 efecto pequeño (mínimo reportable), .30 mediano, .50 grande.
-    UMBRAL_ABS: 0.10,
-    // Máximo de objetivos específicos correlacionales a seleccionar.
-    MAX_OBJETIVOS: 5,
-    // ¿El umbral EXCLUYE de la selección?
-    //   false → se eligen los mejores |r| hasta MAX_OBJETIVOS aunque no lleguen
-    //           al umbral (este queda como referencia informativa en la tabla)
-    //   true  → solo entran pares con |r| ≥ UMBRAL_ABS
-    SELECCION_ESTRICTA: false,
+    _esEscala: col => /^(total|dimension|general|pc)_/i.test(col),
+    _esItem: col => /^[A-Za-z]{1,6}\d+$/.test(col),
 
-    // datos: arreglo de filas {col: valor}; pares: [{columnaX, columnaY, ...meta}];
-    // analizador: instancia con evaluarNormalidad(valores).
-    // Devuelve { evaluados (orden |r| desc), seleccionados (≤ MAX), umbral, maximo }.
-    cribar(datos, pares, analizador) {
-        const n = (datos || []).length;
-        const cacheCol = new Map();    // col -> Float64Array | null (no-finitos)
-        const cacheNorm = new Map();   // col -> boolean
-        const cacheRangos = new Map(); // col -> Float64Array (rango medio en empates)
-
-        // Columna como memoria contigua; null si tiene valores no numéricos.
-        const columna = (col) => {
-            if (cacheCol.has(col)) return cacheCol.get(col);
-            const v = new Float64Array(n);
-            let ok = n >= 3;
-            for (let i = 0; i < n && ok; i++) {
-                const x = +datos[i][col];
-                if (Number.isFinite(x)) v[i] = x; else ok = false;
+    // Clasifica las columnas sociodemográficas: categóricas (con sus niveles)
+    // y numéricas. Excluye ID, escalas e ítems.
+    detectarSocios(datos, excluir) {
+        if (!datos || !datos.length) return [];
+        const socios = [];
+        Object.keys(datos[0]).forEach(col => {
+            if (col === 'ID' || this._esEscala(col) || this._esItem(col) || excluir.includes(col)) return;
+            const muestra = datos[0][col];
+            // Categórica = texto que NO es un número completo ('3ro' es texto:
+            // parseFloat lo confundiría con 3, por eso se usa conversión total).
+            if (typeof muestra === 'string' && !Number.isFinite(+muestra)) {
+                const niveles = [...new Set(datos.map(d => String(d[col] ?? '').trim()).filter(Boolean))];
+                if (niveles.length >= 2) socios.push({ col, tipo: 'categorica', niveles });
+            } else if (Number.isFinite(+muestra)) {
+                socios.push({ col, tipo: 'numerica' });
             }
-            const res = ok ? v : null;
-            cacheCol.set(col, res);
-            return res;
-        };
+        });
+        return socios;
+    },
 
-        // Normalidad evaluada UNA sola vez por columna.
-        const esNormal = (col) => {
-            if (cacheNorm.has(col)) return cacheNorm.get(col);
-            const v = columna(col);
-            let r = false;
-            if (v) {
-                try { r = !!analizador.evaluarNormalidad(Array.from(v)).normal; }
-                catch (e) { r = false; }
-            }
-            cacheNorm.set(col, r);
-            return r;
-        };
+    // Ejecuta todas las pruebas pertinentes y ajusta los p por Holm.
+    analizar(var1, var2, et1, et2) {
+        const A = AnalizadorEstadistico;
+        const datos = A.obtenerDatos() || [];
+        const socios = this.detectarSocios(datos, [var1, var2]);
+        if (!socios.length) return null;
 
-        // Rangos (para Spearman = Pearson sobre rangos, con rango medio en empates).
-        const rangos = (col) => {
-            if (cacheRangos.has(col)) return cacheRangos.get(col);
-            const v = columna(col);
-            const idx = new Uint32Array(n);
-            for (let i = 0; i < n; i++) idx[i] = i;
-            // Orden de índices por valor (TypedArray: sin objetos intermedios)
-            Array.prototype.sort.call(idx, (a, b) => v[a] - v[b]);
-            const rg = new Float64Array(n);
-            let i = 0;
-            while (i < n) {
-                let j = i;
-                while (j + 1 < n && v[idx[j + 1]] === v[idx[i]]) j++;
-                const rangoMedio = (i + j) / 2 + 1;
-                for (let k = i; k <= j; k++) rg[idx[k]] = rangoMedio;
-                i = j + 1;
-            }
-            cacheRangos.set(col, rg);
-            return rg;
-        };
+        const I = InterpretacionesEstadisticas;
+        const filas = [];
+        const pares = [[var1, et1], [var2, et2]];
 
-        // Pearson en UNA pasada fusionada (5 acumuladores, cero arreglos extra).
-        const pearson = (x, y) => {
-            let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-            for (let i = 0; i < n; i++) {
-                const a = x[i], b = y[i];
-                sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
-            }
-            const num = n * sxy - sx * sy;
-            const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
-            return den === 0 ? 0 : num / den;
-        };
-
-        // Evaluar todos los pares candidatos
-        const evaluados = (pares || []).map(par => {
-            const x = columna(par.columnaX), y = columna(par.columnaY);
-            if (!x || !y) {
-                return Object.assign({}, par, { valido: false, coeficiente: NaN, metodo: null, superaUmbral: false });
-            }
-            const usarPearson = esNormal(par.columnaX) && esNormal(par.columnaY);
-            const coef = usarPearson
-                ? pearson(x, y)
-                : pearson(rangos(par.columnaX), rangos(par.columnaY));
-            return Object.assign({}, par, {
-                valido: true,
-                metodo: usarPearson ? 'Pearson' : 'Spearman',
-                coeficiente: coef,
-                superaUmbral: Math.abs(coef) >= this.UMBRAL_ABS
+        socios.forEach(socio => {
+            pares.forEach(([v, et]) => {
+                try {
+                    if (socio.tipo === 'numerica') {
+                        const r = A.calcularCorrelacion(socio.col, v);
+                        filas.push({
+                            socio: socio.col, variable: et, tipo: 'correlacion',
+                            prueba: I._esSpearman(r.tipoCorrelacion) ? 'Spearman (ρ)' : 'Pearson (r)',
+                            valor: r.coeficiente.toFixed(3), p: r.pValor,
+                            efecto: `${r.interpretacion.fuerza} (${r.interpretacion.direccion})`,
+                            detalle: ''
+                        });
+                    } else if (socio.niveles.length === 2) {
+                        const [n1, n2] = socio.niveles;
+                        const g1 = [], g2 = [];
+                        datos.forEach(d => {
+                            const x = +d[v];
+                            if (!Number.isFinite(x)) return;
+                            if (String(d[socio.col]).trim() === n1) g1.push(x);
+                            else if (String(d[socio.col]).trim() === n2) g2.push(x);
+                        });
+                        if (g1.length < 3 || g2.length < 3) return;
+                        const c = A.compararGrupos(g1, g2, n1, n2);
+                        const est = c.prueba.estadistico ?? c.prueba.t ?? c.prueba.U;
+                        const ef = c.tamanoEfectoRangos
+                            ? `r de rangos = ${c.tamanoEfectoRangos.r.toFixed(2)} (${c.tamanoEfectoRangos.interpretacion})`
+                            : `d de Cohen = ${c.tamanoEfecto.d.toFixed(2)} (${c.tamanoEfecto.interpretacion})`;
+                        const mayor = c.descriptivas1.media >= c.descriptivas2.media ? n1 : n2;
+                        filas.push({
+                            socio: socio.col, variable: et, tipo: 'comparacion',
+                            prueba: c.prueba.prueba,
+                            valor: Number.isFinite(est) ? (+est).toFixed(3) : '—',
+                            p: c.prueba.pValor, efecto: ef,
+                            detalle: `media mayor: ${mayor}`
+                        });
+                    } else {
+                        filas.push({
+                            socio: socio.col, variable: et, tipo: 'pendiente',
+                            prueba: `${socio.niveles.length} grupos`, valor: '—', p: null,
+                            efecto: '—', detalle: 'Requiere ANOVA/Kruskal-Wallis (próximamente)'
+                        });
+                    }
+                } catch (e) { /* par no calculable: se omite sin romper la sección */ }
             });
         });
+        if (!filas.length) return null;
 
-        // Selección top-k por |r| RESPETANDO PRIORIDADES: los pares con
-        // prioridad 1 (dimensión ↔ escala general) entran SÍ O SÍ primero,
-        // de mayor a menor |r|; los de prioridad 2 (dimensión ↔ dimensión)
-        // completan los cupos restantes. Inserción acotada por nivel: O(m).
-        const k = this.MAX_OBJETIVOS;
-        const seleccionados = [];
-        const niveles = [...new Set(evaluados.map(e => e.prioridad || 1))].sort((a, b) => a - b);
-        for (const nivel of niveles) {
-            if (seleccionados.length >= k) break;
-            const cupo = k; // la lista global no puede exceder k
-            const delNivel = [];
-            for (const e of evaluados) {
-                if (!e.valido || (this.SELECCION_ESTRICTA && !e.superaUmbral) || (e.prioridad || 1) !== nivel) continue;
-                let pos = delNivel.length;
-                while (pos > 0 && Math.abs(delNivel[pos - 1].coeficiente) < Math.abs(e.coeficiente)) pos--;
-                if (pos < cupo - seleccionados.length) {
-                    delNivel.splice(pos, 0, e);
-                    if (delNivel.length > cupo - seleccionados.length) delNivel.pop();
-                }
-            }
-            seleccionados.push(...delNivel);
-        }
-        seleccionados.forEach(s => { s.seleccionado = true; });
+        // Holm sobre la familia completa de pruebas efectivamente realizadas
+        const conP = filas.filter(f => Number.isFinite(f.p));
+        const holm = AnalizadorEstadistico.ajustarPValoresHolm(conP.map(f => f.p));
+        conP.forEach((f, i) => { f.pHolm = holm[i]; f.sig = holm[i] < 0.05; });
 
-        // Orden descendente por |r| solo para PRESENTAR la criba (m es pequeño)
-        evaluados.sort((a, b) => (Math.abs(b.coeficiente) || 0) - (Math.abs(a.coeficiente) || 0));
+        return { filas, totalPruebas: conP.length };
+    },
 
-        return { evaluados, seleccionados, umbral: this.UMBRAL_ABS, maximo: k, n };
+    // Síntesis en prosa de los hallazgos (la consumen la web y el Word).
+    sintetizar(res) {
+        const sig = res.filas.filter(f => f.sig);
+        let t = `Se realizaron ${res.totalPruebas} pruebas (correlaciones para sociodemográficos numéricos; comparaciones de dos grupos para los categóricos), con corrección de Holm para la familia completa. `;
+        t += sig.length
+            ? `Hallazgos significativos tras el ajuste: ${sig.map(f => `${f.socio} ↔ ${f.variable}${f.detalle ? ` (${f.detalle})` : ''}`).join('; ')}.`
+            : `Ningún hallazgo alcanzó significancia tras el ajuste: las variables del estudio no muestran diferencias ni asociaciones detectables según los datos sociodemográficos disponibles.`;
+        return t;
+    },
+
+    // Render de la sección web.
+    mostrar(var1, var2, et1, et2) {
+        const container = document.getElementById('resultadosHallazgosSocio');
+        if (!container) return;
+        const res = this.analizar(var1, var2, et1, et2);
+        if (!res) { container.style.display = 'none'; container.innerHTML = ''; return; }
+
+        const I = InterpretacionesEstadisticas;
+        const filasHtml = res.filas.map(f => `
+            <tr>
+                <td><strong>${f.socio}</strong></td>
+                <td>${f.variable}</td>
+                <td>${f.prueba}</td>
+                <td>${f.valor}</td>
+                <td>${Number.isFinite(f.p) ? I._fmtP(f.p) : '—'}</td>
+                <td>${Number.isFinite(f.pHolm) ? I._fmtP(f.pHolm) : '—'}</td>
+                <td>${f.efecto}</td>
+                <td>${f.tipo === 'pendiente' ? f.detalle : (f.sig ? `✅ Significativa${f.detalle ? ' — ' + f.detalle : ''}` : '➖ No significativa')}</td>
+            </tr>`).join('');
+
+        const sintesis = this.sintetizar(res);
+
+        container.innerHTML = `
+            <div class="result-section">
+                <h3 class="section-title">🔎 Hallazgos según Variables Sociodemográficas</h3>
+                <p class="result-subtitle">Exploración sistemática de cada dato sociodemográfico frente a las variables
+                del estudio, con la prueba estadística apropiada a su naturaleza y la decisión basada en el p ajustado
+                (corrección de Holm para comparaciones múltiples).</p>
+                <div class="result-box">
+                    <div class="table-container"><table class="table">
+                        <thead><tr><th>Sociodemográfico</th><th>Variable</th><th>Prueba</th><th>Estadístico/Coef.</th>
+                        <th>p</th><th>p (Holm)</th><th>Tamaño del efecto</th><th>Decisión</th></tr></thead>
+                        <tbody>${filasHtml}</tbody>
+                    </table></div>
+                    <p style="margin: 0.6rem 0 0;">${sintesis}</p>
+                </div>
+            </div>`;
+        container.style.display = 'block';
     }
 };
 
 if (typeof window !== 'undefined') {
-    window.CribaCorrelaciones = CribaCorrelaciones;
+    window.CribaSociodemografica = CribaSociodemografica;
 }
