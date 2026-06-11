@@ -81,13 +81,13 @@ const ExportadorWord = {
     _tablaAPA(titulo, headers, filas, nota) {
         this._n += 1;
         const th = headers.map(h =>
-            `<td style="border-top:1pt solid black;border-bottom:1pt solid black;padding:4pt 6pt;font-weight:bold;">${h}</td>`).join('');
+            `<td style="border-top:1pt solid black;border-bottom:1pt solid black;padding:3pt 4pt;font-weight:bold;">${h}</td>`).join('');
         const tr = filas.map((f, i) => '<tr>' + f.map(c =>
-            `<td style="padding:3pt 6pt;${i === filas.length - 1 ? 'border-bottom:1pt solid black;' : ''}">${c}</td>`).join('') + '</tr>').join('');
+            `<td style="padding:2pt 4pt;${i === filas.length - 1 ? 'border-bottom:1pt solid black;' : ''}">${c}</td>`).join('') + '</tr>').join('');
         return `
             <p style="margin:14pt 0 0;line-height:200%;"><b>Tabla ${this._n}</b></p>
             <p style="margin:0 0 6pt;line-height:200%;"><i>${titulo}</i></p>
-            <table style="border-collapse:collapse;width:100%;font-size:12pt;line-height:115%;">
+            <table width="100%" cellspacing="0" style="border-collapse:collapse;font-size:11pt;line-height:115%;">
                 <tr>${th}</tr>${tr}
             </table>
             ${nota ? `<p style="margin:4pt 0 0;font-size:11pt;line-height:150%;"><i>Nota.</i> ${nota}</p>` : ''}`;
@@ -362,7 +362,7 @@ const ExportadorWord = {
             xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
             <head><meta charset="utf-8"><title>Capítulo de Resultados</title>
             <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-            <style>body{font-family:"Times New Roman",serif;font-size:12pt;} table{mso-table-layout-alt:fixed;}</style>
+            <style>body{font-family:"Times New Roman",serif;font-size:12pt;} </style>
             </head><body>${cuerpo}</body></html>`;
         const blob = new Blob(['\ufeff' + doc], { type: 'application/msword' });
         const a = document.createElement('a');
