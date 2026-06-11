@@ -126,11 +126,9 @@ const ExportadorWord = {
     _referencias() {
         const refs = [
             'Arias, J. L. (2021). <i>Diseño y metodología de la investigación</i>. Enfoques Consulting EIRL. https://repositorio.concytec.gob.pe/handle/20.500.12390/2260',
-            'Cohen, J. (2013). <i>Statistical power analysis for the behavioral sciences</i> (2.ª ed.). Routledge. https://doi.org/10.4324/9780203771587',
+            'Cohen, J. (1988). <i>Statistical power analysis for the behavioral sciences</i> (2.ª ed.). Lawrence Erlbaum Associates.',
             'Cvetković-Vega, A., Maguiña, J. L., Soto, A., Lama-Valdivia, J., & Correa, L. E. (2021). Estudios transversales. <i>Revista de la Facultad de Medicina Humana, 21</i>(1), 164-170. https://doi.org/10.25176/RFMH.v21i1.3069',
-            'Hernández, R., Fernández, C., & Baptista, P. (2010). <i>Metodología de la investigación</i> (5.ª ed.). McGraw-Hill.',
-            'Hernández-Sampieri, R., & Mendoza, C. (2023). <i>Metodología de la investigación: Las rutas cuantitativa, cualitativa y mixta</i>. McGraw-Hill.',
-            'Taherdoost, H. (2022). What are different research approaches? Comprehensive review of qualitative, quantitative, and mixed method research, their applications, types, and limitations. <i>Journal of Management Science & Engineering Research, 5</i>(1), 53-63. https://doi.org/10.30564/jmser.v5i1.4538'
+            'Hernández-Sampieri, R., & Mendoza, C. (2023). <i>Metodología de la investigación: Las rutas cuantitativa, cualitativa y mixta</i>. McGraw-Hill.'
         ];
         return refs.map(r =>
             `<p style="margin:0 0 0;line-height:200%;text-indent:-0.5in;margin-left:0.5in;">${r}</p>`).join('');
@@ -169,7 +167,7 @@ const ExportadorWord = {
 
         const intro = `El estudio de la relación entre ${et1} ${I._conj(et2)} ${et2} resulta relevante para la psicología, pues aporta evidencia empírica sobre la asociación entre constructos centrales del funcionamiento psicológico y orienta futuras intervenciones e investigaciones en la población de interés.`;
         const objetivo = marco ? marco.objetivoGeneral : `Determinar la relación entre ${et1} y ${et2}.`;
-        const instr = (i1 && i2) ? ` Las variables se midieron mediante ${i1} (${et1}) y ${i2} (${et2}).` : ` Las variables se midieron mediante instrumentos estandarizados.`;
+        const instr = (i1 && i2) ? ` Las variables se midieron mediante ${i1} (${et1}) y ${i2} (${et2}).` : ` Las variables se midieron mediante [INSTRUMENTO DE LA V1 (AUTOR, AÑO); confiabilidad α = __] y [INSTRUMENTO DE LA V2 (AUTOR, AÑO); α = __].`;
         const metodos = `Investigación de tipo básica, enfoque cuantitativo, diseño no experimental, alcance correlacional y corte transversal, con una muestra de ${n} participantes.${instr} El análisis comprendió pruebas de normalidad, el coeficiente de ${esSp ? 'Spearman' : 'Pearson'} y la corrección de Holm para los objetivos específicos.`;
 
         let resul = `${resultado.normalidad1.normal && resultado.normalidad2.normal ? 'Ambas variables cumplieron el supuesto de normalidad' : 'Al menos una variable se desvió de la normalidad'}, por lo que se aplicó ${esSp ? 'Spearman' : 'Pearson'}. Se obtuvo ${sim}(${gl}) = ${resultado.coeficiente.toFixed(3)}, ${fp(resultado.pValor)}${ic ? `, IC 95% [${ic.inferior.toFixed(2)}, ${ic.superior.toFixed(2)}]` : ''}, correlación ${resultado.interpretacion.fuerza} ${resultado.interpretacion.direccion}.`;
@@ -210,7 +208,7 @@ const ExportadorWord = {
                     <td ${tdS}>${celda(m.hipotesis)}</td><td ${tdS}>${celda(m.variables)}</td>
                     <td ${tdS}>${celda(m.metodologia)}</td></tr>
             </table>
-            <p style="margin:4pt 0 0;font-size:10pt;line-height:140%;"><i>Nota.</i> Generada desde el marco del estudio: la correspondencia entre problema, objetivos, hipótesis, variables y metodología está garantizada por construcción.</p>`;
+            <p style="margin:4pt 0 0;font-size:10pt;line-height:140%;"><i>Nota.</i> Elaboración propia a partir del diseño metodológico del estudio.</p>`;
     },
 
     generarCapitulo(ctx) {
@@ -292,9 +290,9 @@ const ExportadorWord = {
                 ['Estadístico', et1, et2],
                 [['N', resultado.n, resultado.n],
                  ['Media (M)', fmt(d1.media), fmt(d2.media)],
-                 ['Desviación estándar (DE)', fmt(d1.desviacionEstandar), fmt(d2.desviacionEstandar)],
-                 ['Mínimo', fmt(d1.minimo), fmt(d2.minimo)],
-                 ['Máximo', fmt(d1.maximo), fmt(d2.maximo)],
+                 ['Desviación estándar (DE)', fmt(d1.desviacion ?? d1.desviacionEstandar), fmt(d2.desviacion ?? d2.desviacionEstandar)],
+                 ['Mínimo', fmt(d1.minimo ?? d1.min), fmt(d2.minimo ?? d2.min)],
+                 ['Máximo', fmt(d1.maximo ?? d1.max), fmt(d2.maximo ?? d2.max)],
                  ['Asimetría', fmt(d1.asimetria), fmt(d2.asimetria)],
                  ['Curtosis', fmt(d1.curtosis), fmt(d2.curtosis)]], null);
         }
