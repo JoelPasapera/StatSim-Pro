@@ -431,7 +431,7 @@ class GeneradorDatos {
             // Generar datos sociodemográficos según su distribución
             this.configuracion.sociodemograficos.forEach(socio => {
                 const driver = drivers['socio:' + socio.categoriaCorta];
-                participante[socio.categoriaCorta] = this.generarValorSociodemografico(
+                participante[socio.categoria] = this.generarValorSociodemografico(
                     socio, driver !== undefined ? driver : null
                 );
             });
@@ -829,7 +829,7 @@ class GeneradorDatos {
             const agrup = this.configuracion.sociodemograficos.find(s => s.categoria === dif.agrupacion);
             if (!agrup) return;
 
-            const codigo = participante[agrup.categoriaCorta];
+            const codigo = participante[agrup.categoria];
             let codigoMedio;
             if (agrup.distribucion === 'binaria') {
                 codigoMedio = 0.5;
@@ -889,12 +889,12 @@ class GeneradorDatos {
 
             const socio = this.configuracion.sociodemograficos.find(s => s.categoria === dif.cuantitativa);
             if (socio) {
-                let v = participante[socio.categoriaCorta] + dif.d * socio.desviacion * (codigo - codigoMedio);
+                let v = participante[socio.categoria] + dif.d * socio.desviacion * (codigo - codigoMedio);
                 if (socio.minimo !== null && socio.maximo !== null) {
                     v = Math.max(socio.minimo, Math.min(socio.maximo, v));
                 }
                 const factor = Math.pow(10, socio.decimales);
-                participante[socio.categoriaCorta] = Math.round(v * factor) / factor;
+                participante[socio.categoria] = Math.round(v * factor) / factor;
             }
         });
     }
