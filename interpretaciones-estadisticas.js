@@ -346,6 +346,17 @@ const InterpretacionesEstadisticas = {
         return (seleccionados || []).map((sel, i) => this.generarObjetivoDeParSeleccionado(sel, i, contexto));
     },
 
+    // Hipótesis específicas derivadas de los objetivos específicos (para la
+    // matriz de consistencia y, después, el Word). Transformación lingüística:
+    // correlacionales → "Existe una relación..."; comparativos → "Existen diferencias...".
+    generarHipotesisEspecificas(objetivos) {
+        return (objetivos || []).map(o => o
+            .replace(/^(Identificar|Establecer|Precisar|Determinar|Indicar|Examinar)\s+(la relación|el vínculo)( existente)? entre\s*/i,
+                'Existe una relación estadísticamente significativa entre ')
+            .replace(/^(Analizar las diferencias|Comparar los niveles)\s+de\s*/i,
+                'Existen diferencias estadísticamente significativas en '));
+    },
+
     // Resumen profesional del proceso de criba (selección de objetivos por datos).
     // criba: salida de CribaCorrelaciones.cribar.
     generarResumenCriba(criba) {
