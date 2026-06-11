@@ -48,10 +48,24 @@ const MatrizConsistencia = {
             problema: [marco.preguntaInvestigacion],
             objetivos,
             hipotesis,
-            variables: [
-                { rotulo: 'V1', texto: variableDe(et1, p1) },
-                { rotulo: 'V2', texto: variableDe(et2, p2) }
-            ],
+            variables: (() => {
+                const vs = [
+                    { rotulo: 'V1', texto: variableDe(et1, p1) },
+                    { rotulo: 'V2', texto: variableDe(et2, p2) }
+                ];
+                // CSV externo sin estructura: listar las columnas Dimension_*
+                // (con sus etiquetas renombradas) como dimensiones en estudio.
+                if (!p1 && !p2 && typeof AnalizadorEstadistico !== 'undefined') {
+                    const datos = AnalizadorEstadistico.obtenerDatos() || [];
+                    if (datos.length) {
+                        const dims = Object.keys(datos[0])
+                            .filter(c => /^dimension_/i.test(c))
+                            .map(c => (E ? E.etiqueta(c) : c));
+                        if (dims.length) vs.push({ rotulo: 'Dimensiones en estudio', texto: dims.join(', ') + '.' });
+                    }
+                }
+                return vs;
+            })(),
             metodologia: [
                 'Tipo: básica', 'Enfoque: cuantitativo', 'Diseño: no experimental',
                 'Alcance: correlacional', 'Corte: transversal',
