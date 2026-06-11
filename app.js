@@ -690,6 +690,12 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     mostrarMarcoMetodologico(marco, analisisDimensiones);
     mostrarTablaSociodemografica();
     mostrarNiveles(var1, var2, et1, et2);
+    if (typeof CribaSociodemografica !== 'undefined') {
+        try { CribaSociodemografica.mostrar(var1, var2, et1, et2); }
+        catch (e) { console.error('Hallazgos sociodemográficos: error al generar la sección →', e); }
+    } else {
+        console.warn('criba-sociodemografica.js NO está cargado: la sección de hallazgos sociodemográficos no se mostrará. Verifica que el archivo esté subido y que index.html lo incluya.');
+    }
     mostrarDescriptivas(et1, et2, resultado);
     mostrarFiabilidad(var1, var2); // Cronbach accede a las columnas de ítems: nombres técnicos
     mostrarPruebasNormalidad(et1, et2, resultado);
