@@ -762,6 +762,7 @@
                 <!-- Tabla 1 (sociodemográfica) y niveles descriptivos -->
                 <div id="resultadosSociodemografica" style="display: none;"></div>
                 <div id="resultadosNiveles" style="display: none;"></div>
+                <div id="resultadosHallazgosSocio" style="display: none;"></div>
 
                 <!-- Estadísticos descriptivos -->
                 <div id="resultadosDescriptivas" style="display: none;"></div>
@@ -926,35 +927,45 @@
     <!-- d3 vendorizado: lo requiere graficas.js, debe cargarse antes -->
     <script src="d3.v7.min.js"></script>
 
+    <!-- ============================================================
+         VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
+         Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
+         (ej: app.js?v=2 → app.js?v=3). Eso obliga a navegadores y CDN
+         a descargar la versión nueva al instante. Sin esto, la caché
+         puede servir archivos viejos hasta ~10 minutos o más.
+         ============================================================ -->
     <!-- Scripts generador de datos -->
-    <script src="generador-datos.js"></script>
+    <script src="generador-datos.js?v=2"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
-    <script src="etiquetas-variables.js"></script>
+    <script src="etiquetas-variables.js?v=2"></script>
 
     <!-- Analizador estadístico principal -->
-    <script src="analizador-estadistico.js"></script>
+    <script src="analizador-estadistico.js?v=2"></script>
 
     <!-- Módulo de interpretaciones estadísticas -->
-    <script src="interpretaciones-estadisticas.js"></script>
+    <script src="interpretaciones-estadisticas.js?v=2"></script>
 
     <!-- Criba vectorizada de correlaciones (selección de objetivos por datos) -->
-    <script src="criba-correlaciones.js"></script>
+    <script src="criba-correlaciones.js?v=2"></script>
 
     <!-- Correlaciones por dimensiones (objetivos específicos) -->
-    <script src="analisis-dimensiones.js"></script>
+    <script src="analisis-dimensiones.js?v=2"></script>
+
+    <!-- Hallazgos por variables sociodemográficas -->
+    <script src="criba-sociodemografica.js?v=2"></script>
 
     <!-- Exportador del capítulo de resultados a Word (APA 7) -->
-    <script src="exportador-word.js"></script>
+    <script src="exportador-word.js?v=2"></script>
 
     <!-- Librería de gráficos científicos (depende de d3) -->
-    <script src="graficas.js"></script>
+    <script src="graficas.js?v=2"></script>
 
     <!-- Guía de coherencia en vivo (usa ReglasCoherencia de generador-datos.js) -->
-    <script src="guia-coherencia.js"></script>
+    <script src="guia-coherencia.js?v=2"></script>
 
     <!-- Código de app.js -->
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
 </body>
 
 </html>
