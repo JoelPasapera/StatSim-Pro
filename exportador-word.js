@@ -317,6 +317,21 @@ const ExportadorWord = {
         }
 
 
+        // ---- Hallazgos según variables sociodemográficas ----
+        if (typeof CribaSociodemografica !== 'undefined') {
+            const hs = CribaSociodemografica.analizar(var1, var2, et1, et2);
+            if (hs && hs.filas.length) {
+                const fpH = p => Number.isFinite(p) ? fp(p) : '—';
+                h += this._seccion('Hallazgos según variables sociodemográficas');
+                h += this._tablaAPA('Pruebas de asociación y comparación según variables sociodemográficas',
+                    ['Sociodemográfico', 'Variable', 'Prueba', 'Estadístico', 'p', 'p (Holm)', 'Tamaño del efecto', 'Decisión'],
+                    hs.filas.map(f => [f.socio, f.variable, f.prueba, f.valor, fpH(f.p), fpH(f.pHolm), f.efecto,
+                        f.tipo === 'pendiente' ? f.detalle : (f.sig ? `Significativa${f.detalle ? ' (' + f.detalle + ')' : ''}` : 'No significativa')]),
+                    'Correlaciones para sociodemográficos numéricos; t de Student o U de Mann-Whitney para categóricos de dos grupos. La decisión se basa en el p ajustado mediante la corrección de Holm.');
+                h += this._p(CribaSociodemografica.sintetizar(hs));
+            }
+        }
+
         // ---- Referencias APA ----
         h += this._h1('Referencias');
         h += this._referencias();
