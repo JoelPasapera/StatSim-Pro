@@ -109,7 +109,9 @@ const AnalisisDimensiones = {
         const clave = `${var1}|${var2}|${n}|e${vEt}`;
         if (this._cacheCriba.clave === clave) return this._cacheCriba.criba;
 
-        const candidatos = this._candidatos(var1, var2);
+        // Estándar de tesis: SOLO dimensión × escala general (prioridad 1).
+        // Los pares dimensión×dimensión se excluyen por circularidad conceptual.
+        const candidatos = this._candidatos(var1, var2).filter(c => c.prioridad === 1);
         if (candidatos.length === 0) return null;
 
         const criba = CribaCorrelaciones.cribar(
@@ -117,6 +119,11 @@ const AnalisisDimensiones = {
             candidatos,
             AnalizadorEstadistico
         );
+        if (criba && criba.evaluados) {
+            const PARTE_TODO = 0.60;
+            criba.evaluados.forEach(e => { e.parteTodo = Math.abs(e.coeficiente) >= PARTE_TODO; });
+            criba.seleccionados = criba.seleccionados.filter(s => Math.abs(s.coeficiente) < PARTE_TODO);
+        }
         this._cacheCriba = { clave, criba };
         return criba;
     },
