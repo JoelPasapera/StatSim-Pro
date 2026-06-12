@@ -205,5 +205,10 @@ const Antecedentes = {
 
 if (typeof window !== 'undefined') {
     window.Antecedentes = Antecedentes;
-    window.addEventListener('DOMContentLoaded', () => Antecedentes.montar());
+    // Montaje robusto: funciona tanto si el DOM aún carga como si ya está listo.
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', () => Antecedentes.montar());
+    } else {
+        Antecedentes.montar();
+    }
 }
