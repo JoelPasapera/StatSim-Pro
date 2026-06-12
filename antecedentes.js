@@ -241,6 +241,9 @@ const Antecedentes = {
                 <div class="form-group"><label class="label">Priorizar idioma</label>
                   <select id="antIdioma" class="input"><option value="">Indistinto</option>
                   <option value="es" selected>Español</option><option value="en">Inglés</option></select></div>
+                <div class="form-group"><label class="label">Resultados (Scholar)</label>
+                  <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
+                  <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -287,9 +290,13 @@ const Antecedentes = {
             if (document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined') {
                 estado.textContent = 'Intentando Google Académico vía proxy (puede tardar)…';
                 try {
-                    const { obras, proxy } = await ScholarDirecto.buscar(q, f.desde);
+                    const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
+                    if (maxPag > 1) estado.textContent = `Buscando en Google Académico (hasta ${maxPag} páginas, con pausas para evitar bloqueos)…`;
+                    const { obras, proxiesUsados, paginas, captchaEn } = await ScholarDirecto.buscarPaginado(q, f.desde, maxPag);
+                    if (!obras.length) throw new Error(captchaEn ? 'CAPTCHA inmediato' : 'sin resultados');
                     this._obras = obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] }));
-                    estado.textContent = `${obras.length} resultados de Google Académico (proxy ${proxy}). Marca los pertinentes:`;
+                    const aviso = captchaEn ? ` (Scholar bloqueó desde la página ${captchaEn}; se muestran las anteriores)` : '';
+                    estado.textContent = `${obras.length} resultados de Google Académico — ${paginas} página(s)${aviso}. Marca los pertinentes:`;
                     this._renderResultados(this._obras);
                     return;
                 } catch (e) {
