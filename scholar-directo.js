@@ -11,11 +11,16 @@
 
 const ScholarDirecto = {
 
-    urlScholar(query, desde) {
+    urlScholar(query, desde, start = 0) {
         const p = new URLSearchParams({ q: query, hl: 'es' });
         if (desde) p.set('as_ylo', String(desde));
+        if (start) p.set('start', String(start)); // paginación: 0,10,20…
         return `https://scholar.google.com/scholar?${p.toString()}`;
     },
+
+    _sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
+    // Retardo humano con jitter: tiempo de "lectura" antes de pasar de página.
+    _esperaHumana() { return 1500 + Math.floor(Math.random() * 2500); }, // 1.5–4 s
 
     // Parsea el HTML de resultados de Scholar a objetos estructurados.
     parsearHTML(html) {
@@ -52,6 +57,70 @@ const ScholarDirecto = {
     },
 
     _cache: {},
+
+    // Recupera UNA página (offset start) probando el arsenal hasta que uno sirva.
+    // Devuelve {obras, proxy, captcha} — captcha=true si Scholar bloqueó.
+    async _buscarPagina(query, desde, start) {
+        const objetivo = this.urlScholar(query, desde, start);
+        const arsenal = (typeof ProxiesCORS !== 'undefined')
+            ? ProxiesCORS.ordenados()
+            : [{ id: 'allorigins-raw', build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, mode: 'raw' }];
+        const errores = [];
+        for (const proxy of arsenal) {
+            const t0 = Date.now();
+            try {
+                const ctrl = new AbortController();
+                const t = setTimeout(() => ctrl.abort(), 12000);
+                const r = await fetch(proxy.build(objetivo), { signal: ctrl.signal });
+                clearTimeout(t);
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                const html = (typeof ProxiesCORS !== 'undefined') ? await ProxiesCORS.extraer(proxy, r) : await r.text();
+                if (/id="gs_captcha|unusual traffic|not a robot|sorry\/index/i.test(html)) {
+                    if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
+                    return { obras: [], proxy: proxy.id, captcha: true };
+                }
+                const obras = this.parsearHTML(html);
+                if (obras.length) {
+                    if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, Date.now() - t0);
+                    return { obras, proxy: proxy.id, captcha: false };
+                }
+                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
+                errores.push(`${proxy.id}: vacío`);
+            } catch (e) {
+                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
+                errores.push(`${proxy.id}: ${e.name === 'AbortError' ? 'timeout' : e.message}`);
+            }
+        }
+        const err = new Error(errores.slice(0, 5).join(' · ')); err.sinProxy = true; throw err;
+    },
+
+    // Paginación INTELIGENTE: trae varias páginas bajo demanda, con espera
+    // humana entre cada una, rotando proxy y deteniéndose al primer CAPTCHA.
+    // maxPaginas: 1→10 result., 2→20, 3→30. Devuelve obras acumuladas + meta.
+    async buscarPaginado(query, desde, maxPaginas = 2) {
+        const ck = `${this._normQ(query)}|${desde || ''}|p${maxPaginas}`;
+        if (this._cache[ck]) return { ...this._cache[ck], deCache: true };
+        const todas = [];
+        const proxiesUsados = [];
+        let captchaEn = 0;
+        for (let pag = 0; pag < maxPaginas; pag++) {
+            if (pag > 0) await this._sleep(this._esperaHumana()); // ritmo humano
+            let res;
+            try { res = await this._buscarPagina(query, desde, pag * 10); }
+            catch (e) { if (pag === 0) throw e; else break; } // sin proxies: corta, conserva lo logrado
+            if (res.captcha) { captchaEn = pag + 1; break; }   // CAPTCHA: retrocede, no insiste
+            proxiesUsados.push(res.proxy);
+            const nuevos = res.obras.filter(o => !todas.some(t => this._norm(t.titulo) === this._norm(o.titulo)));
+            todas.push(...nuevos);
+            if (res.obras.length < 8) break; // última página real (Scholar dio menos de 10)
+        }
+        const out = { obras: todas, proxiesUsados, paginas: proxiesUsados.length, captchaEn };
+        if (todas.length) this._cache[ck] = out;
+        return out;
+    },
+
+    _normQ(q) { return this._norm ? this._norm(q) : String(q).toLowerCase().trim(); },
+    _norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); },
 
     async buscar(query, desde) {
         const ck = `${this._norm ? this._norm(query) : query.toLowerCase()}|${desde || ''}`;
