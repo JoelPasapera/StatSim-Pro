@@ -16,23 +16,17 @@ const ProxiesCORS = {
 
     // ---- Arsenal (orden inicial; la salud lo reordena en caliente) ----
     LISTA: [
-        { id: 'allorigins-raw',   build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,        mode: 'raw' },
-        { id: 'allorigins-get',   build: u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,         mode: 'json', jsonField: 'contents' },
-        { id: 'corsproxy-io',     build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,                   mode: 'raw' },
-        { id: 'codetabs',         build: u => `https://api.codetabs.com/v1/proxy/?quest=${u}`,                        mode: 'raw' },
-        { id: 'thingproxy',       build: u => `https://thingproxy.freeboard.io/fetch/${u}`,                           mode: 'raw' },
-        { id: 'corsproxy-org',    build: u => `https://corsproxy.org/?${encodeURIComponent(u)}`,                      mode: 'raw' },
-        { id: 'whateverorigin',   build: u => `https://www.whateverorigin.org/get?url=${encodeURIComponent(u)}`,      mode: 'json', jsonField: 'contents' },
-        { id: 'cors-anywhere-hf', build: u => `https://cors-anywhere.herokuapp.com/${u}`,                             mode: 'raw' },
-        { id: 'proxy-cors-sh',    build: u => `https://proxy.cors.sh/${u}`,                                           mode: 'raw' },
-        { id: 'yacdn',            build: u => `https://yacdn.org/proxy/${u}`,                                         mode: 'raw' },
-        { id: 'crossorigin-me',   build: u => `https://crossorigin.me/${u}`,                                          mode: 'raw' },
-        { id: 'jsonp-afeld',      build: u => `https://jsonp.afeld.me/?url=${encodeURIComponent(u)}`,                 mode: 'raw' },
-        { id: 'cors-bridged',     build: u => `https://cors.bridged.cc/${u}`,                                         mode: 'raw' },
-        { id: 'test-cors',        build: u => `https://test.cors.workers.dev/?${u}`,                                  mode: 'raw' },
-        { id: 'cors1-deno',       build: u => `https://cors1.deno.dev/${u}`,                                          mode: 'raw' },
-        { id: 'cors-eu-org',      build: u => `https://cors.eu.org/${u}`,                                             mode: 'raw' },
-        { id: 'allorigins-hexlet',build: u => `https://allorigins.hexlet.app/raw?url=${encodeURIComponent(u)}`,      mode: 'raw' }
+        // Familia AllOrigins — la más fiable en la práctica (raw y get/json).
+        { id: 'allorigins-raw',    build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,         mode: 'raw' },
+        { id: 'allorigins-get',    build: u => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`,          mode: 'json', jsonField: 'contents' },
+        { id: 'allorigins-hexlet', build: u => `https://allorigins.hexlet.app/raw?url=${encodeURIComponent(u)}`,       mode: 'raw' },
+        { id: 'allorigins-hx-get', build: u => `https://allorigins.hexlet.app/get?url=${encodeURIComponent(u)}`,       mode: 'json', jsonField: 'contents' },
+        // codetabs — vivo, pero EXIGE la URL objetivo percent-encoded (antes daba 400).
+        { id: 'codetabs',          build: u => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,    mode: 'raw' },
+        // Workers/Deno comunitarios que sí emiten cabeceras CORS.
+        { id: 'cors-workers-dev',  build: u => `https://corsproxy.garage.workers.dev/?url=${encodeURIComponent(u)}`,   mode: 'raw' },
+        { id: 'whateverorigin',    build: u => `https://whateverorigin.org/get?url=${encodeURIComponent(u)}`,          mode: 'json', jsonField: 'contents' },
+        { id: 'allorigins-cf',     build: u => `https://api.allorigins.win/get?charset=UTF-8&url=${encodeURIComponent(u)}`, mode: 'json', jsonField: 'contents' }
     ],
 
     // ---- Salud persistente (localStorage no está disponible en artifacts del
@@ -52,15 +46,25 @@ const ProxiesCORS = {
         catch (e) { /* memoria solamente */ }
     },
 
-    // Puntaje: tasa de éxito reciente con bonus de velocidad y penalización por
-    // fallos consecutivos. Proxies sin historial parten neutros (0.5).
+    // Puntaje: tasa de éxito reciente + bonus de velocidad − castigo por racha.
+    // Proxies probados y buenos se acercan a 1; los malos, a 0.
     _score(id) {
         const h = this._mem[id];
-        if (!h || (h.ok + h.fail) === 0) return 0.5;
+        if (!h || (h.ok + h.fail) === 0) return 0.55; // sin historial: ligeramente sobre la media → se exploran pronto
         const tasa = h.ok / (h.ok + h.fail);
-        const vel = h.msProm ? Math.max(0, 1 - h.msProm / 15000) : 0; // 0..1
+        const vel = h.msProm ? Math.max(0, 1 - h.msProm / 15000) : 0;
         const castigo = Math.min(0.4, (h.rachaFail || 0) * 0.1);
         return tasa * 0.7 + vel * 0.3 - castigo;
+    },
+
+    // Cuarentena TEMPORAL: un proxy con racha de fallos se aparta, pero se le
+    // da otra oportunidad pasado un tiempo (revive solo). Mejor que excluir
+    // para siempre, porque muchos proxies caen y vuelven.
+    _enCuarentena(id) {
+        const h = this._mem[id];
+        if (!h || (h.rachaFail || 0) < 4) return false;
+        const espera = Math.min(30, Math.pow(2, h.rachaFail - 4)) * 60000; // 1→…→30 min
+        return (Date.now() - (h.ultimoFail || 0)) < espera;
     },
 
     registrar(id, exito, ms) {
@@ -68,16 +72,17 @@ const ProxiesCORS = {
         if (exito) {
             h.ok++; h.rachaFail = 0;
             h.msProm = h.msProm ? Math.round(h.msProm * 0.7 + ms * 0.3) : ms;
-        } else { h.fail++; h.rachaFail = (h.rachaFail || 0) + 1; }
+        } else { h.fail++; h.rachaFail = (h.rachaFail || 0) + 1; h.ultimoFail = Date.now(); }
         this._guardarSalud();
     },
 
     // Lista ordenada por salud (mejor primero), excluyendo opcionalmente los
     // que llevan demasiados fallos seguidos.
-    ordenados(maxRachaFail = 6) {
+    ordenados() {
         if (!Object.keys(this._mem).length) this._cargarSalud();
-        return this.LISTA
-            .filter(p => ((this._mem[p.id] || {}).rachaFail || 0) < maxRachaFail)
+        const activos = this.LISTA.filter(p => !this._enCuarentena(p.id));
+        const pool = activos.length ? activos : this.LISTA; // si todos en cuarentena, reintenta todos
+        return pool
             .map(p => ({ p, s: this._score(p.id) }))
             .sort((a, b) => b.s - a.s)
             .map(x => x.p);
