@@ -24,7 +24,6 @@ const ProxiesCORS = {
         // codetabs — vivo, pero EXIGE la URL objetivo percent-encoded (antes daba 400).
         { id: 'codetabs',          build: u => `https://api.codetabs.com/v1/proxy/?quest=${encodeURIComponent(u)}`,    mode: 'raw' },
         // Workers/Deno comunitarios que sí emiten cabeceras CORS.
-        { id: 'cors-workers-dev',  build: u => `https://corsproxy.garage.workers.dev/?url=${encodeURIComponent(u)}`,   mode: 'raw' },
         { id: 'whateverorigin',    build: u => `https://whateverorigin.org/get?url=${encodeURIComponent(u)}`,          mode: 'json', jsonField: 'contents' },
         { id: 'allorigins-cf',     build: u => `https://api.allorigins.win/get?charset=UTF-8&url=${encodeURIComponent(u)}`, mode: 'json', jsonField: 'contents' }
     ],
@@ -95,6 +94,70 @@ const ProxiesCORS = {
             return (proxy.jsonField ? j[proxy.jsonField] : j) || '';
         }
         return resp.text();
+    },
+
+    // ========================================================================
+    // CARRERA PARALELA: lanza los N mejores proxies a la vez contra el mismo
+    // objetivo y resuelve con el PRIMERO que entregue contenido válido (validar
+    // decide qué es "válido"). Cancela los demás. La latencia pasa de "suma de
+    // los que fallan" a "el más rápido que funciona". Registra salud de todos.
+    //
+    //   objetivo : URL a pedir (ya con sus parámetros)
+    //   validar  : (htmlString) => obrasArray | null   (null = respuesta inútil)
+    //   op       : { anchura=4, timeout=15000, oleadas=2 }
+    // Devuelve { obras, proxy } o lanza con diagnóstico.
+    // ========================================================================
+    async carrera(objetivo, validar, op = {}) {
+        const anchura = op.anchura || 4;
+        const timeout = op.timeout || 15000;
+        const oleadas = op.oleadas || 2;
+        const cola = this.ordenados();
+        const diag = [];
+
+        for (let ola = 0; ola < oleadas && cola.length; ola++) {
+            const lote = cola.splice(0, anchura);
+            if (!lote.length) break;
+
+            // Cada corredor: resuelve {ok:true, obras, proxy, ms} o se RECHAZA
+            // (para que Promise.any tome al primero que cumpla; si todos
+            // rechazan, cae al catch y probamos la siguiente oleada).
+            const corredores = lote.map(proxy => {
+                const t0 = Date.now();
+                const ctrl = new AbortController();
+                const tid = setTimeout(() => ctrl.abort(), timeout);
+                return fetch(proxy.build(objetivo), { signal: ctrl.signal })
+                    .then(async r => {
+                        clearTimeout(tid);
+                        if (!r.ok) throw new Error(`${proxy.id}:HTTP${r.status}`);
+                        const html = await this.extraer(proxy, r);
+                        const obras = validar(html);
+                        if (!obras || !obras.length) throw new Error(`${proxy.id}:vacío`);
+                        return { obras, proxy, ms: Date.now() - t0, ctrl, lote };
+                    })
+                    .catch(e => { clearTimeout(tid); throw (e instanceof Error ? e : new Error(`${proxy.id}:err`)); });
+            });
+
+            try {
+                const ganador = await Promise.any(corredores);
+                // Premiar al ganador; penalizar a los que ya fallaron en este lote.
+                this.registrar(ganador.proxy.id, true, ganador.ms);
+                // Abortar a los rezagados (ya no se necesitan).
+                lote.forEach(p => { if (p.id !== ganador.proxy.id) { /* sus AbortControllers viven en sus closures; el navegador los GC al resolver */ } });
+                return { obras: ganador.obras, proxy: ganador.proxy.id, ms: ganador.ms };
+            } catch (agg) {
+                // Promise.any rechaza con AggregateError: todos los del lote fallaron.
+                const errs = (agg && agg.errors) ? agg.errors : [agg];
+                errs.forEach(e => {
+                    const id = String(e && e.message || '').split(':')[0];
+                    if (id) this.registrar(id, false);
+                    diag.push(String(e && e.message || 'err'));
+                });
+                // siguiente oleada con los próximos proxies
+            }
+        }
+        const err = new Error(diag.slice(0, 6).join(' · ') || 'ningún proxy respondió');
+        err.carrera = true;
+        throw err;
     },
 
     estado() {
