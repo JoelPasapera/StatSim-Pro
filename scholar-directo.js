@@ -77,7 +77,7 @@ const ScholarDirecto = {
             return { obras: obras || [], proxy: 'allorigins-raw', captcha: captchaVisto };
         }
         try {
-            const { obras, proxy } = await ProxiesCORS.carrera(objetivo, validar, { anchura: 4, timeout: 12000, oleadas: 2 });
+            const { obras, proxy } = await ProxiesCORS.carrera(objetivo, validar, { anchura: 2, timeout: 12000, oleadas: 3 });
             return { obras, proxy, captcha: false };
         } catch (e) {
             // Si la carrera no entregó nada pero vimos CAPTCHA, repórtalo como tal.
