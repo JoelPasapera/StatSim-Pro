@@ -248,10 +248,10 @@ const Antecedentes = {
                   <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
-                <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
+                <input type="checkbox" id="antUsarScholar"> Intentar Google Académico directo (experimental, vía proxy)
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
-                <input type="checkbox" id="antUsarScopus"> Buscar en Scopus (Elsevier, vía proxy)
+                <input type="checkbox" id="antUsarScopus" checked> Buscar en Scopus (Elsevier, vía proxy)
               </label><br>
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
@@ -289,50 +289,69 @@ const Antecedentes = {
         const estado = document.getElementById('antEstado');
         const q = document.getElementById('antQuery').value.trim();
         if (!q) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
-        estado.textContent = 'Consultando Semantic Scholar + OpenAlex + Crossref…';
+        const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
+        const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
+        const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
+
+        const fuentes = [];
+        if (usarScopus) fuentes.push('Scopus');
+        if (usarScholar) fuentes.push('Google Académico');
+        fuentes.push('bases abiertas');
+        estado.textContent = `Consultando ${fuentes.join(' + ')}…`;
+
+        // Cada fuente devuelve {obras, etiqueta, info}; se lanzan en paralelo y
+        // se combinan. Una que falle no tumba a las demás (allSettled).
+        const tareas = [];
+        if (usarScopus) tareas.push(
+            ScopusDirecto.buscar(q, f).then(r => ({ obras: r.obras, info: `Scopus (clave ${r.key})` }))
+                .catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+        if (usarScholar) {
+            const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
+            tareas.push(
+                ScholarDirecto.buscarPaginado(q, f.desde, maxPag).then(r => ({
+                    obras: r.obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] })),
+                    info: `Scholar (${r.paginas} pág.${r.captchaEn ? `, bloqueó en ${r.captchaEn}` : ''})`
+                })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` })));
+        }
+        tareas.push(
+            this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} bases abiertas` }))
+                .catch(e => ({ obras: [], info: `bases abiertas fallaron` })));
+
         try {
-            const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
-            if (document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined') {
-                estado.textContent = 'Consultando Scopus (Elsevier)…';
-                try {
-                    const { obras, key, proxy } = await ScopusDirecto.buscar(q, f);
-                    this._obras = obras;
-                    estado.textContent = `${obras.length} resultados de Scopus (clave ${key}, proxy ${proxy}). Marca los pertinentes:`;
-                    this._renderResultados(this._obras);
-                    return;
-                } catch (e) {
-                    estado.textContent = `Scopus no respondió (${e.message}). Probando otras fuentes…`;
-                }
-            }
-            if (document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined') {
-                estado.textContent = 'Intentando Google Académico vía proxy (puede tardar)…';
-                try {
-                    const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
-                    if (maxPag > 1) estado.textContent = `Buscando en Google Académico (hasta ${maxPag} páginas, con pausas para evitar bloqueos)…`;
-                    const { obras, proxiesUsados, paginas, captchaEn } = await ScholarDirecto.buscarPaginado(q, f.desde, maxPag);
-                    if (!obras.length) throw new Error(captchaEn ? 'CAPTCHA inmediato' : 'sin resultados');
-                    this._obras = obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] }));
-                    const aviso = captchaEn ? ` (Scholar bloqueó desde la página ${captchaEn}; se muestran las anteriores)` : '';
-                    estado.textContent = `${obras.length} resultados de Google Académico — ${paginas} página(s)${aviso}. Marca los pertinentes:`;
-                    this._renderResultados(this._obras);
-                    return;
-                } catch (e) {
-                    estado.textContent = `Google Académico no respondió (${e.message}). Usando las 3 bases académicas como alternativa…`;
-                }
-            }
-            const { obras, fuentesOK, caidas } = await this.buscarMulti(q, f);
-            this._obras = obras;
-            estado.textContent = obras.length
-                ? `${obras.length} resultados únicos de ${fuentesOK} bases${caidas ? ` (${caidas} no respondió)` : ''}, ordenados por relevancia local. Marca los pertinentes:`
-                : 'Sin resultados relevantes: prueba un sinónimo sugerido o términos en inglés.';
-            this._renderResultados(obras);
+            const res = await Promise.all(tareas);
+            // Combinar respetando el ORDEN: Scopus primero, luego Scholar, luego abiertas.
+            const combinadas = [];
+            res.forEach(r => combinadas.push(...r.obras));
+            // Deduplicar por DOI/título conservando el primero (Scopus gana).
+            const vistos = new Set();
+            this._obras = combinadas.filter(o => {
+                const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
+                if (vistos.has(k)) return false;
+                vistos.add(k); return true;
+            });
+            this._pagina = 0; // reiniciar paginación
+            const infos = res.map(r => r.info).join(' · ');
+            estado.textContent = this._obras.length
+                ? `${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
+                : `Sin resultados. ${infos}`;
+            this._renderResultados(this._obras);
         } catch (e) {
-            estado.textContent = `No se pudo consultar las bases (${e.message}). Verifica tu conexión.`;
+            estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
         }
     },
 
     _renderResultados(obras) {
-        const filas = obras.map((o, i) => `
+        const POR_PAGINA = 15;
+        if (this._pagina == null) this._pagina = 0;
+        const total = obras.length;
+        const numPaginas = Math.max(1, Math.ceil(total / POR_PAGINA));
+        if (this._pagina >= numPaginas) this._pagina = numPaginas - 1;
+        const ini = this._pagina * POR_PAGINA;
+        const visibles = obras.slice(ini, ini + POR_PAGINA);
+
+        const filas = visibles.map((o, j) => {
+            const i = ini + j; // índice real en this._obras
+            return `
             <tr>
               <td><input type="checkbox" data-i="${i}" ${this._seleccion.has(this._norm(o.titulo)) ? 'checked' : ''}></td>
               <td>${o.autores.slice(0, 3).join('; ')}${o.autores.length > 3 ? ' et al.' : ''} (${o.anio})</td>
@@ -340,18 +359,51 @@ const Antecedentes = {
               <td>${o.fuente}</td><td>${o.citas}</td>
               <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank" title="Abrir artículo">🔗</a>` : '—'}</td>
               <td style="font-size:0.8em;color:#888;">${(o.fuentesAPI || []).join('+')}</td>
-            </tr>`).join('');
-        document.getElementById('antResultados').innerHTML = `
-            <div class="table-container" style="margin-top:0.75rem;"><table class="table">
+            </tr>`;
+        }).join('');
+
+        const todosVisiblesMarcados = visibles.length > 0 && visibles.every(o => this._seleccion.has(this._norm(o.titulo)));
+        const controles = `
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:0.75rem; flex-wrap:wrap;">
+                <label style="display:inline-flex; align-items:center; gap:0.4rem;">
+                    <input type="checkbox" id="antMarcarTodos" ${todosVisiblesMarcados ? 'checked' : ''}>
+                    Marcar todos (${total} resultados)
+                </label>
+                <span style="display:inline-flex; align-items:center; gap:0.75rem;">
+                    <button id="antPrev" class="btn btn-outline" ${this._pagina === 0 ? 'disabled' : ''} style="padding:0.25rem 0.7rem;">◀</button>
+                    <span class="help-text">Página ${this._pagina + 1} de ${numPaginas} — mostrando ${ini + 1}–${Math.min(ini + POR_PAGINA, total)} de ${total}</span>
+                    <button id="antNext" class="btn btn-outline" ${this._pagina >= numPaginas - 1 ? 'disabled' : ''} style="padding:0.25rem 0.7rem;">▶</button>
+                </span>
+            </div>`;
+
+        document.getElementById('antResultados').innerHTML = controles + `
+            <div class="table-container" style="margin-top:0.5rem;"><table class="table">
               <thead><tr><th></th><th>Autores (año)</th><th>Título</th><th>Fuente</th><th>Citas</th><th>Enlace</th><th>Base</th></tr></thead>
               <tbody>${filas}</tbody></table></div>`;
-        document.getElementById('antResultados').querySelectorAll('input[type=checkbox]').forEach(ch =>
+
+        // Checkboxes individuales
+        document.getElementById('antResultados').querySelectorAll('tbody input[type=checkbox]').forEach(ch =>
             ch.addEventListener('change', e => {
                 const o = this._obras[+e.target.dataset.i];
                 const k = this._norm(o.titulo);
                 if (e.target.checked) this._seleccion.set(k, o); else this._seleccion.delete(k);
+                this._renderResultados(this._obras); // refresca el "marcar todos"
                 this._renderSeleccion();
             }));
+        // Marcar/desmarcar TODOS (toda la búsqueda, no solo la página)
+        const mt = document.getElementById('antMarcarTodos');
+        if (mt) mt.addEventListener('change', e => {
+            this._obras.forEach(o => {
+                const k = this._norm(o.titulo);
+                if (e.target.checked) this._seleccion.set(k, o); else this._seleccion.delete(k);
+            });
+            this._renderResultados(this._obras);
+            this._renderSeleccion();
+        });
+        // Paginación
+        const prev = document.getElementById('antPrev'), next = document.getElementById('antNext');
+        if (prev) prev.addEventListener('click', () => { if (this._pagina > 0) { this._pagina--; this._renderResultados(this._obras); } });
+        if (next) next.addEventListener('click', () => { if (this._pagina < numPaginas - 1) { this._pagina++; this._renderResultados(this._obras); } });
     },
 
     _renderSeleccion() {
