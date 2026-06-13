@@ -247,8 +247,11 @@ const Antecedentes = {
                   <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
                   <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
               </div>
-              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarScopus"> Buscar en Scopus (Elsevier, vía proxy)
               </label><br>
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
@@ -289,6 +292,18 @@ const Antecedentes = {
         estado.textContent = 'Consultando Semantic Scholar + OpenAlex + Crossref…';
         try {
             const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
+            if (document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined') {
+                estado.textContent = 'Consultando Scopus (Elsevier)…';
+                try {
+                    const { obras, key, proxy } = await ScopusDirecto.buscar(q, f);
+                    this._obras = obras;
+                    estado.textContent = `${obras.length} resultados de Scopus (clave ${key}, proxy ${proxy}). Marca los pertinentes:`;
+                    this._renderResultados(this._obras);
+                    return;
+                } catch (e) {
+                    estado.textContent = `Scopus no respondió (${e.message}). Probando otras fuentes…`;
+                }
+            }
             if (document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined') {
                 estado.textContent = 'Intentando Google Académico vía proxy (puede tardar)…';
                 try {
