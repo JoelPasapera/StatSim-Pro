@@ -108,6 +108,7 @@ const ProxiesCORS = {
     // Devuelve { obras, proxy } o lanza con diagnóstico.
     // ========================================================================
     async carrera(objetivo, validar, op = {}) {
+        if (typeof Promise.any !== 'function') return this._carreraSecuencial(objetivo, validar, op);
         const anchura = op.anchura || 4;
         const timeout = op.timeout || 15000;
         const oleadas = op.oleadas || 2;
@@ -118,46 +119,65 @@ const ProxiesCORS = {
             const lote = cola.splice(0, anchura);
             if (!lote.length) break;
 
-            // Cada corredor: resuelve {ok:true, obras, proxy, ms} o se RECHAZA
-            // (para que Promise.any tome al primero que cumpla; si todos
-            // rechazan, cae al catch y probamos la siguiente oleada).
-            const corredores = lote.map(proxy => {
+            // Un AbortController POR corredor, guardado en un array accesible
+            // desde fuera del .map() → así sí podemos cancelar a los perdedores.
+            const ctrls = lote.map(() => new AbortController());
+            const corredores = lote.map((proxy, i) => {
                 const t0 = Date.now();
-                const ctrl = new AbortController();
-                const tid = setTimeout(() => ctrl.abort(), timeout);
-                return fetch(proxy.build(objetivo), { signal: ctrl.signal })
+                const tid = setTimeout(() => ctrls[i].abort(), timeout);
+                // Cada corredor adjunta SU id de proxy al error (objeto, no string),
+                // para registrar salud por id real y nunca por el mensaje de fetch.
+                return fetch(proxy.build(objetivo), { signal: ctrls[i].signal })
                     .then(async r => {
                         clearTimeout(tid);
-                        if (!r.ok) throw new Error(`${proxy.id}:HTTP${r.status}`);
+                        if (!r.ok) throw Object.assign(new Error(`HTTP${r.status}`), { proxyId: proxy.id });
                         const html = await this.extraer(proxy, r);
                         const obras = validar(html);
-                        if (!obras || !obras.length) throw new Error(`${proxy.id}:vacío`);
-                        return { obras, proxy, ms: Date.now() - t0, ctrl, lote };
+                        if (!obras || !obras.length) throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
+                        return { obras, proxy, ms: Date.now() - t0 };
                     })
-                    .catch(e => { clearTimeout(tid); throw (e instanceof Error ? e : new Error(`${proxy.id}:err`)); });
+                    .catch(e => { clearTimeout(tid); throw Object.assign(e instanceof Error ? e : new Error('err'), { proxyId: e && e.proxyId || proxy.id }); });
             });
 
             try {
                 const ganador = await Promise.any(corredores);
-                // Premiar al ganador; penalizar a los que ya fallaron en este lote.
+                // CANCELACIÓN REAL de los rezagados (ahorra ancho de banda y, en
+                // Scholar, evita peticiones extra que dispararían el anti-bot).
+                ctrls.forEach((c, i) => { if (lote[i].id !== ganador.proxy.id) { try { c.abort(); } catch (e) {} } });
                 this.registrar(ganador.proxy.id, true, ganador.ms);
-                // Abortar a los rezagados (ya no se necesitan).
-                lote.forEach(p => { if (p.id !== ganador.proxy.id) { /* sus AbortControllers viven en sus closures; el navegador los GC al resolver */ } });
                 return { obras: ganador.obras, proxy: ganador.proxy.id, ms: ganador.ms };
             } catch (agg) {
-                // Promise.any rechaza con AggregateError: todos los del lote fallaron.
+                // Todos fallaron: registrar salud por proxyId REAL (no por mensaje).
                 const errs = (agg && agg.errors) ? agg.errors : [agg];
                 errs.forEach(e => {
-                    const id = String(e && e.message || '').split(':')[0];
-                    if (id) this.registrar(id, false);
-                    diag.push(String(e && e.message || 'err'));
+                    if (e && e.proxyId) { this.registrar(e.proxyId, false); diag.push(`${e.proxyId}:${e.message}`); }
+                    else diag.push(String(e && e.message || 'err'));
                 });
-                // siguiente oleada con los próximos proxies
             }
         }
         const err = new Error(diag.slice(0, 6).join(' · ') || 'ningún proxy respondió');
         err.carrera = true;
         throw err;
+    },
+
+    // Respaldo secuencial para navegadores sin Promise.any (ES2021).
+    async _carreraSecuencial(objetivo, validar, op = {}) {
+        const timeout = op.timeout || 15000;
+        const diag = [];
+        for (const proxy of this.ordenados().slice(0, (op.anchura || 4) * (op.oleadas || 2))) {
+            const t0 = Date.now();
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), timeout);
+            try {
+                const r = await fetch(proxy.build(objetivo), { signal: ctrl.signal });
+                clearTimeout(tid);
+                if (!r.ok) throw new Error('HTTP' + r.status);
+                const obras = validar(await this.extraer(proxy, r));
+                if (obras && obras.length) { this.registrar(proxy.id, true, Date.now() - t0); return { obras, proxy: proxy.id, ms: Date.now() - t0 }; }
+                this.registrar(proxy.id, false); diag.push(`${proxy.id}:vacío`);
+            } catch (e) { clearTimeout(tid); this.registrar(proxy.id, false); diag.push(`${proxy.id}:${e.message}`); }
+        }
+        const err = new Error(diag.slice(0, 6).join(' · ') || 'ningún proxy respondió'); err.carrera = true; throw err;
     },
 
     estado() {
