@@ -97,15 +97,20 @@ const ScopusDirecto = {
     // los errores de cuota/credenciales vía un objeto de señal compartido.
     _validarScopus(html, senal) {
         let data;
-        try { data = JSON.parse(html); } catch (e) { return null; }
-        if (data['service-error'] || data['error-response']) {
-            const msg = JSON.stringify(data).toLowerCase();
-            if (/quota|rate.?limit|maximum number/.test(msg)) senal.cuota = true;
-            else if (/auth|api.?key|invalid|forbidden/.test(msg)) senal.auth = true;
+        try { data = JSON.parse(html); } catch (e) { senal.motivo = 'respuesta no-JSON (proxy o bloqueo)'; return null; }
+        // Scopus señala errores de varias formas; capturamos el texto para diagnóstico.
+        const errTxt = (data['service-error'] && JSON.stringify(data['service-error']))
+            || (data['error-response'] && JSON.stringify(data['error-response']))
+            || (data.error) || '';
+        if (errTxt) {
+            const msg = String(errTxt).toLowerCase();
+            senal.motivo = String(errTxt).slice(0, 120);
+            if (/quota|rate.?limit|maximum number|too many/.test(msg)) senal.cuota = true;
+            else senal.auth = true;
             return null;
         }
         const entradas = (data['search-results'] && data['search-results'].entry) || [];
-        if (entradas.length && entradas[0].error) { senal.auth = true; return null; }
+        if (entradas.length && entradas[0].error) { senal.auth = true; senal.motivo = entradas[0].error; return null; }
         return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
     },
 
@@ -127,7 +132,7 @@ const ScopusDirecto = {
                 return { obras, key: key.slice(0, 6) + '…', proxy };
             } catch (e) {
                 if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
-                if (senal.auth) { diag.push(`${key.slice(0,6)}…: credenciales/acceso restringido`); continue; }
+                if (senal.auth) { diag.push(`${key.slice(0,6)}…: ${senal.motivo || 'acceso restringido'}`); continue; }
                 // Falló por proxies, no por la clave: no tiene sentido rotar clave.
                 diag.push(`proxies: ${e.message}`);
                 break;
