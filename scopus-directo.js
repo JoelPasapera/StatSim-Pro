@@ -72,7 +72,7 @@ const ScopusDirecto = {
     async _intentar(url, key, proxy) {
         const conKey = url + `&apiKey=${key}`;
         const ctrl = new AbortController();
-        const t = setTimeout(() => ctrl.abort(), 12000);
+        const t = setTimeout(() => ctrl.abort(), 20000);
         try {
             const r = await fetch(proxy.build(conKey), { signal: ctrl.signal });
             clearTimeout(t);
@@ -98,22 +98,41 @@ const ScopusDirecto = {
         const proxies = (typeof ProxiesCORS !== 'undefined') ? ProxiesCORS.ordenados()
             : [{ id: 'allorigins-raw', build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, mode: 'raw' }];
         const diag = [];
-        // Para cada clave, intenta con los primeros proxies sanos.
-        for (let ki = 0; ki < this.API_KEYS.length; ki++) {
-            const key = this._siguienteKey();
-            for (const proxy of proxies.slice(0, 3)) {
-                const res = await this._intentar(url, key, proxy);
-                if (res.obras && res.obras.length) {
-                    if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, 0);
-                    return { obras: res.obras, key: key.slice(0, 6) + '…', proxy: proxy.id };
-                }
-                if (res.error === 'cuota') { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota`); break; }
-                if (res.error === 'auth') { diag.push(`${key.slice(0,6)}…: ${res.status} (requiere red institucional)`); break; }
-                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
-                diag.push(`${key.slice(0,6)}…/${proxy.id}: ${res.error || 'sin datos'}`);
+        // ESTRATEGIA: el cuello de botella es el PROXY, no la clave. Por eso el
+        // bucle externo recorre proxies con UNA sola clave; la clave SOLO rota
+        // cuando el error es específicamente de cuota (429) o credenciales —
+        // así no se queman las 5 claves contra un proxy caído.
+        let key = this._siguienteKey();
+        for (const proxy of proxies) {
+            const res = await this._intentar(url, key, proxy);
+            if (res.obras && res.obras.length) {
+                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, 0);
+                return { obras: res.obras, key: key.slice(0, 6) + '…', proxy: proxy.id };
             }
+            // 429 = cuota de ESA clave agotada → cambiar de clave y reintentar
+            // el MISMO proxy (que sí funciona) con la nueva clave.
+            if (res.error === 'cuota') {
+                this._marcarAgotada(key);
+                const nueva = this._siguienteKey();
+                if (nueva !== key) {
+                    key = nueva;
+                    const res2 = await this._intentar(url, key, proxy);
+                    if (res2.obras && res2.obras.length) {
+                        if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, 0);
+                        return { obras: res2.obras, key: key.slice(0, 6) + '…', proxy: proxy.id };
+                    }
+                }
+                diag.push(`cuota agotada en claves`);
+                continue;
+            }
+            // 401/403 = restricción de credenciales/red: cambiar de clave no ayuda
+            // (es el mismo nivel de acceso); se reporta y se prueba otro proxy.
+            if (res.error === 'auth') { diag.push(`${proxy.id}: ${res.status} (acceso restringido)`); continue; }
+            // Fallo del proxy (404/timeout/red): registrar y pasar al siguiente.
+            if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
+            diag.push(`${proxy.id}: ${res.error || 'sin datos'}`);
         }
-        const err = new Error(diag.slice(0, 6).join(' · ') || 'sin respuesta');
+        const err = new Error(diag.slice(0, 5).join(' · ') || 'ningún proxy entregó la respuesta de Scopus');
         err.scopus = true;
         throw err;
     }
