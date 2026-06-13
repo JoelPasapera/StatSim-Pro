@@ -185,6 +185,47 @@ const Antecedentes = {
         return `https://scholar.google.com/scholar?${p.toString()}`;
     },
 
+    // ---------- Extracción heurística de campos (de abstract/metadatos) ----------
+
+    // País: busca gentilicios/países frecuentes en título+resumen.
+    _detectarPais(o) {
+        const t = (o.titulo + ' ' + (o.resumen || '')).toLowerCase();
+        const mapa = {
+            'Perú': /per[uú]|peruvian|peruan/, 'México': /m[eé]xico|mexican/, 'Chile': /chile/,
+            'Colombia': /colombia/, 'Argentina': /argentin/, 'España': /spain|spanish|españ/,
+            'Ecuador': /ecuador/, 'Brasil': /brazil|brasil/, 'Bolivia': /bolivia/,
+            'Venezuela': /venezuel/, 'Estados Unidos': /united states|american students|\bu\.?s\.?a?\b/,
+            'China': /\bchina\b|chinese/, 'Marruecos': /morocc/, 'Turquía': /turkey|turkish/
+        };
+        for (const [pais, rx] of Object.entries(mapa)) if (rx.test(t)) return pais;
+        return '';
+    },
+
+    // Indexación: inferida de la fuente/base (heurística; el usuario verifica).
+    _detectarIndexacion(o) {
+        const ix = [];
+        if ((o.fuentesAPI || []).includes('Scopus')) ix.push('Scopus');
+        const f = (o.fuente || '').toLowerCase();
+        if (/scielo/.test((o.link || '') + f)) ix.push('SciELO');
+        if (/redalyc/.test((o.link || '') + f)) ix.push('Redalyc');
+        if (o.doi) ix.push('Crossref');
+        return [...new Set(ix)].join(', ');
+    },
+
+    // Muestra: frases tipo "N participantes/students/estudiantes/sample".
+    _detectarMuestra(o) {
+        const r = o.resumen || '';
+        const m = r.match(/(\b\d[\d.,]{1,6})\s*(participants?|participantes|students?|estudiantes|subjects?|sujetos|adolescen\w*|ni[ñn]os|adults?|adultos|individuals?|patients?|pacientes)/i);
+        return m ? `${m[1].replace(/[.,]$/, '')} ${m[2]}` : '';
+    },
+
+    // Objetivo: oración del abstract que enuncia propósito (aim/objetivo/purpose).
+    _detectarObjetivo(o) {
+        const r = o.resumen || '';
+        const m = r.match(/[^.]*\b(aim(?:ed)?|objective|purpose|this study (?:aims|examines|investigates|analyzes)|objetivo|prop[oó]sito|se busc[oó]|tuvo por objeto)\b[^.]*\./i);
+        return m ? m[0].trim() : '';
+    },
+
     // ---------- APA 7 ----------
     _autorAPA(nombre) {
         const partes = nombre.trim().split(/\s+/);
@@ -409,21 +450,138 @@ const Antecedentes = {
     _renderSeleccion() {
         const sel = [...this._seleccion.values()];
         const cont = document.getElementById('antSeleccion');
-        if (!sel.length) { cont.innerHTML = ''; return; }
+        if (!sel.length) { cont.innerHTML = ''; this._selRef = 0; this._selMat = 0; return; }
+        if (this._selRef == null) this._selRef = 0;
+        if (this._selMat == null) this._selMat = 0;
+        const PP = 15;
+
+        // ----- Referencias (orden alfabético) con paginación -----
         const refs = sel.map(o => this.citaAPA(o)).sort((a, b) => a.localeCompare(b, 'es'));
-        const matriz = sel.map(o => `
-            <tr><td>${this._autoresAPA(o.autores.slice(0, 3))}${o.autores.length > 3 ? ' et al.' : ''} (${o.anio})</td>
-              <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank">${o.titulo}</a>` : o.titulo}</td>
-              <td>${o.resumen ? o.resumen.slice(0, this.CONFIG.RECORTE_RESUMEN) + (o.resumen.length > this.CONFIG.RECORTE_RESUMEN ? '…' : '') : '[REVISAR TEXTO COMPLETO]'}</td>
-              <td>[COMPLETAR: relación con tus variables y aporte a tu estudio]</td></tr>`).join('');
+        const npRef = Math.max(1, Math.ceil(refs.length / PP));
+        if (this._selRef >= npRef) this._selRef = npRef - 1;
+        const iniR = this._selRef * PP;
+        const refsVis = refs.slice(iniR, iniR + PP);
+
+        // ----- Matriz de revisión bibliográfica (12 columnas) con paginación -----
+        const filasMatriz = sel.map(o => this._filaMatriz(o));
+        const npMat = Math.max(1, Math.ceil(filasMatriz.length / PP));
+        if (this._selMat >= npMat) this._selMat = npMat - 1;
+        const iniM = this._selMat * PP;
+        const matVis = filasMatriz.slice(iniM, iniM + PP);
+
+        const COLS = ['Título', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
+            'Resultados', 'Conclusiones', 'Revista', 'Indexación', 'Referencia (APA)', 'Link/DOI'];
+
         cont.innerHTML = `
-            <h4 style="margin-top:1.25rem;">Referencias seleccionadas (APA 7, orden alfabético)</h4>
-            <div class="result-box">${refs.map(r => `<p style="margin:0 0 0.5rem;padding-left:2rem;text-indent:-2rem;">${r}</p>`).join('')}</div>
-            <h4 style="margin-top:1rem;">Matriz de antecedentes</h4>
-            <div class="table-container"><table class="table">
-              <thead><tr><th>Autores (año)</th><th>Título</th><th>Resumen</th><th>Aporte al estudio</th></tr></thead>
-              <tbody>${matriz}</tbody></table></div>
-            <p class="help-text">El resumen proviene de las bases de datos; el «aporte al estudio» es tu análisis: lee los textos antes de citarlos.</p>`;
+            <h4 style="margin-top:1.25rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <span>Referencias seleccionadas (APA 7, orden alfabético)</span>
+                <button id="antCopiarRefs" class="btn btn-primary" style="padding:0.3rem 0.8rem;">📋 Copiar con formato</button>
+            </h4>
+            <div class="result-box" id="antRefsBox">${refsVis.map(r => `<p style="margin:0 0 0.5rem;padding-left:2rem;text-indent:-2rem;">${r}</p>`).join('')}</div>
+            ${this._barraPaginas('Ref', this._selRef, npRef, iniR, refs.length, PP)}
+
+            <h4 style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
+                <span>Matriz de revisión bibliográfica</span>
+                <button id="antCsvMatriz" class="btn btn-primary" style="padding:0.3rem 0.8rem;">⬇ Exportar CSV</button>
+            </h4>
+            <div class="table-container"><table class="table" style="font-size:0.85em;">
+                <thead><tr>${COLS.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+                <tbody>${matVis.map(f => `<tr>${f.celdas.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+            </table></div>
+            ${this._barraPaginas('Mat', this._selMat, npMat, iniM, filasMatriz.length, PP)}
+            <p class="help-text">Columnas como objetivos, instrumentos, resultados y conclusiones se extraen del resumen cuando es posible; «[completar]» indica que requieren la lectura del texto completo. Verifica país e indexación.</p>`;
+
+        // Copiar referencias CON FORMATO (HTML enriquecido al portapapeles)
+        const btnCopiar = document.getElementById('antCopiarRefs');
+        if (btnCopiar) btnCopiar.addEventListener('click', () => this._copiarReferencias(refs));
+        // Exportar matriz a CSV (TODAS las filas, no solo la página)
+        const btnCsv = document.getElementById('antCsvMatriz');
+        if (btnCsv) btnCsv.addEventListener('click', () => this._exportarCSV(COLS, filasMatriz));
+        // Paginación de ambas secciones
+        this._cablearPaginas('Ref', () => this._selRef, v => { this._selRef = v; this._renderSeleccion(); }, npRef);
+        this._cablearPaginas('Mat', () => this._selMat, v => { this._selMat = v; this._renderSeleccion(); }, npMat);
+    },
+
+    // Construye las 12 celdas (HTML para mostrar) y los 12 valores planos (CSV).
+    _filaMatriz(o) {
+        const ref = this.citaAPA(o).replace(/<\/?i>/g, '');
+        const link = o.link || o.doi || '';
+        const pais = this._detectarPais(o);
+        const muestra = this._detectarMuestra(o);
+        const objetivo = this._detectarObjetivo(o);
+        const indexacion = this._detectarIndexacion(o);
+        const ph = '<span style="color:#aaa;">[completar]</span>';
+        const celdas = [
+            o.titulo || ph,
+            o.anio || '',
+            pais || ph,
+            objetivo || ph,
+            muestra || ph,
+            ph, // instrumentos: no disponible en metadatos
+            o.resumen ? (o.resumen.slice(0, 200) + (o.resumen.length > 200 ? '…' : '')) : ph, // resultados ≈ resumen
+            ph, // conclusiones: requiere texto completo
+            o.fuente || ph,
+            indexacion || ph,
+            ref,
+            link ? `<a href="${link}" target="_blank">${link}</a>` : ph
+        ];
+        const planas = [
+            o.titulo || '', o.anio || '', pais, objetivo, muestra, '',
+            o.resumen || '', '', o.fuente || '', indexacion, ref, link
+        ];
+        return { celdas, planas };
+    },
+
+    _barraPaginas(tag, pagina, num, ini, total, pp) {
+        if (num <= 1) return '';
+        return `<div style="display:flex; align-items:center; justify-content:flex-end; gap:0.75rem; margin-top:0.5rem;">
+            <button id="ant${tag}Prev" class="btn btn-outline" ${pagina === 0 ? 'disabled' : ''} style="padding:0.2rem 0.6rem;">◀</button>
+            <span class="help-text">Página ${pagina + 1} de ${num} — ${ini + 1}–${Math.min(ini + pp, total)} de ${total}</span>
+            <button id="ant${tag}Next" class="btn btn-outline" ${pagina >= num - 1 ? 'disabled' : ''} style="padding:0.2rem 0.6rem;">▶</button>
+        </div>`;
+    },
+    _cablearPaginas(tag, get, set, num) {
+        const prev = document.getElementById(`ant${tag}Prev`), next = document.getElementById(`ant${tag}Next`);
+        if (prev) prev.addEventListener('click', () => { if (get() > 0) set(get() - 1); });
+        if (next) next.addEventListener('click', () => { if (get() < num - 1) set(get() + 1); });
+    },
+
+    // Copia las referencias al portapapeles CON FORMATO (cursivas reales).
+    async _copiarReferencias(refs) {
+        const estado = document.getElementById('antEstado');
+        const html = refs.map(r => `<p style="margin:0 0 10pt 36pt; text-indent:-36pt;">${r}</p>`).join('');
+        const plano = refs.map(r => r.replace(/<\/?i>/g, '')).join('\n\n');
+        try {
+            if (navigator.clipboard && window.ClipboardItem) {
+                await navigator.clipboard.write([new ClipboardItem({
+                    'text/html': new Blob([html], { type: 'text/html' }),
+                    'text/plain': new Blob([plano], { type: 'text/plain' })
+                })]);
+            } else {
+                await navigator.clipboard.writeText(plano);
+            }
+            if (estado) estado.textContent = `${refs.length} referencias copiadas con formato. Pégalas en Word.`;
+        } catch (e) {
+            if (estado) estado.textContent = 'No se pudo copiar automáticamente; selecciona y copia manualmente.';
+        }
+    },
+
+    // Exporta la matriz COMPLETA a CSV (UTF-8 con BOM para Excel).
+    _exportarCSV(cols, filas) {
+        const esc = v => {
+            const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+            return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        };
+        const lineas = [cols.map(esc).join(',')];
+        filas.forEach(f => lineas.push(f.planas.map(esc).join(',')));
+        const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'matriz_revision_bibliografica.csv';
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const estado = document.getElementById('antEstado');
+        if (estado) estado.textContent = `Matriz exportada (${filas.length} artículos) en CSV.`;
     }
 };
 
