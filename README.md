@@ -375,4 +375,4 @@ Apache License 2.0
 
 **¡Éxito en tus investigaciones!** 🎓📊
 
-*Última actualización: Mayo 2026*
+*Última actualización: 13 de Junio 2026*
