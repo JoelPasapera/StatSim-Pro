@@ -62,36 +62,28 @@ const ScholarDirecto = {
     // Devuelve {obras, proxy, captcha} — captcha=true si Scholar bloqueó.
     async _buscarPagina(query, desde, start) {
         const objetivo = this.urlScholar(query, desde, start);
-        const arsenal = (typeof ProxiesCORS !== 'undefined')
-            ? ProxiesCORS.ordenados()
-            : [{ id: 'allorigins-raw', build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, mode: 'raw' }];
-        const errores = [];
-        for (const proxy of arsenal) {
-            const t0 = Date.now();
-            try {
-                const ctrl = new AbortController();
-                const t = setTimeout(() => ctrl.abort(), 12000);
-                const r = await fetch(proxy.build(objetivo), { signal: ctrl.signal });
-                clearTimeout(t);
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                const html = (typeof ProxiesCORS !== 'undefined') ? await ProxiesCORS.extraer(proxy, r) : await r.text();
-                if (/id="gs_captcha|unusual traffic|not a robot|sorry\/index/i.test(html)) {
-                    if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
-                    return { obras: [], proxy: proxy.id, captcha: true };
-                }
-                const obras = this.parsearHTML(html);
-                if (obras.length) {
-                    if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, Date.now() - t0);
-                    return { obras, proxy: proxy.id, captcha: false };
-                }
-                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
-                errores.push(`${proxy.id}: vacío`);
-            } catch (e) {
-                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
-                errores.push(`${proxy.id}: ${e.name === 'AbortError' ? 'timeout' : e.message}`);
-            }
+        // Validador: detecta CAPTCHA (lanza señal especial) o parsea resultados.
+        let captchaVisto = false;
+        const validar = (html) => {
+            if (/id="gs_captcha|unusual traffic|not a robot|sorry\/index/i.test(html)) { captchaVisto = true; return null; }
+            const obras = this.parsearHTML(html);
+            return obras.length ? obras : null;
+        };
+        if (typeof ProxiesCORS === 'undefined') {
+            // Fallback sin arsenal: un único proxy, secuencial.
+            const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(objetivo)}`);
+            const html = await r.text();
+            const obras = validar(html);
+            return { obras: obras || [], proxy: 'allorigins-raw', captcha: captchaVisto };
         }
-        const err = new Error(errores.slice(0, 5).join(' · ')); err.sinProxy = true; throw err;
+        try {
+            const { obras, proxy } = await ProxiesCORS.carrera(objetivo, validar, { anchura: 4, timeout: 12000, oleadas: 2 });
+            return { obras, proxy, captcha: false };
+        } catch (e) {
+            // Si la carrera no entregó nada pero vimos CAPTCHA, repórtalo como tal.
+            if (captchaVisto) return { obras: [], proxy: '—', captcha: true };
+            const err = new Error(e.message); err.sinProxy = true; throw err;
+        }
     },
 
     // Paginación INTELIGENTE: trae varias páginas bajo demanda, con espera
