@@ -93,46 +93,47 @@ const ScopusDirecto = {
         }
     },
 
-    async buscar(query, filtros = {}) {
-        const url = this.construirURL(query, filtros);
-        const proxies = (typeof ProxiesCORS !== 'undefined') ? ProxiesCORS.ordenados()
-            : [{ id: 'allorigins-raw', build: u => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`, mode: 'raw' }];
-        const diag = [];
-        // ESTRATEGIA: el cuello de botella es el PROXY, no la clave. Por eso el
-        // bucle externo recorre proxies con UNA sola clave; la clave SOLO rota
-        // cuando el error es específicamente de cuota (429) o credenciales —
-        // así no se queman las 5 claves contra un proxy caído.
-        let key = this._siguienteKey();
-        for (const proxy of proxies) {
-            const res = await this._intentar(url, key, proxy);
-            if (res.obras && res.obras.length) {
-                if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, 0);
-                return { obras: res.obras, key: key.slice(0, 6) + '…', proxy: proxy.id };
-            }
-            // 429 = cuota de ESA clave agotada → cambiar de clave y reintentar
-            // el MISMO proxy (que sí funciona) con la nueva clave.
-            if (res.error === 'cuota') {
-                this._marcarAgotada(key);
-                const nueva = this._siguienteKey();
-                if (nueva !== key) {
-                    key = nueva;
-                    const res2 = await this._intentar(url, key, proxy);
-                    if (res2.obras && res2.obras.length) {
-                        if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, true, 0);
-                        return { obras: res2.obras, key: key.slice(0, 6) + '…', proxy: proxy.id };
-                    }
-                }
-                diag.push(`cuota agotada en claves`);
-                continue;
-            }
-            // 401/403 = restricción de credenciales/red: cambiar de clave no ayuda
-            // (es el mismo nivel de acceso); se reporta y se prueba otro proxy.
-            if (res.error === 'auth') { diag.push(`${proxy.id}: ${res.status} (acceso restringido)`); continue; }
-            // Fallo del proxy (404/timeout/red): registrar y pasar al siguiente.
-            if (typeof ProxiesCORS !== 'undefined') ProxiesCORS.registrar(proxy.id, false);
-            diag.push(`${proxy.id}: ${res.error || 'sin datos'}`);
+    // Valida la respuesta JSON de Scopus; devuelve obras o null. Marca aparte
+    // los errores de cuota/credenciales vía un objeto de señal compartido.
+    _validarScopus(html, senal) {
+        let data;
+        try { data = JSON.parse(html); } catch (e) { return null; }
+        if (data['service-error'] || data['error-response']) {
+            const msg = JSON.stringify(data).toLowerCase();
+            if (/quota|rate.?limit|maximum number/.test(msg)) senal.cuota = true;
+            else if (/auth|api.?key|invalid|forbidden/.test(msg)) senal.auth = true;
+            return null;
         }
-        const err = new Error(diag.slice(0, 5).join(' · ') || 'ningún proxy entregó la respuesta de Scopus');
+        const entradas = (data['search-results'] && data['search-results'].entry) || [];
+        if (entradas.length && entradas[0].error) { senal.auth = true; return null; }
+        return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
+    },
+
+    async buscar(query, filtros = {}) {
+        const baseURL = this.construirURL(query, filtros);
+        if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
+
+        // La clave rota SOLO si Scopus dice "cuota": probamos cada clave con una
+        // CARRERA de proxies (rápido), pasando a la siguiente solo en 429.
+        const diag = [];
+        for (let intento = 0; intento < this.API_KEYS.length; intento++) {
+            const key = this._siguienteKey();
+            const objetivo = baseURL + `&apiKey=${key}`;
+            const senal = {};
+            try {
+                const { obras, proxy } = await ProxiesCORS.carrera(
+                    objetivo, html => this._validarScopus(html, senal),
+                    { anchura: 4, timeout: 20000, oleadas: 2 });
+                return { obras, key: key.slice(0, 6) + '…', proxy };
+            } catch (e) {
+                if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
+                if (senal.auth) { diag.push(`${key.slice(0,6)}…: credenciales/acceso restringido`); continue; }
+                // Falló por proxies, no por la clave: no tiene sentido rotar clave.
+                diag.push(`proxies: ${e.message}`);
+                break;
+            }
+        }
+        const err = new Error(diag.slice(0, 5).join(' · ') || 'Scopus no respondió');
         err.scopus = true;
         throw err;
     }
