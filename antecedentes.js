@@ -15,6 +15,7 @@ const Antecedentes = {
     CONFIG: {
         POR_FUENTE: 25,
         RECORTE_RESUMEN: 350,
+        UNPAYWALL_EMAIL: 'contacto@statsimpro.app',
         MAILTO: '',
         SINONIMOS: {
             'inteligencia cognitiva': ['cognitive ability', 'intelligence', 'capacidad cognitiva', 'habilidades cognitivas'],
@@ -701,6 +702,19 @@ const Antecedentes = {
                     } }
             } catch (e) {}
         }
+
+        // 5) Unpaywall: API especializada en localizar copias de ACCESO ABIERTO
+        // LEGALES (preprint del autor, repositorio institucional, etc.). Requiere
+        // un email como identificador (sin API key). Su enlace OA es el mas fiable.
+        try {
+            const r = await fetch(`https://api.unpaywall.org/v2/${limpio}?email=${this.CONFIG.UNPAYWALL_EMAIL}`);
+            this._enrichDbg('Unpaywall', r.ok ? 'ok' : ('HTTP ' + r.status));
+            if (r.ok) {
+                const d = await r.json();
+                const oa = d.best_oa_location;
+                if (oa && (oa.url_for_pdf || oa.url)) link = oa.url_for_pdf || oa.url;
+            }
+        } catch (e) { this._enrichDbg('Unpaywall', 'CORS/red: ' + e.message); }
 
         // Enlace por defecto: el resolvedor DOI (redirige al editor; no es 404 si el DOI es válido).
         if (!link && limpio) link = `https://doi.org/${limpio}`;
