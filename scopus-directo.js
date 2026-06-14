@@ -62,13 +62,15 @@ const ScopusDirecto = {
 
     construirURL(query, filtros = {}) {
         const full = this._construirQuery(query, filtros);
-        // Scopus exige %20 (no '+'): codificación manual con encodeURIComponent.
+        // view=COMPLETE incluye el abstract (dc:description) y keywords, pero
+        // requiere entitlement institucional (por IP suscrita o insttoken). Si
+        // no se concede, Scopus responde con error y caemos a STANDARD.
         const params = [
             `query=${encodeURIComponent(full)}`,
             `count=${filtros.count || 25}`,
             `start=${filtros.start || 0}`,
             'sort=relevancy',
-            'view=STANDARD'
+            `view=${filtros.view || 'STANDARD'}`
         ].join('&');
         return `https://api.elsevier.com/content/search/scopus?${params}`;
     },
@@ -95,6 +97,7 @@ const ScopusDirecto = {
             citas: parseInt(e['citedby-count'] || '0', 10),
             idioma: '',
             resumen: e['dc:description'] || '',
+            keywords: e['authkeywords'] || '',
             fuentesAPI: ['Scopus']
         };
     },
@@ -165,23 +168,52 @@ const ScopusDirecto = {
     },
 
     // Trae UNA página (offset start) probando claves con carrera de proxies.
+    // Una vez sabido si COMPLETE funciona, se recuerda para no reintentarlo.
+    _viewConfirmada: null, // null=sin probar, 'COMPLETE' o 'STANDARD'
+
+    async _buscarPaginaConVista(query, filtros, start, view, key) {
+        const baseURL = this.construirURL(query, { ...filtros, count: 25, start, view });
+        const senal = {};
+        try {
+            const { obras, proxy } = await ProxiesCORS.carrera(
+                baseURL + `&apiKey=${key}`, html => this._validarScopus(html, senal),
+                { anchura: 4, timeout: 20000, oleadas: 2 });
+            return { ok: true, obras, proxy, total: senal.total };
+        } catch (e) {
+            return { ok: false, senal, error: e.message };
+        }
+    },
+
     async _buscarPagina(query, filtros, start) {
-        const baseURL = this.construirURL(query, { ...filtros, count: 25, start });
         const diag = [];
         for (let intento = 0; intento < this.API_KEYS.length; intento++) {
             const key = this._siguienteKey();
-            const senal = {};
-            try {
-                const { obras, proxy } = await ProxiesCORS.carrera(
-                    baseURL + `&apiKey=${key}`, html => this._validarScopus(html, senal),
-                    { anchura: 4, timeout: 20000, oleadas: 2 });
-                return { obras, key: key.slice(0, 6) + '…', proxy, total: senal.total };
-            } catch (e) {
-                if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota`); continue; }
-                if (senal.vacioReal) { const er = new Error('vacío'); er.vacioReal = true; throw er; }
-                if (senal.auth) { const er = new Error(senal.motivo || 'acceso restringido'); er.auth = true; throw er; }
-                diag.push(`proxies: ${e.message}`); break;
+
+            // Decidir qué vista intentar: si aún no se confirmó, probar COMPLETE
+            // (trae abstract); si ya supimos que no hay acceso, ir directo a STANDARD.
+            const vista = this._viewConfirmada || 'COMPLETE';
+            let res = await this._buscarPaginaConVista(query, filtros, start, vista, key);
+
+            // Si COMPLETE falló por entitlement (auth), reintentar STANDARD con la
+            // MISMA clave y recordar que COMPLETE no está disponible.
+            if (!res.ok && res.senal.auth && vista === 'COMPLETE') {
+                this._viewConfirmada = 'STANDARD';
+                res = await this._buscarPaginaConVista(query, filtros, start, 'STANDARD', key);
             }
+
+            if (res.ok) {
+                // Confirmar la vista que funcionó (COMPLETE si trajo abstract).
+                if (!this._viewConfirmada) {
+                    const conAbstract = res.obras.some(o => o.resumen && o.resumen.length > 40);
+                    this._viewConfirmada = (vista === 'COMPLETE' && conAbstract) ? 'COMPLETE' : vista;
+                }
+                return { obras: res.obras, key: key.slice(0, 6) + '…', proxy: res.proxy, total: res.total, view: this._viewConfirmada };
+            }
+            // Errores que no se arreglan cambiando de clave:
+            if (res.senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota`); continue; }
+            if (res.senal.vacioReal) { const er = new Error('vacío'); er.vacioReal = true; throw er; }
+            if (res.senal.auth) { const er = new Error(res.senal.motivo || 'acceso restringido'); er.auth = true; throw er; }
+            diag.push(`proxies: ${res.error}`); break;
         }
         const er = new Error(diag.slice(0, 4).join(' · ') || 'sin respuesta'); throw er;
     },
@@ -209,7 +241,7 @@ const ScopusDirecto = {
             const total = parseInt(res.total || '0', 10);
             if (total && (p + 1) * 25 >= total) break; // alcanzado el total real
         }
-        return { obras: todas.slice(0, objetivo), ...ultMeta, paginas: Math.ceil(todas.length / 25) };
+        return { obras: todas.slice(0, objetivo), ...ultMeta, paginas: Math.ceil(todas.length / 25), view: this._viewConfirmada };
     }
 };
 
