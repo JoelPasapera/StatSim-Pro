@@ -50,26 +50,30 @@ const ScopusDirecto = {
         return [...new Set(toks)];
     },
 
-    construirURL(query, filtros = {}) {
+    // Construye la query Scopus (cadena TITLE-ABS-KEY + filtro de año).
+    _construirQuery(query, filtros = {}) {
         const terminos = this._terminosClave(query);
-        // Una sola cláusula TITLE-ABS-KEY con los términos separados por espacio
-        // (Scopus los trata como AND implícito, pero es sintaxis más tolerante
-        // que encadenar TITLE-ABS-KEY(...) AND TITLE-ABS-KEY(...)).
-        const q = terminos.length
-            ? `TITLE-ABS-KEY(${terminos.join(' ')})`
-            : `TITLE-ABS-KEY(${query})`;
-        let full = q;
-        if (filtros.desde) full += ` AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}`;
-        // IMPORTANTE: Scopus exige %20 para los espacios; URLSearchParams usa '+',
-        // que rompe los operadores AND/PUBYEAR. Por eso se codifica a mano con
-        // encodeURIComponent (que produce %20) en lugar de URLSearchParams.
+        const q = terminos.length ? `TITLE-ABS-KEY(${terminos.join(' ')})` : `TITLE-ABS-KEY(${query})`;
+        return filtros.desde ? `${q} AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}` : q;
+    },
+
+    construirURL(query, filtros = {}) {
+        const full = this._construirQuery(query, filtros);
+        // Scopus exige %20 (no '+'): codificación manual con encodeURIComponent.
         const params = [
             `query=${encodeURIComponent(full)}`,
             `count=${filtros.count || 25}`,
+            `start=${filtros.start || 0}`,
             'sort=relevancy',
             'view=STANDARD'
         ].join('&');
         return `https://api.elsevier.com/content/search/scopus?${params}`;
+    },
+
+    // URL pública de Scopus para abrir la búsqueda en el navegador (no API).
+    urlPublica(query, filtros = {}) {
+        const full = this._construirQuery(query, filtros);
+        return `https://www.scopus.com/results/results.uri?src=s&st1=${encodeURIComponent(full)}`;
     },
 
     normalizar(e) {
@@ -157,35 +161,52 @@ const ScopusDirecto = {
         return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
     },
 
-    async buscar(query, filtros = {}) {
-        if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
-        const baseURL = this.construirURL(query, filtros);
-
-        // La clave rota SOLO si Scopus dice "cuota": probamos cada clave con una
-        // CARRERA de proxies (rápido), pasando a la siguiente solo en 429.
+    // Trae UNA página (offset start) probando claves con carrera de proxies.
+    async _buscarPagina(query, filtros, start) {
+        const baseURL = this.construirURL(query, { ...filtros, count: 25, start });
         const diag = [];
         for (let intento = 0; intento < this.API_KEYS.length; intento++) {
             const key = this._siguienteKey();
-            const objetivo = baseURL + `&apiKey=${key}`;
             const senal = {};
             try {
                 const { obras, proxy } = await ProxiesCORS.carrera(
-                    objetivo, html => this._validarScopus(html, senal),
+                    baseURL + `&apiKey=${key}`, html => this._validarScopus(html, senal),
                     { anchura: 4, timeout: 20000, oleadas: 2 });
-                return { obras, key: key.slice(0, 6) + '…', proxy };
+                return { obras, key: key.slice(0, 6) + '…', proxy, total: senal.total };
             } catch (e) {
-                if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
-                // Si Scopus dice "empty" DE VERDAD (consulta válida, 0 resultados),
-                // rotar clave no cambia nada: todas darán lo mismo. Cortamos.
-                if (senal.vacioReal) { const er = new Error(`Scopus sin coincidencias para esos términos (consulta válida). ${senal.motivo || ''}`); er.scopus = true; er.vacio = true; throw er; }
-                if (senal.auth) { diag.push(`${key.slice(0,6)}…: ${senal.motivo || 'acceso restringido'}`); continue; }
-                diag.push(`proxies: ${e.message}`);
-                break;
+                if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota`); continue; }
+                if (senal.vacioReal) { const er = new Error('vacío'); er.vacioReal = true; throw er; }
+                if (senal.auth) { const er = new Error(senal.motivo || 'acceso restringido'); er.auth = true; throw er; }
+                diag.push(`proxies: ${e.message}`); break;
             }
         }
-        const err = new Error(diag.slice(0, 5).join(' · ') || 'Scopus no respondió');
-        err.scopus = true;
-        throw err;
+        const er = new Error(diag.slice(0, 4).join(' · ') || 'sin respuesta'); throw er;
+    },
+
+    // Búsqueda con PAGINACIÓN: trae páginas de 25 hasta 'maxResultados'.
+    // Scopus es API legítima → paginar es seguro (no hay anti-bot como Scholar).
+    async buscar(query, filtros = {}) {
+        if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
+        const objetivo = filtros.maxResultados || 25;
+        const paginas = Math.ceil(objetivo / 25);
+        const todas = [];
+        let ultMeta = {};
+        for (let p = 0; p < paginas; p++) {
+            let res;
+            try { res = await this._buscarPagina(query, filtros, p * 25); }
+            catch (e) {
+                if (p === 0) { e.scopus = true; throw e; } // primer fallo: propagar
+                break; // ya tenemos algo de páginas previas
+            }
+            ultMeta = { key: res.key, proxy: res.proxy };
+            const nuevos = res.obras.filter(o => !todas.some(t => (t.doi && t.doi === o.doi) || t.titulo === o.titulo));
+            todas.push(...nuevos);
+            // Si Scopus devolvió menos de 25, no hay más páginas.
+            if (res.obras.length < 25) break;
+            const total = parseInt(res.total || '0', 10);
+            if (total && (p + 1) * 25 >= total) break; // alcanzado el total real
+        }
+        return { obras: todas.slice(0, objetivo), ...ultMeta, paginas: Math.ceil(todas.length / 25) };
     }
 };
 
