@@ -98,8 +98,58 @@ const ScopusDirecto = {
             idioma: '',
             resumen: e['dc:description'] || '',
             keywords: e['authkeywords'] || '',
+            issn: e['prism:issn'] || e['prism:eIssn'] || '',
             fuentesAPI: ['Scopus']
         };
+    },
+
+    // Caché de métricas de revista (un ISSN se consulta una sola vez por sesión).
+    _cacheRevista: {},
+
+    // Obtiene CiteScore, SJR, SNIP y CUARTIL de una revista por su ISSN, vía
+    // Serial Title API (confirmada accesible con las claves). El cuartil se deriva
+    // del percentil de ranking por materia: ≥75→Q1, ≥50→Q2, ≥25→Q3, resto Q4.
+    async metricasRevista(issn) {
+        if (!issn) return null;
+        const limpio = issn.replace(/[^0-9Xx]/g, '');
+        if (this._cacheRevista[limpio] !== undefined) return this._cacheRevista[limpio];
+        if (typeof ProxiesCORS === 'undefined') return null;
+        const key = this._siguienteKey();
+        const url = `https://api.elsevier.com/content/serial/title/issn/${limpio}?apiKey=${key}&view=CITESCORE`;
+        const validar = (html) => {
+            let d; try { d = JSON.parse(html); } catch (e) { return null; }
+            const entry = d['serial-metadata-response'] && d['serial-metadata-response'].entry && d['serial-metadata-response'].entry[0];
+            if (!entry || entry['error']) return null;
+            const cs = entry.citeScoreYearInfoList || {};
+            const sjr = entry.SJRList && entry.SJRList.SJR && entry.SJRList.SJR[0] && entry.SJRList.SJR[0]['$'];
+            const snip = entry.SNIPList && entry.SNIPList.SNIP && entry.SNIPList.SNIP[0] && entry.SNIPList.SNIP[0]['$'];
+            // Percentil: del año Complete más reciente con ranking por materia.
+            let percentil = null;
+            const anios = (cs.citeScoreYearInfo || []);
+            for (const a of anios) {
+                const info = a.citeScoreInformationList && a.citeScoreInformationList[0]
+                    && a.citeScoreInformationList[0].citeScoreInfo && a.citeScoreInformationList[0].citeScoreInfo[0];
+                const rank = info && info.citeScoreSubjectRank && info.citeScoreSubjectRank[0];
+                if (rank && rank.percentile) { percentil = parseInt(rank.percentile, 10); break; }
+            }
+            let cuartil = '';
+            if (percentil != null) cuartil = percentil >= 75 ? 'Q1' : percentil >= 50 ? 'Q2' : percentil >= 25 ? 'Q3' : 'Q4';
+            return [{ // devolver como "obras" para reutilizar la carrera (espera array no vacío)
+                citeScore: cs.citeScoreCurrentMetric || '',
+                sjr: sjr || '', snip: snip || '',
+                percentil, cuartil,
+                revista: entry['dc:title'] || ''
+            }];
+        };
+        try {
+            const { obras } = await ProxiesCORS.carrera(url, validar, { anchura: 4, timeout: 15000, oleadas: 2 });
+            const m = obras[0];
+            this._cacheRevista[limpio] = m;
+            return m;
+        } catch (e) {
+            this._cacheRevista[limpio] = null; // no reintentar si falla
+            return null;
+        }
     },
 
     // Una petición con una clave, a través de un proxy CORS.
