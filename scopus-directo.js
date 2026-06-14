@@ -18,8 +18,7 @@ const ScopusDirecto = {
         '147d71e438d2d472bea28abbe4aa9c4e',
         '359dd3266f644bf44e1b6610d7c6664c',
         '16ccbb33ab907de19c7064a0d479451f',
-        '1c4210c2199d31dc7d7560702729d51d',
-        '92d98589eeb9940076461f3a1857661a'
+        '1c4210c2199d31dc7d7560702729d51d'
     ],
     _idxKey: 0,
     _keyEstado: {}, // key → {agotada:bool, ts}
@@ -45,7 +44,7 @@ const ScopusDirecto = {
     // una frase larga literal, que en Scopus suele dar 0 resultados).
     _terminosClave(query) {
         const toks = String(query).toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos para el match
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos
             .replace(/[^a-z0-9ñ\s]/g, ' ').split(/\s+/)
             .filter(t => t.length > 2 && !this._VACIAS.has(t));
         return [...new Set(toks)];
@@ -159,8 +158,8 @@ const ScopusDirecto = {
     },
 
     async buscar(query, filtros = {}) {
-        const baseURL = this.construirURL(query, filtros);
         if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
+        const baseURL = this.construirURL(query, filtros);
 
         // La clave rota SOLO si Scopus dice "cuota": probamos cada clave con una
         // CARRERA de proxies (rápido), pasando a la siguiente solo en 429.
@@ -173,7 +172,7 @@ const ScopusDirecto = {
                 const { obras, proxy } = await ProxiesCORS.carrera(
                     objetivo, html => this._validarScopus(html, senal),
                     { anchura: 4, timeout: 20000, oleadas: 2 });
-                return { obras, key: key.slice(0, 6) + '…', proxy };
+                return { obras, key: key.slice(0, 6) + '…', proxy, traducida };
             } catch (e) {
                 if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
                 // Si Scopus dice "empty" DE VERDAD (consulta válida, 0 resultados),
