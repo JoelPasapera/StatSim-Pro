@@ -291,8 +291,11 @@ const Antecedentes = {
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
               </label><br>
-              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScopus" checked> Buscar en Scopus (Elsevier, vía proxy)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
@@ -333,11 +336,17 @@ const Antecedentes = {
         const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
         const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
         const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
+        const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
+
+        if (!usarScopus && !usarScholar && !usarAbiertas) {
+            estado.textContent = 'Marca al menos una fuente de búsqueda.';
+            return;
+        }
 
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
         if (usarScholar) fuentes.push('Google Académico');
-        fuentes.push('bases abiertas');
+        if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `Consultando ${fuentes.join(' + ')}…`;
 
         // Cada fuente devuelve {obras, etiqueta, info}; se lanzan en paralelo y
@@ -354,9 +363,9 @@ const Antecedentes = {
                     info: `Scholar (${r.paginas} pág.${r.captchaEn ? `, bloqueó en ${r.captchaEn}` : ''})`
                 })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` })));
         }
-        tareas.push(
-            this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} bases abiertas` }))
-                .catch(e => ({ obras: [], info: `bases abiertas fallaron` })));
+        if (usarAbiertas) tareas.push(
+            this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias` }))
+                .catch(e => ({ obras: [], info: `fuentes complementarias fallaron` })));
 
         try {
             const res = await Promise.all(tareas);
