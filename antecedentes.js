@@ -617,6 +617,12 @@ const Antecedentes = {
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
+        const estado = document.getElementById('antEstado');
+        if (estado && pendientes.length) {
+            const dbg = (typeof window !== 'undefined' && window.__enrichDebug) ? window.__enrichDebug : {};
+            const resumen = Object.entries(dbg).map(([k, v]) => `${k}×${v}`).join(', ');
+            estado.textContent = (estado.textContent || '') + ` · Autocompletado: ${cambios} campos en ${pendientes.length} artículos.` + (resumen ? ` [${resumen}]` : '');
+        }
         if (cambios) {
             this._renderResultados(this._obras);
             if (this._seleccion.size) this._renderSeleccion();
@@ -625,6 +631,15 @@ const Antecedentes = {
 
     // Recupera el abstract de un DOI probando Crossref y OpenAlex (gratis, CORS).
     // OpenAlex suele tener más abstracts que Crossref para psicología.
+    // Diagnóstico de enriquecimiento: registra el resultado de cada fuente en
+    // window.__enrichDebug para inspeccionarlo desde consola si algo falla.
+    _enrichDbg(fuente, resultado) {
+        if (typeof window === 'undefined') return;
+        window.__enrichDebug = window.__enrichDebug || {};
+        const k = `${fuente}: ${resultado.split(':')[0]}`;
+        window.__enrichDebug[k] = (window.__enrichDebug[k] || 0) + 1;
+    },
+
     // Recupera abstract Y el mejor enlace de acceso abierto desde 4 APIs que
     // agregan contenido legalmente. El enlace OA reemplaza enlaces rotos (404),
     // priorizando PDF/landing abiertos y, como último recurso, el resolvedor DOI.
@@ -634,9 +649,11 @@ const Antecedentes = {
         const limpiar = s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         let abstract = '', link = '';
 
-        // 1) OpenAlex: abstract + ubicación de acceso abierto (la mejor para enlaces).
+        // 1) OpenAlex: abstract + ubicación OA. Se usa el filtro doi: (el slash
+        // del DOI debe ir LITERAL; encodeURIComponent en el path lo rompía con %2F).
         try {
-            const r = await fetch(`https://api.openalex.org/works/https://doi.org/${encodeURIComponent(limpio)}`);
+            const r = await fetch(`https://api.openalex.org/works/doi:${limpio}`);
+            this._enrichDbg('OpenAlex', r.ok ? 'ok' : ('HTTP ' + r.status));
             if (r.ok) {
                 const d = await r.json();
                 if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) abstract = t; }
@@ -644,31 +661,34 @@ const Antecedentes = {
                 if (oa) link = oa.pdf_url || oa.landing_page_url || link;
                 if (!link && d.open_access && d.open_access.oa_url) link = d.open_access.oa_url;
             }
-        } catch (e) {}
+        } catch (e) { this._enrichDbg('OpenAlex', 'CORS/red: ' + e.message); }
 
         // 2) Crossref (si falta abstract).
         if (!abstract) {
             try {
                 const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
+                this._enrichDbg('Crossref', r.ok ? 'ok' : ('HTTP ' + r.status));
                 if (r.ok) { const d = await r.json(); const a = d.message && d.message.abstract;
                     if (a) { const t = limpiar(a); if (t.length > 40) abstract = t; } }
-            } catch (e) {}
+            } catch (e) { this._enrichDbg('Crossref', 'CORS/red: ' + e.message); }
         }
 
         // 3) Semantic Scholar (abstract + PDF de acceso abierto como enlace).
         if (!abstract || !link) {
             try {
-                const r = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(limpio)}?fields=abstract,openAccessPdf`);
+                const r = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${limpio}?fields=abstract,openAccessPdf`);
+                this._enrichDbg('SemanticScholar', r.ok ? 'ok' : ('HTTP ' + r.status));
                 if (r.ok) { const d = await r.json();
                     if (!abstract && d.abstract) { const t = limpiar(d.abstract); if (t.length > 40) abstract = t; }
                     if (!link && d.openAccessPdf && d.openAccessPdf.url) link = d.openAccessPdf.url; }
-            } catch (e) {}
+            } catch (e) { this._enrichDbg('SemanticScholar', 'CORS/red: ' + e.message); }
         }
 
         // 4) Europe PMC (abstract + texto completo abierto cuando existe).
         if (!abstract || !link) {
             try {
                 const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:${encodeURIComponent(limpio)}&resultType=core&format=json`);
+                this._enrichDbg('EuropePMC', r.ok ? 'ok' : ('HTTP ' + r.status));
                 if (r.ok) { const d = await r.json();
                     const res = d.resultList && d.resultList.result && d.resultList.result[0];
                     if (res) {
