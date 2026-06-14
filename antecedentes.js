@@ -31,6 +31,24 @@ const Antecedentes = {
     _seleccion: new Map(),
     _obras: [],
 
+    // ---------- traducción (MyMemory: gratis, con CORS, sin API key) ----------
+
+    // Traduce 'texto' de 'desde' a 'hacia'. Devuelve el texto traducido, o el
+    // original si la API falla (degradación elegante: nunca rompe la búsqueda).
+    async traducirTexto(texto, desde, hacia) {
+        try {
+            const url = 'https://api.mymemory.translated.net/get?q='
+                + encodeURIComponent(texto) + '&langpair=' + desde + '|' + hacia;
+            const r = await fetch(url);
+            const d = await r.json();
+            if (d.responseStatus === 200 && d.responseData && d.responseData.translatedText) {
+                const t = d.responseData.translatedText.trim();
+                if (t) return t;
+            }
+        } catch (e) { /* sin conexión o límite diario: usar el original */ }
+        return texto;
+    },
+
     // ---------- utilidades ----------
     _norm(s) {
         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -331,8 +349,8 @@ const Antecedentes = {
 
     async _onBuscar() {
         const estado = document.getElementById('antEstado');
-        const q = document.getElementById('antQuery').value.trim();
-        if (!q) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
+        const qOriginal = document.getElementById('antQuery').value.trim();
+        if (!qOriginal) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
         const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
         const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
         const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
@@ -343,11 +361,23 @@ const Antecedentes = {
             return;
         }
 
+        // Si se prioriza Inglés, traducir la consulta UNA vez y usarla para
+        // TODAS las fuentes (Scopus, Scholar y abiertas son mayormente inglés).
+        let q = qOriginal, avisoTraduccion = '';
+        if (f.idioma === 'en') {
+            estado.textContent = 'Traduciendo la consulta al inglés…';
+            const traducida = await this.traducirTexto(qOriginal, 'es', 'en');
+            if (traducida && traducida.toLowerCase() !== qOriginal.toLowerCase()) {
+                q = traducida;
+                avisoTraduccion = `🔁 Consulta traducida al inglés para mejores resultados: «${q}». `;
+            }
+        }
+
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
-        estado.textContent = `Consultando ${fuentes.join(' + ')}…`;
+        estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
 
         // Cada fuente devuelve {obras, etiqueta, info}; se lanzan en paralelo y
         // se combinan. Una que falle no tumba a las demás (allSettled).
@@ -382,8 +412,8 @@ const Antecedentes = {
             this._pagina = 0; // reiniciar paginación
             const infos = res.map(r => r.info).join(' · ');
             estado.textContent = this._obras.length
-                ? `${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
-                : `Sin resultados. ${infos}`;
+                ? `${avisoTraduccion}${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
+                : `${avisoTraduccion}Sin resultados. ${infos}`;
             this._renderResultados(this._obras);
         } catch (e) {
             estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
