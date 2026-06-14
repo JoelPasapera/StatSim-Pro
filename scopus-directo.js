@@ -172,7 +172,7 @@ const ScopusDirecto = {
                 const { obras, proxy } = await ProxiesCORS.carrera(
                     objetivo, html => this._validarScopus(html, senal),
                     { anchura: 4, timeout: 20000, oleadas: 2 });
-                return { obras, key: key.slice(0, 6) + '…', proxy, traducida };
+                return { obras, key: key.slice(0, 6) + '…', proxy };
             } catch (e) {
                 if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
                 // Si Scopus dice "empty" DE VERDAD (consulta válida, 0 resultados),
