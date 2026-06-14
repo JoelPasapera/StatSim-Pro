@@ -18,7 +18,8 @@ const ScopusDirecto = {
         '147d71e438d2d472bea28abbe4aa9c4e',
         '359dd3266f644bf44e1b6610d7c6664c',
         '16ccbb33ab907de19c7064a0d479451f',
-        '1c4210c2199d31dc7d7560702729d51d'
+        '1c4210c2199d31dc7d7560702729d51d',
+        '92d98589eeb9940076461f3a1857661a'
     ],
     _idxKey: 0,
     _keyEstado: {}, // key → {agotada:bool, ts}
@@ -52,8 +53,11 @@ const ScopusDirecto = {
 
     construirURL(query, filtros = {}) {
         const terminos = this._terminosClave(query);
+        // Una sola cláusula TITLE-ABS-KEY con los términos separados por espacio
+        // (Scopus los trata como AND implícito, pero es sintaxis más tolerante
+        // que encadenar TITLE-ABS-KEY(...) AND TITLE-ABS-KEY(...)).
         const q = terminos.length
-            ? terminos.map(t => `TITLE-ABS-KEY(${t})`).join(' AND ')
+            ? `TITLE-ABS-KEY(${terminos.join(' ')})`
             : `TITLE-ABS-KEY(${query})`;
         let full = q;
         if (filtros.desde) full += ` AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}`;
@@ -90,6 +94,15 @@ const ScopusDirecto = {
     },
 
     // Una petición con una clave, a través de un proxy CORS.
+    // Guarda en window la última URL y respuesta para depurar desde consola.
+    _debug(url, htmlOrErr) {
+        if (typeof window !== 'undefined') {
+            window.__scopusDebug = window.__scopusDebug || [];
+            window.__scopusDebug.push({ url, respuesta: String(htmlOrErr).slice(0, 600), ts: new Date().toISOString() });
+            if (window.__scopusDebug.length > 8) window.__scopusDebug.shift();
+        }
+    },
+
     async _intentar(url, key, proxy) {
         const conKey = url + `&apiKey=${key}`;
         const ctrl = new AbortController();
@@ -117,8 +130,9 @@ const ScopusDirecto = {
     // Valida la respuesta JSON de Scopus; devuelve obras o null. Marca aparte
     // los errores de cuota/credenciales vía un objeto de señal compartido.
     _validarScopus(html, senal) {
+        this._debug('(respuesta)', html); // queda en window.__scopusDebug para depurar
         let data;
-        try { data = JSON.parse(html); } catch (e) { senal.motivo = 'respuesta no-JSON (proxy o bloqueo)'; return null; }
+        try { data = JSON.parse(html); } catch (e) { senal.motivo = 'respuesta no-JSON: ' + String(html).slice(0, 80); return null; }
         // Scopus señala errores de varias formas; capturamos el texto para diagnóstico.
         const errTxt = (data['service-error'] && JSON.stringify(data['service-error']))
             || (data['error-response'] && JSON.stringify(data['error-response']))
@@ -130,8 +144,17 @@ const ScopusDirecto = {
             else senal.auth = true;
             return null;
         }
-        const entradas = (data['search-results'] && data['search-results'].entry) || [];
-        if (entradas.length && entradas[0].error) { senal.auth = true; senal.motivo = entradas[0].error; return null; }
+        const sr = data['search-results'] || {};
+        const total = sr['opensearch:totalResults'];
+        const entradas = sr.entry || [];
+        // Scopus devuelve una entrada con campo 'error' cuando no hay resultados.
+        if (entradas.length && entradas[0].error) {
+            const e = String(entradas[0].error);
+            senal.motivo = `Scopus: ${e} (total=${total})`;
+            if (/result set was empty/i.test(e)) senal.vacioReal = true; else senal.auth = true;
+            return null;
+        }
+        senal.total = total;
         return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
     },
 
@@ -153,8 +176,10 @@ const ScopusDirecto = {
                 return { obras, key: key.slice(0, 6) + '…', proxy };
             } catch (e) {
                 if (senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota → rotando`); continue; }
+                // Si Scopus dice "empty" DE VERDAD (consulta válida, 0 resultados),
+                // rotar clave no cambia nada: todas darán lo mismo. Cortamos.
+                if (senal.vacioReal) { const er = new Error(`Scopus sin coincidencias para esos términos (consulta válida). ${senal.motivo || ''}`); er.scopus = true; er.vacio = true; throw er; }
                 if (senal.auth) { diag.push(`${key.slice(0,6)}…: ${senal.motivo || 'acceso restringido'}`); continue; }
-                // Falló por proxies, no por la clave: no tiene sentido rotar clave.
                 diag.push(`proxies: ${e.message}`);
                 break;
             }
