@@ -305,6 +305,9 @@ const Antecedentes = {
                 <div class="form-group"><label class="label">Resultados (Scholar)</label>
                   <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
                   <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
+                <div class="form-group"><label class="label">Resultados (Scopus)</label>
+                  <select id="antCantidadScopus" class="input"><option value="25" selected>25</option>
+                  <option value="50">50</option><option value="100">100</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -317,6 +320,7 @@ const Antecedentes = {
               </label><br>
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
+              <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
@@ -327,6 +331,16 @@ const Antecedentes = {
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
             if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
+        });
+        const btnScopusWeb = document.getElementById('antScopusWeb');
+        if (btnScopusWeb) btnScopusWeb.addEventListener('click', async () => {
+            let q = document.getElementById('antQuery').value.trim();
+            if (!q || typeof ScopusDirecto === 'undefined') return;
+            // Si se prioriza inglés, traducir también para la búsqueda web.
+            if (document.getElementById('antIdioma').value === 'en') {
+                q = await this.traducirTexto(q, 'es', 'en');
+            }
+            window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
         });
         document.getElementById('antQuery').addEventListener('input', () => this._renderSinonimos());
         this._renderSinonimos();
@@ -382,9 +396,12 @@ const Antecedentes = {
         // Cada fuente devuelve {obras, etiqueta, info}; se lanzan en paralelo y
         // se combinan. Una que falle no tumba a las demás (allSettled).
         const tareas = [];
-        if (usarScopus) tareas.push(
-            ScopusDirecto.buscar(q, f).then(r => ({ obras: r.obras, info: `Scopus (clave ${r.key})` }))
-                .catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+        if (usarScopus) {
+            const maxScopus = parseInt((document.getElementById('antCantidadScopus') || {}).value || '25', 10);
+            tareas.push(
+                ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => ({ obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.)` }))
+                    .catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+        }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
             tareas.push(
