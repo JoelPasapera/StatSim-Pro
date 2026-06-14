@@ -415,8 +415,10 @@ const Antecedentes = {
         if (usarScopus) {
             const maxScopus = parseInt((document.getElementById('antCantidadScopus') || {}).value || '25', 10);
             tareas.push(
-                ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => ({ obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.)` }))
-                    .catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+                ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => {
+                    const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
+                    return { obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.${vista})` };
+                }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
         }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
