@@ -591,22 +591,33 @@ const Antecedentes = {
     // obras que no lo traen, EN PARALELO con límite de concurrencia, y re-pinta
     // la vista cuando termina (sin que el usuario lo pida). No bloquea la UI.
     async _enriquecerAutomatico(obras) {
-        const pendientes = obras.filter(o => (o.doi || o.link) && (!o.resumen || o.resumen.length < 40) && !o._intentadoEnriquecer);
+        // Procesar las que les falta resumen O tienen enlace dudoso, no intentadas.
+        const pendientes = obras.filter(o => (!o.resumen || o.resumen.length < 40) && !o._intentadoEnriquecer);
         if (!pendientes.length) return;
-        pendientes.forEach(o => o._intentadoEnriquecer = true); // no reintentar
+        pendientes.forEach(o => o._intentadoEnriquecer = true);
         const CONCURRENCIA = 5;
         let idx = 0, cambios = 0;
         const trabajador = async () => {
             while (idx < pendientes.length) {
                 const o = pendientes[idx++];
-                const abs = await this._abstractDesdeDOI(o.doi || o.link);
-                if (abs) { o.resumen = abs; o._enriquecido = true; cambios++; }
+                const doi = o.doi || (o.link && /doi\.org/.test(o.link) ? o.link : '');
+                let datos = null;
+                if (doi) {
+                    datos = await this._recuperarDatos(doi);
+                } else {
+                    // Sin DOI: buscar el artículo por su título (versión legítima del scraping).
+                    const porTit = await this._resolverPorTitulo(o.titulo);
+                    if (porTit) { datos = { abstract: porTit.abstract, link: porTit.link }; if (porTit.doi && !o.doi) o.doi = porTit.doi; }
+                }
+                if (datos) {
+                    if (datos.abstract) { o.resumen = datos.abstract; o._enriquecido = true; cambios++; }
+                    // Reparar enlace: si el actual falta o no es OA, usar el mejor hallado.
+                    if (datos.link && (!o.link || o.link === o.doi)) { o.link = datos.link; cambios++; }
+                }
             }
         };
-        // Lanzar CONCURRENCIA trabajadores en paralelo.
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
         if (cambios) {
-            // Re-pintar resultados y selección si algo se completó.
             this._renderResultados(this._obras);
             if (this._seleccion.size) this._renderSeleccion();
         }
@@ -614,37 +625,89 @@ const Antecedentes = {
 
     // Recupera el abstract de un DOI probando Crossref y OpenAlex (gratis, CORS).
     // OpenAlex suele tener más abstracts que Crossref para psicología.
-    async _abstractDesdeDOI(doi) {
-        if (!doi) return '';
+    // Recupera abstract Y el mejor enlace de acceso abierto desde 4 APIs que
+    // agregan contenido legalmente. El enlace OA reemplaza enlaces rotos (404),
+    // priorizando PDF/landing abiertos y, como último recurso, el resolvedor DOI.
+    async _recuperarDatos(doi) {
+        if (!doi) return { abstract: '', link: '' };
         const limpio = doi.replace(/^https?:\/\/doi\.org\//, '').trim();
         const limpiar = s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        let abstract = '', link = '';
 
-        // Cascada AGRESIVA de 4 fuentes abiertas; la 1.ª con abstract útil gana.
-        // 1) Crossref
-        try {
-            const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
-            if (r.ok) { const d = await r.json(); const a = d.message && d.message.abstract;
-                if (a) { const t = limpiar(a); if (t.length > 40) return t; } }
-        } catch (e) {}
-        // 2) OpenAlex (índice invertido → texto)
+        // 1) OpenAlex: abstract + ubicación de acceso abierto (la mejor para enlaces).
         try {
             const r = await fetch(`https://api.openalex.org/works/https://doi.org/${encodeURIComponent(limpio)}`);
-            if (r.ok) { const d = await r.json();
-                if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) return t; } }
+            if (r.ok) {
+                const d = await r.json();
+                if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) abstract = t; }
+                const oa = d.best_oa_location || d.primary_location;
+                if (oa) link = oa.pdf_url || oa.landing_page_url || link;
+                if (!link && d.open_access && d.open_access.oa_url) link = d.open_access.oa_url;
+            }
         } catch (e) {}
-        // 3) Semantic Scholar (campo abstract directo)
+
+        // 2) Crossref (si falta abstract).
+        if (!abstract) {
+            try {
+                const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
+                if (r.ok) { const d = await r.json(); const a = d.message && d.message.abstract;
+                    if (a) { const t = limpiar(a); if (t.length > 40) abstract = t; } }
+            } catch (e) {}
+        }
+
+        // 3) Semantic Scholar (abstract + PDF de acceso abierto como enlace).
+        if (!abstract || !link) {
+            try {
+                const r = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(limpio)}?fields=abstract,openAccessPdf`);
+                if (r.ok) { const d = await r.json();
+                    if (!abstract && d.abstract) { const t = limpiar(d.abstract); if (t.length > 40) abstract = t; }
+                    if (!link && d.openAccessPdf && d.openAccessPdf.url) link = d.openAccessPdf.url; }
+            } catch (e) {}
+        }
+
+        // 4) Europe PMC (abstract + texto completo abierto cuando existe).
+        if (!abstract || !link) {
+            try {
+                const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:${encodeURIComponent(limpio)}&resultType=core&format=json`);
+                if (r.ok) { const d = await r.json();
+                    const res = d.resultList && d.resultList.result && d.resultList.result[0];
+                    if (res) {
+                        if (!abstract && res.abstractText) { const t = limpiar(res.abstractText); if (t.length > 40) abstract = t; }
+                        if (!link && res.fullTextUrlList && res.fullTextUrlList.fullTextUrl) {
+                            const ftl = res.fullTextUrlList.fullTextUrl;
+                            const abierto = ftl.find(x => x.availabilityCode === 'OA' || x.availability === 'Open access') || ftl[0];
+                            if (abierto && abierto.url) link = abierto.url;
+                        }
+                    } }
+            } catch (e) {}
+        }
+
+        // Enlace por defecto: el resolvedor DOI (redirige al editor; no es 404 si el DOI es válido).
+        if (!link && limpio) link = `https://doi.org/${limpio}`;
+        return { abstract, link };
+    },
+
+    // FALLBACK para artículos SIN DOI: busca el título en OpenAlex/Crossref para
+    // hallar el registro real, su DOI, abstract y enlace. Es la versión legítima
+    // y fiable de "buscar el título en Google para encontrar el artículo".
+    async _resolverPorTitulo(titulo) {
+        if (!titulo || titulo.length < 10) return null;
         try {
-            const r = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(limpio)}?fields=abstract`);
-            if (r.ok) { const d = await r.json(); if (d.abstract) { const t = limpiar(d.abstract); if (t.length > 40) return t; } }
+            const r = await fetch(`https://api.openalex.org/works?filter=title.search:${encodeURIComponent(titulo)}&per-page=1`);
+            if (r.ok) {
+                const d = await r.json();
+                const w = d.results && d.results[0];
+                if (w && this._norm(w.title || '').includes(this._norm(titulo).slice(0, 30))) {
+                    const datos = { abstract: '', link: '', doi: w.doi || '' };
+                    if (w.abstract_inverted_index) { const t = this.reconstruirAbstract(w.abstract_inverted_index); if (t && t.length > 40) datos.abstract = t; }
+                    const oa = w.best_oa_location || w.primary_location;
+                    if (oa) datos.link = oa.pdf_url || oa.landing_page_url || '';
+                    if (!datos.link && w.doi) datos.link = w.doi;
+                    return datos;
+                }
+            }
         } catch (e) {}
-        // 4) Europe PMC (biomedicina y psicología; muy buena cobertura)
-        try {
-            const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:${encodeURIComponent(limpio)}&resultType=core&format=json`);
-            if (r.ok) { const d = await r.json();
-                const res = d.resultList && d.resultList.result && d.resultList.result[0];
-                if (res && res.abstractText) { const t = limpiar(res.abstractText); if (t.length > 40) return t; } }
-        } catch (e) {}
-        return '';
+        return null;
     },
 
     // Enriquece las obras SELECCIONADAS: para las que tienen DOI pero les falta
@@ -667,8 +730,10 @@ const Antecedentes = {
         for (let i = 0; i < pendientes.length; i++) {
             const o = pendientes[i];
             if (estado) estado.textContent = `Buscando resumen ${i + 1}/${pendientes.length} (Crossref + OpenAlex)…`;
-            const abs = await this._abstractDesdeDOI(o.doi || o.link);
-            if (abs) { o.resumen = abs; o._enriquecido = true; logrados++; } else { sinAbstract++; }
+            const doi = o.doi || (o.link && /doi\.org/.test(o.link) ? o.link : '');
+            const datos = doi ? await this._recuperarDatos(doi) : (await this._resolverPorTitulo(o.titulo)) || { abstract: '', link: '' };
+            if (datos.abstract) { o.resumen = datos.abstract; o._enriquecido = true; logrados++; } else { sinAbstract++; }
+            if (datos.link && (!o.link || o.link === o.doi)) o.link = datos.link;
             await new Promise(r => setTimeout(r, 200));
         }
         // Mensaje honesto y detallado de qué se logró y qué no.
