@@ -36,16 +36,37 @@ const ScopusDirecto = {
 
     _marcarAgotada(k) { this._keyEstado[k] = { agotada: true, ts: Date.now() }; },
 
+    // Palabras vacías que estorban el match en Scopus (ES + EN).
+    _VACIAS: new Set(['entre','e','y','o','u','de','del','la','el','los','las','en','con','para','por',
+        'un','una','su','sus','al','a','the','of','and','or','in','on','for','to','with','between','a','an']),
+
+    // Convierte la consulta en términos clave unidos por AND (mejor recall que
+    // una frase larga literal, que en Scopus suele dar 0 resultados).
+    _terminosClave(query) {
+        const toks = String(query).toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos para el match
+            .replace(/[^a-z0-9ñ\s]/g, ' ').split(/\s+/)
+            .filter(t => t.length > 2 && !this._VACIAS.has(t));
+        return [...new Set(toks)];
+    },
+
     construirURL(query, filtros = {}) {
-        let q = `TITLE-ABS-KEY(${query})`;
-        if (filtros.desde) q += ` AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}`;
-        const p = new URLSearchParams({
-            query: q,
-            count: String(filtros.count || 25),
-            sort: 'relevancy',
-            view: 'STANDARD'
-        });
-        return `https://api.elsevier.com/content/search/scopus?${p.toString()}`;
+        const terminos = this._terminosClave(query);
+        const q = terminos.length
+            ? terminos.map(t => `TITLE-ABS-KEY(${t})`).join(' AND ')
+            : `TITLE-ABS-KEY(${query})`;
+        let full = q;
+        if (filtros.desde) full += ` AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}`;
+        // IMPORTANTE: Scopus exige %20 para los espacios; URLSearchParams usa '+',
+        // que rompe los operadores AND/PUBYEAR. Por eso se codifica a mano con
+        // encodeURIComponent (que produce %20) en lugar de URLSearchParams.
+        const params = [
+            `query=${encodeURIComponent(full)}`,
+            `count=${filtros.count || 25}`,
+            'sort=relevancy',
+            'view=STANDARD'
+        ].join('&');
+        return `https://api.elsevier.com/content/search/scopus?${params}`;
     },
 
     normalizar(e) {
