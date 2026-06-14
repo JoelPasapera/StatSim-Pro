@@ -18,7 +18,10 @@ const ScopusDirecto = {
         '147d71e438d2d472bea28abbe4aa9c4e',
         '359dd3266f644bf44e1b6610d7c6664c',
         '16ccbb33ab907de19c7064a0d479451f',
-        '1c4210c2199d31dc7d7560702729d51d'
+        '1c4210c2199d31dc7d7560702729d51d',
+        '92d98589eeb9940076461f3a1857661a',
+        'ce978a4f4d8c9f38507a7720ddbb3998',
+        '81e47fc17a598deb0880e72af71709d5'
     ],
     _idxKey: 0,
     _keyEstado: {}, // key → {agotada:bool, ts}
