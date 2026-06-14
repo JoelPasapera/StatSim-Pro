@@ -448,6 +448,9 @@ const Antecedentes = {
                 ? `${avisoTraduccion}${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
                 : `${avisoTraduccion}Sin resultados. ${infos}`;
             this._renderResultados(this._obras);
+            // Enriquecimiento AUTOMÁTICO en segundo plano: recupera abstracts
+            // faltantes en paralelo (sin bloquear) y re-pinta al terminar.
+            this._enriquecerAutomatico(this._obras);
         } catch (e) {
             estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
         }
@@ -557,7 +560,7 @@ const Antecedentes = {
                 <span style="display:inline-flex; gap:0.4rem; flex-wrap:wrap;">
                     <button id="antCsvEs" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Separador ; — abre en columnas en Excel en español">⬇ CSV (Excel español)</button>
                     <button id="antCsvEn" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Separador , — estándar internacional, Google Sheets y Excel en inglés">⬇ CSV (internacional)</button>
-                    <button id="antEnriquecer" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Recupera el resumen de cada artículo desde Crossref para completar más columnas">✨ Completar datos</button>
+                    <button id="antEnriquecer" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Reintenta recuperar resúmenes faltantes (ya se hace automáticamente tras buscar)">✨ Reintentar completar</button>
                 </span>
             </h4>
             <div class="table-container"><table class="table" style="font-size:0.85em;">
@@ -582,31 +585,63 @@ const Antecedentes = {
         this._cablearPaginas('Mat', () => this._selMat, v => { this._selMat = v; this._renderSeleccion(); }, npMat);
     },
 
+    // Enriquecimiento AUTOMÁTICO tras cada búsqueda: recupera abstracts de las
+    // obras que no lo traen, EN PARALELO con límite de concurrencia, y re-pinta
+    // la vista cuando termina (sin que el usuario lo pida). No bloquea la UI.
+    async _enriquecerAutomatico(obras) {
+        const pendientes = obras.filter(o => (o.doi || o.link) && (!o.resumen || o.resumen.length < 40) && !o._intentadoEnriquecer);
+        if (!pendientes.length) return;
+        pendientes.forEach(o => o._intentadoEnriquecer = true); // no reintentar
+        const CONCURRENCIA = 5;
+        let idx = 0, cambios = 0;
+        const trabajador = async () => {
+            while (idx < pendientes.length) {
+                const o = pendientes[idx++];
+                const abs = await this._abstractDesdeDOI(o.doi || o.link);
+                if (abs) { o.resumen = abs; o._enriquecido = true; cambios++; }
+            }
+        };
+        // Lanzar CONCURRENCIA trabajadores en paralelo.
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
+        if (cambios) {
+            // Re-pintar resultados y selección si algo se completó.
+            this._renderResultados(this._obras);
+            if (this._seleccion.size) this._renderSeleccion();
+        }
+    },
+
     // Recupera el abstract de un DOI probando Crossref y OpenAlex (gratis, CORS).
     // OpenAlex suele tener más abstracts que Crossref para psicología.
     async _abstractDesdeDOI(doi) {
         if (!doi) return '';
         const limpio = doi.replace(/^https?:\/\/doi\.org\//, '').trim();
-        // Intento 1: Crossref
+        const limpiar = s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+
+        // Cascada AGRESIVA de 4 fuentes abiertas; la 1.ª con abstract útil gana.
+        // 1) Crossref
         try {
             const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
-            if (r.ok) {
-                const d = await r.json();
-                const abs = d.message && d.message.abstract;
-                if (abs) { const t = String(abs).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t.length > 40) return t; }
-            }
-        } catch (e) { /* probar OpenAlex */ }
-        // Intento 2: OpenAlex (reconstruye el abstract de su índice invertido)
+            if (r.ok) { const d = await r.json(); const a = d.message && d.message.abstract;
+                if (a) { const t = limpiar(a); if (t.length > 40) return t; } }
+        } catch (e) {}
+        // 2) OpenAlex (índice invertido → texto)
         try {
             const r = await fetch(`https://api.openalex.org/works/https://doi.org/${encodeURIComponent(limpio)}`);
-            if (r.ok) {
-                const d = await r.json();
-                if (d.abstract_inverted_index) {
-                    const t = this.reconstruirAbstract(d.abstract_inverted_index);
-                    if (t && t.length > 40) return t;
-                }
-            }
-        } catch (e) { /* sin abstract disponible */ }
+            if (r.ok) { const d = await r.json();
+                if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) return t; } }
+        } catch (e) {}
+        // 3) Semantic Scholar (campo abstract directo)
+        try {
+            const r = await fetch(`https://api.semanticscholar.org/graph/v1/paper/DOI:${encodeURIComponent(limpio)}?fields=abstract`);
+            if (r.ok) { const d = await r.json(); if (d.abstract) { const t = limpiar(d.abstract); if (t.length > 40) return t; } }
+        } catch (e) {}
+        // 4) Europe PMC (biomedicina y psicología; muy buena cobertura)
+        try {
+            const r = await fetch(`https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:${encodeURIComponent(limpio)}&resultType=core&format=json`);
+            if (r.ok) { const d = await r.json();
+                const res = d.resultList && d.resultList.result && d.resultList.result[0];
+                if (res && res.abstractText) { const t = limpiar(res.abstractText); if (t.length > 40) return t; } }
+        } catch (e) {}
         return '';
     },
 
