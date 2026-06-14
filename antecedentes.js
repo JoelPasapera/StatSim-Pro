@@ -279,6 +279,7 @@ const Antecedentes = {
     montar() {
         let cont = document.getElementById('seccionAntecedentes');
         if (!cont) {
+            // Respaldo: si la sección no existe en el HTML, crear al pie (compat).
             cont = document.createElement('div');
             cont.id = 'seccionAntecedentes';
             const ancla = document.querySelector('footer');
@@ -286,11 +287,8 @@ const Antecedentes = {
         }
         const sugerida = window.ultimoAnalisis ? `${window.ultimoAnalisis.et1} ${window.ultimoAnalisis.et2}` : '';
         cont.innerHTML = `
-        <div class="card" style="margin-top:1.5rem;">
-          <details>
-            <summary style="cursor:pointer;"><strong>📚 Buscador de Antecedentes</strong>
-              — 3 bases académicas en paralelo, referencias APA y matriz de antecedentes</summary>
-            <div style="margin-top:1rem;">
+        <div class="card">
+            <div>
               <div class="form-row">
                 <div class="form-group" style="flex:2;">
                   <label class="label">Términos de búsqueda</label>
@@ -329,7 +327,6 @@ const Antecedentes = {
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
             </div>
-          </details>
         </div>`;
         document.getElementById('antBuscar').addEventListener('click', () => this._onBuscar());
         document.getElementById('antScholar').addEventListener('click', () => {
@@ -571,7 +568,7 @@ const Antecedentes = {
                 <tbody>${matVis.map(f => `<tr>${f.celdas.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
             </table></div>
             ${this._barraPaginas('Mat', this._selMat, npMat, iniM, filasMatriz.length, PP)}
-            <p class="help-text">Columnas como objetivos, instrumentos, resultados y conclusiones se extraen del resumen cuando es posible; «[completar]» indica que requieren la lectura del texto completo. Verifica país e indexación.</p>`;
+            <p class="help-text">Esta matriz no se completa al 100&#37; automáticamente: los objetivos, instrumentos y conclusiones a menudo solo aparecen en el cuerpo del artículo, y no todos los estudios son de acceso abierto. Los campos marcados con «[completar]» requieren tu lectura de la fuente. Verifica también país e indexación antes de citar.</p>`;
 
         // Copiar referencias CON FORMATO (HTML enriquecido al portapapeles)
         const btnCopiar = document.getElementById('antCopiarRefs');
