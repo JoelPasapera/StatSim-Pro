@@ -318,6 +318,9 @@ const Antecedentes = {
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
+              <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;">
+                ⚠️ Scopus indexa casi exclusivamente artículos en <strong>inglés</strong>. Con el idioma en «Español», es probable que devuelva pocos o ningún resultado. Para aprovechar Scopus, cambia «Priorizar idioma» a <strong>Inglés</strong>: la consulta se traducirá automáticamente.
+              </div>
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
@@ -344,6 +347,19 @@ const Antecedentes = {
         });
         document.getElementById('antQuery').addEventListener('input', () => this._renderSinonimos());
         this._renderSinonimos();
+        // Aviso Scopus+Español: actualizar al cambiar idioma o la casilla de Scopus.
+        const actualizarAvisoScopus = () => {
+            const aviso = document.getElementById('antAvisoScopusEs');
+            if (!aviso) return;
+            const scopusOn = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked;
+            const idioma = document.getElementById('antIdioma') && document.getElementById('antIdioma').value;
+            aviso.style.display = (scopusOn && idioma !== 'en') ? 'block' : 'none';
+        };
+        ['antIdioma', 'antUsarScopus'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', actualizarAvisoScopus);
+        });
+        actualizarAvisoScopus();
     },
 
     _renderSinonimos() {
@@ -541,6 +557,7 @@ const Antecedentes = {
                 <span style="display:inline-flex; gap:0.4rem; flex-wrap:wrap;">
                     <button id="antCsvEs" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Separador ; — abre en columnas en Excel en español">⬇ CSV (Excel español)</button>
                     <button id="antCsvEn" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Separador , — estándar internacional, Google Sheets y Excel en inglés">⬇ CSV (internacional)</button>
+                    <button id="antEnriquecer" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Recupera el resumen de cada artículo desde Crossref para completar más columnas">✨ Completar datos</button>
                 </span>
             </h4>
             <div class="table-container"><table class="table" style="font-size:0.85em;">
@@ -558,9 +575,48 @@ const Antecedentes = {
         if (btnEs) btnEs.addEventListener('click', () => this._exportarCSV(COLS, filasMatriz, ';'));
         const btnEn = document.getElementById('antCsvEn');
         if (btnEn) btnEn.addEventListener('click', () => this._exportarCSV(COLS, filasMatriz, ','));
+        const btnEnr = document.getElementById('antEnriquecer');
+        if (btnEnr) btnEnr.addEventListener('click', () => this.enriquecerSeleccion());
         // Paginación de ambas secciones
         this._cablearPaginas('Ref', () => this._selRef, v => { this._selRef = v; this._renderSeleccion(); }, npRef);
         this._cablearPaginas('Mat', () => this._selMat, v => { this._selMat = v; this._renderSeleccion(); }, npMat);
+    },
+
+    // Recupera el abstract de un DOI vía Crossref (gratis, con CORS). Devuelve
+    // el texto del abstract o '' si no está disponible.
+    async _abstractDesdeDOI(doi) {
+        if (!doi) return '';
+        const limpio = doi.replace(/^https?:\/\/doi\.org\//, '');
+        try {
+            const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
+            if (!r.ok) return '';
+            const d = await r.json();
+            const abs = d.message && d.message.abstract;
+            return abs ? String(abs).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
+        } catch (e) { return ''; }
+    },
+
+    // Enriquece las obras SELECCIONADAS: para las que tienen DOI pero les falta
+    // resumen, baja el abstract de Crossref y re-extrae objetivos/muestra/etc.
+    // Procesa en serie con pausa breve (cortesía con la API gratuita).
+    async enriquecerSeleccion() {
+        const estado = document.getElementById('antEstado');
+        const sel = [...this._seleccion.values()];
+        const pendientes = sel.filter(o => (o.doi || o.link) && (!o.resumen || o.resumen.length < 40));
+        if (!pendientes.length) {
+            if (estado) estado.textContent = 'Todos los artículos seleccionados ya tienen resumen; nada que enriquecer.';
+            return;
+        }
+        let logrados = 0;
+        for (let i = 0; i < pendientes.length; i++) {
+            const o = pendientes[i];
+            if (estado) estado.textContent = `Enriqueciendo ${i + 1}/${pendientes.length} desde Crossref…`;
+            const abs = await this._abstractDesdeDOI(o.doi || o.link);
+            if (abs) { o.resumen = abs; o._enriquecido = true; logrados++; }
+            await new Promise(r => setTimeout(r, 250)); // cortesía con la API
+        }
+        if (estado) estado.textContent = `Enriquecidos ${logrados}/${pendientes.length} artículos con su resumen. Campos actualizados.`;
+        this._renderSeleccion(); // re-pintar con los nuevos datos
     },
 
     // Construye las 12 celdas (HTML para mostrar) y los 12 valores planos (CSV).
