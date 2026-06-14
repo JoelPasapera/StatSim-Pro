@@ -15,7 +15,7 @@ const Antecedentes = {
     CONFIG: {
         POR_FUENTE: 25,
         RECORTE_RESUMEN: 350,
-        UNPAYWALL_EMAIL: 'contacto@statsimpro.app',
+        UNPAYWALL_EMAIL: 'statsim.research@gmail.com', // Unpaywall rechaza dominios inexistentes/de prueba (422)
         MAILTO: '',
         SINONIMOS: {
             'inteligencia cognitiva': ['cognitive ability', 'intelligence', 'capacidad cognitiva', 'habilidades cognitivas'],
