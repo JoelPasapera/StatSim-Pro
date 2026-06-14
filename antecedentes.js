@@ -228,7 +228,16 @@ const Antecedentes = {
         if (/scielo/.test((o.link || '') + f)) ix.push('SciELO');
         if (/redalyc/.test((o.link || '') + f)) ix.push('Redalyc');
         if (o.doi) ix.push('Crossref');
-        return [...new Set(ix)].join(', ');
+        let txt = [...new Set(ix)].join(', ');
+        // Añadir cuartil y CiteScore de la revista si se obtuvieron de Scopus.
+        if (o._metricas) {
+            const m = o._metricas;
+            const partes = [];
+            if (m.cuartil) partes.push(m.cuartil);
+            if (m.citeScore) partes.push('CiteScore ' + m.citeScore);
+            if (partes.length) txt += (txt ? ' · ' : '') + partes.join(', ');
+        }
+        return txt;
     },
 
     // Muestra: frases tipo "N participantes/students/estudiantes/sample".
@@ -585,13 +594,35 @@ const Antecedentes = {
         this._cablearPaginas('Mat', () => this._selMat, v => { this._selMat = v; this._renderSeleccion(); }, npMat);
     },
 
+    // Pasada de métricas de revista: para cada obra con ISSN (las de Scopus),
+    // consulta cuartil/CiteScore vía Serial Title. En paralelo, con caché por ISSN
+    // en ScopusDirecto (revistas repetidas se consultan una sola vez). Devuelve
+    // cuántas obras recibieron métricas.
+    async _enriquecerMetricas(obras) {
+        if (typeof ScopusDirecto === 'undefined') return 0;
+        const conIssn = obras.filter(o => o.issn && !o._metricas);
+        if (!conIssn.length) return 0;
+        const CONCURRENCIA = 4;
+        let idx = 0, n = 0;
+        const trabajador = async () => {
+            while (idx < conIssn.length) {
+                const o = conIssn[idx++];
+                const m = await ScopusDirecto.metricasRevista(o.issn);
+                if (m) { o._metricas = m; n++; }
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, conIssn.length) }, () => trabajador()));
+        return n;
+    },
+
     // Enriquecimiento AUTOMÁTICO tras cada búsqueda: recupera abstracts de las
     // obras que no lo traen, EN PARALELO con límite de concurrencia, y re-pinta
     // la vista cuando termina (sin que el usuario lo pida). No bloquea la UI.
     async _enriquecerAutomatico(obras) {
         // Procesar las que les falta resumen O tienen enlace dudoso, no intentadas.
         const pendientes = obras.filter(o => (!o.resumen || o.resumen.length < 40) && !o._intentadoEnriquecer);
-        if (!pendientes.length) return;
+        const hayMetricas = obras.some(o => o.issn && !o._metricas);
+        if (!pendientes.length && !hayMetricas) return;
         pendientes.forEach(o => o._intentadoEnriquecer = true);
         const CONCURRENCIA = 5;
         let idx = 0, cambios = 0;
@@ -615,11 +646,12 @@ const Antecedentes = {
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
+        cambios += await this._enriquecerMetricas(obras);
         const estado = document.getElementById('antEstado');
-        if (estado && pendientes.length) {
+        if (estado && cambios) {
             const dbg = (typeof window !== 'undefined' && window.__enrichDebug) ? window.__enrichDebug : {};
             const resumen = Object.entries(dbg).map(([k, v]) => `${k}×${v}`).join(', ');
-            estado.textContent = (estado.textContent || '') + ` · Autocompletado: ${cambios} campos en ${pendientes.length} artículos.` + (resumen ? ` [${resumen}]` : '');
+            estado.textContent = (estado.textContent || '') + ` · Autocompletado: ${cambios} campos.` + (resumen ? ` [${resumen}]` : '');
         }
         if (cambios) {
             this._renderResultados(this._obras);
