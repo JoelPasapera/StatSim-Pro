@@ -582,18 +582,32 @@ const Antecedentes = {
         this._cablearPaginas('Mat', () => this._selMat, v => { this._selMat = v; this._renderSeleccion(); }, npMat);
     },
 
-    // Recupera el abstract de un DOI vía Crossref (gratis, con CORS). Devuelve
-    // el texto del abstract o '' si no está disponible.
+    // Recupera el abstract de un DOI probando Crossref y OpenAlex (gratis, CORS).
+    // OpenAlex suele tener más abstracts que Crossref para psicología.
     async _abstractDesdeDOI(doi) {
         if (!doi) return '';
-        const limpio = doi.replace(/^https?:\/\/doi\.org\//, '');
+        const limpio = doi.replace(/^https?:\/\/doi\.org\//, '').trim();
+        // Intento 1: Crossref
         try {
             const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
-            if (!r.ok) return '';
-            const d = await r.json();
-            const abs = d.message && d.message.abstract;
-            return abs ? String(abs).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : '';
-        } catch (e) { return ''; }
+            if (r.ok) {
+                const d = await r.json();
+                const abs = d.message && d.message.abstract;
+                if (abs) { const t = String(abs).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(); if (t.length > 40) return t; }
+            }
+        } catch (e) { /* probar OpenAlex */ }
+        // Intento 2: OpenAlex (reconstruye el abstract de su índice invertido)
+        try {
+            const r = await fetch(`https://api.openalex.org/works/https://doi.org/${encodeURIComponent(limpio)}`);
+            if (r.ok) {
+                const d = await r.json();
+                if (d.abstract_inverted_index) {
+                    const t = this.reconstruirAbstract(d.abstract_inverted_index);
+                    if (t && t.length > 40) return t;
+                }
+            }
+        } catch (e) { /* sin abstract disponible */ }
+        return '';
     },
 
     // Enriquece las obras SELECCIONADAS: para las que tienen DOI pero les falta
@@ -602,20 +616,29 @@ const Antecedentes = {
     async enriquecerSeleccion() {
         const estado = document.getElementById('antEstado');
         const sel = [...this._seleccion.values()];
-        const pendientes = sel.filter(o => (o.doi || o.link) && (!o.resumen || o.resumen.length < 40));
-        if (!pendientes.length) {
-            if (estado) estado.textContent = 'Todos los artículos seleccionados ya tienen resumen; nada que enriquecer.';
+        if (!sel.length) {
+            if (estado) estado.textContent = 'Primero marca (✓) los artículos que quieres completar en la tabla de resultados de arriba.';
             return;
         }
-        let logrados = 0;
+        const pendientes = sel.filter(o => (o.doi || o.link) && (!o.resumen || o.resumen.length < 40));
+        if (!pendientes.length) {
+            if (estado) estado.textContent = 'Los artículos seleccionados ya tienen resumen o no tienen DOI; nada que completar.';
+            return;
+        }
+        const sinDOI = sel.filter(o => !(o.doi || o.link) && (!o.resumen || o.resumen.length < 40)).length;
+        let logrados = 0, sinAbstract = 0;
         for (let i = 0; i < pendientes.length; i++) {
             const o = pendientes[i];
-            if (estado) estado.textContent = `Enriqueciendo ${i + 1}/${pendientes.length} desde Crossref…`;
+            if (estado) estado.textContent = `Buscando resumen ${i + 1}/${pendientes.length} (Crossref + OpenAlex)…`;
             const abs = await this._abstractDesdeDOI(o.doi || o.link);
-            if (abs) { o.resumen = abs; o._enriquecido = true; logrados++; }
-            await new Promise(r => setTimeout(r, 250)); // cortesía con la API
+            if (abs) { o.resumen = abs; o._enriquecido = true; logrados++; } else { sinAbstract++; }
+            await new Promise(r => setTimeout(r, 200));
         }
-        if (estado) estado.textContent = `Enriquecidos ${logrados}/${pendientes.length} artículos con su resumen. Campos actualizados.`;
+        // Mensaje honesto y detallado de qué se logró y qué no.
+        let msg = `✓ ${logrados} de ${pendientes.length} artículos enriquecidos con su resumen.`;
+        if (sinAbstract) msg += ` ${sinAbstract} no tienen resumen disponible en las bases abiertas.`;
+        if (sinDOI) msg += ` ${sinDOI} no tienen DOI (no se pueden enriquecer).`;
+        if (estado) estado.textContent = msg;
         this._renderSeleccion(); // re-pintar con los nuevos datos
     },
 
