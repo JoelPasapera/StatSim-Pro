@@ -349,6 +349,7 @@ const Antecedentes = {
               <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
+              <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
@@ -368,6 +369,16 @@ const Antecedentes = {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
             window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
+        });
+        const btnPubmedWeb = document.getElementById('antPubmedWeb');
+        if (btnPubmedWeb) btnPubmedWeb.addEventListener('click', async () => {
+            let q = document.getElementById('antQuery').value.trim();
+            if (!q || typeof PubMedDirecto === 'undefined') return;
+            // PubMed es mayormente inglés: traducir si se prioriza inglés.
+            if (document.getElementById('antIdioma').value === 'en') {
+                q = await this.traducirTexto(q, 'es', 'en');
+            }
+            window.open(PubMedDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
         });
         document.getElementById('antQuery').addEventListener('input', () => this._renderSinonimos());
         this._renderSinonimos();
