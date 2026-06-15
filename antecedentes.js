@@ -330,6 +330,10 @@ const Antecedentes = {
                   <select id="antCantidadPubmed" class="input"><option value="50">50</option>
                   <option value="100" selected>100</option><option value="200">200</option>
                   <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
+                <div class="form-group"><label class="label">Resultados (SciELO)</label>
+                  <select id="antCantidadScielo" class="input"><option value="50">50</option>
+                  <option value="100" selected>100</option><option value="200">200</option>
+                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -341,6 +345,10 @@ const Antecedentes = {
                 <input type="checkbox" id="antUsarPubmed" checked> Buscar en PubMed (NCBI — psicología clínica, salud, neurociencia)
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarScielo" checked> Buscar en SciELO (investigación latinoamericana en español)
+              </label>
+              <select id="antPaisScielo" class="input" style="display:inline-block;width:auto;margin:0 0 0.6rem 0.5rem;padding:0.2rem 0.5rem;font-size:0.85em;" title="Filtrar SciELO por país"></select><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
               <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;">
@@ -350,6 +358,7 @@ const Antecedentes = {
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
               <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
+              <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
@@ -369,6 +378,19 @@ const Antecedentes = {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
             window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
+        });
+        // Poblar el selector de países de SciELO.
+        const selPais = document.getElementById('antPaisScielo');
+        if (selPais && typeof ScieloDirecto !== 'undefined') {
+            selPais.innerHTML = Object.entries(ScieloDirecto.PAISES)
+                .map(([cod, nom]) => `<option value="${cod}">${nom}</option>`).join('');
+        }
+        const btnScieloWeb = document.getElementById('antScieloWeb');
+        if (btnScieloWeb) btnScieloWeb.addEventListener('click', async () => {
+            let q = document.getElementById('antQuery').value.trim();
+            if (!q || typeof ScieloDirecto === 'undefined') return;
+            const pais = (document.getElementById('antPaisScielo') || {}).value || '';
+            window.open(ScieloDirecto.urlPublica(q, { pais }), '_blank');
         });
         const btnPubmedWeb = document.getElementById('antPubmedWeb');
         if (btnPubmedWeb) btnPubmedWeb.addEventListener('click', async () => {
@@ -421,8 +443,9 @@ const Antecedentes = {
         const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
         const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
         const usarPubmed = document.getElementById('antUsarPubmed') && document.getElementById('antUsarPubmed').checked && typeof PubMedDirecto !== 'undefined';
+        const usarScielo = document.getElementById('antUsarScielo') && document.getElementById('antUsarScielo').checked && typeof ScieloDirecto !== 'undefined';
 
-        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed) {
+        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed && !usarScielo) {
             estado.textContent = 'Marca al menos una fuente de búsqueda.';
             return;
         }
@@ -442,6 +465,7 @@ const Antecedentes = {
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
         if (usarPubmed) fuentes.push('PubMed');
+        if (usarScielo) fuentes.push('SciELO');
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
@@ -464,6 +488,15 @@ const Antecedentes = {
                     obras: r.obras,
                     info: `PubMed (${r.obras.length} result., con resúmenes ✓)`
                 })).catch(e => ({ obras: [], info: `PubMed falló (${e.message})` })));
+        }
+        if (usarScielo) {
+            const maxScielo = parseInt((document.getElementById('antCantidadScielo') || {}).value || '100', 10);
+            const paisScielo = (document.getElementById('antPaisScielo') || {}).value || '';
+            tareas.push(
+                ScieloDirecto.buscar(q, { ...f, maxResultados: maxScielo, pais: paisScielo }).then(r => ({
+                    obras: r.obras,
+                    info: `SciELO (${r.obras.length} result.${paisScielo ? ', ' + (ScieloDirecto.PAISES[paisScielo] || paisScielo) : ''})`
+                })).catch(e => ({ obras: [], info: `SciELO falló (${e.message})` })));
         }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
