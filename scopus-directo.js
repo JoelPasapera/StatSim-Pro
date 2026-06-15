@@ -77,8 +77,13 @@ const ScopusDirecto = {
 
     // URL pública de Scopus para abrir la búsqueda en el navegador (no API).
     urlPublica(query, filtros = {}) {
-        const full = this._construirQuery(query, filtros);
-        return `https://www.scopus.com/results/results.uri?src=s&st1=${encodeURIComponent(full)}`;
+        // Para precargar la búsqueda en scopus.com hay que pasar términos SIMPLES
+        // en st1 (no la cláusula TITLE-ABS-KEY ni operadores PUBYEAR, que el cuadro
+        // de búsqueda básica no interpreta y deja vacío). Se usan los términos clave
+        // separados por espacio; Scopus busca en título/resumen/keywords por defecto.
+        const terminos = this._terminosClave(query);
+        const st1 = terminos.length ? terminos.join(' ') : query;
+        return `https://www.scopus.com/results/results.uri?src=s&sot=b&sdt=b&sl=0&st1=${encodeURIComponent(st1)}`;
     },
 
     normalizar(e) {
