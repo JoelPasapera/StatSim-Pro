@@ -228,16 +228,24 @@ const Antecedentes = {
         if (/scielo/.test((o.link || '') + f)) ix.push('SciELO');
         if (/redalyc/.test((o.link || '') + f)) ix.push('Redalyc');
         if (o.doi) ix.push('Crossref');
-        let txt = [...new Set(ix)].join(', ');
-        // Añadir cuartil y CiteScore de la revista si se obtuvieron de Scopus.
-        if (o._metricas) {
-            const m = o._metricas;
-            const partes = [];
-            if (m.cuartil) partes.push(m.cuartil);
-            if (m.citeScore) partes.push('CiteScore ' + m.citeScore);
-            if (partes.length) txt += (txt ? ' · ' : '') + partes.join(', ');
-        }
-        return txt;
+        return [...new Set(ix)].join(', ');
+    },
+
+    // Insignia de cuartil con color para mostrar en la tabla (HTML).
+    _insigniaCuartil(o) {
+        if (!o._metricas || !o._metricas.cuartil) return '';
+        const m = o._metricas;
+        const colores = { Q1: ['#E1F5EE', '#085041'], Q2: ['#EAF3DE', '#27500A'], Q3: ['#FAEEDA', '#633806'], Q4: ['#FCEBEB', '#791F1F'] };
+        const [bg, fg] = colores[m.cuartil] || ['#F1EFE8', '#444441'];
+        const cs = m.citeScore ? `<div style="font-size:0.75rem; color:#666; margin-top:3px;">CiteScore ${m.citeScore}</div>` : '';
+        return `<span style="display:inline-block; background:${bg}; color:${fg}; font-size:0.78rem; font-weight:600; padding:2px 8px; border-radius:6px;">${m.cuartil}</span>${cs}`;
+    },
+
+    // Texto plano del cuartil (para CSV): "Q1, CiteScore 4.8".
+    _cuartilTexto(o) {
+        if (!o._metricas || !o._metricas.cuartil) return '';
+        const m = o._metricas;
+        return m.cuartil + (m.citeScore ? `, CiteScore ${m.citeScore}` : '');
     },
 
     // Muestra: frases tipo "N participantes/students/estudiantes/sample".
@@ -314,8 +322,10 @@ const Antecedentes = {
                   <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
                   <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
-                  <select id="antCantidadScopus" class="input"><option value="25" selected>25</option>
-                  <option value="50">50</option><option value="100">100</option></select></div>
+                  <select id="antCantidadScopus" class="input"><option value="25">25</option>
+                  <option value="50">50</option><option value="100" selected>100</option>
+                  <option value="200">200 (más lento)</option><option value="300">300 (más lento)</option>
+                  <option value="500">500 (revisión exhaustiva)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -554,7 +564,7 @@ const Antecedentes = {
         const matVis = filasMatriz.slice(iniM, iniM + PP);
 
         const COLS = ['Título', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
-            'Resultados', 'Conclusiones', 'Revista', 'Indexación', 'Referencia (APA)', 'Link/DOI'];
+            'Resultados', 'Conclusiones', 'Revista', 'Cuartil', 'Indexación', 'Referencia (APA)', 'Link/DOI'];
 
         cont.innerHTML = `
             <h4 style="margin-top:1.25rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
@@ -807,7 +817,7 @@ const Antecedentes = {
         this._renderSeleccion(); // re-pintar con los nuevos datos
     },
 
-    // Construye las 12 celdas (HTML para mostrar) y los 12 valores planos (CSV).
+    // Construye las 13 celdas (HTML para mostrar) y los 13 valores planos (CSV).
     _filaMatriz(o) {
         const ref = this.citaAPA(o).replace(/<\/?i>/g, '');
         const link = o.link || o.doi || '';
@@ -826,13 +836,14 @@ const Antecedentes = {
             o.resumen ? (o.resumen.slice(0, 200) + (o.resumen.length > 200 ? '…' : '')) : ph, // resultados ≈ resumen
             ph, // conclusiones: requiere texto completo
             o.fuente || ph,
+            this._insigniaCuartil(o) || ph,
             indexacion || ph,
             ref,
             link ? `<a href="${link}" target="_blank">${link}</a>` : ph
         ];
         const planas = [
             o.titulo || '', o.anio || '', pais, objetivo, muestra, '',
-            o.resumen || '', '', o.fuente || '', indexacion, ref, link
+            o.resumen || '', '', o.fuente || '', this._cuartilTexto(o), indexacion, ref, link
         ];
         return { celdas, planas };
     },
