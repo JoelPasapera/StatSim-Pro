@@ -326,12 +326,19 @@ const Antecedentes = {
                   <option value="50">50</option><option value="100" selected>100</option>
                   <option value="200">200 (más lento)</option><option value="300">300 (más lento)</option>
                   <option value="500">500 (revisión exhaustiva)</option></select></div>
+                <div class="form-group"><label class="label">Resultados (PubMed)</label>
+                  <select id="antCantidadPubmed" class="input"><option value="50">50</option>
+                  <option value="100" selected>100</option><option value="200">200</option>
+                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScopus" checked> Buscar en Scopus (Elsevier, vía proxy)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarPubmed" checked> Buscar en PubMed (NCBI — psicología clínica, salud, neurociencia)
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
@@ -402,8 +409,9 @@ const Antecedentes = {
         const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
         const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
         const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
+        const usarPubmed = document.getElementById('antUsarPubmed') && document.getElementById('antUsarPubmed').checked && typeof PubMedDirecto !== 'undefined';
 
-        if (!usarScopus && !usarScholar && !usarAbiertas) {
+        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed) {
             estado.textContent = 'Marca al menos una fuente de búsqueda.';
             return;
         }
@@ -422,6 +430,7 @@ const Antecedentes = {
 
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
+        if (usarPubmed) fuentes.push('PubMed');
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
@@ -436,6 +445,14 @@ const Antecedentes = {
                     const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
                     return { obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.${vista})` };
                 }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+        }
+        if (usarPubmed) {
+            const maxPubmed = parseInt((document.getElementById('antCantidadPubmed') || {}).value || '100', 10);
+            tareas.push(
+                PubMedDirecto.buscar(q, { ...f, maxResultados: maxPubmed }).then(r => ({
+                    obras: r.obras,
+                    info: `PubMed (${r.obras.length} result., con resúmenes ✓)`
+                })).catch(e => ({ obras: [], info: `PubMed falló (${e.message})` })));
         }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
