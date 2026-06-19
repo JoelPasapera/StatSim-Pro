@@ -334,6 +334,10 @@ const Antecedentes = {
                   <select id="antCantidadScielo" class="input"><option value="50">50</option>
                   <option value="100" selected>100</option><option value="200">200</option>
                   <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
+                <div class="form-group"><label class="label">Resultados (ALICIA)</label>
+                  <select id="antCantidadAlicia" class="input"><option value="50">50</option>
+                  <option value="100" selected>100</option><option value="200">200</option>
+                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -346,8 +350,10 @@ const Antecedentes = {
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarScielo" checked> Buscar en SciELO (investigación latinoamericana en español)
-              </label>
-              <select id="antPaisScielo" class="input" style="display:inline-block;width:auto;margin:0 0 0.6rem 0.5rem;padding:0.2rem 0.5rem;font-size:0.85em;" title="Filtrar SciELO por país"></select><br>
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarAlicia" checked> Buscar en ALICIA (tesis y producción científica peruana — CONCYTEC)
+              </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
@@ -358,7 +364,11 @@ const Antecedentes = {
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
               <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
-              <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
+              <span style="display:inline-flex;align-items:center;gap:0.3rem;">
+                <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
+                <select id="antPaisScielo" class="input" style="width:auto;padding:0.2rem 0.5rem;font-size:0.85em;" title="País para abrir en SciELO"></select>
+              </span>
+              <button id="antAliciaWeb" class="btn btn-outline">↗ Abrir en ALICIA</button>
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
@@ -391,6 +401,11 @@ const Antecedentes = {
             if (!q || typeof ScieloDirecto === 'undefined') return;
             const pais = (document.getElementById('antPaisScielo') || {}).value || '';
             window.open(ScieloDirecto.urlPublica(q, { pais }), '_blank');
+        });
+        const btnAliciaWeb = document.getElementById('antAliciaWeb');
+        if (btnAliciaWeb) btnAliciaWeb.addEventListener('click', () => {
+            const q = document.getElementById('antQuery').value.trim();
+            if (q && typeof AliciaDirecto !== 'undefined') window.open(AliciaDirecto.urlPublica(q), '_blank');
         });
         const btnPubmedWeb = document.getElementById('antPubmedWeb');
         if (btnPubmedWeb) btnPubmedWeb.addEventListener('click', async () => {
@@ -444,8 +459,9 @@ const Antecedentes = {
         const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
         const usarPubmed = document.getElementById('antUsarPubmed') && document.getElementById('antUsarPubmed').checked && typeof PubMedDirecto !== 'undefined';
         const usarScielo = document.getElementById('antUsarScielo') && document.getElementById('antUsarScielo').checked && typeof ScieloDirecto !== 'undefined';
+        const usarAlicia = document.getElementById('antUsarAlicia') && document.getElementById('antUsarAlicia').checked && typeof AliciaDirecto !== 'undefined';
 
-        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed && !usarScielo) {
+        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed && !usarScielo && !usarAlicia) {
             estado.textContent = 'Marca al menos una fuente de búsqueda.';
             return;
         }
@@ -466,6 +482,7 @@ const Antecedentes = {
         if (usarScopus) fuentes.push('Scopus');
         if (usarPubmed) fuentes.push('PubMed');
         if (usarScielo) fuentes.push('SciELO');
+        if (usarAlicia) fuentes.push('ALICIA');
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
@@ -491,12 +508,19 @@ const Antecedentes = {
         }
         if (usarScielo) {
             const maxScielo = parseInt((document.getElementById('antCantidadScielo') || {}).value || '100', 10);
-            const paisScielo = (document.getElementById('antPaisScielo') || {}).value || '';
             tareas.push(
-                ScieloDirecto.buscar(q, { ...f, maxResultados: maxScielo, pais: paisScielo }).then(r => ({
+                ScieloDirecto.buscar(q, { ...f, maxResultados: maxScielo }).then(r => ({
                     obras: r.obras,
-                    info: `SciELO (${r.obras.length} result.${paisScielo ? ', ' + (ScieloDirecto.PAISES[paisScielo] || paisScielo) : ''})`
+                    info: `SciELO (${r.obras.length} result.)`
                 })).catch(e => ({ obras: [], info: `SciELO falló (${e.message})` })));
+        }
+        if (usarAlicia) {
+            const maxAlicia = parseInt((document.getElementById('antCantidadAlicia') || {}).value || '100', 10);
+            tareas.push(
+                AliciaDirecto.buscar(q, { ...f, maxResultados: maxAlicia }).then(r => ({
+                    obras: r.obras,
+                    info: `ALICIA (${r.obras.length} result., con resúmenes ✓)`
+                })).catch(e => ({ obras: [], info: `ALICIA falló (${e.message})` })));
         }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
