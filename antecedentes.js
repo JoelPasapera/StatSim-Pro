@@ -364,10 +364,7 @@ const Antecedentes = {
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
               <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
-              <span style="display:inline-flex;align-items:center;gap:0.3rem;">
-                <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
-                <select id="antPaisScielo" class="input" style="width:auto;padding:0.2rem 0.5rem;font-size:0.85em;" title="País para abrir en SciELO"></select>
-              </span>
+              <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
               <button id="antAliciaWeb" class="btn btn-outline">↗ Abrir en ALICIA</button>
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
@@ -389,18 +386,10 @@ const Antecedentes = {
             }
             window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
         });
-        // Poblar el selector de países de SciELO.
-        const selPais = document.getElementById('antPaisScielo');
-        if (selPais && typeof ScieloDirecto !== 'undefined') {
-            selPais.innerHTML = Object.entries(ScieloDirecto.PAISES)
-                .map(([cod, nom]) => `<option value="${cod}">${nom}</option>`).join('');
-        }
         const btnScieloWeb = document.getElementById('antScieloWeb');
-        if (btnScieloWeb) btnScieloWeb.addEventListener('click', async () => {
-            let q = document.getElementById('antQuery').value.trim();
-            if (!q || typeof ScieloDirecto === 'undefined') return;
-            const pais = (document.getElementById('antPaisScielo') || {}).value || '';
-            window.open(ScieloDirecto.urlPublica(q, { pais }), '_blank');
+        if (btnScieloWeb) btnScieloWeb.addEventListener('click', () => {
+            const q = document.getElementById('antQuery').value.trim();
+            if (q && typeof ScieloDirecto !== 'undefined') window.open(ScieloDirecto.urlPublica(q), '_blank');
         });
         const btnAliciaWeb = document.getElementById('antAliciaWeb');
         if (btnAliciaWeb) btnAliciaWeb.addEventListener('click', () => {
