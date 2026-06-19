@@ -68,7 +68,6 @@ const ScieloDirecto = {
             `query=${encodeURIComponent(q)}`,
             `rows=${rows}`,
             `offset=${offset}`,
-            `select=DOI,title,author,issued,container-title,abstract,ISSN,language,page,volume,issue,subject`,
             `mailto=${encodeURIComponent(this.MAILTO)}`
         ];
         // Filtro: solo artículos del member SciELO + tipo journal-article + año.
