@@ -111,7 +111,7 @@ const IAAsistente = {
 
         return await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.4, max_tokens: 8000 } // amplio: deja al modelo razonar y responder sin cortes
+            { temperature: 0.4, max_tokens: 4000 } // 4000 deja margen bajo el límite de 8000 tokens/min del plan gratuito de Groq
         );
     },
 
@@ -156,7 +156,7 @@ ${q}`;
 
         const texto = await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.8, max_tokens: 8000 } // amplio: deja al modelo razonar y responder sin cortes
+            { temperature: 0.8, max_tokens: 4000 } // 4000 deja margen bajo el límite de 8000 tokens/min del plan gratuito de Groq
         );
 
         // Parsear: una variante por línea. Limpiar numeración/viñetas/comillas residuales.
