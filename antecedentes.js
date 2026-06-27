@@ -369,9 +369,33 @@ const Antecedentes = {
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
+
+              <div id="antIntensiva" style="margin-top:2rem; border-top:2px solid var(--color-border, #e5e5e5); padding-top:1.5rem;">
+                <h3 style="margin:0 0 0.3rem; font-size:1.15rem;">✨ Búsqueda intensiva con IA</h3>
+                <p class="help-text" style="margin:0 0 1rem;">Genera criterios de selección, expande la consulta y filtra por relevancia con ayuda de un modelo de IA.</p>
+
+                <div class="form-group">
+                  <label class="label" for="antProblema">Problema de investigación</label>
+                  <textarea id="antProblema" class="input" rows="3" style="resize:vertical;"
+                    placeholder="Ej.: ¿Existe relación entre la inteligencia emocional y el rendimiento académico en estudiantes universitarios de Lima?"></textarea>
+                </div>
+
+                <div class="form-group">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
+                    <label class="label" for="antCriterios" style="margin:0;">Criterios de inclusión y exclusión</label>
+                    <button id="antGenerarCriterios" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🪄 Generar criterios</button>
+                  </div>
+                  <textarea id="antCriterios" class="input" rows="8" style="resize:vertical;"
+                    placeholder="Se generarán automáticamente al pulsar «Generar criterios» a partir del problema de investigación. Podrás editarlos libremente antes de filtrar."></textarea>
+                  <p class="help-text" style="margin:0.4rem 0 0;">La IA propone un borrador; tú decides los criterios finales. Son totalmente editables.</p>
+                  <div id="antCriteriosEstado" class="help-text" style="margin-top:0.4rem;"></div>
+                </div>
+              </div>
             </div>
         </div>`;
         document.getElementById('antBuscar').addEventListener('click', () => this._onBuscar());
+        const btnCrit = document.getElementById('antGenerarCriterios');
+        if (btnCrit) btnCrit.addEventListener('click', () => this._onGenerarCriterios());
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
             if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -436,6 +460,43 @@ const Antecedentes = {
             document.getElementById('antQuery').value = e.target.dataset.s;
             this._onBuscar();
         }));
+    },
+
+    // ---- Búsqueda intensiva · Generar criterios de inclusión/exclusión con IA ----
+    async _onGenerarCriterios() {
+        const problema = (document.getElementById('antProblema') || {}).value || '';
+        const cajaCriterios = document.getElementById('antCriterios');
+        const estado = document.getElementById('antCriteriosEstado');
+        const btn = document.getElementById('antGenerarCriterios');
+
+        // Validación amable antes de llamar a la IA.
+        if (problema.trim().length < 15) {
+            if (estado) estado.textContent = '⚠️ Primero describe el problema de investigación (al menos una frase completa).';
+            const p = document.getElementById('antProblema');
+            if (p) p.focus();
+            return;
+        }
+
+        // Si ya hay criterios escritos, confirmar que se van a reemplazar.
+        if (cajaCriterios && cajaCriterios.value.trim().length > 20) {
+            if (!confirm('Ya tienes criterios escritos. ¿Reemplazarlos por una nueva propuesta de la IA?')) return;
+        }
+
+        // Estado de carga (deshabilitar botón para evitar dobles clics).
+        const textoBtn = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando…'; }
+        if (estado) estado.textContent = 'La IA está redactando los criterios a partir de tu problema de investigación…';
+
+        try {
+            if (typeof IAAsistente === 'undefined') throw new Error('El asistente de IA no está cargado.');
+            const criterios = await IAAsistente.generarCriterios(problema);
+            if (cajaCriterios) cajaCriterios.value = criterios;
+            if (estado) estado.textContent = '✓ Criterios generados. Revísalos y edítalos según tu criterio antes de filtrar.';
+        } catch (e) {
+            if (estado) estado.textContent = '❌ ' + (e.message || 'No se pudieron generar los criterios. Inténtalo de nuevo.');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
+        }
     },
 
     async _onBuscar() {
