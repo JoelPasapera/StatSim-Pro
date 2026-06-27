@@ -101,6 +101,65 @@ const IAAsistente = {
             [{ role: 'system', content: system }, { role: 'user', content: user }],
             { temperature: 0.4, max_tokens: 900 } // baja temperatura: criterios consistentes
         );
+    },
+
+    // ============================================================
+    // FUNCIÓN 2 (Sesión 2): generar variantes de la consulta
+    // ============================================================
+    // A partir de la consulta original, genera N frases de búsqueda alternativas
+    // que exploran las dimensiones/sinónimos del tema sin perder el foco. Devuelve
+    // un ARRAY de strings (las variantes), ya limpias. La consulta original NO se
+    // incluye (el llamador la añade aparte si quiere buscarla también).
+    async generarVariantes(consulta, cantidad = 5) {
+        const q = String(consulta || '').trim();
+        if (q.length < 3) throw new Error('Escribe primero los términos de búsqueda.');
+        const n = Math.max(2, Math.min(12, parseInt(cantidad, 10) || 5)); // entre 2 y 12
+
+        const system = 'Eres un experto en recuperación de información académica y revisiones '
+            + 'sistemáticas. Generas frases de búsqueda alternativas para bases de datos científicas, '
+            + 'maximizando la cobertura sin perder el foco temático. Conoces la sinonimia y las dimensiones '
+            + 'teóricas de los constructos en psicología y ciencias sociales.';
+
+        const user = `Genera EXACTAMENTE ${n} frases de búsqueda alternativas a la siguiente consulta, para `
+            + `encontrar más artículos relevantes en bases académicas.
+
+`
+            + `Reglas:
+`
+            + `- Identifica las variables/constructos principales y reformúlalos con sinónimos y términos `
+            + `técnicos equivalentes.
+`
+            + `- Considera dimensiones o subcategorías de esas variables (sin desviarte del tema central).
+`
+            + `- Cada frase debe ser una consulta de búsqueda (palabras clave), NO una pregunta ni una oración larga.
+`
+            + `- Varía el enfoque entre frases, pero todas deben mantener el foco del tema original.
+`
+            + `- Responde SOLO con las ${n} frases, una por línea, sin numeración, sin viñetas, sin comillas, `
+            + `sin texto adicional.
+
+`
+            + `CONSULTA ORIGINAL:
+${q}`;
+
+        const texto = await this.chat(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.8, max_tokens: 600 } // temperatura alta: más diversidad
+        );
+
+        // Parsear: una variante por línea. Limpiar numeración/viñetas/comillas residuales.
+        const variantes = texto.split(/\r?\n/)
+            .map(l => l.replace(/^\s*(?:\d+[.)\-]\s*|[-*•]\s*)/, '').replace(/^["'«»]|["'«»]$/g, '').trim())
+            .filter(l => l.length > 2)
+            // Descartar una variante idéntica a la consulta original (sin distinguir may/min).
+            .filter(l => l.toLowerCase() !== q.toLowerCase());
+
+        // Deduplicar variantes entre sí.
+        const vistas = new Set();
+        const unicas = variantes.filter(v => { const k = v.toLowerCase(); if (vistas.has(k)) return false; vistas.add(k); return true; });
+
+        if (!unicas.length) throw new Error('La IA no devolvió variantes válidas. Inténtalo de nuevo.');
+        return unicas.slice(0, n);
     }
 };
 
