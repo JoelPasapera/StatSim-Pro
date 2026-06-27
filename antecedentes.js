@@ -390,12 +390,42 @@ const Antecedentes = {
                   <p class="help-text" style="margin:0.4rem 0 0;">La IA propone un borrador; tú decides los criterios finales. Son totalmente editables.</p>
                   <div id="antCriteriosEstado" class="help-text" style="margin-top:0.4rem;"></div>
                 </div>
+
+                <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
+                    <label class="label" style="margin:0;">Expandir la consulta con variantes</label>
+                    <div style="display:flex; align-items:center; gap:0.5rem;">
+                      <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
+                      <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
+                        style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
+                      <button id="antGenerarVariantes" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🔀 Generar variantes</button>
+                    </div>
+                  </div>
+                  <p class="help-text" style="margin:0 0 0.6rem;">La IA reformula tu búsqueda en varias frases para encontrar más artículos. Cada variante usará la misma configuración de arriba (fuentes, año, idioma, cantidades).</p>
+
+                  <div id="antVariantesZona" style="display:none;">
+                    <textarea id="antVariantes" class="input" rows="6" style="resize:vertical;"
+                      placeholder="Aquí aparecerán las variantes generadas, una por línea. Puedes editarlas, borrar las que no quieras o añadir las tuyas antes de buscar."></textarea>
+                    <p class="help-text" style="margin:0.4rem 0 0;">Una variante por línea. Edítalas libremente: la búsqueda usará exactamente las que dejes aquí.</p>
+                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.7rem;">
+                      <button id="antBuscarIntensivo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">🚀 Buscar con todas las variantes</button>
+                      <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85em; color:var(--color-text-soft, #666);">
+                        <input type="checkbox" id="antIncluirOriginal" checked> Incluir también la consulta original
+                      </label>
+                    </div>
+                  </div>
+                  <div id="antVariantesEstado" class="help-text" style="margin-top:0.5rem;"></div>
+                </div>
               </div>
             </div>
         </div>`;
         document.getElementById('antBuscar').addEventListener('click', () => this._onBuscar());
         const btnCrit = document.getElementById('antGenerarCriterios');
         if (btnCrit) btnCrit.addEventListener('click', () => this._onGenerarCriterios());
+        const btnVar = document.getElementById('antGenerarVariantes');
+        if (btnVar) btnVar.addEventListener('click', () => this._onGenerarVariantes());
+        const btnInt = document.getElementById('antBuscarIntensivo');
+        if (btnInt) btnInt.addEventListener('click', () => this._onBuscarIntensivo());
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
             if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -462,6 +492,124 @@ const Antecedentes = {
         }));
     },
 
+    // ---- Búsqueda intensiva · Generar VARIANTES de la consulta con IA ----
+    async _onGenerarVariantes() {
+        const consulta = (document.getElementById('antQuery') || {}).value || '';
+        const zona = document.getElementById('antVariantesZona');
+        const caja = document.getElementById('antVariantes');
+        const estado = document.getElementById('antVariantesEstado');
+        const btn = document.getElementById('antGenerarVariantes');
+        const num = parseInt((document.getElementById('antNumVariantes') || {}).value || '5', 10);
+
+        if (consulta.trim().length < 3) {
+            if (estado) estado.textContent = '⚠️ Escribe primero los términos de búsqueda arriba.';
+            const q = document.getElementById('antQuery'); if (q) q.focus();
+            return;
+        }
+        // Confirmar si ya hay variantes escritas.
+        if (caja && caja.value.trim().length > 5) {
+            if (!confirm('Ya tienes variantes generadas. ¿Reemplazarlas por otras nuevas?')) return;
+        }
+
+        const textoBtn = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; btn.textContent = '⏳ Generando…'; }
+        if (estado) estado.textContent = 'La IA está generando variantes de tu consulta…';
+
+        try {
+            if (typeof IAAsistente === 'undefined') throw new Error('El asistente de IA no está cargado.');
+            const variantes = await IAAsistente.generarVariantes(consulta, num);
+            if (caja) caja.value = variantes.join('\n');
+            if (zona) zona.style.display = '';
+            if (estado) estado.textContent = `✓ ${variantes.length} variantes generadas. Revísalas, edítalas y pulsa «Buscar con todas las variantes».`;
+        } catch (e) {
+            if (estado) estado.textContent = '❌ ' + (e.message || 'No se pudieron generar las variantes.');
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
+        }
+    },
+
+    // ---- Búsqueda intensiva · ejecutar la búsqueda con TODAS las variantes ----
+    // Por cada variante (+ opcionalmente la original) ejecuta una búsqueda completa
+    // con la configuración actual, combina todo y deduplica. Muestra progreso.
+    async _onBuscarIntensivo() {
+        const caja = document.getElementById('antVariantes');
+        const estado = document.getElementById('antVariantesEstado');
+        const btn = document.getElementById('antBuscarIntensivo');
+        const estadoBuscador = document.getElementById('antEstado');
+
+        // Recoger las variantes (una por línea, ya editadas por el usuario).
+        const variantes = (caja ? caja.value : '').split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 2);
+        if (!variantes.length) {
+            if (estado) estado.textContent = '⚠️ No hay variantes para buscar. Genera o escribe alguna.';
+            return;
+        }
+
+        // ¿Incluir la consulta original como una búsqueda más?
+        const incluirOrig = (document.getElementById('antIncluirOriginal') || {}).checked;
+        const consultaOrig = (document.getElementById('antQuery') || {}).value.trim();
+        const f = { desde: (document.getElementById('antDesde') || {}).value, idioma: (document.getElementById('antIdioma') || {}).value };
+
+        // Lista final de consultas a ejecutar (original primero si se incluye).
+        let consultas = variantes.slice();
+        if (incluirOrig && consultaOrig && !consultas.some(c => c.toLowerCase() === consultaOrig.toLowerCase())) {
+            consultas = [consultaOrig, ...consultas];
+        }
+
+        const textoBtn = btn ? btn.textContent : '';
+        if (btn) { btn.disabled = true; }
+
+        // Acumulador con deduplicación incremental por DOI/título.
+        const vistos = new Set();
+        const acumuladas = [];
+        const infosTodas = [];
+        let conError = 0;
+
+        try {
+            for (let i = 0; i < consultas.length; i++) {
+                const q = consultas[i];
+                const etiqueta = `Buscando variante ${i + 1} de ${consultas.length}: «${q}»…`;
+                if (estado) estado.textContent = `🚀 ${etiqueta}`;
+                if (estadoBuscador) estadoBuscador.textContent = etiqueta;
+                if (btn) btn.textContent = `⏳ ${i + 1}/${consultas.length}…`;
+
+                try {
+                    // Si se prioriza inglés, traducir esta variante (como en la búsqueda normal).
+                    let qEjec = q;
+                    if (f.idioma === 'en') {
+                        const tr = await this.traducirTexto(q, 'es', 'en');
+                        if (tr && tr.toLowerCase() !== q.toLowerCase()) qEjec = tr;
+                    }
+                    const { obras, infos } = await this._buscarUnaConsulta(qEjec, f);
+                    infosTodas.push(`«${q}»: ${infos}`);
+                    // Deduplicar contra lo ya acumulado.
+                    for (const o of obras) {
+                        const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
+                        if (vistos.has(k)) continue;
+                        vistos.add(k);
+                        acumuladas.push(o);
+                    }
+                } catch (e) {
+                    conError++;
+                    infosTodas.push(`«${q}»: falló (${e.message})`);
+                }
+            }
+
+            // Volcar resultados combinados a la matriz principal.
+            this._obras = acumuladas;
+            this._pagina = 0;
+            const resumen = `${acumuladas.length} resultados únicos de ${consultas.length} búsquedas`
+                + (conError ? ` (${conError} con error)` : '');
+            if (estado) estado.textContent = `✓ ${resumen}. Revisa la matriz abajo.`;
+            if (estadoBuscador) estadoBuscador.textContent = `${resumen}. Marca los pertinentes:`;
+            this._renderResultados(this._obras);
+            this._enriquecerAutomatico(this._obras);
+        } catch (e) {
+            if (estado) estado.textContent = `❌ No se pudo completar la búsqueda intensiva (${e.message}).`;
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
+        }
+    },
+
     // ---- Búsqueda intensiva · Generar criterios de inclusión/exclusión con IA ----
     async _onGenerarCriterios() {
         const problema = (document.getElementById('antProblema') || {}).value || '';
@@ -499,7 +647,7 @@ const Antecedentes = {
         }
     },
 
-    async _onBuscar() {
+    async _onBuscar(opciones = {}) {
         const estado = document.getElementById('antEstado');
         const qOriginal = document.getElementById('antQuery').value.trim();
         if (!qOriginal) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
@@ -537,8 +685,43 @@ const Antecedentes = {
         if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
 
-        // Cada fuente devuelve {obras, etiqueta, info}; se lanzan en paralelo y
-        // se combinan. Una que falle no tumba a las demás (allSettled).
+        estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
+        try {
+            const { obras, infos } = await this._buscarUnaConsulta(q, f, opciones);
+            // Deduplicar por DOI/título.
+            const vistos = new Set();
+            this._obras = obras.filter(o => {
+                const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
+                if (vistos.has(k)) return false;
+                vistos.add(k); return true;
+            });
+            this._pagina = 0;
+            estado.textContent = this._obras.length
+                ? `${avisoTraduccion}${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
+                : `${avisoTraduccion}Sin resultados. ${infos}`;
+            this._renderResultados(this._obras);
+            this._enriquecerAutomatico(this._obras);
+        } catch (e) {
+            estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
+        }
+    },
+
+    // ---- Ejecuta UNA consulta sobre todas las fuentes marcadas y devuelve
+    // {obras, infos} SIN tocar el DOM ni this._obras. Reutilizable por la
+    // búsqueda normal y por cada variante de la búsqueda intensiva.
+    // 'opciones.fuentes' permite forzar qué fuentes usar; si no, lee las casillas.
+    async _buscarUnaConsulta(q, f, opciones = {}) {
+        const leer = (id, check) => {
+            const el = document.getElementById(id);
+            return el && el.checked;
+        };
+        const usarScopus = (opciones.usarScopus ?? leer('antUsarScopus')) && typeof ScopusDirecto !== 'undefined';
+        const usarScholar = (opciones.usarScholar ?? leer('antUsarScholar')) && typeof ScholarDirecto !== 'undefined';
+        const usarAbiertas = (opciones.usarAbiertas ?? leer('antUsarAbiertas'));
+        const usarPubmed = (opciones.usarPubmed ?? leer('antUsarPubmed')) && typeof PubMedDirecto !== 'undefined';
+        const usarScielo = (opciones.usarScielo ?? leer('antUsarScielo')) && typeof ScieloDirecto !== 'undefined';
+        const usarAlicia = (opciones.usarAlicia ?? leer('antUsarAlicia')) && typeof AliciaDirecto !== 'undefined';
+
         const tareas = [];
         if (usarScopus) {
             const maxScopus = parseInt((document.getElementById('antCantidadScopus') || {}).value || '25', 10);
@@ -584,30 +767,11 @@ const Antecedentes = {
             this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias` }))
                 .catch(e => ({ obras: [], info: `fuentes complementarias fallaron` })));
 
-        try {
-            const res = await Promise.all(tareas);
-            // Combinar respetando el ORDEN: Scopus primero, luego Scholar, luego abiertas.
-            const combinadas = [];
-            res.forEach(r => combinadas.push(...r.obras));
-            // Deduplicar por DOI/título conservando el primero (Scopus gana).
-            const vistos = new Set();
-            this._obras = combinadas.filter(o => {
-                const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
-                if (vistos.has(k)) return false;
-                vistos.add(k); return true;
-            });
-            this._pagina = 0; // reiniciar paginación
-            const infos = res.map(r => r.info).join(' · ');
-            estado.textContent = this._obras.length
-                ? `${avisoTraduccion}${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
-                : `${avisoTraduccion}Sin resultados. ${infos}`;
-            this._renderResultados(this._obras);
-            // Enriquecimiento AUTOMÁTICO en segundo plano: recupera abstracts
-            // faltantes en paralelo (sin bloquear) y re-pinta al terminar.
-            this._enriquecerAutomatico(this._obras);
-        } catch (e) {
-            estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
-        }
+        const res = await Promise.all(tareas);
+        const combinadas = [];
+        res.forEach(r => combinadas.push(...r.obras));
+        const infos = res.map(r => r.info).join(' · ');
+        return { obras: combinadas, infos };
     },
 
     _renderResultados(obras) {
