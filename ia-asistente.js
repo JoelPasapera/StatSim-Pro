@@ -91,22 +91,47 @@ const IAAsistente = {
         const p = String(problema || '').trim();
         if (p.length < 15) throw new Error('Describe primero el problema de investigación (al menos una frase completa).');
 
+        // El año actual se CALCULA aquí (el modelo no lo sabe con certeza). Se le
+        // pasa explícitamente para que la ventana temporal sea correcta.
+        const anioActual = new Date().getFullYear();
+        const anioDesde = anioActual - 5; // recomendación habitual: últimos 5 años
+
         const system = 'Eres un metodólogo experto en revisiones sistemáticas de literatura científica, '
             + 'especializado en psicología y ciencias sociales. Redactas criterios de selección de estudios '
-            + 'claros, específicos y aplicables. Respondes en español, de forma concisa y bien estructurada.';
+            + 'claros, aplicables y NO excesivamente restrictivos: el objetivo es reunir la mejor evidencia '
+            + 'disponible, no descartar estudios valiosos. Respondes en español, conciso y estructurado.';
 
         const user = `A partir del siguiente problema de investigación, redacta los criterios de INCLUSIÓN y `
             + `EXCLUSIÓN para seleccionar artículos científicos en una revisión de antecedentes.\n\n`
-            + `Considera estas dimensiones al formularlos: población o muestra, variables o constructos del `
-            + `estudio, tipo de diseño metodológico, idioma de publicación, antigüedad (rango de años), y tipo `
-            + `de documento (artículo revisado por pares, tesis, etc.).\n\n`
+            + `DATO IMPORTANTE: el año actual es ${anioActual}. La ventana temporal recomendada es de los `
+            + `últimos 5 años, es decir, desde ${anioDesde} hasta ${anioActual} (AMBOS INCLUIDOS). No uses `
+            + `ningún otro año como límite; usa exactamente ${anioDesde}–${anioActual}.\n\n`
+            + `PRINCIPIOS para los criterios (síguelos con cuidado):\n`
+            + `- INCLUSIÓN: define la población/variables/diseño de forma que capture la evidencia relevante. `
+            + `Si el problema menciona una población concreta, céntrate en ella, pero permite estudios que `
+            + `aporten al tema aunque sean en poblaciones cercanas si son pertinentes.\n`
+            + `- EXCLUSIÓN: sé MÍNIMO y prudente. NO excluyas por defecto otras poblaciones, otros idiomas, `
+            + `diseños cualitativos, revisiones, meta-análisis ni tesis: todos pueden aportar. Excluye solo lo `
+            + `que de verdad no sirve: trabajos sin datos o metodología verificable, duplicados, o claramente `
+            + `fuera de la ventana temporal (${anioDesde}–${anioActual}).\n`
+            + `- INCLUYE SIEMPRE un criterio de exclusión por DISTANCIA TEMÁTICA, pero formulado como un FILTRO `
+            + `GRUESO: descartar únicamente los estudios que NO traten ninguna de las variables o constructos `
+            + `centrales del problema, es decir, los que pertenecen a un campo claramente ajeno. Por ejemplo, si `
+            + `el tema trata sobre inteligencia emocional e inteligencia cognitiva, se descartarían estudios `
+            + `centrados solo en temas sin conexión (p. ej. inteligencia artificial, diabetes u otras áreas no `
+            + `relacionadas). PERO este criterio NO debe descartar estudios muy específicos que SÍ pertenecen al `
+            + `tema, como los que abordan una sola de las variables o una de sus dimensiones o subdimensiones: `
+            + `esos se conservan, porque cuando la evidencia es escasa (temas novedosos o poco estudiados) los `
+            + `estudios parciales o tangenciales dentro del tema son valiosos. Redacta este criterio dejando `
+            + `clara esa diferencia: fuera del tema = descartar; dentro del tema aunque sea específico = conservar.\n`
+            + `- Para el idioma: si procede, prioriza español e inglés en INCLUSIÓN, pero NO conviertas eso en `
+            + `una exclusión tajante de otros idiomas (la evidencia internacional cuenta).\n\n`
             + `Devuelve EXACTAMENTE dos secciones con estos encabezados literales:\n`
             + `CRITERIOS DE INCLUSIÓN:\n`
             + `(viñetas con "- ")\n\n`
             + `CRITERIOS DE EXCLUSIÓN:\n`
             + `(viñetas con "- ")\n\n`
-            + `Sé específico y conciso (4 a 7 viñetas por sección). No añadas introducción ni cierre, solo las `
-            + `dos secciones.\n\n`
+            + `Sé específico y conciso (4 a 6 viñetas por sección). No añadas introducción ni cierre.\n\n`
             + `PROBLEMA DE INVESTIGACIÓN:\n${p}`;
 
         return await this.chatConReintento(
