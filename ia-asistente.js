@@ -66,8 +66,20 @@ const IAAsistente = {
         }
 
         const texto = (data.texto || '').trim();
-        if (!texto) throw new Error('La IA devolvió una respuesta vacía. Inténtalo de nuevo.');
-        return texto;
+        return texto; // puede venir vacío; quien llama decide si reintenta
+    },
+
+    // Llama a chat() reintentando si la respuesta viene vacía (el modelo gpt-oss
+    // a veces gasta los tokens razonando y devuelve vacío; reintentar lo resuelve).
+    async chatConReintento(messages, opciones = {}, intentos = 3) {
+        let ultimo = '';
+        for (let i = 0; i < intentos; i++) {
+            ultimo = await this.chat(messages, opciones);
+            if (ultimo && ultimo.trim()) return ultimo;
+            // Espera breve antes de reintentar (da margen y rota de clave por tiempo).
+            await new Promise(r => setTimeout(r, 400));
+        }
+        throw new Error('La IA devolvió una respuesta vacía tras varios intentos. Inténtalo de nuevo en un momento.');
     },
 
     // ============================================================
@@ -97,9 +109,9 @@ const IAAsistente = {
             + `dos secciones.\n\n`
             + `PROBLEMA DE INVESTIGACIÓN:\n${p}`;
 
-        return await this.chat(
+        return await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.4, max_tokens: 900 } // baja temperatura: criterios consistentes
+            { temperature: 0.4, max_tokens: 8000 } // amplio: deja al modelo razonar y responder sin cortes
         );
     },
 
@@ -142,9 +154,9 @@ const IAAsistente = {
             + `CONSULTA ORIGINAL:
 ${q}`;
 
-        const texto = await this.chat(
+        const texto = await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.8, max_tokens: 600 } // temperatura alta: más diversidad
+            { temperature: 0.8, max_tokens: 8000 } // amplio: deja al modelo razonar y responder sin cortes
         );
 
         // Parsear: una variante por línea. Limpiar numeración/viñetas/comillas residuales.
