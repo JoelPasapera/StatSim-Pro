@@ -416,6 +416,15 @@ const Antecedentes = {
                   </div>
                   <div id="antVariantesEstado" class="help-text" style="margin-top:0.5rem;"></div>
                 </div>
+
+                <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
+                    <label class="label" style="margin:0;">Filtrar investigaciones por relevancia</label>
+                    <button id="antFiltrarRelevancia" class="btn btn-primary" style="padding:0.4rem 1rem;">🎯 Filtrar por relevancia</button>
+                  </div>
+                  <p class="help-text" style="margin:0;">La IA evalúa cada artículo de la matriz (título y resumen) según tus criterios de inclusión/exclusión y le asigna una relevancia del 1 al 5 con su justificación. La matriz se reordena por relevancia, pero <strong>no se elimina nada</strong>: tú decides la inclusión final leyendo. Usa el modelo más potente.</p>
+                  <div id="antRelevanciaEstado" class="help-text" style="margin-top:0.5rem;"></div>
+                </div>
               </div>
             </div>
         </div>`;
@@ -426,6 +435,8 @@ const Antecedentes = {
         if (btnVar) btnVar.addEventListener('click', () => this._onGenerarVariantes());
         const btnInt = document.getElementById('antBuscarIntensivo');
         if (btnInt) btnInt.addEventListener('click', () => this._onBuscarIntensivo());
+        const btnRel = document.getElementById('antFiltrarRelevancia');
+        if (btnRel) btnRel.addEventListener('click', () => this._onFiltrarRelevancia());
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
             if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -531,6 +542,107 @@ const Antecedentes = {
     // ---- Búsqueda intensiva · ejecutar la búsqueda con TODAS las variantes ----
     // Por cada variante (+ opcionalmente la original) ejecuta una búsqueda completa
     // con la configuración actual, combina todo y deduplica. Muestra progreso.
+    // ---- Búsqueda intensiva · FILTRAR por relevancia con IA ----
+    // Evalúa todos los resultados actuales (this._obras) contra los criterios,
+    // en LOTES repartidos entre las claves del Worker. Añade puntuación 1-5 +
+    // motivo a cada obra, y reordena la matriz por relevancia. No oculta nada.
+    async _onFiltrarRelevancia() {
+        const estado = document.getElementById('antRelevanciaEstado');
+        const btn = document.getElementById('antFiltrarRelevancia');
+        const criterios = (document.getElementById('antCriterios') || {}).value || '';
+
+        if (!this._obras || !this._obras.length) {
+            if (estado) estado.textContent = '⚠️ Primero haz una búsqueda: no hay artículos que evaluar.';
+            return;
+        }
+        if (criterios.trim().length < 20) {
+            if (estado) estado.textContent = '⚠️ Genera o escribe primero los criterios de inclusión/exclusión (arriba).';
+            const c = document.getElementById('antCriterios'); if (c) c.focus();
+            return;
+        }
+        if (typeof IAAsistente === 'undefined' || !IAAsistente.disponible()) {
+            if (estado) estado.textContent = '❌ El asistente de IA no está disponible.';
+            return;
+        }
+
+        const textoBtn = btn ? btn.textContent : '';
+        if (btn) btn.disabled = true;
+        const _t0 = performance.now();
+
+        // Preparar los artículos con su índice real en this._obras.
+        const articulos = this._obras.map((o, idx) => ({
+            idx,
+            titulo: o.titulo || '',
+            resumen: o.resumen || o.abstract || ''
+        }));
+
+        // Dividir en lotes de 10 (decisión: ~10 artículos por llamada).
+        const TAM_LOTE = 10;
+        const lotes = [];
+        for (let i = 0; i < articulos.length; i += TAM_LOTE) lotes.push(articulos.slice(i, i + TAM_LOTE));
+
+        // Concurrencia: cuántos lotes en paralelo. Con 7 claves rotando en el
+        // Worker, 4 en paralelo reparte bien sin saturar (cada lote va a una clave
+        // distinta por la rotación temporal del Worker). Conservador a propósito.
+        const CONCURRENCIA = 4;
+        let completados = 0;
+        let conError = 0;
+        const total = lotes.length;
+
+        const actualizarProgreso = () => {
+            if (estado) estado.textContent = `🔎 Evaluando relevancia… lote ${completados}/${total} `
+                + `(${articulos.length} artículos, modelo potente)`;
+            if (btn) btn.textContent = `⏳ ${completados}/${total}…`;
+        };
+        actualizarProgreso();
+
+        // Procesar los lotes con límite de concurrencia (cola de trabajadores).
+        let siguiente = 0;
+        const trabajador = async () => {
+            while (siguiente < lotes.length) {
+                const miIdx = siguiente++;
+                const lote = lotes[miIdx];
+                try {
+                    const evals = await IAAsistente.evaluarLoteRelevancia(criterios, lote);
+                    // Volcar cada evaluación a su obra por idx.
+                    for (const ev of evals) {
+                        if (this._obras[ev.idx]) {
+                            this._obras[ev.idx]._relevancia = ev.puntua;       // 0-5 (0 = no evaluado)
+                            this._obras[ev.idx]._relevanciaMotivo = ev.motivo;  // justificación
+                        }
+                    }
+                } catch (e) {
+                    conError++;
+                    // Marcar el lote como no evaluado (puntua 0) para no perderlos.
+                    for (const a of lote) {
+                        if (this._obras[a.idx] && this._obras[a.idx]._relevancia == null) {
+                            this._obras[a.idx]._relevancia = 0;
+                            this._obras[a.idx]._relevanciaMotivo = 'No evaluado (error en el lote)';
+                        }
+                    }
+                }
+                completados++;
+                actualizarProgreso();
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, lotes.length) }, () => trabajador()));
+
+        // Reordenar this._obras por relevancia DESC (los no evaluados, al final).
+        this._obras.sort((a, b) => (b._relevancia || 0) - (a._relevancia || 0));
+        this._relevanciaAplicada = true; // para que la matriz muestre la columna
+
+        const _dur = this._formatoTiempo(performance.now() - _t0);
+        const evaluados = this._obras.filter(o => o._relevancia > 0).length;
+        if (estado) estado.textContent = `✓ ${evaluados} artículos evaluados en ${_dur}`
+            + (conError ? ` (${conError} lote(s) con error)` : '')
+            + `. Matriz reordenada por relevancia. Revisa y decide tú la inclusión final.`;
+        if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
+
+        // Re-renderizar resultados y matriz con la nueva columna.
+        this._pagina = 0; this._selMat = 0;
+        this._renderResultados(this._obras);
+    },
+
     async _onBuscarIntensivo() {
         const caja = document.getElementById('antVariantes');
         const estado = document.getElementById('antVariantesEstado');
@@ -557,6 +669,7 @@ const Antecedentes = {
 
         const textoBtn = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; }
+        const _t0 = performance.now(); // cronómetro de la búsqueda intensiva
 
         // Acumulador con deduplicación incremental por DOI/título.
         const vistos = new Set();
@@ -597,7 +710,8 @@ const Antecedentes = {
             // Volcar resultados combinados a la matriz principal.
             this._obras = acumuladas;
             this._pagina = 0;
-            const resumen = `${acumuladas.length} resultados únicos de ${consultas.length} búsquedas`
+            const _dur = this._formatoTiempo(performance.now() - _t0);
+            const resumen = `${acumuladas.length} resultados únicos de ${consultas.length} búsquedas en ${_dur}`
                 + (conError ? ` (${conError} con error)` : '');
             if (estado) estado.textContent = `✓ ${resumen}. Revisa la matriz abajo.`;
             if (estadoBuscador) estadoBuscador.textContent = `${resumen}. Marca los pertinentes:`;
@@ -647,7 +761,20 @@ const Antecedentes = {
         }
     },
 
+    // Año actual real (la IA no lo sabe; se lo pasamos calculado).
+    _anioActual() { return new Date().getFullYear(); },
+
+    // Formatea una duración en milisegundos como "m:ss" o "s.s s".
+    _formatoTiempo(ms) {
+        const seg = ms / 1000;
+        if (seg < 60) return `${seg.toFixed(1)} s`;
+        const m = Math.floor(seg / 60);
+        const s = Math.round(seg % 60);
+        return `${m}:${String(s).padStart(2, '0')} min`;
+    },
+
     async _onBuscar(opciones = {}) {
+        const _t0 = performance.now(); // cronómetro de la búsqueda
         const estado = document.getElementById('antEstado');
         const qOriginal = document.getElementById('antQuery').value.trim();
         if (!qOriginal) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
@@ -696,9 +823,10 @@ const Antecedentes = {
                 vistos.add(k); return true;
             });
             this._pagina = 0;
+            const _dur = this._formatoTiempo(performance.now() - _t0);
             estado.textContent = this._obras.length
-                ? `${avisoTraduccion}${this._obras.length} resultados combinados (${infos}). Marca los pertinentes:`
-                : `${avisoTraduccion}Sin resultados. ${infos}`;
+                ? `${avisoTraduccion}${this._obras.length} resultados combinados en ${_dur} (${infos}). Marca los pertinentes:`
+                : `${avisoTraduccion}Sin resultados (${_dur}). ${infos}`;
             this._renderResultados(this._obras);
             this._enriquecerAutomatico(this._obras);
         } catch (e) {
@@ -788,7 +916,7 @@ const Antecedentes = {
             return `
             <tr>
               <td><input type="checkbox" data-i="${i}" ${this._seleccion.has(this._norm(o.titulo)) ? 'checked' : ''}></td>
-              <td>${o.autores.slice(0, 3).join('; ')}${o.autores.length > 3 ? ' et al.' : ''} (${o.anio})</td>
+              <td>${(o.autores || []).slice(0, 3).join('; ')}${(o.autores || []).length > 3 ? ' et al.' : ''} (${o.anio || 's. f.'})</td>
               <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank">${o.titulo}</a>` : o.titulo}</td>
               <td>${o.fuente}</td><td>${o.citas}</td>
               <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank" title="Abrir artículo">🔗</a>` : '—'}</td>
@@ -862,7 +990,9 @@ const Antecedentes = {
         const iniM = this._selMat * PP;
         const matVis = filasMatriz.slice(iniM, iniM + PP);
 
-        const COLS = ['Título', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
+        const COLS = [
+            ...(this._relevanciaAplicada ? ['Relevancia'] : []),
+            'Título', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
             'Resultados', 'Conclusiones', 'Revista', 'Cuartil', 'Indexación', 'Referencia (APA)', 'Link/DOI'];
 
         cont.innerHTML = `
@@ -1117,6 +1247,24 @@ const Antecedentes = {
     },
 
     // Construye las 13 celdas (HTML para mostrar) y los 13 valores planos (CSV).
+    // Insignia de relevancia (1-5) con color. Tooltip con el motivo.
+    _insigniaRelevancia(o) {
+        const p = o._relevancia;
+        if (p == null) return '';
+        if (p === 0) return '<span title="No evaluado" style="color:#999;">—</span>';
+        // Colores: 5 verde fuerte, 4 verde, 3 ámbar, 2 naranja, 1 rojo.
+        const estilos = {
+            5: 'background:#1D9E75;color:#fff;',
+            4: 'background:#97C459;color:#173404;',
+            3: 'background:#EF9F27;color:#412402;',
+            2: 'background:#F0997B;color:#4A1B0C;',
+            1: 'background:#E24B4A;color:#fff;'
+        };
+        const motivo = (o._relevanciaMotivo || '').replace(/"/g, '&quot;');
+        return `<span title="${motivo}" style="${estilos[p] || ''}display:inline-block;min-width:1.4rem;`
+            + `text-align:center;padding:0.1rem 0.4rem;border-radius:0.3rem;font-weight:600;cursor:help;">${p}</span>`;
+    },
+
     _filaMatriz(o) {
         const ref = this.citaAPA(o).replace(/<\/?i>/g, '');
         const link = o.link || o.doi || '';
@@ -1125,7 +1273,9 @@ const Antecedentes = {
         const objetivo = this._detectarObjetivo(o);
         const indexacion = this._detectarIndexacion(o);
         const ph = '<span style="color:#aaa;">[completar]</span>';
+        const incluirRel = !!this._relevanciaAplicada;
         const celdas = [
+            ...(incluirRel ? [this._insigniaRelevancia(o) || ph] : []),
             o.titulo || ph,
             o.anio || '',
             pais || ph,
@@ -1141,6 +1291,7 @@ const Antecedentes = {
             link ? `<a href="${link}" target="_blank">${link}</a>` : ph
         ];
         const planas = [
+            ...(incluirRel ? [o._relevancia ? `${o._relevancia} (${o._relevanciaMotivo || ''})` : ''] : []),
             o.titulo || '', o.anio || '', pais, objetivo, muestra, '',
             o.resumen || '', '', o.fuente || '', this._cuartilTexto(o), indexacion, ref, link
         ];
