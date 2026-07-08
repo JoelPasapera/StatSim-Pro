@@ -919,34 +919,38 @@ class GeneradorDatos {
     // EXPORTACIÓN A CSV
     // ========================================
 
-    exportarCSV() {
+    // Exporta la base como CSV. sep=',' → internacional (decimales con punto).
+    // sep=';' → Excel en español (decimales con COMA, abre en columnas directo).
+    exportarCSV(sep = ',') {
         if (!this.datosGenerados || this.datosGenerados.length === 0) {
             throw new Error('No hay datos generados para exportar');
         }
 
-        // Obtener encabezados
         const encabezados = Object.keys(this.datosGenerados[0]);
-        
-        // Crear contenido CSV
-        let csv = encabezados.join(',') + '\n';
-        
+        const escapar = (valor) => {
+            let v = valor;
+            // En formato español, los números decimales van con coma (3,14).
+            if (sep === ';' && typeof v === 'number' && !Number.isInteger(v)) {
+                v = String(v).replace('.', ',');
+            }
+            v = String(v ?? '');
+            // Escapar si contiene el separador, comillas o saltos de línea.
+            if (v.includes(sep) || v.includes('"') || v.includes('\n')) {
+                v = `"${v.replace(/"/g, '""')}"`;
+            }
+            return v;
+        };
+
+        let csv = encabezados.map(escapar).join(sep) + '\n';
         this.datosGenerados.forEach(fila => {
-            const valores = encabezados.map(encabezado => {
-                let valor = fila[encabezado];
-                // Escapar valores que contengan comas
-                if (typeof valor === 'string' && valor.includes(',')) {
-                    valor = `"${valor}"`;
-                }
-                return valor;
-            });
-            csv += valores.join(',') + '\n';
+            csv += encabezados.map(h => escapar(fila[h])).join(sep) + '\n';
         });
 
         return csv;
     }
 
-    descargarCSV(nombreArchivo = 'base_datos_simulada.csv') {
-        const csv = this.exportarCSV();
+    descargarCSV(nombreArchivo = 'base_datos_simulada.csv', sep = ',') {
+        const csv = this.exportarCSV(sep);
         const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         
