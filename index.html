@@ -515,13 +515,21 @@
                         </svg>
                         Generar Base de Datos
                     </button>
-                    <button id="btnDescargarCSV" class="btn btn-outline" disabled>
+                    <button id="btnDescargarCSV" class="btn btn-outline" disabled title="Separador ; y decimales con coma — abre en columnas en Excel en español">
                         <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
                             <path
                                 d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
                                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
-                        Descargar CSV
+                        ⬇ CSV (Excel español)
+                    </button>
+                    <button id="btnDescargarCSVIntl" class="btn btn-outline" disabled title="Separador , y decimales con punto — estándar internacional, Google Sheets y Excel en inglés">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path
+                                d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        ⬇ CSV (internacional)
                     </button>
                 </div>
 
@@ -987,6 +995,7 @@
     <script src="antecedentes.js?v=1"></script>
 
     <!-- Exportador del capítulo de resultados a Word (APA 7) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
     <script src="exportador-word.js?v=2"></script>
 
     <!-- Librería de gráficos científicos (depende de d3) -->
