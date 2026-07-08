@@ -58,6 +58,8 @@ function configurarGenerador() {
 
     // Botón descargar CSV
     document.getElementById('btnDescargarCSV').addEventListener('click', descargarCSV);
+    const btnIntl = document.getElementById('btnDescargarCSVIntl');
+    if (btnIntl) btnIntl.addEventListener('click', descargarCSVInternacional);
 
     // Botones importar/exportar pruebas
     document.getElementById('btnImportarPruebas').addEventListener('click', () => {
@@ -366,11 +368,21 @@ function mostrarPreview(datos) {
 function habilitarDescargaCSV() {
     const btn = document.getElementById('btnDescargarCSV');
     btn.disabled = false;
+    const btnIntl = document.getElementById('btnDescargarCSVIntl');
+    if (btnIntl) btnIntl.disabled = false;
+}
+
+function descargarCSVInternacional() {
+    try {
+        generadorDatos.descargarCSV('base_datos_simulada.csv', ',');
+    } catch (error) {
+        mostrarNotificacion('Error al descargar: ' + error.message, 'error');
+    }
 }
 
 function descargarCSV() {
     try {
-        generadorDatos.descargarCSV();
+        generadorDatos.descargarCSV('base_datos_simulada.csv', ';');
         mostrarToast('CSV descargado exitosamente', 'success');
     } catch (error) {
         mostrarToast(error.message, 'error');
@@ -1887,7 +1899,7 @@ function mostrarReferencias(var1, var2, resultado) {
             </div>
 
             <div class="reference-card">
-                <p class="reference-text">4. Cohen, J. (2013). Statistical power analysis for the behavioral sciences. routledge. <a href="https://www.taylorfrancis.com/books/mono/10.4324/9780203771587/statistical-power-analysis-behavioral-sciences-jacob-cohen" target="_blank">https://www.taylorfrancis.com/books/mono/10.4324/9780203771587/statistical-power-analysis-behavioral-sciences-jacob-cohen</a></p>
+                <p class="reference-text">4. Cohen, J. (1988). Statistical power analysis for the behavioral sciences (2.ª ed.). Lawrence Erlbaum Associates.</p>
             </div>
 
             <div class="reference-card">
@@ -2496,6 +2508,43 @@ function correlacionPearsonSimple(a, b) {
     return numerador / Math.sqrt(varX * varY);
 }
 
+// Correlación de Spearman simple: Pearson sobre los RANGOS (con empates promediados).
+function correlacionSpearmanSimple(a, b) {
+    const n = Math.min(a.length, b.length);
+    if (n < 2) return 0;
+    const rangos = (v) => {
+        const idx = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]);
+        const r = new Array(v.length);
+        let i = 0;
+        while (i < idx.length) {
+            let j = i;
+            while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
+            const rangoProm = (i + j) / 2 + 1; // promedio de posiciones (1-based) para empates
+            for (let k = i; k <= j; k++) r[idx[k][1]] = rangoProm;
+            i = j + 1;
+        }
+        return r;
+    };
+    return correlacionPearsonSimple(rangos(a.slice(0, n)), rangos(b.slice(0, n)));
+}
+
+// Normalidad aproximada (asimetría y curtosis dentro de límites razonables).
+// Mismo espíritu que la evaluación del analizador: sirve para elegir el
+// coeficiente coherente (Pearson si ambas normales; Spearman si no).
+function esAproxNormalSimple(v) {
+    const n = v.length;
+    if (n < 3) return true;
+    const media = v.reduce((s, x) => s + x, 0) / n;
+    const m2 = v.reduce((s, x) => s + (x - media) ** 2, 0) / n;
+    if (m2 === 0) return true;
+    const m3 = v.reduce((s, x) => s + (x - media) ** 3, 0) / n;
+    const m4 = v.reduce((s, x) => s + (x - media) ** 4, 0) / n;
+    const asimetria = m3 / Math.pow(m2, 1.5);
+    const curtosis = m4 / (m2 * m2) - 3;
+    // Umbrales habituales de tolerancia (|asimetría| < 2 y |curtosis| < 7).
+    return Math.abs(asimetria) < 2 && Math.abs(curtosis) < 7;
+}
+
 // Prepara los datos para los gráficos a partir de la base cargada/generada.
 // Devuelve null si no hay columnas numéricas que graficar.
 function prepararDatosParaGraficos(datos) {
@@ -2510,13 +2559,18 @@ function prepararDatosParaGraficos(datos) {
     // Distribución gaussiana: valores de la primera columna seleccionada
     const distribucion = valoresPorColumna[0];
 
-    // Matriz de correlaciones REAL (Pearson) entre las columnas seleccionadas
+    // Matriz de correlaciones COHERENTE con el análisis: para cada par usa
+    // Pearson si AMBAS columnas son aproximadamente normales, y Spearman si no
+    // (la misma regla con la que el analizador elige la prueba).
+    const normalPorColumna = valoresPorColumna.map(v => esAproxNormalSimple(v));
     const correlaciones = columnas.map((_, i) =>
-        columnas.map((__, j) =>
-            i === j
-                ? 1
-                : Math.round(correlacionPearsonSimple(valoresPorColumna[i], valoresPorColumna[j]) * 100) / 100
-        )
+        columnas.map((__, j) => {
+            if (i === j) return 1;
+            const r = (normalPorColumna[i] && normalPorColumna[j])
+                ? correlacionPearsonSimple(valoresPorColumna[i], valoresPorColumna[j])
+                : correlacionSpearmanSimple(valoresPorColumna[i], valoresPorColumna[j]);
+            return Math.round(r * 100) / 100;
+        })
     );
 
     const labels = columnas.slice();
