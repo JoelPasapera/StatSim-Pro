@@ -393,10 +393,21 @@ const ExportadorWord = {
             <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
             <style>body{font-family:"Times New Roman",serif;font-size:12pt;} </style>
             </head><body>${cuerpo}</body></html>`;
-        const blob = new Blob(['\ufeff' + doc], { type: 'application/msword' });
+        // .docx REAL si la librería html-docx-js está disponible (CDN); si no,
+        // cae al formato .doc clásico (HTML-Word) para no dejar sin exportar.
+        // Nota: el .docx generado abre en Microsoft Word (no en LibreOffice/GDocs,
+        // que no soportan la técnica altChunk usada para la conversión).
+        let blob, nombre;
+        if (typeof htmlDocx !== 'undefined' && htmlDocx.asBlob) {
+            blob = htmlDocx.asBlob('<!DOCTYPE html>' + doc);
+            nombre = 'capitulo_resultados_APA.docx';
+        } else {
+            blob = new Blob(['\ufeff' + doc], { type: 'application/msword' });
+            nombre = 'capitulo_resultados_APA.doc';
+        }
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
-        a.download = 'capitulo_resultados_APA.doc';
+        a.download = nombre;
         a.click();
         URL.revokeObjectURL(a.href);
         mostrarToast('Capítulo exportado en formato Word (APA 7)', 'success');
