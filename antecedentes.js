@@ -581,29 +581,47 @@ const Antecedentes = {
         const lotes = [];
         for (let i = 0; i < articulos.length; i += TAM_LOTE) lotes.push(articulos.slice(i, i + TAM_LOTE));
 
-        // Concurrencia: cuántos lotes en paralelo. Con 7 claves rotando en el
-        // Worker, 4 en paralelo reparte bien sin saturar (cada lote va a una clave
-        // distinta por la rotación temporal del Worker). Conservador a propósito.
-        const CONCURRENCIA = 4;
+        // CANALES: uno por clave del Worker (1 lote = 1 clave = 1 organización).
+        // El número se consulta al Worker y AUTO-ESCALA: con 10 claves → 10 lotes
+        // en paralelo = 100 referencias por tanda; si añades GROQ_KEY_11..20 en
+        // Cloudflare, habrá más canales automáticamente, sin tocar código.
+        const canales = Math.min(await IAAsistente.numClaves(), lotes.length);
         let completados = 0;
         let conError = 0;
         const total = lotes.length;
 
+        // Enfriamiento por canal: cada organización admite ~8.000 tokens/minuto y
+        // un lote de 10 referencias consume casi el minuto entero de su clave. Cada
+        // canal espera ~62 s desde el INICIO de su lote anterior antes de lanzar el
+        // siguiente: así nunca caen 2 lotes de la misma clave en el mismo minuto.
+        const ENFRIAMIENTO_MS = this._ENFRIAMIENTO_RELEVANCIA_MS != null ? this._ENFRIAMIENTO_RELEVANCIA_MS : 62000;
+
         const actualizarProgreso = () => {
-            if (estado) estado.textContent = `🔎 Evaluando relevancia… lote ${completados}/${total} `
-                + `(${articulos.length} artículos, modelo potente)`;
-            if (btn) btn.textContent = `⏳ ${completados}/${total}…`;
+            const refsHechas = Math.min(completados * TAM_LOTE, articulos.length);
+            const tandasRestantes = Math.ceil((total - completados) / canales);
+            const estMin = tandasRestantes <= 0 ? '' : ` · quedan ~${tandasRestantes} min`;
+            if (estado) estado.textContent = `🔎 Evaluando relevancia… ${refsHechas}/${articulos.length} referencias `
+                + `(${canales} claves en paralelo, ritmo ~${canales * TAM_LOTE}/min)${estMin}`;
+            if (btn) btn.textContent = `⏳ ${completados}/${total} lotes…`;
         };
         actualizarProgreso();
 
-        // Procesar los lotes con límite de concurrencia (cola de trabajadores).
+        // Cola de lotes atendida por N canales; el canal c usa SIEMPRE la clave c
+        // (keyHint), garantizando el reparto 1 a 1 sin colisiones entre paralelos.
         let siguiente = 0;
-        const trabajador = async () => {
+        const trabajador = async (canal) => {
+            let ultimoInicio = 0;
             while (siguiente < lotes.length) {
                 const miIdx = siguiente++;
                 const lote = lotes[miIdx];
+                // Respetar el ritmo de la clave de este canal (TPM por minuto).
+                if (ultimoInicio) {
+                    const espera = ENFRIAMIENTO_MS - (performance.now() - ultimoInicio);
+                    if (espera > 0) await new Promise(r => setTimeout(r, espera));
+                }
+                ultimoInicio = performance.now();
                 try {
-                    const evals = await IAAsistente.evaluarLoteRelevancia(criterios, lote);
+                    const evals = await IAAsistente.evaluarLoteRelevancia(criterios, lote, canal);
                     // Volcar cada evaluación a su obra por idx.
                     for (const ev of evals) {
                         if (this._obras[ev.idx]) {
@@ -625,7 +643,7 @@ const Antecedentes = {
                 actualizarProgreso();
             }
         };
-        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, lotes.length) }, () => trabajador()));
+        await Promise.all(Array.from({ length: canales }, (_, c) => trabajador(c)));
 
         // Reordenar this._obras por relevancia DESC (los no evaluados, al final).
         this._obras.sort((a, b) => (b._relevancia || 0) - (a._relevancia || 0));
