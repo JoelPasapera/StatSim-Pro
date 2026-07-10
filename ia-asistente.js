@@ -17,9 +17,33 @@ const IAAsistente = {
     // Tiempo máximo de espera por respuesta (la IA puede tardar unos segundos).
     TIMEOUT_MS: 45000,
 
+    // Modelo potente para tareas de razonamiento (evaluación de relevancia).
+    // El Worker lo tiene en su lista blanca de modelos permitidos.
+    MODELO_POTENTE: 'openai/gpt-oss-120b',
+
     // ¿Está configurado el asistente? (por si se quiere ocultar la UI sin Worker).
     disponible() {
         return typeof this.WORKER_URL === 'string' && this.WORKER_URL.startsWith('http');
+    },
+
+    _numClavesCache: null,
+
+    // Pregunta al Worker cuántas claves hay configuradas (GET). Así los canales
+    // del filtrado paralelo se dimensionan SOLOS: si mañana añades GROQ_KEY_11..20
+    // en Cloudflare, la app usará más canales sin tocar código. Con caché por
+    // sesión y fallback conservador si el GET falla (p. ej. Worker sin actualizar).
+    async numClaves() {
+        if (this._numClavesCache) return this._numClavesCache;
+        try {
+            const r = await fetch(this.WORKER_URL, { method: 'GET' });
+            const d = await r.json();
+            if (d && Number.isInteger(d.claves) && d.claves > 0) {
+                this._numClavesCache = d.claves;
+                return d.claves;
+            }
+        } catch (e) { /* Worker viejo o red caída: usar fallback */ }
+        this._numClavesCache = 7; // fallback conservador
+        return 7;
     },
 
     // ---- Llamada base al modelo ----
@@ -34,6 +58,8 @@ const IAAsistente = {
         if (typeof opciones.temperature === 'number') cuerpo.temperature = opciones.temperature;
         if (typeof opciones.max_tokens === 'number') cuerpo.max_tokens = opciones.max_tokens;
         if (opciones.response_format) cuerpo.response_format = opciones.response_format;
+        if (opciones.model) cuerpo.model = opciones.model; // modelo específico (p. ej. 120b para relevancia)
+        if (Number.isInteger(opciones.keyHint)) cuerpo.keyHint = opciones.keyHint; // canal: dirige qué clave usa el Worker
 
         // Timeout con AbortController (si el Worker o Groq tardan demasiado).
         const ctrl = new AbortController();
@@ -197,6 +223,77 @@ ${q}`;
 
         if (!unicas.length) throw new Error('La IA no devolvió variantes válidas. Inténtalo de nuevo.');
         return unicas.slice(0, n);
+    },
+
+    // ============================================================
+    // FUNCIÓN 3 (Sesión 3): evaluar la RELEVANCIA de un lote de artículos
+    // ============================================================
+    // Recibe los criterios (texto), un array de artículos {idx, titulo, resumen}
+    // (MÁXIMO ~10 por lote: 1 lote = 1 clave = 1 organización), y el keyHint
+    // (nº de canal: dirige qué clave del Worker atiende este lote, para que los
+    // lotes paralelos usen claves DISTINTAS). Devuelve [{idx, puntua 1-5, motivo}].
+    // Usa el modelo POTENTE (120b) y JSON mode para respuestas estructuradas.
+    //
+    // Escala: 5 muy relevante · 4 relevante · 3 moderada (una variable/dimensión)
+    //         · 2 poco relevante (tangencial) · 1 no relevante (fuera del tema).
+    async evaluarLoteRelevancia(criterios, articulos, keyHint) {
+        if (!Array.isArray(articulos) || !articulos.length) return [];
+        const crit = String(criterios || '').trim();
+
+        const system = 'Eres un revisor sistemático experto en psicología y ciencias sociales. Evalúas la '
+            + 'relevancia de artículos para un problema de investigación, según unos criterios dados. Eres '
+            + 'riguroso pero NO excesivamente restrictivo: un estudio específico que aborda una sola variable '
+            + 'o una dimensión del tema SIGUE siendo relevante (puntúa 3), porque cuando la evidencia es escasa '
+            + 'esos estudios aportan. Solo lo que pertenece a un campo claramente ajeno es no relevante (1). '
+            + 'Respondes ÚNICAMENTE en JSON válido, sin texto adicional.';
+
+        // Lista de artículos numerados para el prompt (resumen recortado: controla tokens).
+        const listado = articulos.map((a, i) => {
+            const resumen = (a.resumen || '').slice(0, 600);
+            return `[${i}] TÍTULO: ${a.titulo || '(sin título)'}\n    RESUMEN: ${resumen || '(sin resumen disponible)'}`;
+        }).join('\n\n');
+
+        const user = `CRITERIOS DE SELECCIÓN (inclusión/exclusión):\n${crit || '(no se proporcionaron; evalúa por afinidad temática general)'}\n\n`
+            + `Evalúa la relevancia de CADA uno de los siguientes ${articulos.length} artículos para el tema, `
+            + `según los criterios. Asigna a cada uno:\n`
+            + `- "puntua": entero del 1 al 5 (5=muy relevante, aborda directamente el tema; 4=relevante; `
+            + `3=moderada, aborda una variable o dimensión del tema; 2=poco relevante, tangencial; `
+            + `1=no relevante, de un campo ajeno).\n`
+            + `- "motivo": justificación BREVE (máximo 15 palabras) de por qué esa puntuación.\n\n`
+            + `Recuerda: un estudio específico DENTRO del tema (una variable, una dimensión) es al menos 3. `
+            + `Solo lo claramente ajeno al tema es 1.\n\n`
+            + `ARTÍCULOS:\n${listado}\n\n`
+            + `Responde SOLO con un objeto JSON con esta forma exacta:\n`
+            + `{"evaluaciones": [{"i": 0, "puntua": 4, "motivo": "..."}, {"i": 1, "puntua": 2, "motivo": "..."}, ...]}\n`
+            + `Incluye los ${articulos.length} artículos (índices 0 a ${articulos.length - 1}).`;
+
+        const texto = await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            // max_tokens 3000: entrada de 10 refs (~3000-3500) + 3000 declarados ≈ 6500,
+            // con margen bajo el límite de 8000 tokens/minuto de cada organización.
+            { temperature: 0.2, max_tokens: 3000, model: this.MODELO_POTENTE, response_format: { type: 'json_object' }, keyHint },
+            3
+        );
+
+        // Parsear el JSON (tolerante a ```json o texto alrededor).
+        let data;
+        try {
+            const limpio = texto.replace(/```json|```/g, '').trim();
+            data = JSON.parse(limpio);
+        } catch (e) {
+            const m = texto.match(/\{[\s\S]*\}/);
+            if (m) { try { data = JSON.parse(m[0]); } catch (e2) { throw new Error('La IA no devolvió una evaluación válida.'); } }
+            else throw new Error('La IA no devolvió una evaluación válida.');
+        }
+
+        const evals = (data && Array.isArray(data.evaluaciones)) ? data.evaluaciones : [];
+        // Mapear de vuelta a los artículos originales por su idx real.
+        return articulos.map((a, i) => {
+            const ev = evals.find(e => e.i === i) || {};
+            let puntua = parseInt(ev.puntua, 10);
+            if (!(puntua >= 1 && puntua <= 5)) puntua = 0; // 0 = no evaluado
+            return { idx: a.idx, puntua, motivo: (ev.motivo || '').toString().slice(0, 120) };
+        });
     }
 };
 
