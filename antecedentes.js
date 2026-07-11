@@ -1024,7 +1024,8 @@ const Antecedentes = {
             <h4 style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
                 <span>Matriz de revisión bibliográfica</span>
                 <span style="display:inline-flex; gap:0.4rem; flex-wrap:wrap;">
-                    <button id="antCsvEs" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Separador ; — abre en columnas en Excel en español">⬇ CSV (Excel español)</button>
+                    <button id="antXlsx" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Excel real con formato: Times New Roman 12, texto ajustado y anchos de columna">⬇ Excel (.xlsx)</button>
+                    <button id="antCsvEs" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Separador ; — abre en columnas en Excel en español">⬇ CSV (Excel español)</button>
                     <button id="antCsvEn" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Separador , — estándar internacional, Google Sheets y Excel en inglés">⬇ CSV (internacional)</button>
                     <button id="antEnriquecer" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Reintenta recuperar resúmenes faltantes (ya se hace automáticamente tras buscar)">✨ Reintentar completar</button>
                 </span>
@@ -1040,6 +1041,8 @@ const Antecedentes = {
         const btnCopiar = document.getElementById('antCopiarRefs');
         if (btnCopiar) btnCopiar.addEventListener('click', () => this._copiarReferencias(refs));
         // Exportar matriz a CSV (TODAS las filas, no solo la página)
+        const btnX = document.getElementById('antXlsx');
+        if (btnX) btnX.addEventListener('click', () => this._exportarXLSX(COLS, filasMatriz));
         const btnEs = document.getElementById('antCsvEs');
         if (btnEs) btnEs.addEventListener('click', () => this._exportarCSV(COLS, filasMatriz, ';'));
         const btnEn = document.getElementById('antCsvEn');
@@ -1347,6 +1350,64 @@ const Antecedentes = {
             if (estado) estado.textContent = `${refs.length} referencias copiadas con formato. Pégalas en Word.`;
         } catch (e) {
             if (estado) estado.textContent = 'No se pudo copiar automáticamente; selecciona y copia manualmente.';
+        }
+    },
+
+    // ---- Excel (.xlsx) con formato: Times New Roman 12, ajuste de texto,
+    // alineación (vertical centro, horizontal izquierda) y anchos fijos por
+    // columna (px medidos por el usuario, convertidos a unidades de Excel).
+    // Construcción separada de la descarga para poder verificarla en tests.
+    _ANCHOS_PX_MATRIZ: {
+        'Relevancia': 124, 'Título': 165, 'Año': 40, 'Contexto (País)': 80,
+        'Objetivos': 334, 'Muestra': 96, 'Instrumentos': 84, 'Resultados': 920,
+        'Conclusiones': 87, 'Revista': 80, 'Cuartil': 50, 'Indexación': 90,
+        'Referencia (APA)': 450, 'Link/DOI': 120
+    },
+
+    _construirLibroXLSX(cols, filas) {
+        if (typeof ExcelJS === 'undefined') throw new Error('La librería de Excel no está cargada.');
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Matriz de revisión');
+
+        // Anchos: Excel mide en "caracteres" del tipo por defecto; la conversión
+        // estándar desde píxeles es (px - 5) / 7.
+        ws.columns = cols.map(c => ({
+            width: Math.round(((this._ANCHOS_PX_MATRIZ[c] || 100) - 5) / 7 * 100) / 100
+        }));
+
+        const fuente = { name: 'Times New Roman', size: 12 };
+        const alineado = { vertical: 'middle', horizontal: 'left', wrapText: true };
+
+        // Encabezado (fila 1): igual formato, en negrita.
+        const filaEnc = ws.addRow(cols);
+        filaEnc.eachCell(cell => {
+            cell.font = { ...fuente, bold: true };
+            cell.alignment = alineado;
+        });
+
+        // Cuerpo: valores planos (sin HTML), con el formato pedido.
+        for (const f of filas) {
+            const fila = ws.addRow(f.planas);
+            fila.eachCell({ includeEmpty: true }, cell => {
+                cell.font = fuente;
+                cell.alignment = alineado;
+            });
+        }
+        return wb;
+    },
+
+    async _exportarXLSX(cols, filas) {
+        try {
+            const wb = this._construirLibroXLSX(cols, filas);
+            const buffer = await wb.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'matriz_revision_bibliografica.xlsx';
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        } catch (e) {
+            alert('No se pudo generar el Excel: ' + e.message);
         }
     },
 
