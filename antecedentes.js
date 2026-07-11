@@ -1396,9 +1396,9 @@ const Antecedentes = {
     // columna (px medidos por el usuario, convertidos a unidades de Excel).
     // Construcción separada de la descarga para poder verificarla en tests.
     _ANCHOS_PX_MATRIZ: {
-        'Relevancia': 124, 'Título': 165, 'Año': 40, 'Contexto (País)': 80,
-        'Objetivos': 334, 'Muestra': 96, 'Instrumentos': 84, 'Resultados': 920,
-        'Conclusiones': 87, 'Revista': 80, 'Cuartil': 50, 'Indexación': 90,
+        'Relevancia': 124, 'Título': 165, 'Año': 50, 'Contexto (País)': 100,
+        'Objetivos': 334, 'Muestra': 96, 'Instrumentos': 130, 'Resultados': 920,
+        'Conclusiones': 140, 'Revista': 110, 'Cuartil': 80, 'Indexación': 112,
         'Referencia (APA)': 450, 'Link/DOI': 120
     },
 
@@ -1415,20 +1415,26 @@ const Antecedentes = {
 
         const fuente = { name: 'Times New Roman', size: 12 };
         const alineado = { vertical: 'middle', horizontal: 'left', wrapText: true };
+        // "Todos los bordes": línea fina en los cuatro lados de cada celda.
+        const lado = { style: 'thin', color: { argb: 'FF000000' } };
+        const bordes = { top: lado, left: lado, bottom: lado, right: lado };
 
-        // Encabezado (fila 1): igual formato, en negrita.
+        // Encabezado (fila 1): negrita, fondo gris claro y bordes.
         const filaEnc = ws.addRow(cols);
         filaEnc.eachCell(cell => {
             cell.font = { ...fuente, bold: true };
             cell.alignment = alineado;
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+            cell.border = bordes;
         });
 
-        // Cuerpo: valores planos (sin HTML), con el formato pedido.
+        // Cuerpo: valores planos (sin HTML), con el formato pedido y bordes.
         for (const f of filas) {
             const fila = ws.addRow(f.planas);
             fila.eachCell({ includeEmpty: true }, cell => {
                 cell.font = fuente;
                 cell.alignment = alineado;
+                cell.border = bordes;
             });
         }
         return wb;
