@@ -419,10 +419,22 @@ const Antecedentes = {
 
                 <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
-                    <label class="label" style="margin:0;">Filtrar investigaciones por relevancia</label>
-                    <button id="antFiltrarRelevancia" class="btn btn-primary" style="padding:0.4rem 1rem;">🎯 Filtrar por relevancia</button>
+                    <label class="label" style="margin:0;">Relevancia de las investigaciones</label>
+                    <button id="antAnalizarRelevancia" class="btn btn-primary" style="padding:0.4rem 1rem;">🔎 Analizar relevancia</button>
                   </div>
                   <p class="help-text" style="margin:0;">La IA evalúa cada artículo de la matriz (título y resumen) según tus criterios de inclusión/exclusión y le asigna una relevancia del 1 al 5 con su justificación. La matriz se reordena por relevancia, pero <strong>no se elimina nada</strong>: tú decides la inclusión final leyendo. Usa el modelo más potente.</p>
+
+                  <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:0.9rem;">
+                    <label class="label" for="antUmbralRelevancia" style="margin:0;">🎯 Filtrar por relevancia:</label>
+                    <select id="antUmbralRelevancia" class="input" style="width:auto; padding:0.3rem 0.6rem;" disabled title="Se activa tras analizar la relevancia">
+                      <option value="0">Mostrar todas</option>
+                      <option value="2">Relevancia ≥ 2</option>
+                      <option value="3">Relevancia ≥ 3</option>
+                      <option value="4">Relevancia ≥ 4</option>
+                      <option value="5">Solo relevancia 5</option>
+                    </select>
+                  </div>
+                  <p class="help-text" style="margin:0.4rem 0 0;">Oculta de la matriz (y de sus exportaciones a Excel/CSV) los artículos por debajo del umbral, para no borrar filas a mano. No elimina nada: es solo la vista, y puedes volver a «Mostrar todas» cuando quieras.</p>
                   <div id="antRelevanciaEstado" class="help-text" style="margin-top:0.5rem;"></div>
                 </div>
               </div>
@@ -435,8 +447,14 @@ const Antecedentes = {
         if (btnVar) btnVar.addEventListener('click', () => this._onGenerarVariantes());
         const btnInt = document.getElementById('antBuscarIntensivo');
         if (btnInt) btnInt.addEventListener('click', () => this._onBuscarIntensivo());
-        const btnRel = document.getElementById('antFiltrarRelevancia');
-        if (btnRel) btnRel.addEventListener('click', () => this._onFiltrarRelevancia());
+        const btnRel = document.getElementById('antAnalizarRelevancia');
+        if (btnRel) btnRel.addEventListener('click', () => this._onAnalizarRelevancia());
+        const selUmbral = document.getElementById('antUmbralRelevancia');
+        if (selUmbral) selUmbral.addEventListener('change', () => {
+            this._umbralRelevancia = parseInt(selUmbral.value, 10) || 0;
+            this._selMat = 0; // volver a la primera página de la matriz
+            this._renderSeleccion();
+        });
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
             if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -546,9 +564,18 @@ const Antecedentes = {
     // Evalúa todos los resultados actuales (this._obras) contra los criterios,
     // en LOTES repartidos entre las claves del Worker. Añade puntuación 1-5 +
     // motivo a cada obra, y reordena la matriz por relevancia. No oculta nada.
-    async _onFiltrarRelevancia() {
+    // Restablece el análisis/filtro de relevancia (las obras nuevas no tienen
+    // puntuación: la columna se oculta y el selector vuelve a "Mostrar todas").
+    _resetRelevancia() {
+        this._relevanciaAplicada = false;
+        this._umbralRelevancia = 0;
+        const s = document.getElementById('antUmbralRelevancia');
+        if (s) { s.value = '0'; s.disabled = true; }
+    },
+
+    async _onAnalizarRelevancia() {
         const estado = document.getElementById('antRelevanciaEstado');
-        const btn = document.getElementById('antFiltrarRelevancia');
+        const btn = document.getElementById('antAnalizarRelevancia');
         const criterios = (document.getElementById('antCriterios') || {}).value || '';
 
         if (!this._obras || !this._obras.length) {
@@ -653,7 +680,9 @@ const Antecedentes = {
         const evaluados = this._obras.filter(o => o._relevancia > 0).length;
         if (estado) estado.textContent = `✓ ${evaluados} artículos evaluados en ${_dur}`
             + (conError ? ` (${conError} lote(s) con error)` : '')
-            + `. Matriz reordenada por relevancia. Revisa y decide tú la inclusión final.`;
+            + `. Matriz reordenada por relevancia. Usa «Filtrar por relevancia» para ocultar las de puntuación baja.`;
+        const selU = document.getElementById('antUmbralRelevancia');
+        if (selU) selU.disabled = false; // el filtro se activa cuando hay puntuaciones
         if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
 
         // Re-renderizar resultados y matriz con la nueva columna.
@@ -728,6 +757,7 @@ const Antecedentes = {
             // Volcar resultados combinados a la matriz principal.
             this._obras = acumuladas;
             this._pagina = 0;
+            this._resetRelevancia();
             const _dur = this._formatoTiempo(performance.now() - _t0);
             const resumen = `${acumuladas.length} resultados únicos de ${consultas.length} búsquedas en ${_dur}`
                 + (conError ? ` (${conError} con error)` : '');
@@ -841,6 +871,7 @@ const Antecedentes = {
                 vistos.add(k); return true;
             });
             this._pagina = 0;
+            this._resetRelevancia();
             const _dur = this._formatoTiempo(performance.now() - _t0);
             estado.textContent = this._obras.length
                 ? `${avisoTraduccion}${this._obras.length} resultados combinados en ${_dur} (${infos}). Marca los pertinentes:`
@@ -1002,7 +1033,14 @@ const Antecedentes = {
         const refsVis = refs.slice(iniR, iniR + PP);
 
         // ----- Matriz de revisión bibliográfica (12 columnas) con paginación -----
-        const filasMatriz = sel.map(o => this._filaMatriz(o));
+        // Filtro de vista por relevancia: la matriz (y sus exportaciones) solo
+        // incluye artículos con puntuación >= umbral. No borra nada del listado.
+        const umbralRel = (this._relevanciaAplicada && this._umbralRelevancia > 0) ? this._umbralRelevancia : 0;
+        const selMatriz = umbralRel > 0 ? sel.filter(o => (o._relevancia || 0) >= umbralRel) : sel;
+        const filasMatriz = selMatriz.map(o => this._filaMatriz(o));
+        const infoUmbral = umbralRel > 0
+            ? ` <span style="font-weight:normal; font-size:0.75em; color:#666;">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
+            : '';
         const npMat = Math.max(1, Math.ceil(filasMatriz.length / PP));
         if (this._selMat >= npMat) this._selMat = npMat - 1;
         const iniM = this._selMat * PP;
@@ -1022,7 +1060,7 @@ const Antecedentes = {
             ${this._barraPaginas('Ref', this._selRef, npRef, iniR, refs.length, PP)}
 
             <h4 style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
-                <span>Matriz de revisión bibliográfica</span>
+                <span>Matriz de revisión bibliográfica${infoUmbral}</span>
                 <span style="display:inline-flex; gap:0.4rem; flex-wrap:wrap;">
                     <button id="antXlsx" class="btn btn-primary" style="padding:0.3rem 0.8rem;" title="Excel real con formato: Times New Roman 12, texto ajustado y anchos de columna">⬇ Excel (.xlsx)</button>
                     <button id="antCsvEs" class="btn btn-outline" style="padding:0.3rem 0.8rem;" title="Separador ; — abre en columnas en Excel en español">⬇ CSV (Excel español)</button>
