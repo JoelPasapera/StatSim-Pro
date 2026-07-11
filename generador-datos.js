@@ -951,7 +951,8 @@ class GeneradorDatos {
 
     descargarCSV(nombreArchivo = 'base_datos_simulada.csv', sep = ',') {
         const csv = this.exportarCSV(sep);
-        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        // BOM UTF-8: sin él, Excel muestra caracteres rotos en tildes/eñes.
+        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
         
         if (link.download !== undefined) {
