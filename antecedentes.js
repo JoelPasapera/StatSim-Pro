@@ -437,6 +437,8 @@ const Antecedentes = {
                   <p class="help-text" style="margin:0.4rem 0 0;">Oculta de la matriz (y de sus exportaciones a Excel/CSV) los artículos por debajo del umbral, para no borrar filas a mano. No elimina nada: es solo la vista, y puedes volver a «Mostrar todas» cuando quieras.</p>
                   <div id="antRelevanciaEstado" class="help-text" style="margin-top:0.5rem;"></div>
                 </div>
+
+                <div id="antRedactor"></div>
               </div>
             </div>
         </div>`;
@@ -454,6 +456,7 @@ const Antecedentes = {
             this._umbralRelevancia = parseInt(selUmbral.value, 10) || 0;
             this._selMat = 0; // volver a la primera página de la matriz
             this._renderSeleccion();
+            if (typeof RedactorTeorico !== 'undefined') RedactorTeorico.actualizarInfoFuentes();
         });
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
@@ -683,6 +686,7 @@ const Antecedentes = {
             + `. Matriz reordenada por relevancia. Usa «Filtrar por relevancia» para ocultar las de puntuación baja.`;
         const selU = document.getElementById('antUmbralRelevancia');
         if (selU) selU.disabled = false; // el filtro se activa cuando hay puntuaciones
+        if (typeof RedactorTeorico !== 'undefined') RedactorTeorico.actualizarInfoFuentes();
         if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
 
         // Re-renderizar resultados y matriz con la nueva columna.
@@ -1017,6 +1021,14 @@ const Antecedentes = {
         if (next) next.addEventListener('click', () => { if (this._pagina < numPaginas - 1) { this._pagina++; this._renderResultados(this._obras); } });
     },
 
+    // Obras que alimentan la matriz Y la redacción del marco teórico: las
+    // marcadas, respetando el filtro de relevancia activo (misma regla en ambas).
+    obtenerFuentesRedaccion(sel) {
+        const base = sel || [...this._seleccion.values()];
+        const u = (this._relevanciaAplicada && this._umbralRelevancia > 0) ? this._umbralRelevancia : 0;
+        return u > 0 ? base.filter(o => (o._relevancia || 0) >= u) : base;
+    },
+
     _renderSeleccion() {
         const sel = [...this._seleccion.values()];
         const cont = document.getElementById('antSeleccion');
@@ -1036,7 +1048,7 @@ const Antecedentes = {
         // Filtro de vista por relevancia: la matriz (y sus exportaciones) solo
         // incluye artículos con puntuación >= umbral. No borra nada del listado.
         const umbralRel = (this._relevanciaAplicada && this._umbralRelevancia > 0) ? this._umbralRelevancia : 0;
-        const selMatriz = umbralRel > 0 ? sel.filter(o => (o._relevancia || 0) >= umbralRel) : sel;
+        const selMatriz = this.obtenerFuentesRedaccion(sel);
         const filasMatriz = selMatriz.map(o => this._filaMatriz(o));
         const infoUmbral = umbralRel > 0
             ? ` <span style="font-weight:normal; font-size:0.75em; color:#666;">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
