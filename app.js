@@ -570,6 +570,7 @@ function obtenerColumnasNumericas(datos) {
 // Puebla los selectores de variables del analizador. Reutilizable: se llama al
 // cargar datos y también al aplicar nuevas etiquetas (para refrescar los textos).
 function poblarSelectsVariables(datos) {
+    if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     const columnasNumericas = obtenerColumnasNumericas(datos);
 
     const select1 = document.getElementById('variable1');
