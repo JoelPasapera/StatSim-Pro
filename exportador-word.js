@@ -334,6 +334,8 @@ const ExportadorWord = {
                  ['Máximo', fmt(d1.maximo ?? d1.max), fmt(d2.maximo ?? d2.max)],
                  ['Asimetría', fmt(d1.asimetria), fmt(d2.asimetria)],
                  ['Curtosis', fmt(d1.curtosis), fmt(d2.curtosis)]], null);
+            const de1 = d1.desviacion ?? d1.desviacionEstandar, de2 = d2.desviacion ?? d2.desviacionEstandar;
+            h += this._p(`La tabla de estadísticos descriptivos resume el comportamiento de ambas variables en los ${resultado.n} participantes. ${et1} presentó una media de ${fmt(d1.media)} con una desviación estándar de ${fmt(de1)}, lo que indica que los puntajes típicos se ubicaron alrededor de ese promedio con una dispersión de ±${fmt(de1)} puntos, dentro de un rango observado de ${fmt(d1.minimo ?? d1.min)} a ${fmt(d1.maximo ?? d1.max)}. Por su parte, ${et2} obtuvo una media de ${fmt(d2.media)} (DE = ${fmt(de2)}), con puntajes entre ${fmt(d2.minimo ?? d2.min)} y ${fmt(d2.maximo ?? d2.max)}. La asimetría informa hacia dónde se estira la cola de la distribución (valores positivos: cola derecha; negativos: cola izquierda; cercanos a cero: simetría) y la curtosis compara su apuntamiento con el de la curva normal (positiva: más concentrada en el centro y con colas más pesadas; negativa: más plana). Con asimetrías de ${fmt(d1.asimetria)} y ${fmt(d2.asimetria)} y curtosis de ${fmt(d1.curtosis)} y ${fmt(d2.curtosis)}, ambas variables ${Math.abs(d1.asimetria) < 1 && Math.abs(d2.asimetria) < 1 ? 'se mantienen dentro de márgenes razonables de simetría' : 'muestran desviaciones de la simetría que conviene considerar'}, aspecto que se examina formalmente en la prueba de normalidad siguiente.`);
         }
 
         // ---- Normalidad ----
@@ -356,6 +358,7 @@ const ExportadorWord = {
         h += expHist(et2, d2, n2);
         h += this._figura('qqVariable2', `Gráfico Q-Q de ${et2}`, null);
         h += expQQ(et2, n2);
+        h += this._p(`Una aclaración metodológica importante: la impresión visual del histograma puede no coincidir con la decisión de la prueba, y ello no constituye un error. Con muestras grandes (aquí n = ${resultado.n}), las pruebas de normalidad ganan mucha potencia y detectan desviaciones sutiles —especialmente en la curtosis y en las colas— que el ojo no aprecia. De hecho, una distribución apuntada (curtosis positiva) eleva las barras centrales muy cerca del pico de la curva y produce la falsa impresión de un ajuste excelente, mientras que la prueba la rechaza precisamente por ese exceso de concentración central; a la inversa, la irregularidad natural de las barras (ruido muestral) puede parecer «desalineación» sin que la forma global se aparte de la normal. Por ello, la decisión reportada se basa en el contraste formal (${n1.prueba}) y no en la apariencia del gráfico, y el gráfico Q-Q —más sensible a las colas— es la mejor herramienta visual para corroborarla.`);
 
         // ---- Correlación principal ----
         const esSp = I._esSpearman(resultado.tipoCorrelacion);
