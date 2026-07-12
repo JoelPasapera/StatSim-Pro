@@ -114,6 +114,41 @@ const ScopusDirecto = {
     // Obtiene CiteScore, SJR, SNIP y CUARTIL de una revista por su ISSN, vía
     // Serial Title API (confirmada accesible con las claves). El cuartil se deriva
     // del percentil de ranking por materia: ≥75→Q1, ≥50→Q2, ≥25→Q3, resto Q4.
+    // Recupera el ABSTRACT de un artículo por su DOI usando la Abstract Retrieval
+    // API de Elsevier (cubre lo que las APIs abiertas no traen: p. ej. artículos
+    // de Elsevier/ScienceDirect, como los DOI 10.1016/...). Rota las claves y
+    // marca agotadas ante 401/403/429. Devuelve el texto o '' si no hay.
+    async abstractPorDoi(doi) {
+        const limpio = String(doi || '').replace(/^https?:\/\/doi\.org\//, '').trim();
+        if (!limpio) return '';
+        const intentos = Math.min(this.API_KEYS.length, 4);
+        for (let i = 0; i < intentos; i++) {
+            const key = this._siguienteKey();
+            try {
+                const url = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(limpio)}?apiKey=${key}&httpAccept=application/json`;
+                const r = await fetch(url);
+                if (r.status === 401 || r.status === 403 || r.status === 429) { this._marcarAgotada(key); continue; }
+                if (r.status === 404) return ''; // no indexado en Scopus
+                if (!r.ok) continue;
+                const d = await r.json();
+                const resp = d && d['abstracts-retrieval-response'];
+                if (!resp) return '';
+                // dc:description puede ser string u objeto según el registro.
+                let a = resp.coredata && resp.coredata['dc:description'];
+                if (a && typeof a === 'object') {
+                    a = a['#text'] || a['$'] || (a.abstract && (a.abstract['ce:para'] || a.abstract['$'])) || '';
+                }
+                if (!a) {
+                    const abs = resp.item && resp.item.bibrecord && resp.item.bibrecord.head && resp.item.bibrecord.head.abstracts;
+                    if (typeof abs === 'string') a = abs;
+                }
+                const t = String(a || '').replace(/\s+/g, ' ').trim();
+                return t.length > 40 ? t : '';
+            } catch (e) { /* red/CORS: probar siguiente clave */ }
+        }
+        return '';
+    },
+
     async metricasRevista(issn) {
         if (!issn) return null;
         const limpio = issn.replace(/[^0-9Xx]/g, '');
