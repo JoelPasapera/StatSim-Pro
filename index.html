@@ -646,59 +646,6 @@
 
                 </div>
 
-                <!-- Datos Cargados -->
-                <div id="datosContainer" class="card" style="display: none;">
-                    <h3 class="card-title">Datos Cargados</h3>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <span class="stat-label">N</span>
-                            <span class="stat-value" id="analisisN">0</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-label">Variables</span>
-                            <span class="stat-value" id="analisisVars">0</span>
-                        </div>
-                    </div>
-                    <div class="table-scroll">
-                        <table class="table table-preview" id="tablaDatosAnalisis">
-                            <thead id="analisisHead"></thead>
-                            <tbody id="analisisBody"></tbody>
-                        </table>
-                    </div>
-                    <p class="help-text" style="margin-top: 0.5rem;">
-                        <strong>Aclaración:</strong> Verifique que todos los ítems inversos hayan sido recodificados a
-                        puntaje directo. Para aclarar, un ítem directo es aquel cuyo puntaje más elevado contribuye a
-                        una mayor presencia o nivel de la variable. Por el contrario, un ítem inverso es aquel cuyo
-                        puntaje más alto contribuye a una menor presencia o nivel de la variable. La inclusión de ítems
-                        inversos es una estrategia de diseño deliberada para controlar sesgos de respuesta
-                    </p>
-                </div>
-
-                <!-- Agregar dentro de la sección analizador, después del título principal -->
-                <div class="chart-grid" id="contenedorGraficos">
-                    <div class="chart-container">
-                        <h3 class="chart-title">Distribución Normal</h3>
-                        <div id="distribucion-gaussiana" class="chart-wrapper"></div>
-                    </div>
-
-                    <div class="chart-container">
-                        <h3 class="chart-title">Matriz de Correlación</h3>
-                        <div id="matriz-correlacion" class="chart-wrapper"></div>
-                    </div>
-
-                    <div class="chart-container">
-                        <h3 class="chart-title">Diagrama de Caja</h3>
-                        <div id="diagrama-caja" class="chart-wrapper"></div>
-                    </div>
-
-                    <div class="chart-container">
-                        <h3 class="chart-title">Distribución por Violín</h3>
-                        <div id="diagrama-violin" class="chart-wrapper"></div>
-                    </div>
-                </div>
-
-                <!-- Selección de Variables -->
-                <!-- Editor de etiquetas: solo visible al cargar una base EXTERNA -->
                 <div id="editorEtiquetas" style="display: none;"></div>
 
                 <div id="seleccionContainer" class="card" style="display: none;">
@@ -759,6 +706,63 @@
                         Ejecutar Análisis
                     </button>
                 </div>
+
+                <div id="cgSlot"></div>
+
+                <!-- Datos Cargados -->
+                <div id="datosContainer" class="card" style="display: none;">
+                    <h3 class="card-title">Datos Cargados</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">N</span>
+                            <span class="stat-value" id="analisisN">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Variables</span>
+                            <span class="stat-value" id="analisisVars">0</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="table table-preview" id="tablaDatosAnalisis">
+                            <thead id="analisisHead"></thead>
+                            <tbody id="analisisBody"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        <strong>Aclaración:</strong> Verifique que todos los ítems inversos hayan sido recodificados a
+                        puntaje directo. Para aclarar, un ítem directo es aquel cuyo puntaje más elevado contribuye a
+                        una mayor presencia o nivel de la variable. Por el contrario, un ítem inverso es aquel cuyo
+                        puntaje más alto contribuye a una menor presencia o nivel de la variable. La inclusión de ítems
+                        inversos es una estrategia de diseño deliberada para controlar sesgos de respuesta
+                    </p>
+                </div>
+
+                <!-- Agregar dentro de la sección analizador, después del título principal -->
+                <div class="chart-grid" id="contenedorGraficos">
+                    <div class="chart-container">
+                        <h3 class="chart-title">Distribución Normal</h3>
+                        <div id="distribucion-gaussiana" class="chart-wrapper"></div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3 class="chart-title">Matriz de Correlación</h3>
+                        <div id="matriz-correlacion" class="chart-wrapper"></div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3 class="chart-title">Diagrama de Caja</h3>
+                        <div id="diagrama-caja" class="chart-wrapper"></div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3 class="chart-title">Distribución por Violín</h3>
+                        <div id="diagrama-violin" class="chart-wrapper"></div>
+                    </div>
+                </div>
+
+                <!-- Selección de Variables -->
+                <!-- Editor de etiquetas: solo visible al cargar una base EXTERNA -->
+
 
                 <!-- Contenedores vacíos - el JS llenará todo -->
 
@@ -974,7 +978,7 @@
 
     <!-- Hallazgos por variables sociodemográficas -->
     <script src="criba-sociodemografica.js?v=9"></script>
-    <script src="comparacion-grupos.js?v=1"></script>
+    <script src="comparacion-grupos.js?v=2"></script>
 
     <!-- Matriz de consistencia -->
     <script src="matriz-consistencia.js?v=9"></script>
