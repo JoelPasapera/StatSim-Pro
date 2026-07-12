@@ -366,6 +366,7 @@ function mostrarPreview(datos) {
 }
 
 function habilitarDescargaCSV() {
+    if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     const btn = document.getElementById('btnDescargarCSV');
     btn.disabled = false;
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
