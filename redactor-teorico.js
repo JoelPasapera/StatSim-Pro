@@ -100,11 +100,39 @@ const RedactorTeorico = {
             if (btnQ) btnQ.style.display = '';
             if (info) info.textContent = `✓ Matriz importada: ${fuentes.length} fuente(s) de «${file.name}». La redacción usará estas fuentes.`;
             this.actualizarInfoFuentes();
+            this._completarResumenes(); // rellena en segundo plano los que tengan DOI y no resumen
         } catch (e) {
             this._fuentesImportadas = null;
             if (info) info.textContent = '❌ ' + (e.message || 'No se pudo leer el archivo.');
             this.actualizarInfoFuentes();
         }
+    },
+
+    // Completa en segundo plano los resúmenes faltantes de la matriz importada,
+    // consultando por DOI la misma cascada del buscador (OpenAlex → Crossref →
+    // Semantic Scholar → Europe PMC → Scopus). No bloquea; informa el avance.
+    async _completarResumenes() {
+        if (!this._fuentesImportadas || typeof Antecedentes === 'undefined' || !Antecedentes._recuperarDatos) return;
+        const pendientes = this._fuentesImportadas.filter(f => (!f.resumen || f.resumen.length < 40) && f.doi);
+        if (!pendientes.length) return;
+        const info = document.getElementById('redImportInfo');
+        const base = info ? info.textContent : '';
+        let hechos = 0, logrados = 0;
+        const CONCURRENCIA = 5;
+        let idx = 0;
+        const trabajador = async () => {
+            while (idx < pendientes.length) {
+                const f = pendientes[idx++];
+                try {
+                    const datos = await Antecedentes._recuperarDatos(f.doi);
+                    if (datos && datos.abstract) { f.resumen = datos.abstract; logrados++; }
+                } catch (e) { /* seguir con la siguiente */ }
+                hechos++;
+                if (info) info.textContent = `${base} Completando resúmenes faltantes por DOI: ${hechos}/${pendientes.length}…`;
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
+        if (info) info.textContent = `${base} ✓ Resúmenes completados por DOI: ${logrados} de ${pendientes.length} pendientes.`;
     },
 
     _quitarImportadas() {
@@ -201,6 +229,7 @@ const RedactorTeorico = {
         const iObjetivos = col('objetivos');
         const iMuestra = col('muestra');
         const iConclusiones = col('conclusiones');
+        const iLink = col('link/doi', 'link', 'doi');
         if (iTitulo < 0 || iRef < 0) {
             throw new Error('El archivo no parece una matriz exportada por la app (faltan las columnas «Título» y «Referencia (APA)»).');
         }
@@ -222,7 +251,10 @@ const RedactorTeorico = {
                 if (iConclusiones >= 0 && limpiar(f[iConclusiones])) partes.push('Conclusiones: ' + limpiar(f[iConclusiones]));
                 resumen = partes.join(' ');
             }
-            return { cita: this._citaDesdeRef(ref, anio), ref, titulo, anio, resumen };
+            // DOI (si la columna Link/DOI trae uno): permite completar resúmenes faltantes.
+            const linkCrudo = limpiar(iLink >= 0 ? f[iLink] : '');
+            const doi = /doi\.org\//.test(linkCrudo) || /^10\./.test(linkCrudo) ? linkCrudo : '';
+            return { cita: this._citaDesdeRef(ref, anio), ref, titulo, anio, resumen, doi };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
     },
 
