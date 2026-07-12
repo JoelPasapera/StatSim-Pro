@@ -226,6 +226,86 @@ ${q}`;
     },
 
     // ============================================================
+    // FUNCIÓN 4 (Redactor A): extraer las VARIABLES del problema
+    // ============================================================
+    // Lee el problema de investigación y propone las variables de estudio con
+    // una definición conceptual breve. Devuelve [{nombre, definicion}].
+    async extraerVariables(problema) {
+        const p = String(problema || '').trim();
+        if (p.length < 15) throw new Error('Describe primero el problema de investigación.');
+
+        const system = 'Eres un metodólogo experto en psicología. Identificas las variables de estudio '
+            + 'de un problema de investigación y las defines conceptualmente con precisión académica. '
+            + 'Respondes ÚNICAMENTE en JSON válido.';
+        const user = `Identifica las VARIABLES DE ESTUDIO del siguiente problema de investigación `
+            + `(normalmente 2, a veces 1 o 3). Para cada una da su nombre técnico y una definición `
+            + `conceptual breve (1-2 frases, sin citas).\n\n`
+            + `Responde SOLO con: {"variables": [{"nombre": "...", "definicion": "..."}]}\n\n`
+            + `PROBLEMA:\n${p}`;
+
+        const texto = await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.3, max_tokens: 1500, response_format: { type: 'json_object' } }, 3);
+
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
+        catch (e) {
+            const m = texto.match(/\{[\s\S]*\}/);
+            if (m) { try { data = JSON.parse(m[0]); } catch (e2) { throw new Error('La IA no devolvió variables válidas.'); } }
+            else throw new Error('La IA no devolvió variables válidas.');
+        }
+        const vars = (data && Array.isArray(data.variables)) ? data.variables : [];
+        const limpias = vars.filter(v => v && v.nombre).map(v => ({
+            nombre: String(v.nombre).trim(),
+            definicion: String(v.definicion || '').trim()
+        }));
+        if (!limpias.length) throw new Error('No se identificaron variables. Revisa el problema de investigación.');
+        return limpias;
+    },
+
+    // ============================================================
+    // FUNCIÓN 5 (Redactor A): redactar UNA sección del marco teórico
+    // ============================================================
+    // spec = { titulo, instrucciones, problema, variablesTexto,
+    //          fuentes: [{cita, ref, titulo, anio, resumen}], keyHint }
+    // ANTI-ALUCINACIÓN: el modelo solo puede citar las fuentes listadas, con la
+    // cita corta EXACTA que le damos ya construida. Textuales solo desde los
+    // resúmenes. Si las fuentes no cubren algo, debe declararlo, no inventarlo.
+    async redactarSeccion(spec) {
+        const fuentes = (spec.fuentes || []).slice(0, 20); // tope por límite de tokens/minuto
+        if (!fuentes.length) throw new Error('No hay fuentes disponibles para redactar esta sección.');
+
+        const listado = fuentes.map((f, i) =>
+            `[F${i + 1}] CITA EXACTA A USAR: ${f.cita}\n`
+            + `      Título: ${f.titulo || '(sin título)'} (${f.anio || 's. f.'})\n`
+            + `      RESUMEN: ${(f.resumen || '(sin resumen)').slice(0, 450)}`
+        ).join('\n\n');
+
+        const system = 'Eres un redactor académico experto en tesis de psicología (español formal, normas '
+            + 'APA 7). REGLAS ESTRICTAS E INVIOLABLES: (1) SOLO puedes citar las fuentes de la lista '
+            + 'proporcionada, usando EXACTAMENTE la "CITA EXACTA A USAR" de cada una (formato narrativo o '
+            + 'parentético); está PROHIBIDO mencionar autores, años o estudios que no estén en la lista. '
+            + '(2) Las citas textuales (entre comillas) solo pueden ser frases copiadas LITERALMENTE de los '
+            + 'RESÚMENES dados; si no hay frase literal útil, parafrasea. (3) Cada afirmación empírica debe '
+            + 'llevar su cita. (4) Si las fuentes no cubren un punto, dilo brevemente ("la evidencia '
+            + 'disponible no aborda...") en lugar de inventar. (5) NO escribas la lista de referencias al '
+            + 'final (se ensambla aparte). (6) Redacta con densidad académica, sin relleno ni repeticiones. '
+            + '(7) No uses viñetas: prosa académica en párrafos.';
+
+        const user = `PROBLEMA DE INVESTIGACIÓN:\n${spec.problema}\n\n`
+            + `VARIABLES DE ESTUDIO:\n${spec.variablesTexto}\n\n`
+            + `FUENTES DISPONIBLES (las ÚNICAS que puedes citar):\n${listado}\n\n`
+            + `TAREA: redacta la sección «${spec.titulo}» del marco teórico.\n${spec.instrucciones}\n\n`
+            + `Extensión: desarrolla con amplitud y profundidad lo que las fuentes permitan sustentar. `
+            + `Empieza directamente con el texto (sin repetir el título).`;
+
+        return await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            // Entrada ~20 fuentes ≈ 4200 tokens + 3200 declarados ≈ 7400 < 8000 TPM/org.
+            { temperature: 0.4, max_tokens: 3200, model: this.MODELO_POTENTE, keyHint: spec.keyHint }, 3);
+    },
+
+    // ============================================================
     // FUNCIÓN 3 (Sesión 3): evaluar la RELEVANCIA de un lote de artículos
     // ============================================================
     // Recibe los criterios (texto), un array de artículos {idx, titulo, resumen}
