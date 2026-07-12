@@ -296,7 +296,7 @@ const ComparacionGrupos = {
 
     // ---------- UI en la página ----------
     montar() {
-        const seccion = document.getElementById('analizador');
+        const seccion = document.getElementById('cgSlot') || document.getElementById('analizador');
         if (!seccion || document.getElementById('cgCard')) return;
         const card = document.createElement('div');
         card.id = 'cgCard';
