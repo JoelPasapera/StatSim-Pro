@@ -268,6 +268,7 @@ const RedactorTeorico = {
         const iMuestra = col('muestra');
         const iConclusiones = col('conclusiones');
         const iLink = col('link/doi', 'link', 'doi');
+        const iAutor = col('autor', 'autores', 'autor(es)');
         if (iTitulo < 0 || iRef < 0) {
             throw new Error('El archivo no parece una matriz exportada por la app (faltan las columnas «Título» y «Referencia (APA)»).');
         }
@@ -292,10 +293,20 @@ const RedactorTeorico = {
             // DOI (si la columna Link/DOI trae uno): permite completar resúmenes faltantes.
             const linkCrudo = limpiar(iLink >= 0 ? f[iLink] : '');
             const doi = /doi\.org\//.test(linkCrudo) || /^10\./.test(linkCrudo) ? linkCrudo : '';
-            const cita = this._citaDesdeRef(ref, anio);
-            // Si la cita salió por el recurso del título o «s. a.», los autores de la
-            // referencia venían rotos/ausentes: se marcan para repararlos por DOI.
-            const autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
+            // Cita: PREFERIR la columna «Autor» (dato estructurado y limpio) y, si
+            // falta, derivarla de la referencia (texto desde el inicio hasta el año).
+            const autoresCol = limpiar(iAutor >= 0 ? f[iAutor] : '')
+                .split(/;\s*/).map(s => s.trim()).filter(Boolean);
+            let cita, autoresPendientes;
+            if (autoresCol.length) {
+                cita = this._citaDesdeAutores(autoresCol, anio);
+                autoresPendientes = false;
+            } else {
+                cita = this._citaDesdeRef(ref, anio);
+                // Cita por título o «s. a.»: los autores venían rotos/ausentes en la
+                // referencia; se marcan para repararlos por DOI en segundo plano.
+                autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
+            }
             return { cita, ref, titulo, anio, resumen, doi, _autoresPendientes: autoresPendientes };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
     },
