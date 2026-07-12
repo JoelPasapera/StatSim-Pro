@@ -286,8 +286,8 @@ ${q}`;
             + 'proporcionada, usando EXACTAMENTE la "CITA EXACTA A USAR" de cada una (formato narrativo o '
             + 'parentético); está PROHIBIDO mencionar autores, años o estudios que no estén en la lista. '
             + '(2) Las citas textuales (entre comillas) solo pueden ser frases copiadas LITERALMENTE de los '
-            + 'RESÚMENES dados; si no hay frase literal útil, parafrasea. (3) Cada afirmación empírica debe '
-            + 'llevar su cita. (4) Si las fuentes no cubren un punto, dilo brevemente ("la evidencia '
+            + 'RESÚMENES dados; si no hay frase literal útil, parafrasea. (3) REGLA DE ORO (inviolable): TODA idea lleva cita. Cada afirmación conceptual o empírica debe '
+            + 'llevar su cita, y CADA PÁRRAFO debe contener al menos una cita (parentética o narrativa); si un párrafo no puede sustentarse en las fuentes proporcionadas, NO lo escribas. (4) Si las fuentes no cubren un punto, dilo brevemente ("la evidencia '
             + 'disponible no aborda...") en lugar de inventar. (5) NO escribas la lista de referencias al '
             + 'final (se ensambla aparte). (6) Redacta con densidad académica, sin relleno ni repeticiones. '
             + '(7) No uses viñetas: prosa académica en párrafos.';
