@@ -418,6 +418,8 @@ const Antecedentes = {
                     placeholder="Ej.: ¿Existe relación entre la inteligencia emocional y el rendimiento académico en estudiantes universitarios de Lima?"></textarea>
                 </div>
 
+                <div id="antVariablesSlot"></div>
+
                 <div class="form-group">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
                     <label class="label" for="antCriterios" style="margin:0;">Criterios de inclusión y exclusión</label>
@@ -1225,7 +1227,7 @@ const Antecedentes = {
         if (!doi) return { abstract: '', link: '' };
         const limpio = doi.replace(/^https?:\/\/doi\.org\//, '').trim();
         const limpiar = s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        let abstract = '', link = '';
+        let abstract = '', link = '', autores = [], anio = '';
 
         // 1) OpenAlex: abstract + ubicación OA. Se usa el filtro doi: (el slash
         // del DOI debe ir LITERAL; encodeURIComponent en el path lo rompía con %2F).
@@ -1235,6 +1237,8 @@ const Antecedentes = {
             if (r.ok) {
                 const d = await r.json();
                 if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) abstract = t; }
+                if (Array.isArray(d.authorships)) autores = d.authorships.map(a => a.author && a.author.display_name).filter(Boolean);
+                if (d.publication_year) anio = String(d.publication_year);
                 const oa = d.best_oa_location || d.primary_location;
                 if (oa) link = oa.pdf_url || oa.landing_page_url || link;
                 if (!link && d.open_access && d.open_access.oa_url) link = d.open_access.oa_url;
@@ -1247,7 +1251,10 @@ const Antecedentes = {
                 const r = await fetch(`https://api.crossref.org/works/${encodeURIComponent(limpio)}`);
                 this._enrichDbg('Crossref', r.ok ? 'ok' : ('HTTP ' + r.status));
                 if (r.ok) { const d = await r.json(); const a = d.message && d.message.abstract;
-                    if (a) { const t = limpiar(a); if (t.length > 40) abstract = t; } }
+                    if (a) { const t = limpiar(a); if (t.length > 40) abstract = t; }
+                    if (!autores.length && d.message && Array.isArray(d.message.author)) {
+                        autores = d.message.author.map(x => [x.given, x.family].filter(Boolean).join(' ')).filter(Boolean);
+                    } }
             } catch (e) { this._enrichDbg('Crossref', 'CORS/red: ' + e.message); }
         }
 
@@ -1307,7 +1314,7 @@ const Antecedentes = {
 
         // Enlace por defecto: el resolvedor DOI (redirige al editor; no es 404 si el DOI es válido).
         if (!link && limpio) link = `https://doi.org/${limpio}`;
-        return { abstract, link };
+        return { abstract, link, autores, anio };
     },
 
     // FALLBACK para artículos SIN DOI: busca el título en OpenAlex/Crossref para
