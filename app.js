@@ -367,6 +367,7 @@ function mostrarPreview(datos) {
 
 function habilitarDescargaCSV() {
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
+    if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
     const btn = document.getElementById('btnDescargarCSV');
     btn.disabled = false;
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
@@ -571,6 +572,7 @@ function obtenerColumnasNumericas(datos) {
 // cargar datos y también al aplicar nuevas etiquetas (para refrescar los textos).
 function poblarSelectsVariables(datos) {
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
+    if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
     const columnasNumericas = obtenerColumnasNumericas(datos);
 
     const select1 = document.getElementById('variable1');
