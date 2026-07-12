@@ -266,10 +266,19 @@ const RedactorTeorico = {
         const preAnio = r.split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[0] || '';
         // Autores "Apellido, X." (iniciales con punto), tolerando compuestos.
         const m = [...preAnio.matchAll(/([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚáéíóúñÑ'’-]+(?:\s+[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚáéíóúñÑ'’-]+)*)\s*,\s*(?:[A-ZÁÉÍÓÚÑ]\.\s*)+/g)];
-        const apellidos = m.map(x => x[1].trim()).filter(Boolean);
+        // Descartar "apellidos" que en realidad son iniciales sueltas (letra + punto):
+        // evita citas inválidas tipo "(E. B., 2026)" cuando la referencia vino rota.
+        const apellidos = m.map(x => x[1].trim()).filter(a => a && !/^([A-ZÁÉÍÓÚÑ]\.?\s*)+$/.test(a));
         if (!apellidos.length) {
-            const palabras = preAnio.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(' ');
-            return palabras ? `(${palabras}, ${anio})` : `(s. a., ${anio})`;
+            const palabras = preAnio.trim().split(/\s+/).filter(Boolean);
+            const soloIniciales = palabras.length && palabras.every(p => /^([A-ZÁÉÍÓÚÑ]\.?,?)+$/.test(p));
+            if (!palabras.length || soloIniciales) {
+                // Sin autor recuperable: APA permite citar por el título abreviado.
+                const t = String(ref).split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[1] || '';
+                const tit = t.replace(/^\)\.?\s*/, '').split(/\s+/).slice(0, 3).join(' ').replace(/[.,;:]+$/, '');
+                return tit ? `("${tit}", ${anio})` : `(s. a., ${anio})`;
+            }
+            return `(${palabras.slice(0, 2).join(' ')}, ${anio})`;
         }
         if (apellidos.length === 1) return `(${apellidos[0]}, ${anio})`;
         if (apellidos.length === 2) return `(${apellidos[0]} y ${apellidos[1]}, ${anio})`;
@@ -295,9 +304,14 @@ const RedactorTeorico = {
     _apellido(nombre) {
         const n = String(nombre || '').trim();
         if (!n) return '';
-        if (n.includes(',')) return n.split(',')[0].trim(); // "García, J." → García
+        // Reutiliza la heurística APA del buscador (detecta iniciales tipo
+        // "Batbayar E." para no tomar la inicial como apellido).
+        if (typeof Antecedentes !== 'undefined' && Antecedentes._autorAPA) {
+            return Antecedentes._autorAPA(n).split(',')[0].trim();
+        }
+        if (n.includes(',')) return n.split(',')[0].trim();
         const partes = n.split(/\s+/);
-        return partes[partes.length - 1]; // "Juan García" → García
+        return partes[partes.length - 1];
     },
     _citaCorta(o) {
         const autores = (o.autores || []).map(a => this._apellido(a)).filter(Boolean);
