@@ -1242,7 +1242,19 @@ const Antecedentes = {
             } catch (e) {}
         }
 
-        // 5) Unpaywall: API especializada en localizar copias de ACCESO ABIERTO
+        // 5) Scopus Abstract Retrieval (con las claves del usuario): la red de
+        // seguridad para editoriales que NO depositan el resumen en las APIs
+        // abiertas (típicamente Elsevier, DOIs 10.1016/...). Último recurso para
+        // el abstract; no gasta cuota si ya se recuperó antes.
+        if (!abstract && typeof ScopusDirecto !== 'undefined' && ScopusDirecto.abstractPorDoi) {
+            try {
+                const t = await ScopusDirecto.abstractPorDoi(limpio);
+                this._enrichDbg('ScopusAbs', t ? 'ok' : 'vacío');
+                if (t) abstract = t;
+            } catch (e) { this._enrichDbg('ScopusAbs', 'error: ' + e.message); }
+        }
+
+        // 6) Unpaywall: API especializada en localizar copias de ACCESO ABIERTO
         // LEGALES (preprint del autor, repositorio institucional, etc.). Requiere
         // un email como identificador (sin API key). Su enlace OA es el mas fiable.
         try {
