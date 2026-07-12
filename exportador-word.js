@@ -485,6 +485,38 @@ const ExportadorWord = {
             }
         }
 
+        // ---- Comparación entre grupos ----
+        if (typeof ComparacionGrupos !== 'undefined') {
+            const CG = ComparacionGrupos;
+            const comparaciones = CG.generarParaWord([[var1, et1], [var2, et2]]);
+            if (comparaciones.length) {
+                h += this._seccion('Comparación entre grupos');
+                h += this._p(`En este apartado se examina si los puntajes de las variables de estudio difieren entre los grupos definidos por las variables categóricas de la muestra. El procedimiento sigue el protocolo estándar: primero se verifican los supuestos (normalidad de cada grupo y homogeneidad de varianzas mediante la prueba de Levene) y, en función de ellos, se selecciona la prueba adecuada: con dos grupos, t de Student cuando ambos supuestos se cumplen, t de Welch si las varianzas difieren, o U de Mann-Whitney cuando falla la normalidad; con tres o más grupos, ANOVA de un factor bajo supuestos cumplidos o Kruskal-Wallis en caso contrario, complementados con comparaciones por pares corregidas por Holm cuando el contraste global resulta significativo. Cada prueba se acompaña de su tamaño del efecto (d de Cohen, r, η² o ε², según corresponda), que expresa la magnitud práctica de la diferencia.`);
+                comparaciones.forEach(R => {
+                    const P = R.prueba;
+                    const glTxt = Array.isArray(P.gl) ? `(${P.gl[0]}, ${P.gl[1]})` : (P.gl != null ? `(${CG._fx(P.gl, 1)})` : '—');
+                    h += this._tablaAPA(`${R.etNum} según ${R.etGrupo}: descriptivos y supuestos`,
+                        ['Grupo', 'n', 'M', 'DE', 'Mediana', 'Normalidad (p)'],
+                        R.grupos.map((g, i) => [g.nombre, g.n, CG._fx(g.media), CG._fx(g.de), CG._fx(g.mediana),
+                            `${CG._fp(R.normalidad[i].pValor)} (${R.normalidad[i].normal ? 'normal' : 'no normal'})`]),
+                        `Prueba de Levene para homogeneidad de varianzas: F(${R.levene.gl[0]}, ${R.levene.gl[1]}) = ${CG._fx(R.levene.estadistico, 3)}, p ${CG._fp(R.levene.pValor)} (${R.levene.homogeneas ? 'varianzas homogéneas' : 'varianzas no homogéneas'}).`);
+                    h += this._tablaAPA(`Contraste de ${R.etNum} según ${R.etGrupo}`,
+                        ['Prueba', 'Estadístico', 'gl', 'p', `Efecto (${P.efecto.nombre})`, 'Magnitud', 'Decisión'],
+                        [[P.nombre, CG._fx(P.estadistico, 3), glTxt, CG._fp(P.pValor), CG._fx(P.efecto.valor, 3), P.magnitud,
+                          P.significativa ? 'Diferencias significativas' : 'Sin diferencias significativas']],
+                        `La prueba se eligió porque ${R.razon}.`);
+                    if (R.postHoc) {
+                        h += this._tablaAPA(`Comparaciones por pares para ${R.etNum} según ${R.etGrupo} (corrección de Holm)`,
+                            ['Par', 'Prueba', 'Estadístico', 'p', 'p (Holm)', 'Decisión'],
+                            R.postHoc.map(p => [`${p.a} vs ${p.b}`, p.nombre, CG._fx(p.estadistico, 3), CG._fp(p.pValor), CG._fp(p.pHolm),
+                                p.sig ? 'Significativa' : 'No significativa']),
+                            'La corrección de Holm controla la tasa de falsos positivos al realizar múltiples comparaciones simultáneas.');
+                    }
+                    h += this._p(CG.interpretar(R));
+                });
+            }
+        }
+
         // ---- Referencias APA ----
         h += this._h1('Referencias');
         h += this._referencias();
