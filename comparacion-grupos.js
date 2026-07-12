@@ -312,6 +312,11 @@ const ComparacionGrupos = {
               <select id="cgNum" class="input" style="min-width:12rem;"></select></div>
             <button id="cgAnalizar" class="btn btn-primary" style="padding:0.5rem 1.1rem;">Comparar grupos</button>
           </div>
+          <p class="help-text" style="margin:0.7rem 0 0; font-size:0.88em; line-height:1.5;">
+            <b>¿Cómo usar esta sección?</b> Sirve para responder preguntas como «¿difiere la inteligencia emocional entre hombres y mujeres?» o «¿varía el puntaje según la carrera?».
+            En <b>Variable de agrupación</b> elige una columna categórica que divide tu muestra en grupos (p. ej., Sexo, Carrera, Turno): define <i>quiénes se comparan</i>.
+            En <b>Variable numérica</b> elige el puntaje que quieres contrastar entre esos grupos (p. ej., General_IE o una dimensión): define <i>qué se compara</i>.
+            La app verificará los supuestos por ti y explicará qué prueba aplicó y por qué.</p>
           <div id="cgEstado" class="help-text" style="margin-top:0.5rem;"></div>
           <div id="cgResultado" style="margin-top:0.8rem;"></div>`;
         seccion.appendChild(card);
