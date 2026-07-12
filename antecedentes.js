@@ -263,19 +263,57 @@ const Antecedentes = {
     },
 
     // ---------- APA 7 ----------
+    // Convierte un nombre de autor (en cualquiera de los formatos que devuelven
+    // las APIs) a APA: "Apellido, I. I.". Detecta las INICIALES (tokens de una
+    // letra, con o sin punto, p. ej. "E.", "EB", "J.A.") para no confundirlas
+    // con el apellido:  "Batbayar E." → Batbayar, E. · "E. Batbayar" → Batbayar, E.
+    // · "Juan García" → García, J. · "García, J." → García, J. (idempotente).
+    _esInicial(tok) {
+        return /^([A-ZÁÉÍÓÚÑ]\.?){1,3}$/.test(tok.replace(/\./g, '.'));
+    },
     _autorAPA(nombre) {
-        const partes = nombre.trim().split(/\s+/);
+        const n = String(nombre || '').trim();
+        if (!n) return '';
+        if (n.includes(',')) {
+            // Ya viene "Apellido, Iniciales": normalizar puntos de las iniciales.
+            const [ape, resto] = [n.split(',')[0].trim(), n.split(',').slice(1).join(',').trim()];
+            const ini = resto.split(/\s+/).filter(Boolean)
+                .map(p => this._esInicial(p)
+                    ? p.replace(/\./g, '').split('').map(c => c.toUpperCase() + '.').join(' ')
+                    : p[0].toUpperCase() + '.')
+                .join(' ');
+            return ini ? `${ape}, ${ini}` : ape;
+        }
+        const partes = n.split(/\s+/);
         if (partes.length === 1) return partes[0];
-        const apellido = partes[partes.length - 1];
-        const ini = partes.slice(0, -1).map(p => p[0].toUpperCase() + '.').join(' ');
-        return `${apellido}, ${ini}`;
+        const inicialesFin = [], inicialesIni = [];
+        let i = partes.length - 1;
+        while (i > 0 && this._esInicial(partes[i])) { inicialesFin.unshift(partes[i]); i--; }
+        let j = 0;
+        while (j < partes.length - 1 && this._esInicial(partes[j])) { inicialesIni.push(partes[j]); j++; }
+        let apellidoTokens, inicialesTokens;
+        if (inicialesFin.length) {          // "Batbayar E." / "De la Cruz J. A."
+            apellidoTokens = partes.slice(0, partes.length - inicialesFin.length);
+            inicialesTokens = inicialesFin;
+        } else if (inicialesIni.length) {   // "E. Batbayar" / "J. A. de la Cruz"
+            apellidoTokens = partes.slice(inicialesIni.length);
+            inicialesTokens = inicialesIni;
+        } else {                            // "Juan García" (nombres completos)
+            apellidoTokens = [partes[partes.length - 1]];
+            inicialesTokens = partes.slice(0, -1);
+        }
+        const apellido = apellidoTokens.join(' ');
+        const ini = inicialesTokens.map(p => this._esInicial(p)
+            ? p.replace(/\./g, '').split('').map(c => c.toUpperCase() + '.').join(' ')
+            : p[0].toUpperCase() + '.').join(' ');
+        return ini ? `${apellido}, ${ini}` : apellido;
     },
     _autoresAPA(autores) {
         const a = autores.map(n => this._autorAPA(n));
         if (!a.length) return '';
         if (a.length === 1) return a[0];
-        if (a.length === 2) return `${a[0]} & ${a[1]}`;
-        if (a.length <= 20) return `${a.slice(0, -1).join(', ')}, & ${a[a.length - 1]}`;
+        if (a.length === 2) return `${a[0]} y ${a[1]}`;
+        if (a.length <= 20) return `${a.slice(0, -1).join(', ')} y ${a[a.length - 1]}`;
         return `${a.slice(0, 19).join(', ')}, ... ${a[a.length - 1]}`;
     },
     citaAPA(o) {
