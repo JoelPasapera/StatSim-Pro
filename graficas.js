@@ -956,6 +956,14 @@ class ScientificCharts {
         const g = this._createChartBase(options.title || 'Histograma con curva normal',
             options.xLabel || 'Valor', options.yLabel || 'Frecuencia');
 
+        // Ejes con marcas numéricas: el eje X muestra los valores de los
+        // intervalos de las barras y el eje Y las frecuencias.
+        const ejeX = g.append('g').attr('transform', `translate(0,${H})`)
+            .call(d3.axisBottom(xScale).ticks(7).tickSizeOuter(0));
+        const ejeY = g.append('g')
+            .call(d3.axisLeft(yScale).ticks(5).tickFormat(d3.format('d')).tickSizeOuter(0));
+        [ejeX, ejeY].forEach(e => e.selectAll('text').attr('font-size', 10).attr('fill', '#333'));
+
         g.selectAll('.barra').data(bins).enter().append('rect')
             .attr('x', d => xScale(d.x0) + 0.5)
             .attr('width', d => Math.max(xScale(d.x1) - xScale(d.x0) - 1, 1))
