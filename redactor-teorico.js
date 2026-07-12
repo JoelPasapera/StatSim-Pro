@@ -34,23 +34,33 @@ const RedactorTeorico = {
               <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
             </div>
 
+            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:0.2rem;">
+              <button id="redRedactarTodo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">📄 Redactar marco teórico completo</button>
+              <button id="redProbar" class="btn btn-outline" style="padding:0.4rem 1rem;">✍️ Probar solo una sección</button>
+              <button id="redDescargarWord" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar Word (.docx)</button>
+              <button id="redCopiar" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">📋 Copiar texto</button>
+            </div>
+            <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
+            <div id="redEstado" class="help-text" style="margin-top:0.5rem;"></div>
+            <div id="redResultado" style="display:none; margin-top:0.8rem; padding:1rem; border:1px solid var(--color-border, #ddd); border-radius:0.5rem; background:#fafafa; white-space:pre-wrap; font-family:'Times New Roman', serif; font-size:0.95rem; line-height:1.6; max-height:28rem; overflow:auto;"></div>
+          </div>`;
+
+        // Variables de estudio: se montan ARRIBA, entre «Problema de investigación»
+        // y «Criterios» (flujo natural: problema → variables → criterios). Si el
+        // slot no existiera (versión vieja del buscador), caen dentro del redactor.
+        const slotVars = document.getElementById('antVariablesSlot') || cont;
+        const bloqueVars = document.createElement('div');
+        bloqueVars.className = 'form-group';
+        bloqueVars.style.marginTop = '1rem';
+        bloqueVars.innerHTML = `
             <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
               <label class="label" for="redVariables" style="margin:0;">Variables de estudio</label>
               <button id="redIdentificar" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🧩 Identificar variables</button>
             </div>
             <textarea id="redVariables" class="input" rows="4" style="resize:vertical;"
               placeholder="Una variable por línea, con el formato:  Nombre — definición conceptual breve.&#10;Pulsa «Identificar variables» para que la IA las proponga a partir del problema de investigación; luego edítalas a tu criterio."></textarea>
-            <p class="help-text" style="margin:0.4rem 0 0;">La IA propone; tú confirmas. Estas variables guiarán todas las secciones del marco teórico.</p>
-
-            <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:1rem;">
-              <button id="redRedactarTodo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">📄 Redactar marco teórico completo</button>
-              <button id="redProbar" class="btn btn-outline" style="padding:0.4rem 1rem;">✍️ Probar solo una sección</button>
-              <button id="redDescargarWord" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar Word (.docx)</button>
-            </div>
-            <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
-            <div id="redEstado" class="help-text" style="margin-top:0.5rem;"></div>
-            <div id="redResultado" style="display:none; margin-top:0.8rem; padding:1rem; border:1px solid var(--color-border, #ddd); border-radius:0.5rem; background:#fafafa; white-space:pre-wrap; font-family:'Times New Roman', serif; font-size:0.95rem; line-height:1.6; max-height:28rem; overflow:auto;"></div>
-          </div>`;
+            <p class="help-text" style="margin:0.4rem 0 0;">La IA propone; tú confirmas. Estas variables guiarán los criterios y todas las secciones del marco teórico.</p>`;
+        if (slotVars === cont) cont.insertBefore(bloqueVars, cont.firstChild); else slotVars.appendChild(bloqueVars);
 
         const btnVar = document.getElementById('redIdentificar');
         if (btnVar) btnVar.addEventListener('click', () => this._onIdentificarVariables());
@@ -68,6 +78,8 @@ const RedactorTeorico = {
         if (btnTodo) btnTodo.addEventListener('click', () => this._onRedactarTodo());
         const btnWord = document.getElementById('redDescargarWord');
         if (btnWord) btnWord.addEventListener('click', () => this._onDescargarWord());
+        const btnCopiar = document.getElementById('redCopiar');
+        if (btnCopiar) btnCopiar.addEventListener('click', () => this._onCopiar());
 
         this.actualizarInfoFuentes();
     },
@@ -111,9 +123,20 @@ const RedactorTeorico = {
     // Completa en segundo plano los resúmenes faltantes de la matriz importada,
     // consultando por DOI la misma cascada del buscador (OpenAlex → Crossref →
     // Semantic Scholar → Europe PMC → Scopus). No bloquea; informa el avance.
+    // Reconstruye la cita corta APA a partir de la lista de autores reales.
+    _citaDesdeAutores(autores, anio) {
+        const aps = (autores || []).map(a => this._apellido(a)).filter(Boolean);
+        const y = anio || 's. f.';
+        if (!aps.length) return '';
+        if (aps.length === 1) return `(${aps[0]}, ${y})`;
+        if (aps.length === 2) return `(${aps[0]} y ${aps[1]}, ${y})`;
+        return `(${aps[0]} et al., ${y})`;
+    },
+
     async _completarResumenes() {
         if (!this._fuentesImportadas || typeof Antecedentes === 'undefined' || !Antecedentes._recuperarDatos) return;
-        const pendientes = this._fuentesImportadas.filter(f => (!f.resumen || f.resumen.length < 40) && f.doi);
+        const pendientes = this._fuentesImportadas.filter(f =>
+            f.doi && ((!f.resumen || f.resumen.length < 40) || f._autoresPendientes));
         if (!pendientes.length) return;
         const info = document.getElementById('redImportInfo');
         const base = info ? info.textContent : '';
@@ -125,14 +148,29 @@ const RedactorTeorico = {
                 const f = pendientes[idx++];
                 try {
                     const datos = await Antecedentes._recuperarDatos(f.doi);
-                    if (datos && datos.abstract) { f.resumen = datos.abstract; logrados++; }
+                    if (datos && datos.abstract && (!f.resumen || f.resumen.length < 40)) { f.resumen = datos.abstract; logrados++; }
+                    // Reparar AUTORES rotos: cita nueva con apellidos reales y la
+                    // referencia reconstruida (autores APA + resto original desde el año).
+                    if (datos && datos.autores && datos.autores.length && f._autoresPendientes) {
+                        const nuevaCita = this._citaDesdeAutores(datos.autores, f.anio || datos.anio);
+                        if (nuevaCita) {
+                            f.cita = nuevaCita;
+                            const resto = String(f.ref).split(/(?=\(\s*(?:\d{4}|s\.\s*f\.))/)[1] || `(${f.anio || datos.anio || 's. f.'}). ${f.titulo}.`;
+                            const autoresAPA = (typeof Antecedentes._autoresAPA === 'function')
+                                ? Antecedentes._autoresAPA(datos.autores) : datos.autores.join(', ');
+                            f.ref = `${autoresAPA} ${resto}`.trim();
+                            f._autoresPendientes = false;
+                            logrados++;
+                        }
+                    }
                 } catch (e) { /* seguir con la siguiente */ }
                 hechos++;
                 if (info) info.textContent = `${base} Completando resúmenes faltantes por DOI: ${hechos}/${pendientes.length}…`;
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
-        if (info) info.textContent = `${base} ✓ Resúmenes completados por DOI: ${logrados} de ${pendientes.length} pendientes.`;
+        if (info) info.textContent = `${base} ✓ Completado por DOI: ${logrados} campo(s) reparado(s) (resúmenes y/o autores) en ${pendientes.length} fuentes.`;
+        this.actualizarInfoFuentes();
     },
 
     _quitarImportadas() {
@@ -254,7 +292,11 @@ const RedactorTeorico = {
             // DOI (si la columna Link/DOI trae uno): permite completar resúmenes faltantes.
             const linkCrudo = limpiar(iLink >= 0 ? f[iLink] : '');
             const doi = /doi\.org\//.test(linkCrudo) || /^10\./.test(linkCrudo) ? linkCrudo : '';
-            return { cita: this._citaDesdeRef(ref, anio), ref, titulo, anio, resumen, doi };
+            const cita = this._citaDesdeRef(ref, anio);
+            // Si la cita salió por el recurso del título o «s. a.», los autores de la
+            // referencia venían rotos/ausentes: se marcan para repararlos por DOI.
+            const autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
+            return { cita, ref, titulo, anio, resumen, doi, _autoresPendientes: autoresPendientes };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
     },
 
@@ -265,13 +307,14 @@ const RedactorTeorico = {
         const anio = (r.match(/\((\d{4}[a-z]?|s\.\s*f\.)\)/) || [])[1] || anioFallback || 's. f.';
         const preAnio = r.split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[0] || '';
         // Autores "Apellido, X." (iniciales con punto), tolerando compuestos.
-        const m = [...preAnio.matchAll(/([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚáéíóúñÑ'’-]+(?:\s+[A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚáéíóúñÑ'’-]+)*)\s*,\s*(?:[A-ZÁÉÍÓÚÑ]\.\s*)+/g)];
+        const M = 'A-ZÀ-ÖØ-ÞĀ-Ž', m_ = 'a-zà-öø-ÿā-ž';
+        const m = [...preAnio.matchAll(new RegExp(`([${M}][${M}${m_}'’-]+(?:\\s+[${M}][${M}${m_}'’-]+)*)\\s*,\\s*(?:[${M}]\\.\\s*)+`, 'g'))];
         // Descartar "apellidos" que en realidad son iniciales sueltas (letra + punto):
         // evita citas inválidas tipo "(E. B., 2026)" cuando la referencia vino rota.
-        const apellidos = m.map(x => x[1].trim()).filter(a => a && !/^([A-ZÁÉÍÓÚÑ]\.?\s*)+$/.test(a));
+        const apellidos = m.map(x => x[1].trim()).filter(a => a && !new RegExp(`^([${M}]\\.?\\s*)+$`).test(a));
         if (!apellidos.length) {
             const palabras = preAnio.trim().split(/\s+/).filter(Boolean);
-            const soloIniciales = palabras.length && palabras.every(p => /^([A-ZÁÉÍÓÚÑ]\.?,?)+$/.test(p));
+            const soloIniciales = palabras.length && palabras.every(p => new RegExp(`^([${M}${m_}]\\.?,?)+$`).test(p));
             if (!palabras.length || soloIniciales) {
                 // Sin autor recuperable: APA permite citar por el título abreviado.
                 const t = String(ref).split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[1] || '';
@@ -531,6 +574,31 @@ const RedactorTeorico = {
         };
         await Promise.all(Array.from({ length: canales }, (_, c) => trabajador(c)));
 
+        // SEGUNDA PASADA: reintentar las tareas que fallaron (p. ej. por cuota),
+        // tras el enfriamiento, repartidas de nuevo entre los canales.
+        const fallidas = [];
+        resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto)) fallidas.push(i); });
+        if (fallidas.length) {
+            if (estado) estado.textContent = `🔁 Reintentando ${fallidas.length} sección(es) que fallaron…`;
+            if (this._ENFRIAMIENTO_MS > 0) await new Promise(r => setTimeout(r, this._ENFRIAMIENTO_MS));
+            let fi = 0;
+            const reint = async (canal) => {
+                while (fi < fallidas.length) {
+                    const i = fallidas[fi++];
+                    const tarea = tareas[i];
+                    try {
+                        const texto = await IAAsistente.redactarSeccion({
+                            titulo: tarea.titulo, instrucciones: tarea.instrucciones,
+                            problema, variablesTexto, fuentes: tarea.fuentes, keyHint: canal
+                        });
+                        resultados[i] = { seccion: tarea.seccion, texto };
+                        conError--;
+                    } catch (e) { /* se queda el placeholder */ }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(canales, fallidas.length) }, (_, c) => reint(c)));
+        }
+
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
         for (const sec of plan) {
@@ -552,7 +620,40 @@ const RedactorTeorico = {
             + (conError ? ` (${conError} parte(s) con error)` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
         if (btnWord) btnWord.style.display = '';
+        const btnCop = document.getElementById('redCopiar');
+        if (btnCop) btnCop.style.display = '';
         if (btn) { btn.disabled = false; btn.textContent = t; }
+    },
+
+    // Copia al portapapeles el documento mostrado (con fallback clásico).
+    async _onCopiar() {
+        const res = document.getElementById('redResultado');
+        const btn = document.getElementById('redCopiar');
+        const texto = res ? res.textContent : '';
+        if (!texto) return;
+        let ok = false;
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(texto);
+                ok = true;
+            }
+        } catch (e) { /* probar fallback */ }
+        if (!ok) {
+            try {
+                const ta = document.createElement('textarea');
+                ta.value = texto;
+                ta.style.position = 'fixed'; ta.style.opacity = '0';
+                document.body.appendChild(ta);
+                ta.select();
+                ok = document.execCommand('copy');
+                document.body.removeChild(ta);
+            } catch (e) { ok = false; }
+        }
+        if (btn) {
+            const t = btn.textContent;
+            btn.textContent = ok ? '✓ Copiado' : '❌ No se pudo copiar';
+            setTimeout(() => { btn.textContent = t; }, 2000);
+        }
     },
 
     // Limpieza ligera del texto del modelo (markdown residual).
@@ -560,6 +661,7 @@ const RedactorTeorico = {
         return String(t || '')
             .replace(/^#+\s*/gm, '')       // ### títulos
             .replace(/\*\*(.+?)\*\*/g, '$1') // **negritas**
+            .replace(/[\u00A0\u2007\u2009\u202F\u2060]/g, ' ') // espacios "raros" (n = 377) → normal
             .trim();
     },
 
