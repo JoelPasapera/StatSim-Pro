@@ -211,6 +211,28 @@ const ExportadorWord = {
             <p style="margin:4pt 0 0;font-size:10pt;line-height:140%;"><i>Nota.</i> Elaboración propia a partir del diseño metodológico del estudio.</p>`;
     },
 
+    // Φ(z): función de distribución normal estándar (aprox. Abramowitz-Stegun).
+    _phi(z) {
+        const t = 1 / (1 + 0.2316419 * Math.abs(z));
+        const d = 0.3989423 * Math.exp(-z * z / 2);
+        let p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+        return z > 0 ? 1 - p : p;
+    },
+    // p bilateral aproximado para un r con n casos (transformación z de Fisher).
+    _pFisher(r, n) {
+        if (!Number.isFinite(r) || n < 4 || Math.abs(r) >= 1) return NaN;
+        const z = Math.abs(Math.atanh(r)) * Math.sqrt(n - 3);
+        return 2 * (1 - this._phi(z));
+    },
+    // Potencia post-hoc (1−β) para detectar el r observado con n casos y α dado
+    // (aprox. de Fisher; orientativa, como recomienda reportarla).
+    _potencia(r, n, alfa = 0.05, bilateral = true) {
+        if (!Number.isFinite(r) || n < 4) return NaN;
+        const zc = bilateral ? 1.959964 : 1.644854;
+        const lambda = Math.abs(Math.atanh(r)) * Math.sqrt(n - 3);
+        return this._phi(lambda - zc) + this._phi(-lambda - zc);
+    },
+
     generarCapitulo(ctx) {
         this._n = 0;
         this._f = 0;
@@ -265,9 +287,25 @@ const ExportadorWord = {
                 });
             });
             h += this._seccion('Características sociodemográficas de la muestra');
+            // Resumen pedagógico por variable (categoría modal y composición).
+            const resumenSocio = [];
+            cats.forEach(col => {
+                const conteo = new Map();
+                datos.forEach(d => { const v = String(d[col] ?? '').trim(); if (v) conteo.set(v, (conteo.get(v) || 0) + 1); });
+                const orden = [...conteo.entries()].sort((a, b) => b[1] - a[1]);
+                if (!orden.length) return;
+                const [c1, f1] = orden[0];
+                const pct = x => (x * 100 / datos.length).toFixed(1);
+                let s = `en cuanto a ${col.toLowerCase()}, predominó la categoría «${c1}» con ${f1} casos (${pct(f1)} %)`;
+                if (orden[1]) s += `, seguida de «${orden[1][0]}» (${orden[1][1]}; ${pct(orden[1][1])} %)`;
+                resumenSocio.push(s);
+            });
             h += this._tablaAPA(`Distribución de frecuencias de las variables sociodemográficas (N = ${datos.length})`,
                 ['Variable', 'Categoría', 'f', '%'], filas,
                 'Los porcentajes se calculan sobre los casos con dato válido en cada variable.');
+            if (resumenSocio.length) {
+                h += this._p(`La tabla anterior describe el perfil de los ${datos.length} participantes del estudio. En una tesis, esta caracterización permite al lector juzgar a quiénes representan los resultados. En síntesis: ${resumenSocio.join('; ')}. Las frecuencias (f) indican el número de casos por categoría y los porcentajes su proporción sobre el total, de modo que categorías con porcentajes altos dominan la composición de la muestra y conviene tenerlas presentes al generalizar los hallazgos.`);
+            }
         }
 
         // ---- Niveles ----
@@ -279,6 +317,7 @@ const ExportadorWord = {
                     ['Nivel', 'Rango de puntajes', 'f', '%'],
                     r.niveles.map(o => [o.nivel, o.rango, o.f, o.pct.toFixed(1) + '%']),
                     'Puntos de corte por terciles empíricos de la muestra (percentiles 33.3 y 66.7).');
+                h += this._p(`La tabla precedente clasifica a los ${r.n} participantes en tres niveles (bajo, medio y alto) de ${et} según terciles empíricos, es decir, cortes que dividen a la propia muestra en tres grupos de tamaño similar. La lectura es directa: la columna f indica cuántos participantes caen en cada nivel y el porcentaje su peso relativo; el nivel con mayor frecuencia describe la tendencia predominante de la muestra en esta variable.`);
             });
         }
 
@@ -307,10 +346,16 @@ const ExportadorWord = {
              [et2, n2.prueba, n2.estadistico.toFixed(3), fp(n2.pValor), n2.normal ? 'Normal' : 'No normal']],
             'Criterio: p > .05 indica que la distribución no se desvía significativamente de la normal.');
         h += this._p(I.generarInterpretacionNormalidad(et1, et2, resultado));
+        const expHist = (et, d, nn) => this._p(`La figura anterior muestra el histograma de ${et}: cada barra representa cuántos participantes obtuvieron puntajes dentro de ese intervalo, y la curva superpuesta corresponde a la distribución normal teórica con la media y desviación estándar de la muestra. Cuanto más se ajustan las barras a la curva, más plausible es la normalidad. En este caso, la asimetría de ${Number.isFinite(d?.asimetria) ? d.asimetria.toFixed(2) : '—'} ${Number.isFinite(d?.asimetria) ? (Math.abs(d.asimetria) < 0.5 ? 'sugiere una distribución esencialmente simétrica' : d.asimetria > 0 ? 'indica una cola derecha (concentración de puntajes bajos con algunos valores altos)' : 'indica una cola izquierda (concentración de puntajes altos con algunos valores bajos)') : ''} y la curtosis de ${Number.isFinite(d?.curtosis) ? d.curtosis.toFixed(2) : '—'} describe cuán apuntada o achatada es la distribución respecto de la normal, lo que concuerda con la decisión de la prueba de ${nn.prueba} (${nn.normal ? 'normalidad no rechazada' : 'normalidad rechazada'}).`);
+        const expQQ = (et, nn) => this._p(`El gráfico Q-Q de ${et} compara los cuantiles observados de la muestra con los que se esperarían bajo una distribución normal perfecta: si los puntos se alinean sobre la diagonal, los datos se comportan como normales; desviaciones sistemáticas en los extremos revelan colas más pesadas o livianas de lo esperado. La inspección visual ${nn.normal ? 'respalda' : 'coincide con'} el resultado de la prueba de ${nn.prueba} (p ${fp(nn.pValor)}), que ${nn.normal ? 'no rechazó' : 'rechazó'} la hipótesis de normalidad, y esta decisión es la que determina el coeficiente de correlación apropiado.`);
         h += this._figura('histVariable1', `Distribución de ${et1} con curva normal teórica superpuesta`, null);
+        h += expHist(et1, d1, n1);
         h += this._figura('qqVariable1', `Gráfico Q-Q de ${et1}`, null);
+        h += expQQ(et1, n1);
         h += this._figura('histVariable2', `Distribución de ${et2} con curva normal teórica superpuesta`, null);
+        h += expHist(et2, d2, n2);
         h += this._figura('qqVariable2', `Gráfico Q-Q de ${et2}`, null);
+        h += expQQ(et2, n2);
 
         // ---- Correlación principal ----
         const esSp = I._esSpearman(resultado.tipoCorrelacion);
@@ -325,12 +370,86 @@ const ExportadorWord = {
         h += this._p(I.generarInterpretacionCorrelacion(et1, et2, resultado));
         h += this._figura('graficoDispersion', `Diagrama de dispersión entre ${et1} y ${et2}`,
             'Incluye la recta de regresión por mínimos cuadrados y la banda de confianza al 95%.');
+        {
+            const rr = resultado.coeficiente, aR = Math.abs(rr);
+            const fuerzaTxt = aR < .10 ? 'prácticamente nula' : aR < .30 ? 'débil' : aR < .50 ? 'moderada' : aR < .70 ? 'considerable' : 'fuerte';
+            h += this._p(`El diagrama de dispersión anterior es la representación visual más informativa de la relación estudiada y conviene leerlo con detenimiento. Cada punto corresponde a un participante: su posición horizontal indica su puntaje en ${et1} y la vertical su puntaje en ${et2}, de modo que la nube completa retrata simultáneamente a los ${resultado.n} casos. La recta trazada es la de mínimos cuadrados, la línea que mejor resume la tendencia conjunta, y la banda sombreada delimita el intervalo de confianza al 95 % de esa recta: cuanto más angosta, mayor precisión en la estimación de la tendencia.`);
+            h += this._p(`En estos datos la nube ${rr >= 0 ? 'asciende de izquierda a derecha, patrón propio de una relación positiva: quienes puntúan alto en ' + et1 + ' tienden también a puntuar alto en ' + et2 : 'desciende de izquierda a derecha, patrón propio de una relación negativa: a mayores puntajes en ' + et1 + ' corresponden, en tendencia, menores puntajes en ' + et2}. La dispersión de los puntos alrededor de la recta expresa la fuerza del vínculo: con un coeficiente de ${rr.toFixed(3)}, la asociación observada es de magnitud ${fuerzaTxt}, ${aR < .30 ? 'por lo que los puntos se apartan bastante de la recta y el conocimiento de una variable permite anticipar solo débilmente la otra' : aR < .50 ? 'con puntos moderadamente próximos a la recta: existe un patrón claro aunque con variabilidad individual apreciable' : 'con puntos notablemente alineados a la recta, señal de un patrón consistente entre ambas variables'}. Conviene además inspeccionar visualmente la linealidad (que la relación no dibuje curvas) y la presencia de casos atípicos alejados de la nube, pues ambos aspectos condicionan la interpretación del coeficiente.`);
+        }
+
+        // ---- Contraste de hipótesis y decisión estadística ----
+        {
+            const alfa = 0.05, bilat = (tipoPrueba || 'bilateral') === 'bilateral';
+            const rr = resultado.coeficiente, pv = resultado.pValor;
+            const sig = pv < alfa;
+            const pot = this._potencia(rr, resultado.n, alfa, bilat);
+            const coefTxt = esSp ? 'ρ de Spearman' : 'r de Pearson';
+            h += this._seccion('Contraste de hipótesis y decisión estadística');
+            if (marco && marco.hipotesis) {
+                h += this._p(`El contraste enfrenta la hipótesis nula (H₀: ${marco.hipotesis.hipotesisNula}) con la hipótesis de investigación (H₁: ${marco.hipotesis.hipotesisInvestigador}).`);
+            } else {
+                h += this._p(`El contraste enfrenta la hipótesis nula H₀ (no existe relación entre ${et1} y ${et2}; el coeficiente poblacional es cero) con la hipótesis alterna H₁ (existe relación entre ambas variables).`);
+            }
+            h += this._tablaAPA('Resumen del contraste de hipótesis para la relación principal',
+                ['Elemento', 'Valor'],
+                [['Nivel de significancia (α)', alfa.toFixed(2) + (bilat ? ' (bilateral)' : ' (unilateral)')],
+                 ['Estadístico de prueba', `${coefTxt} = ${rr.toFixed(3)}`],
+                 ['p-valor', fp(pv)],
+                 ['Intervalo de confianza 95%', ic ? `[${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]` : '—'],
+                 ['Potencia post-hoc (1−β)', Number.isFinite(pot) ? (pot >= 0.999 ? '> .999' : pot.toFixed(3).replace(/^0\./, '.')) : '—'],
+                 ['Decisión sobre H₀', sig ? 'Se rechaza H₀' : 'No se rechaza H₀']],
+                'La potencia post-hoc se estimó mediante la aproximación de Fisher para el coeficiente observado y se reporta con carácter orientativo.');
+            h += this._p(`Con un nivel de significancia α = .05 y un contraste ${bilat ? 'bilateral' : 'unilateral'}, el p-valor obtenido (${fp(pv)}) ${sig ? 'es menor que α, por lo que SE RECHAZA la hipótesis nula: existe evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2 : 'no es menor que α, por lo que NO SE RECHAZA la hipótesis nula: los datos no aportan evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2}. En términos prácticos, el p-valor expresa la probabilidad de observar un coeficiente al menos tan extremo como ${rr.toFixed(3)} si en la población la relación fuese nula. ${Number.isFinite(pot) ? 'La potencia estimada de ' + (pot >= 0.999 ? '> .999' : pot.toFixed(3).replace(/^0\./, '.')) + (pot >= 0.8 ? ' supera el umbral convencional de .80, lo que indica una capacidad adecuada del estudio para detectar un efecto de esta magnitud con el tamaño muestral disponible.' : ' se sitúa por debajo del umbral convencional de .80, de modo que un resultado no significativo debe interpretarse con cautela: la muestra podría ser insuficiente para detectar efectos de esta magnitud.') : ''} Debe recordarse que significancia estadística no equivale a relevancia práctica: la magnitud del efecto y su intervalo de confianza completan la valoración.`);
+        }
+
+        // ---- Matriz de correlaciones ----
+        if (typeof correlacionPearsonSimple === 'function' && typeof esAproxNormalSimple === 'function') {
+            const colsMx = [[var1, et1], [var2, et2]];
+            if (criba && criba.seleccionados) {
+                const vistos = new Set([var1, var2]);
+                criba.seleccionados.forEach(s => {
+                    [[s.columnaX, s.etiquetaX], [s.columnaY, s.etiquetaY]].forEach(([c, e]) => {
+                        if (c && !vistos.has(c) && datos.length && Number.isFinite(+datos[0][c])) { vistos.add(c); colsMx.push([c, e || c]); }
+                    });
+                });
+            }
+            if (colsMx.length >= 2) {
+                const vals = colsMx.map(([c]) => datos.map(d => +d[c]).filter(Number.isFinite));
+                const normales = vals.map(v => esAproxNormalSimple(v));
+                const spearmanOK = typeof correlacionSpearmanSimple === 'function';
+                const celda = (i, j) => {
+                    if (i === j) return '1';
+                    const usarP = normales[i] && normales[j];
+                    const r = (usarP || !spearmanOK) ? correlacionPearsonSimple(vals[i], vals[j]) : correlacionSpearmanSimple(vals[i], vals[j]);
+                    return Number.isFinite(r) ? r.toFixed(2) : '—';
+                };
+                h += this._seccion('Matriz de correlaciones');
+                h += this._tablaAPA('Matriz de correlaciones entre las variables del estudio',
+                    ['Variable', ...colsMx.map(([, e], i) => String(i + 1))],
+                    colsMx.map(([, e], i) => [`${i + 1}. ${e}`, ...colsMx.map((_, j) => j <= i ? celda(i, j) : '')]),
+                    'Se muestra el triángulo inferior. Para cada par se empleó Pearson cuando ambas variables resultaron aproximadamente normales y Spearman en caso contrario, en coherencia con el criterio del análisis principal.');
+                h += this._p(`La matriz de correlaciones ofrece una vista panorámica de todas las asociaciones bivariadas del estudio. Cada celda contiene el coeficiente entre la variable de su fila y la de su columna; la diagonal vale 1 porque toda variable correlaciona perfectamente consigo misma, y solo se presenta el triángulo inferior porque la matriz es simétrica (la correlación de A con B es idéntica a la de B con A). Coeficientes cercanos a ±1 revelan asociaciones intensas y valores próximos a 0, ausencia de relación lineal o monótona; el signo indica la dirección. Esta lectura conjunta permite identificar de un vistazo qué pares concentran las relaciones más sustantivas y anticipa los contrastes que se detallan a continuación.`);
+            }
+        }
 
         // ---- Objetivos específicos (criba + Holm) ----
         if (criba && criba.seleccionados && criba.seleccionados.length) {
             const res = criba.seleccionados.map(s => {
-                try { return { s, r: A.calcularCorrelacion(s.columnaX, s.columnaY, tipoPrueba) }; }
-                catch (e) { return { s, r: null }; }
+                let r = null;
+                try { r = A.calcularCorrelacion(s.columnaX, s.columnaY, tipoPrueba); } catch (e) { /* respaldo abajo */ }
+                // RESPALDO: si el recálculo no es utilizable (p. ej. columnas de
+                // dimensión no presentes en los datos del analizador → 0/NaN),
+                // se usa el coeficiente YA calculado por la criba, con p aproximado
+                // por la transformación z de Fisher sobre el n del análisis.
+                const inutilizable = !r || !Number.isFinite(r.coeficiente)
+                    || (r.coeficiente === 0 && Number.isFinite(s.coeficiente) && Math.abs(s.coeficiente) > 0.001);
+                if (inutilizable && Number.isFinite(s.coeficiente)) {
+                    r = { coeficiente: s.coeficiente,
+                          pValor: this._pFisher(s.coeficiente, resultado.n),
+                          tipoCorrelacion: s.metodo === 'Spearman' ? 'spearman' : 'pearson',
+                          _respaldoCriba: true };
+                }
+                return { s, r };
             });
             const holm = A.ajustarPValoresHolm(res.map(x => x.r ? x.r.pValor : NaN));
             h += this._seccion('Correlaciones por dimensiones (objetivos específicos)');
@@ -342,6 +461,7 @@ const ExportadorWord = {
                        holm[i] < 0.05 ? 'Significativa' : 'No significativa']
                     : [`${x.s.etiquetaX} – ${x.s.etiquetaY}`, '—', '—', '—', '—', 'No calculable']),
                 'Los p-valores se ajustaron mediante la corrección de Holm para comparaciones múltiples; la decisión se basa en el p ajustado.');
+            h += this._p(`Esta tabla desagrega el análisis en los pares que responden a los objetivos específicos. Para cada par se reporta el coeficiente (ρ de Spearman o r de Pearson, según la normalidad de las variables implicadas), su p-valor individual y el p corregido por el método de Holm, que protege frente al aumento de falsos positivos cuando se realizan varias comparaciones a la vez: al examinar múltiples pares, alguna correlación podría resultar «significativa» por puro azar, y la corrección eleva el listón de exigencia en consecuencia. La columna de decisión, por tanto, debe leerse sobre el p ajustado: solo los pares que lo mantienen por debajo de .05 sostienen una asociación estadísticamente significativa tras el control por multiplicidad.`);
             h += this._p(I.generarResumenCriba(criba));
         }
 
@@ -357,6 +477,7 @@ const ExportadorWord = {
                     hs.filas.map(f => [f.socio, f.variable, f.prueba, f.valor, fpH(f.p), fpH(f.pHolm), f.efecto,
                         f.tipo === 'pendiente' ? f.detalle : (f.sig ? `Significativa${f.detalle ? ' (' + f.detalle + ')' : ''}` : 'No significativa')]),
                     'Correlaciones para sociodemográficos numéricos; t de Student o U de Mann-Whitney para categóricos de dos grupos. La decisión se basa en el p ajustado mediante la corrección de Holm.');
+                h += this._p(`Para interpretar la tabla anterior conviene recordar que la prueba aplicada depende de la naturaleza de cada variable sociodemográfica: con variables numéricas (como la edad) se examina la correlación con las variables del estudio; con variables categóricas de dos grupos (como el sexo) se comparan las medias mediante t de Student cuando se cumplen sus supuestos, o mediante U de Mann-Whitney en caso contrario. El estadístico cuantifica esa asociación o diferencia, el p-valor su compatibilidad con el azar, y el p de Holm corrige por el número de contrastes realizados simultáneamente. El tamaño del efecto acompaña a cada prueba porque el p-valor, por sí solo, no informa de la magnitud: un efecto pequeño puede ser significativo en muestras grandes y uno grande puede no serlo en muestras pequeñas. En conjunto, las filas marcadas como significativas identifican características de la muestra asociadas a diferencias reales en las variables de estudio, información valiosa para matizar la generalización de los resultados.`);
                 h += this._p(CribaSociodemografica.sintetizar(hs));
             }
         }
