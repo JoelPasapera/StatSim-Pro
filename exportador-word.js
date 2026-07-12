@@ -517,6 +517,51 @@ const ExportadorWord = {
             }
         }
 
+        // ---- Análisis multivariado (si el investigador lo ejecutó en la app) ----
+        if (typeof RegresionMultiple !== 'undefined') {
+            const RM = RegresionMultiple;
+            const MX = RM._ultimaMatriz, RG = RM._ultimaRegresion;
+            if (MX || RG) {
+                h += this._seccion('Análisis multivariado');
+                h += this._p('Este apartado amplía el análisis bivariado incorporando varias variables de manera simultánea. La matriz de correlaciones ofrece el panorama completo de las asociaciones por pares, mientras que la regresión lineal múltiple estima el aporte de cada predictor a la variable dependiente manteniendo constantes los demás: sus coeficientes B expresan el cambio esperado en la dependiente por cada unidad del predictor con los otros controlados, y los β estandarizados permiten comparar la importancia relativa de predictores medidos en escalas distintas.');
+            }
+            if (MX && MX.pares) {
+                const idx = (i, j) => MX.pares.find(p => (p.i === i && p.j === j) || (p.i === j && p.j === i));
+                h += this._tablaAPA(`Matriz de correlaciones entre las variables seleccionadas (n = ${MX.n})`,
+                    ['Variable', ...MX.cols.map((_, i) => String(i + 1))],
+                    MX.cols.map((c, i) => [`${i + 1}. ${(MX.etiquetas && MX.etiquetas[i]) || c}`,
+                        ...MX.cols.map((_, j) => {
+                            if (j > i) return '';
+                            if (j === i) return '1';
+                            const p = idx(i, j);
+                            return `${RM._fx(p.r, 2)}${p.sig ? '*' : ''}`;
+                        })]),
+                    'Se muestra el triángulo inferior. Para cada par se empleó Pearson cuando ambas variables resultaron aproximadamente normales y Spearman en caso contrario. * p < .05 tras la corrección de Holm para comparaciones múltiples.');
+            }
+            if (RG && RG.coefs) {
+                h += this._tablaAPA(`Resumen del modelo de regresión múltiple para ${RG.etY}`,
+                    ['R²', 'R² ajustado', 'Error típico', 'F', 'gl', 'p'],
+                    [[RM._fx(RG.R2), RM._fx(RG.R2aj), RM._fx(RG.errorTipico, 2), RM._fx(RG.F, 2), `(${RG.glR}, ${RG.glE})`, RM._fp(RG.pF)]],
+                    `Variable dependiente: ${RG.etY}. n = ${RG.n} casos completos.`);
+                h += this._tablaAPA(`Coeficientes del modelo de regresión múltiple para ${RG.etY}`,
+                    ['Predictor', 'B', 'EE', 'β', 't', 'p', 'IC 95%', 'VIF'],
+                    RG.coefs.map((c, j) => [c.nombre, RM._fx(c.b), RM._fx(c.se), c.beta === null ? '—' : RM._fx(c.beta),
+                        RM._fx(c.t, 2), RM._fp(c.pValor), `[${RM._fx(c.ic[0], 2)}, ${RM._fx(c.ic[1], 2)}]`,
+                        j === 0 ? '—' : RM._fx(RG.vifs[j - 1], 2)]),
+                    `Normalidad de los residuos (${RG.normResid.prueba}): p ${RM._fp(RG.normResid.pValor)} (${RG.normResid.normal ? 'supuesto satisfecho' : 'supuesto en duda'}). Valores de VIF superiores a 5 sugieren colinealidad problemática.`);
+                const cva = RG.k >= 2 ? RM.crudoVsAjustado(RG) : null;
+                if (cva) {
+                    h += this._tablaAPA(`Efecto crudo y ajustado de ${cva.focal} sobre ${RG.etY}`,
+                        ['Modelo', 'B', 'p', 'IC 95%'],
+                        [['Crudo (sin controles)', RM._fx(cva.crudo.b), RM._fp(cva.crudo.p), `[${RM._fx(cva.crudo.ic[0], 2)}, ${RM._fx(cva.crudo.ic[1], 2)}]`],
+                         [`Ajustado (controlando ${cva.covariables.join(', ')})`, RM._fx(cva.ajustado.b), RM._fp(cva.ajustado.p), `[${RM._fx(cva.ajustado.ic[0], 2)}, ${RM._fx(cva.ajustado.ic[1], 2)}]`]],
+                        'La comparación entre el efecto crudo y el ajustado evalúa si la asociación del predictor focal se explica por las covariables incluidas (no espuriedad respecto de ellas).');
+                }
+                h += this._p(RM.interpretar(RG));
+                h += this._p('Precisión conceptual sobre la causalidad: establecer una relación causal exige tres condiciones — asociación estadística, precedencia temporal de la causa y descarte de explicaciones alternativas (no espuriedad). El presente análisis, al basarse en un diseño transversal, satisface la primera y aporta evidencia parcial sobre la tercera mediante el control estadístico de covariables; la precedencia temporal, en cambio, no puede establecerse con mediciones simultáneas. Por ello, los resultados deben interpretarse como asociaciones ajustadas, compatibles con una hipótesis causal pero no demostrativas de ella; su confirmación requeriría diseños longitudinales o experimentales.');
+            }
+        }
+
         // ---- Referencias APA ----
         h += this._h1('Referencias');
         h += this._referencias();
