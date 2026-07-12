@@ -1100,7 +1100,7 @@ const Antecedentes = {
 
         const COLS = [
             ...(this._relevanciaAplicada ? ['Relevancia'] : []),
-            'Título', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
+            'Título', 'Autor', 'Año', 'Contexto (País)', 'Objetivos', 'Muestra', 'Instrumentos',
             'Resultados', 'Conclusiones', 'Revista', 'Cuartil', 'Indexación', 'Referencia (APA)', 'Link/DOI'];
 
         cont.innerHTML = `
@@ -1402,9 +1402,16 @@ const Antecedentes = {
         const indexacion = this._detectarIndexacion(o);
         const ph = '<span style="color:#aaa;">[completar]</span>';
         const incluirRel = !!this._relevanciaAplicada;
+        // Autor: compacto en pantalla (primer autor + «et al.»), COMPLETO en las
+        // exportaciones (todos en formato APA, separados por «; » — reimportable).
+        const autoresAPA = (o.autores || []).map(a => this._autorAPA(a)).filter(Boolean);
+        const autorCorto = autoresAPA.length
+            ? (autoresAPA.length === 1 ? autoresAPA[0] : autoresAPA[0] + ' et al.')
+            : '';
         const celdas = [
             ...(incluirRel ? [this._insigniaRelevancia(o) || ph] : []),
             o.titulo || ph,
+            autorCorto || ph,
             o.anio || '',
             pais || ph,
             objetivo || ph,
@@ -1420,7 +1427,7 @@ const Antecedentes = {
         ];
         const planas = [
             ...(incluirRel ? [o._relevancia ? `${o._relevancia} (${o._relevanciaMotivo || ''})` : ''] : []),
-            o.titulo || '', o.anio || '', pais, objetivo, muestra, '',
+            o.titulo || '', autoresAPA.join('; '), o.anio || '', pais, objetivo, muestra, '',
             o.resumen || '', '', o.fuente || '', this._cuartilTexto(o), indexacion, ref, link
         ];
         return { celdas, planas };
@@ -1465,7 +1472,7 @@ const Antecedentes = {
     // columna (px medidos por el usuario, convertidos a unidades de Excel).
     // Construcción separada de la descarga para poder verificarla en tests.
     _ANCHOS_PX_MATRIZ: {
-        'Relevancia': 124, 'Título': 165, 'Año': 50, 'Contexto (País)': 100,
+        'Relevancia': 124, 'Título': 165, 'Autor': 95, 'Año': 50, 'Contexto (País)': 100,
         'Objetivos': 334, 'Muestra': 96, 'Instrumentos': 130, 'Resultados': 920,
         'Conclusiones': 140, 'Revista': 110, 'Cuartil': 80, 'Indexación': 112,
         'Referencia (APA)': 450, 'Link/DOI': 120
