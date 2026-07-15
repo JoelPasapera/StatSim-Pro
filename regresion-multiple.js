@@ -231,6 +231,131 @@ const RegresionMultiple = {
         };
     },
 
+    // ---------- Selección automática del mejor modelo (2 variables) ----------
+    // Y CONTINUA: compite formas funcionales (lineal, cuadrática, cúbica,
+    // logarítmica, exponencial) por AIC con regla de parsimonia (ΔAIC < 2 →
+    // gana la más simple). Y BINARIA: regresión logística (Newton-Raphson).
+    _aicGauss(SSE, n, k) { return n * Math.log(Math.max(SSE, 1e-300) / n) + 2 * (k + 1); },
+
+    _olsXY(y, Xcols) { // OLS mínimo: devuelve {B, yHat, SSE, R2}
+        const n = y.length, p = Xcols.length + 1;
+        const X = y.map((_, i) => [1, ...Xcols.map(c => c[i])]);
+        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
+        const Xty = new Array(p).fill(0);
+        for (let i = 0; i < n; i++) for (let a = 0; a < p; a++) {
+            Xty[a] += X[i][a] * y[i];
+            for (let b = a; b < p; b++) XtX[a][b] += X[i][a] * X[i][b];
+        }
+        for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) XtX[a][b] = XtX[b][a];
+        const inv = this._inversa(XtX);
+        if (!inv) return null;
+        const B = inv.map(f => f.reduce((s, v, j) => s + v * Xty[j], 0));
+        const yHat = X.map(f => f.reduce((s, v, j) => s + v * B[j], 0));
+        const my = this._media(y);
+        let SSE = 0, SST = 0;
+        y.forEach((v, i) => { SSE += (v - yHat[i]) ** 2; SST += (v - my) ** 2; });
+        return { B, yHat, SSE, R2: SST > 0 ? 1 - SSE / SST : 0 };
+    },
+
+    mejorModelo(colX, colY, etX, etY) {
+        const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
+        const datos = A ? (A.obtenerDatos() || []) : [];
+        const filas = datos.map(d => [+d[colX], +d[colY]]).filter(f => f.every(Number.isFinite));
+        const n = filas.length;
+        if (n < 10) return { error: 'Se requieren al menos 10 casos completos.' };
+        const x = filas.map(f => f[0]), y = filas.map(f => f[1]);
+
+        // ¿Y binaria? → logística.
+        const unicos = [...new Set(y)];
+        if (unicos.length === 2) {
+            const lo = Math.min(...unicos);
+            const y01 = y.map(v => v === lo ? 0 : 1);
+            const log = this._logistica(x, y01);
+            if (log.error) return log;
+            return { tipoY: 'binaria', etX: etX || colX, etY: etY || colY, n,
+                     ganador: { nombre: 'Regresión logística', ...log }, candidatos: null };
+        }
+
+        // Y continua: concurso de formas funcionales.
+        const cands = [];
+        const addOLS = (nombre, ec, Xcols, k) => {
+            const r = this._olsXY(y, Xcols);
+            if (r) cands.push({ nombre, ec: ec(r.B), R2: r.R2, k, AIC: this._aicGauss(r.SSE, n, k), B: r.B });
+        };
+        const f3 = v => this._fx(v, 3);
+        addOLS('Lineal', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x`, [x], 1);
+        addOLS('Cuadrática', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x²`, [x, x.map(v => v * v)], 2);
+        addOLS('Cúbica', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x² + ${f3(B[3])}·x³`,
+            [x, x.map(v => v * v), x.map(v => v * v * v)], 3);
+        if (Math.min(...x) > 0) {
+            addOLS('Logarítmica', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·ln(x)`, [x.map(Math.log)], 1);
+        }
+        if (Math.min(...y) > 0) {
+            // Exponencial: ln(y) = a + b·x; R² y AIC evaluados EN LA ESCALA ORIGINAL
+            // para que la comparación con los demás modelos sea justa.
+            const rl = this._olsXY(y.map(Math.log), [x]);
+            if (rl) {
+                const yHat = x.map(v => Math.exp(rl.B[0] + rl.B[1] * v));
+                const my = this._media(y);
+                let SSE = 0, SST = 0;
+                y.forEach((v, i) => { SSE += (v - yHat[i]) ** 2; SST += (v - my) ** 2; });
+                cands.push({ nombre: 'Exponencial', ec: `ŷ = ${f3(Math.exp(rl.B[0]))}·e^(${f3(rl.B[1])}·x)`,
+                    R2: SST > 0 ? 1 - SSE / SST : 0, k: 1, AIC: this._aicGauss(SSE, n, 1), B: rl.B });
+            }
+        }
+        if (!cands.length) return { error: 'No fue posible ajustar ningún modelo.' };
+        cands.sort((a, b) => a.AIC - b.AIC);
+        const mejorAIC = cands[0].AIC;
+        cands.forEach(c => { c.dAIC = c.AIC - mejorAIC; });
+        // Parsimonia: entre los prácticamente empatados (ΔAIC < 2), el más simple.
+        const empatados = cands.filter(c => c.dAIC < 2);
+        empatados.sort((a, b) => a.k - b.k || a.AIC - b.AIC);
+        const ganador = empatados[0];
+        const R = { tipoY: 'continua', etX: etX || colX, etY: etY || colY, n, candidatos: cands, ganador,
+                    parsimonia: ganador !== cands[0] };
+        this._ultimoMejorModelo = R;
+        return R;
+    },
+
+    // Regresión logística simple por Newton-Raphson (IRLS).
+    _logistica(x, y01) {
+        let b0 = 0, b1 = 0;
+        const n = x.length;
+        for (let it = 0; it < 60; it++) {
+            let g0 = 0, g1 = 0, h00 = 0, h01 = 0, h11 = 0;
+            for (let i = 0; i < n; i++) {
+                const eta = b0 + b1 * x[i];
+                const p = 1 / (1 + Math.exp(-eta));
+                const w = p * (1 - p);
+                g0 += y01[i] - p; g1 += (y01[i] - p) * x[i];
+                h00 += w; h01 += w * x[i]; h11 += w * x[i] * x[i];
+            }
+            const det = h00 * h11 - h01 * h01;
+            if (Math.abs(det) < 1e-12) return { error: 'La logística no converge (¿separación perfecta?).' };
+            const d0 = (h11 * g0 - h01 * g1) / det;
+            const d1 = (h00 * g1 - h01 * g0) / det;
+            b0 += d0; b1 += d1;
+            if (Math.abs(d0) < 1e-10 && Math.abs(d1) < 1e-10) break;
+        }
+        // SE de b1 desde la inversa de la información; devianza y McFadden.
+        let h00 = 0, h01 = 0, h11 = 0, ll = 0, ll0 = 0;
+        const pBase = y01.reduce((s, v) => s + v, 0) / n;
+        for (let i = 0; i < n; i++) {
+            const p = 1 / (1 + Math.exp(-(b0 + b1 * x[i])));
+            const w = p * (1 - p);
+            h00 += w; h01 += w * x[i]; h11 += w * x[i] * x[i];
+            ll += y01[i] ? Math.log(Math.max(p, 1e-300)) : Math.log(Math.max(1 - p, 1e-300));
+            ll0 += y01[i] ? Math.log(pBase) : Math.log(1 - pBase);
+        }
+        const det = h00 * h11 - h01 * h01;
+        const seB1 = Math.sqrt(h00 / det);
+        const z = b1 / seB1;
+        const p2 = 2 * (1 - ((typeof ComparacionGrupos !== 'undefined') ? ComparacionGrupos._phi(Math.abs(z)) : 0.5));
+        return { b0, b1, se: seB1, z, pValor: p2, OR: Math.exp(b1),
+                 mcFadden: 1 - ll / ll0, AIC: -2 * ll + 4,
+                 ec: `logit(p) = ${this._fx(b0, 3)} + ${this._fx(b1, 3)}·x` };
+    },
+
     // ---------- Formato ----------
     _fp(p) { return !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'); },
     _fx(x, d = 3) { return Number.isFinite(x) ? x.toFixed(d) : '—'; },
@@ -248,20 +373,20 @@ const RegresionMultiple = {
           <p class="help-text" style="margin:0 0 0.8rem;">Explora relaciones entre <b>más de dos variables a la vez</b>: una matriz de correlaciones para el panorama completo, y una regresión lineal múltiple para estimar cuánto aporta cada predictor a la variable dependiente controlando por los demás.</p>
 
           <h4 style="margin:0.6rem 0 0.2rem;">Matriz de correlaciones (2 o más variables)</h4>
-          <p class="help-text" style="margin:0 0 0.4rem; font-size:0.88em;">Selecciona 2 o más variables numéricas manteniendo pulsada la tecla <b>Ctrl</b> (o <b>Cmd</b> en Mac) mientras haces clic. Para cada par se usa Pearson o Spearman según su normalidad, con p corregido por Holm.</p>
+          <p class="help-text" style="margin:0 0 0.4rem; font-size:0.88em;">Marca las casillas de 2 o más variables numéricas. Para cada par se usa Pearson o Spearman según su normalidad, con p corregido por Holm.</p>
           <div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:flex-end;">
-            <select id="rmMatVars" class="input" multiple size="5" style="min-width:16rem;"></select>
+            <div id="rmMatVars" style="min-width:16rem;max-height:9.5rem;overflow:auto;border:1px solid #ddd;border-radius:0.4rem;padding:0.4rem 0.6rem;"></div>
             <button id="rmMatBtn" class="btn btn-primary" style="padding:0.5rem 1.1rem;">Calcular matriz</button>
           </div>
           <div id="rmMatOut" style="margin-top:0.6rem;"></div>
 
           <h4 style="margin:1.1rem 0 0.2rem;">Regresión lineal múltiple</h4>
-          <p class="help-text" style="margin:0 0 0.4rem; font-size:0.88em;"><b>Variable dependiente</b>: lo que quieres explicar o predecir (p. ej., el puntaje general de una escala). <b>Predictores</b>: las variables que podrían explicarla (elige 1 o más con Ctrl/Cmd + clic); coloca <b>primero</b> tu predictor principal, pues sobre él se calculará el efecto crudo vs ajustado. El modelo reporta B, β, t, p, IC 95%, R², F y VIF (colinealidad).</p>
+          <p class="help-text" style="margin:0 0 0.4rem; font-size:0.88em;"><b>Variable dependiente</b>: lo que quieres explicar o predecir (p. ej., el puntaje general de una escala). <b>Predictores</b>: las variables que podrían explicarla (marca 1 o más casillas); el <b>primero marcado</b> se toma como predictor principal, pues sobre él se calculará el efecto crudo vs ajustado. El modelo reporta B, β, t, p, IC 95%, R², F y VIF (colinealidad).</p>
           <div style="display:flex;gap:0.8rem;flex-wrap:wrap;align-items:flex-end;">
             <div><label class="label" for="rmDep">Dependiente</label><br>
               <select id="rmDep" class="input" style="min-width:12rem;"></select></div>
-            <div><label class="label" for="rmPred">Predictores (1+)</label><br>
-              <select id="rmPred" class="input" multiple size="5" style="min-width:14rem;"></select></div>
+            <div><label class="label">Predictores (1+)</label><br>
+              <div id="rmPred" style="min-width:14rem;max-height:9.5rem;overflow:auto;border:1px solid #ddd;border-radius:0.4rem;padding:0.4rem 0.6rem;"></div></div>
             <button id="rmRegBtn" class="btn btn-primary" style="padding:0.5rem 1.1rem;">Ajustar modelo</button>
           </div>
           <div id="rmEstado" class="help-text" style="margin-top:0.5rem;"></div>
@@ -278,16 +403,22 @@ const RegresionMultiple = {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
         const nums = (typeof obtenerColumnasNumericas === 'function' && datos.length) ? obtenerColumnasNumericas(datos) : [];
-        const op = c => `<option value="${c}">${c}</option>`;
-        ['rmMatVars', 'rmDep', 'rmPred'].forEach(id => {
+        const dep = document.getElementById('rmDep');
+        if (dep) dep.innerHTML = nums.map(c => `<option value="${c}">${c}</option>`).join('');
+        const caja = c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${c}</label>`;
+        ['rmMatVars', 'rmPred'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = nums.map(op).join('');
+            if (el) el.innerHTML = nums.length ? nums.map(caja).join('') : '<span class="help-text">Sin variables numéricas.</span>';
         });
         const estado = document.getElementById('rmEstado');
         if (estado) estado.textContent = nums.length ? '' : 'Genera o carga una base de datos para habilitar el análisis.';
     },
 
-    _sel(id) { return [...(document.getElementById(id) || { selectedOptions: [] }).selectedOptions].map(o => o.value); },
+    _sel(id) {
+        const el = document.getElementById(id);
+        if (!el) return [];
+        return [...el.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    },
     _tab(rows) { return `<table style="border-collapse:collapse;margin:0.4rem 0 0.8rem;font-size:0.92em;">${rows}</table>`; },
     _tr(cells, th) { return `<tr>${cells.map(c => th ? `<th style="border:1px solid #ddd;padding:0.35rem 0.5rem;background:#f5f5f5;">${c}</th>` : `<td style="border:1px solid #ddd;padding:0.35rem 0.5rem;">${c}</td>`).join('')}</tr>`; },
 
@@ -336,6 +467,13 @@ const RegresionMultiple = {
 
         html += `<p class="help-text" style="font-size:0.85em;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._fp(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'supuesto en duda: interpreta con cautela'}. VIF &gt; 5 sugiere colinealidad problemática entre predictores.</p>`;
 
+        // Con UN solo predictor: el programa identifica automáticamente la
+        // forma funcional que mejor explica la relación.
+        if (R.k === 1) {
+            const MM = this.mejorModelo(R.colsX[0], R.colY, R.etsX[0], R.etY);
+            if (!MM.error) html += this._htmlMejorModelo(MM);
+        }
+
         const cva = this.crudoVsAjustado(R);
         if (cva && R.k >= 2) {
             html += `<h4 style="margin:0.6rem 0 0.2rem;">De la correlación al control estadístico</h4>`
@@ -345,6 +483,27 @@ const RegresionMultiple = {
         }
         html += `<p style="margin:0.4rem 0 0;">${this.interpretar(R)}</p>`;
         if (out) out.innerHTML = html;
+    },
+
+    _htmlMejorModelo(MM) {
+        let h = `<h4 style="margin:0.6rem 0 0.2rem;">🔍 ¿Qué modelo explica mejor esta relación?</h4>`;
+        if (MM.tipoY === 'binaria') {
+            const g = MM.ganador;
+            h += `<p class="help-text" style="font-size:0.88em;">La variable dependiente es <b>binaria</b> (dos valores), por lo que el modelo apropiado no es la recta sino la <b>regresión logística</b> (probit es su gemela; en psicología se reporta logística).</p>`
+                + this._tab(this._tr(['Modelo', 'Ecuación', 'OR (e^b)', 'z', 'p', 'Pseudo-R² (McFadden)'], true)
+                + this._tr([g.nombre, g.ec, this._fx(g.OR, 3), this._fx(g.z, 2), this._fp(g.pValor), this._fx(g.mcFadden, 3)]))
+                + `<p style="margin:0.2rem 0 0;">Lectura: por cada unidad adicional de ${MM.etX}, la <i>razón de probabilidades</i> de ${MM.etY} se multiplica por ${this._fx(g.OR, 2)} (${g.OR > 1 ? 'aumenta' : 'disminuye'} la probabilidad del evento)${g.pValor < 0.05 ? ', efecto estadísticamente significativo' : ', sin alcanzar significancia'}.</p>`;
+            return h;
+        }
+        h += this._tab(this._tr(['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'], true)
+            + MM.candidatos.map(c => this._tr([c === MM.ganador ? `<b>${c.nombre} ✔</b>` : c.nombre, c.ec,
+                this._fx(c.R2, 3), this._fx(c.AIC, 1), this._fx(c.dAIC, 1)])).join(''));
+        h += `<p style="margin:0.2rem 0 0;">El criterio AIC premia el ajuste y penaliza la complejidad (menor = mejor). `
+            + `<b>${MM.ganador.nombre}</b> es el modelo seleccionado`
+            + (MM.parsimonia ? ` por <i>parsimonia</i>: su AIC empata en la práctica (Δ &lt; 2) con modelos más complejos, y ante el empate se prefiere el más simple para evitar sobreajuste.` : ` por presentar el menor AIC.`)
+            + ` R² del ganador: ${this._fx(MM.ganador.R2, 3)} (${(100 * MM.ganador.R2).toFixed(1)} % de la variabilidad de ${MM.etY} explicada).`
+            + ` Si el ganador no es el lineal, la relación entre ${MM.etX} y ${MM.etY} presenta curvatura que la correlación de Pearson subestimaría.</p>`;
+        return h;
     },
 
     // Interpretación en lenguaje llano (compartida con el Word).
