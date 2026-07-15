@@ -434,6 +434,69 @@ const ExportadorWord = {
             }
         }
 
+        // ---- Matriz del flujo (3+ variables elegidas por el investigador) ----
+        if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaMatrizFlujo) {
+            const MX = RegresionMultiple._ultimaMatrizFlujo, RMf = RegresionMultiple;
+            const idx = (i, j) => MX.pares.find(p => (p.i === i && p.j === j) || (p.i === j && p.j === i));
+            h += this._seccion('Matriz de correlaciones entre las variables del estudio');
+            h += this._tablaAPA(`Matriz de correlaciones (n = ${MX.n})`,
+                ['Variable', ...MX.cols.map((_, i) => String(i + 1))],
+                MX.cols.map((c, i) => [`${i + 1}. ${(MX.etiquetas && MX.etiquetas[i]) || c}`,
+                    ...MX.cols.map((_, j) => j > i ? '' : (j === i ? '1' : `${RMf._fx(idx(i, j).r, 2)}${idx(i, j).sig ? '*' : ''}`))]),
+                'Triángulo inferior. Pearson si ambas variables son normales; Spearman en caso contrario. * p < .05 tras la corrección de Holm.');
+        }
+
+        // ---- Regresión múltiple avanzada (si el investigador la ejecutó) ----
+        if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaMultiple) {
+            const RG = RegresionMultiple._ultimaMultiple, RMf = RegresionMultiple;
+            h += this._seccion('Análisis de regresión múltiple');
+            if (RG.notaFamilia) h += this._p(RG.notaFamilia);
+            if (RG.familia === 'ols') {
+                h += this._tablaAPA(`Resumen del modelo de regresión múltiple para ${RG.etY}`,
+                    ['R²', 'R² ajustado', 'F', 'gl', 'p'],
+                    [[RMf._fx(RG.R2), RMf._fx(RG.R2aj), RMf._fx(RG.F, 2), `(${RG.glR}, ${RG.glE})`, RMf._fp(RG.pF)]],
+                    `Variable dependiente: ${RG.etY}. Predictores: ${RG.etsX.join(', ')}. n = ${RG.n} casos completos.`);
+                h += this._tablaAPA(`Coeficientes del modelo para ${RG.etY}`,
+                    ['Término', 'B', 'EE', 'β', 't', 'p', 'IC 95%', 'VIF'],
+                    RG.coefs.map((c, j) => [c.nombre, RMf._fx(c.b), RMf._fx(c.se), c.beta === null ? '—' : RMf._fx(c.beta),
+                        RMf._fx(c.t, 2), RMf._fp(c.pValor), `[${RMf._fx(c.ic[0], 2)}, ${RMf._fx(c.ic[1], 2)}]`,
+                        j === 0 ? '—' : RMf._fx(RG.vifs[j - 1], 2)]),
+                    RG.normResid ? `Normalidad de los residuos (${RG.normResid.prueba}): p ${RMf._fp(RG.normResid.pValor)}. VIF > 5 sugiere colinealidad problemática.` : null);
+                if (RG.jerarquica) {
+                    const J = RG.jerarquica;
+                    h += this._tablaAPA(`Regresión jerárquica: aporte de ${J.focal} sobre los controles`,
+                        ['Bloque', 'R²', 'ΔR²', 'F del cambio', 'gl', 'p del cambio'],
+                        [['1 (controles: ' + J.controles.join(', ') + ')', RMf._fx(J.R2b1), '—', '—', '—', '—'],
+                         [`2 (+ ${J.focal})`, RMf._fx(J.R2b2), RMf._fx(J.dR2), RMf._fx(J.Fcambio, 2), `(${J.gl[0]}, ${J.gl[1]})`, RMf._fp(J.pCambio)]],
+                        'El bloque 1 introduce los controles; el bloque 2 añade el constructo de interés. El ΔR² cuantifica la varianza explicativa que este aporta por encima de lo ya explicado.');
+                    h += this._p(J.pCambio < 0.05
+                        ? `El análisis jerárquico muestra que ${J.focal} incrementa significativamente la varianza explicada de ${RG.etY} en un ${(100 * J.dR2).toFixed(1)} % por encima de ${J.controles.join(' y ')} (F del cambio = ${RMf._fx(J.Fcambio, 2)}, p ${RMf._fp(J.pCambio)}), lo que respalda su aporte específico e independiente.`
+                        : `El análisis jerárquico indica que, controlados ${J.controles.join(' y ')}, ${J.focal} no añade varianza explicativa significativa (ΔR² = ${RMf._fx(J.dR2)}, p ${RMf._fp(J.pCambio)}).`);
+                }
+                if (RG.idxInter >= 0) {
+                    const c = RG.coefs[RG.idxInter + 1];
+                    h += this._p(`Análisis de moderación: el término de interacción (${c.nombre}) resultó ${c.pValor < 0.05 ? `significativo (B = ${RMf._fx(c.b)}, p ${RMf._fp(c.pValor)}), indicando que el efecto de ${RG.etsX[0]} sobre ${RG.etY} varía según el nivel de ${RG.etsX[1]}` : `no significativo (p ${RMf._fp(c.pValor)}), sin evidencia de moderación`}. Los predictores se centraron antes de construir la interacción para reducir la colinealidad.`);
+                }
+                if (RG.idxCuad >= 0) {
+                    const c = RG.coefs[RG.idxCuad + 1];
+                    h += this._p(`Efecto curvilíneo: el término cuadrático de ${RG.etsX[0]} fue ${c.pValor < 0.05 ? `significativo (B = ${RMf._fx(c.b)}, p ${RMf._fp(c.pValor)}), evidenciando una relación en forma de ${c.b < 0 ? 'U invertida (nivel óptimo intermedio)' : 'U'}` : `no significativo, sin evidencia de curvatura`}.`);
+                }
+            } else if (RG.familia === 'logistica') {
+                h += this._tablaAPA(`Regresión logística múltiple para ${RG.etY}`,
+                    ['Término', 'B', 'EE', 'z', 'p', 'OR', 'IC 95% (OR)'],
+                    RG.coefs.map(c => [c.nombre, RMf._fx(c.b), RMf._fx(c.se), RMf._fx(c.z, 2), RMf._fp(c.pValor),
+                        RMf._fx(c.OR, 3), `[${RMf._fx(c.ic[0], 2)}, ${RMf._fx(c.ic[1], 2)}]`]),
+                    `Pseudo-R² de McFadden = ${RMf._fx(RG.mcFadden, 3)}; AIC = ${RMf._fx(RG.AIC, 1)}. n = ${RG.n}.`);
+            } else if (RG.familia === 'poisson') {
+                h += this._tablaAPA(`Regresión de Poisson múltiple para ${RG.etY}`,
+                    ['Término', 'B', 'EE', 'z', 'p', 'IRR', 'IC 95% (IRR)'],
+                    RG.coefs.map(c => [c.nombre, RMf._fx(c.b), RMf._fx(c.se), RMf._fx(c.z, 2), RMf._fp(c.pValor),
+                        RMf._fx(c.IRR, 3), `[${RMf._fx(c.ic[0], 2)}, ${RMf._fx(c.ic[1], 2)}]`]),
+                    `Dispersión (χ²/gl) = ${RMf._fx(RG.dispersion, 2)}. n = ${RG.n}.`);
+            }
+            (RG.avisos || []).forEach(a => { h += this._p(`Nota metodológica: ${a}`); });
+        }
+
         // ---- Matriz de correlaciones ----
         if (typeof correlacionPearsonSimple === 'function' && typeof esAproxNormalSimple === 'function') {
             const colsMx = [[var1, et1], [var2, et2]];
