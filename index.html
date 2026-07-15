@@ -666,6 +666,10 @@
                                 <input type="radio" name="tipoAnalisis" value="asociacion">
                                 <span>Asociación de dos variables categóricas (Chi²)</span>
                             </label>
+                            <label class="radio-option">
+                                <input type="radio" name="tipoAnalisis" value="regresion">
+                                <span>Regresión (predicción bivariada)</span>
+                            </label>
                         </div>
                     </div>
 
@@ -954,7 +958,7 @@
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: app.js?v=13 → app.js?v=13). Eso obliga a navegadores y CDN
+         (ej: app.js?v=14 → app.js?v=14). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -979,7 +983,7 @@
     <!-- Hallazgos por variables sociodemográficas -->
     <script src="criba-sociodemografica.js?v=9"></script>
     <script src="comparacion-grupos.js?v=3"></script>
-    <script src="regresion-multiple.js?v=2"></script>
+    <script src="regresion-multiple.js?v=3"></script>
 
     <!-- Matriz de consistencia -->
     <script src="matriz-consistencia.js?v=9"></script>
@@ -1004,7 +1008,7 @@
 
     <!-- Exportador del capítulo de resultados a Word (APA 7) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
-    <script src="exportador-word.js?v=14"></script>
+    <script src="exportador-word.js?v=15"></script>
 
     <!-- Librería de gráficos científicos (depende de d3) -->
     <script src="graficas.js?v=10"></script>
@@ -1013,7 +1017,7 @@
     <script src="guia-coherencia.js?v=9"></script>
 
     <!-- Código de app.js -->
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
 </body>
 
 </html>
