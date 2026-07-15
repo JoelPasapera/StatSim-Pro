@@ -368,6 +368,24 @@ function mostrarPreview(datos) {
 function habilitarDescargaCSV() {
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
+    // Selects opcionales de la regresión bivariada (con opción en blanco).
+    try {
+        const nums = (typeof obtenerColumnasNumericas === 'function') ? obtenerColumnasNumericas(datos) : [];
+        ['regDep', 'regInd'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
+                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+        });
+    } catch (e) { /* opcional */ }
+    // Selects opcionales de la regresión bivariada (con opción en blanco).
+    try {
+        const nums = (typeof obtenerColumnasNumericas === 'function') ? obtenerColumnasNumericas(datos) : [];
+        ['regDep', 'regInd'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
+                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+        });
+    } catch (e) { /* opcional */ }
     const btn = document.getElementById('btnDescargarCSV');
     btn.disabled = false;
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
@@ -434,9 +452,6 @@ function actualizarEtiquetasAnalisis() {
     } else if (tipo === 'asociacion') {
         if (label1) label1.textContent = 'Variable categórica 1';
         if (label2) label2.textContent = 'Variable categórica 2';
-    } else if (tipo === 'regresion') {
-        if (label1) label1.textContent = 'Variable dependiente (Y — lo que se predice)';
-        if (label2) label2.textContent = 'Variable independiente (X — el predictor)';
     } else {
         if (label1) label1.textContent = 'Variable 1';
         if (label2) label2.textContent = 'Variable 2';
@@ -576,6 +591,15 @@ function obtenerColumnasNumericas(datos) {
 function poblarSelectsVariables(datos) {
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
+    // Selects opcionales de la regresión bivariada (con opción en blanco).
+    try {
+        const nums = (typeof obtenerColumnasNumericas === 'function') ? obtenerColumnasNumericas(datos) : [];
+        ['regDep', 'regInd'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
+                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+        });
+    } catch (e) { /* opcional */ }
     const columnasNumericas = obtenerColumnasNumericas(datos);
 
     const select1 = document.getElementById('variable1');
@@ -657,14 +681,14 @@ function ejecutarAnalisis() {
         // catch externo no los vería y el toast nunca aparecería.
         try {
             limpiarResultados();
+            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; }
             if (tipoAnalisis === 'comparacion') {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {
                 ejecutarChiCuadrado(var1, var2);
-            } else if (tipoAnalisis === 'regresion') {
-                ejecutarRegresionBivariada(var1, var2);
             } else {
                 ejecutarCorrelacion(var1, var2, tipoPrueba);
+                ejecutarRegresionBivariadaOpcional();
             }
             mostrarToast('Análisis completado exitosamente', 'success');
         } catch (error) {
@@ -677,16 +701,21 @@ function ejecutarAnalisis() {
 }
 
 // Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
-function ejecutarRegresionBivariada(colY, colX) {
-    if (typeof RegresionMultiple === 'undefined' || !RegresionMultiple.renderRegresionBivariada) {
-        mostrarToast('El módulo de regresión no está cargado', 'error');
-        return;
-    }
+function ejecutarRegresionBivariadaOpcional() {
+    // Corre SOLO si el usuario eligió ambas variables en la mini-sección.
+    if (typeof RegresionMultiple === 'undefined' || !RegresionMultiple.renderRegresionBivariada) return;
+    const colY = (document.getElementById('regDep') || {}).value || '';
+    const colX = (document.getElementById('regInd') || {}).value || '';
+    if (!colY || !colX) return;
+    if (colY === colX) { mostrarToast('En la regresión, Y y X deben ser variables diferentes', 'warning'); return; }
     const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
     const R = RegresionMultiple.renderRegresionBivariada(colY, colX, et(colY), et(colX));
-    if (R.error) { mostrarToast(R.error, 'warning'); return; }
+    if (R.error) { mostrarToast('Regresión: ' + R.error, 'warning'); return; }
     const container = document.getElementById('resultadosContainer');
-    if (container) { container.innerHTML = R.html; container.style.display = 'block'; }
+    if (container) {
+        container.insertAdjacentHTML('beforeend', `<div style="margin-top:1rem;">${R.html}</div>`);
+        container.style.display = 'block';
+    }
 }
 
 // Análisis de correlación entre dos variables cuantitativas.
