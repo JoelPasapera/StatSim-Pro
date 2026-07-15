@@ -434,6 +434,9 @@ function actualizarEtiquetasAnalisis() {
     } else if (tipo === 'asociacion') {
         if (label1) label1.textContent = 'Variable categórica 1';
         if (label2) label2.textContent = 'Variable categórica 2';
+    } else if (tipo === 'regresion') {
+        if (label1) label1.textContent = 'Variable dependiente (Y — lo que se predice)';
+        if (label2) label2.textContent = 'Variable independiente (X — el predictor)';
     } else {
         if (label1) label1.textContent = 'Variable 1';
         if (label2) label2.textContent = 'Variable 2';
@@ -658,6 +661,8 @@ function ejecutarAnalisis() {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {
                 ejecutarChiCuadrado(var1, var2);
+            } else if (tipoAnalisis === 'regresion') {
+                ejecutarRegresionBivariada(var1, var2);
             } else {
                 ejecutarCorrelacion(var1, var2, tipoPrueba);
             }
@@ -669,6 +674,19 @@ function ejecutarAnalisis() {
             boton.disabled = false;
         }
     }, 300);
+}
+
+// Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
+function ejecutarRegresionBivariada(colY, colX) {
+    if (typeof RegresionMultiple === 'undefined' || !RegresionMultiple.renderRegresionBivariada) {
+        mostrarToast('El módulo de regresión no está cargado', 'error');
+        return;
+    }
+    const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
+    const R = RegresionMultiple.renderRegresionBivariada(colY, colX, et(colY), et(colX));
+    if (R.error) { mostrarToast(R.error, 'warning'); return; }
+    const container = document.getElementById('resultadosContainer');
+    if (container) { container.innerHTML = R.html; container.style.display = 'block'; }
 }
 
 // Análisis de correlación entre dos variables cuantitativas.
@@ -1142,18 +1160,6 @@ function mostrarCorrelacion(var1, var2, resultado) {
         </div>
         
     `;
-
-    // Selección automática de la mejor forma funcional para ESTE par (bivariado).
-    if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple.mejorModelo) {
-        try {
-            const MM = RegresionMultiple.mejorModelo(var1, var2,
-                (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(var1) : var1),
-                (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(var2) : var2));
-            if (!MM.error) {
-                html += `<div class="card" style="margin-top:1rem;padding:1rem 1.25rem;">${RegresionMultiple._htmlMejorModelo(MM)}</div>`;
-            }
-        } catch (e) { /* el análisis principal no se ve afectado */ }
-    }
 
     container.innerHTML = html;
     container.style.display = 'block';
