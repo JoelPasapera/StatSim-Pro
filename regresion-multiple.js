@@ -467,13 +467,6 @@ const RegresionMultiple = {
 
         html += `<p class="help-text" style="font-size:0.85em;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._fp(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'supuesto en duda: interpreta con cautela'}. VIF &gt; 5 sugiere colinealidad problemática entre predictores.</p>`;
 
-        // Con UN solo predictor: el programa identifica automáticamente la
-        // forma funcional que mejor explica la relación.
-        if (R.k === 1) {
-            const MM = this.mejorModelo(R.colsX[0], R.colY, R.etsX[0], R.etY);
-            if (!MM.error) html += this._htmlMejorModelo(MM);
-        }
-
         const cva = this.crudoVsAjustado(R);
         if (cva && R.k >= 2) {
             html += `<h4 style="margin:0.6rem 0 0.2rem;">De la correlación al control estadístico</h4>`
@@ -483,6 +476,106 @@ const RegresionMultiple = {
         }
         html += `<p style="margin:0.4rem 0 0;">${this.interpretar(R)}</p>`;
         if (out) out.innerHTML = html;
+    },
+
+    // Evalúa el modelo ganador en un valor x (para dibujar la curva).
+    _evalModelo(c, xv) {
+        const B = c.B;
+        switch (c.nombre) {
+            case 'Lineal': return B[0] + B[1] * xv;
+            case 'Cuadrática': return B[0] + B[1] * xv + B[2] * xv * xv;
+            case 'Cúbica': return B[0] + B[1] * xv + B[2] * xv * xv + B[3] * xv * xv * xv;
+            case 'Logarítmica': return xv > 0 ? B[0] + B[1] * Math.log(xv) : NaN;
+            case 'Exponencial': return Math.exp(B[0] + B[1] * xv);
+            default: return NaN;
+        }
+    },
+
+    // Dibuja dispersión + curva del modelo elegido en un canvas y devuelve
+    // {url (PNG dataURL), w, h}. Guarda el resultado en _ultimoGrafico.
+    graficoModelo(x, y, MM, etX, etY) {
+        const W = 640, H = 400, mL = 60, mR = 20, mT = 40, mB = 50;
+        const cv = document.createElement('canvas');
+        cv.width = W; cv.height = H;
+        const g = cv.getContext('2d');
+        if (!g) return null;
+        g.fillStyle = '#ffffff'; g.fillRect(0, 0, W, H);
+        const xmin = Math.min(...x), xmax = Math.max(...x);
+        const esLog = MM.tipoY === 'binaria';
+        const yv = esLog ? [0, 1] : y;
+        let ymin = Math.min(...yv), ymax = Math.max(...yv);
+        if (ymax === ymin) { ymax += 1; ymin -= 1; }
+        const padY = (ymax - ymin) * 0.06; ymin -= padY; ymax += padY;
+        const sx = v => mL + (v - xmin) / (xmax - xmin || 1) * (W - mL - mR);
+        const sy = v => H - mB - (v - ymin) / (ymax - ymin) * (H - mT - mB);
+        // Ejes y ticks
+        g.strokeStyle = '#444'; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(mL, mT); g.lineTo(mL, H - mB); g.lineTo(W - mR, H - mB); g.stroke();
+        g.fillStyle = '#333'; g.font = '11px sans-serif'; g.textAlign = 'center';
+        for (let i = 0; i <= 5; i++) {
+            const vx = xmin + (xmax - xmin) * i / 5, px = sx(vx);
+            g.beginPath(); g.moveTo(px, H - mB); g.lineTo(px, H - mB + 4); g.stroke();
+            g.fillText(vx.toFixed(1), px, H - mB + 16);
+            const vy = ymin + (ymax - ymin) * i / 5, py = sy(vy);
+            g.beginPath(); g.moveTo(mL - 4, py); g.lineTo(mL, py); g.stroke();
+            g.textAlign = 'right'; g.fillText(vy.toFixed(1), mL - 7, py + 3); g.textAlign = 'center';
+        }
+        g.fillText(etX || 'X', (mL + W - mR) / 2, H - 12);
+        g.save(); g.translate(14, (mT + H - mB) / 2); g.rotate(-Math.PI / 2);
+        g.fillText(etY || 'Y', 0, 0); g.restore();
+        // Puntos
+        g.fillStyle = 'rgba(46,91,186,0.55)';
+        for (let i = 0; i < x.length; i++) {
+            g.beginPath(); g.arc(sx(x[i]), sy(esLog ? y[i] : y[i]), 3, 0, 2 * Math.PI); g.fill();
+        }
+        // Curva del modelo (malla de 120 puntos)
+        g.strokeStyle = '#c0392b'; g.lineWidth = 2.2; g.beginPath();
+        let primero = true;
+        for (let i = 0; i <= 120; i++) {
+            const vx = xmin + (xmax - xmin) * i / 120;
+            const vy = esLog
+                ? 1 / (1 + Math.exp(-(MM.ganador.b0 + MM.ganador.b1 * vx)))
+                : this._evalModelo(MM.ganador, vx);
+            if (!Number.isFinite(vy)) { primero = true; continue; }
+            const py = Math.max(mT, Math.min(H - mB, sy(vy)));
+            if (primero) { g.moveTo(sx(vx), py); primero = false; } else g.lineTo(sx(vx), py);
+        }
+        g.stroke();
+        // Título/leyenda
+        g.fillStyle = '#222'; g.font = 'bold 13px sans-serif';
+        g.fillText(`Modelo ajustado: ${MM.ganador.nombre}`, W / 2, 22);
+        const out = { url: cv.toDataURL('image/png'), w: W, h: H };
+        this._ultimoGrafico = out;
+        return out;
+    },
+
+    // Sección completa de REGRESIÓN BIVARIADA (Y ~ X): modelo OLS + concurso
+    // de formas + gráfico del ganador. Guarda el estado para el Word.
+    renderRegresionBivariada(colY, colX, etY, etX) {
+        const R = this.regresion(colY, [colX], etY, [etX]);
+        if (R.error) return { error: R.error };
+        const MM = this.mejorModelo(colX, colY, etX, etY);
+        // Datos para el gráfico (mismos casos completos del concurso).
+        const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
+        const filas = (A ? A.obtenerDatos() : []).map(d => [+d[colX], +d[colY]]).filter(f => f.every(Number.isFinite));
+        const x = filas.map(f => f[0]), y = filas.map(f => f[1]);
+        let img = null;
+        if (!MM.error) { try { img = this.graficoModelo(x, y, MM, etX || colX, etY || colY); } catch (e) { img = null; } }
+        this._ultimaBivariada = { R, MM: MM.error ? null : MM, etX: etX || colX, etY: etY || colY };
+
+        const c1 = R.coefs[1];
+        let html = `<div class="card" style="padding:1.25rem;">
+          <h3 style="margin:0 0 0.3rem;">📈 Regresión bivariada: ${R.etY} según ${etX || colX}</h3>
+          <p class="help-text" style="margin:0 0 0.6rem;">A diferencia de la correlación (simétrica), la regresión es <b>direccional</b>: estima cuánto cambia la variable dependiente por cada unidad de la independiente y permite predecir.</p>`;
+        html += `<h4 style="margin:0.4rem 0 0.2rem;">Modelo lineal (mínimos cuadrados)</h4>`
+            + this._tab(this._tr(['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', `F(${R.glR}, ${R.glE})`, 'p modelo'], true)
+                + this._tr([this._fx(c1.b), this._fx(c1.se), this._fx(c1.t, 2), this._fp(c1.pValor),
+                    `[${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}]`, this._fx(R.R2), this._fx(R.F, 2), this._fp(R.pF)]))
+            + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${this._fx(R.coefs[0].b)} + ${this._fx(c1.b)}·x — por cada unidad adicional de ${etX || colX}, ${R.etY} cambia en promedio ${this._fx(c1.b, 2)} unidades.</p>`;
+        if (!MM.error) html += this._htmlMejorModelo(MM);
+        if (img) html += `<p style="text-align:center;margin:0.6rem 0 0;"><img src="${img.url}" style="max-width:100%;border:1px solid #eee;border-radius:0.4rem;" alt="Modelo ajustado"></p>`;
+        html += `</div>`;
+        return { html };
     },
 
     _htmlMejorModelo(MM) {
