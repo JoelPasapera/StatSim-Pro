@@ -666,10 +666,6 @@
                                 <input type="radio" name="tipoAnalisis" value="asociacion">
                                 <span>Asociación de dos variables categóricas (Chi²)</span>
                             </label>
-                            <label class="radio-option">
-                                <input type="radio" name="tipoAnalisis" value="regresion">
-                                <span>Regresión (predicción bivariada)</span>
-                            </label>
                         </div>
                     </div>
 
@@ -699,6 +695,17 @@
                                 <input type="radio" name="tipoPrueba" value="unilateral">
                                 <span>Unilateral (1 cola)</span>
                             </label>
+                        </div>
+                        
+                        <div class="form-group" style="margin-top:1rem;">
+                            <label class="label" style="margin-bottom:0.2rem;">Regresión (predicción bivariada) — opcional</label>
+                            <p class="help-text" style="margin:0 0 0.5rem;">Déjala en blanco para omitirla. Si eliges ambas variables, el análisis de regresión (modelo, comparación de formas funcionales y gráfico) se añadirá a los resultados de la correlación y al Word.</p>
+                            <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+                                <div style="flex:1; min-width:14rem;"><label class="label" for="regDep" style="font-weight:normal;">Variable dependiente (Y — lo que se predice)</label>
+                                    <select id="regDep" class="input"><option value="">Seleccionar variable…</option></select></div>
+                                <div style="flex:1; min-width:14rem;"><label class="label" for="regInd" style="font-weight:normal;">Variable independiente (X — el predictor)</label>
+                                    <select id="regInd" class="input"><option value="">Seleccionar variable…</option></select></div>
+                            </div>
                         </div>
                     </div>
 
@@ -958,7 +965,7 @@
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: app.js?v=14 → app.js?v=14). Eso obliga a navegadores y CDN
+         (ej: app.js?v=15 → app.js?v=15). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1017,7 +1024,7 @@
     <script src="guia-coherencia.js?v=9"></script>
 
     <!-- Código de app.js -->
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=15"></script>
 </body>
 
 </html>
