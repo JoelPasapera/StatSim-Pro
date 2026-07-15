@@ -429,6 +429,12 @@ function configurarAnalizador() {
     document.getElementById('btnAnalizar').addEventListener('click', ejecutarAnalisis);
 
     // Cambio de tipo de análisis: actualizar las etiquetas de los selectores
+    const bAV = document.getElementById('btnAgregarVariable');
+    if (bAV) bAV.addEventListener('click', agregarVariableExtra);
+    const bAP = document.getElementById('btnAgregarPredictor');
+    if (bAP) bAP.addEventListener('click', agregarPredictorExtra);
+    actualizarTituloRegresion();
+
     document.querySelectorAll('input[name="tipoAnalisis"]').forEach(radio => {
         radio.addEventListener('change', actualizarEtiquetasAnalisis);
     });
@@ -589,6 +595,14 @@ function obtenerColumnasNumericas(datos) {
 // Puebla los selectores de variables del analizador. Reutilizable: se llama al
 // cargar datos y también al aplicar nuevas etiquetas (para refrescar los textos).
 function poblarSelectsVariables(datos) {
+    try { window.__numsDisponibles = (typeof obtenerColumnasNumericas === 'function') ? obtenerColumnasNumericas(datos) : []; } catch (e) { window.__numsDisponibles = []; }
+    const bAV = document.getElementById('btnAgregarVariable');
+    if (bAV) bAV.style.display = (window.__numsDisponibles.length >= 3) ? '' : 'none';
+    document.querySelectorAll('#varsExtraCont select, #regPredsCont select').forEach(s => {
+        const val = s.value;
+        s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${c}">${c}</option>`).join('');
+        s.value = val;
+    });
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
     // Selects opcionales de la regresión bivariada (con opción en blanco).
@@ -681,13 +695,25 @@ function ejecutarAnalisis() {
         // catch externo no los vería y el toast nunca aparecería.
         try {
             limpiarResultados();
-            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; }
+            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; RegresionMultiple._ultimaMultiple = null; RegresionMultiple._ultimaMatrizFlujo = null; }
             if (tipoAnalisis === 'comparacion') {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {
                 ejecutarChiCuadrado(var1, var2);
             } else {
-                ejecutarCorrelacion(var1, var2, tipoPrueba);
+                const extras = _variablesExtra().filter(v => v !== var1 && v !== var2);
+                if (extras.length) {
+                    const cols = [...new Set([var1, var2, ...extras])];
+                    const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
+                    const RM = RegresionMultiple.renderMatrizFlujo(cols, cols.map(et));
+                    if (RM.error) { mostrarToast(RM.error, 'warning'); }
+                    else {
+                        const cont = document.getElementById('resultadosContainer');
+                        if (cont) { cont.innerHTML = RM.html; cont.style.display = 'block'; }
+                    }
+                } else {
+                    ejecutarCorrelacion(var1, var2, tipoPrueba);
+                }
                 ejecutarRegresionBivariadaOpcional();
             }
             mostrarToast('Análisis completado exitosamente', 'success');
@@ -701,17 +727,76 @@ function ejecutarAnalisis() {
 }
 
 // Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
+// ---- Fusión multivariada: variables y predictores dinámicos ----
+function _selectExtra(placeholder) {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex; align-items:center; gap:0.3rem;';
+    const sel = document.createElement('select');
+    sel.className = 'input';
+    sel.innerHTML = '<option value="">' + placeholder + '</option>'
+        + (window.__numsDisponibles || []).map(c => `<option value="${c}">${c}</option>`).join('');
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = '✖';
+    btn.className = 'btn btn-outline'; btn.style.cssText = 'padding:0.2rem 0.5rem;';
+    btn.addEventListener('click', () => { wrap.remove(); actualizarTituloRegresion(); actualizarHintMultiVars(); });
+    wrap.appendChild(sel); wrap.appendChild(btn);
+    return wrap;
+}
+function agregarVariableExtra() {
+    const cont = document.getElementById('varsExtraCont');
+    if (!cont || cont.children.length >= 6) return;
+    cont.appendChild(_selectExtra('Variable adicional…'));
+    actualizarHintMultiVars();
+}
+function agregarPredictorExtra() {
+    const cont = document.getElementById('regPredsCont');
+    if (!cont || cont.children.length >= 6) return;
+    cont.appendChild(_selectExtra('Predictor adicional…'));
+    actualizarTituloRegresion();
+}
+function _variablesExtra() {
+    return [...document.querySelectorAll('#varsExtraCont select')].map(s => s.value).filter(Boolean);
+}
+function _predictoresTodos() {
+    const base = (document.getElementById('regInd') || {}).value || '';
+    const extras = [...document.querySelectorAll('#regPredsCont select')].map(s => s.value).filter(Boolean);
+    return [base, ...extras].filter(Boolean);
+}
+function actualizarTituloRegresion() {
+    const t = document.getElementById('regTituloOpc');
+    const op = document.getElementById('regOpciones');
+    const inter = document.getElementById('regInter');
+    const k = _predictoresTodos().length + document.querySelectorAll('#regPredsCont select').length - [...document.querySelectorAll('#regPredsCont select')].filter(s => s.value).length;
+    const nPreds = Math.max(1, document.querySelectorAll('#regPredsCont select').length + 1);
+    if (t) t.textContent = nPreds >= 2 ? 'Regresión múltiple (predicción multivariada) — opcional' : 'Regresión (predicción bivariada) — opcional';
+    if (op) op.style.display = nPreds >= 1 ? '' : 'none';
+    if (inter && inter.parentElement) inter.parentElement.style.display = nPreds >= 2 ? '' : 'none';
+}
+function actualizarHintMultiVars() {
+    const hint = document.getElementById('hintMultiVars');
+    if (hint) hint.style.display = _variablesExtra().length >= 1 ? '' : 'none';
+}
 function ejecutarRegresionBivariadaOpcional() {
-    // Corre SOLO si el usuario eligió ambas variables en la mini-sección.
-    if (typeof RegresionMultiple === 'undefined' || !RegresionMultiple.renderRegresionBivariada) return;
+    if (typeof RegresionMultiple === 'undefined') return;
     const colY = (document.getElementById('regDep') || {}).value || '';
-    const colX = (document.getElementById('regInd') || {}).value || '';
-    if (!colY || !colX) return;
-    if (colY === colX) { mostrarToast('En la regresión, Y y X deben ser variables diferentes', 'warning'); return; }
+    const preds = _predictoresTodos();
+    if (!colY || !preds.length) return;
+    if (preds.includes(colY)) { mostrarToast('En la regresión, Y no puede estar entre los predictores', 'warning'); return; }
     const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
-    const R = RegresionMultiple.renderRegresionBivariada(colY, colX, et(colY), et(colX));
-    if (R.error) { mostrarToast('Regresión: ' + R.error, 'warning'); return; }
     const container = document.getElementById('resultadosContainer');
+    let R;
+    if (preds.length === 1) {
+        R = RegresionMultiple.renderRegresionBivariada(colY, preds[0], et(colY), et(preds[0]));
+    } else {
+        const opciones = {
+            interaccion: !!(document.getElementById('regInter') || {}).checked,
+            cuadratico: !!(document.getElementById('regCuad') || {}).checked,
+            poisson: !!(document.getElementById('regPoisson') || {}).checked
+        };
+        const RA = RegresionMultiple.regresionAvanzada(colY, preds, et(colY), preds.map(et), opciones);
+        R = RA.error ? RA : RegresionMultiple.renderMultiple(RA);
+    }
+    if (R.error) { mostrarToast('Regresión: ' + R.error, 'warning'); return; }
     if (container) {
         container.insertAdjacentHTML('beforeend', `<div style="margin-top:1rem;">${R.html}</div>`);
         container.style.display = 'block';
