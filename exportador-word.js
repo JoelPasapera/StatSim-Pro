@@ -405,21 +405,33 @@ const ExportadorWord = {
             h += this._p(`Con un nivel de significancia α = .05 y un contraste ${bilat ? 'bilateral' : 'unilateral'}, el p-valor obtenido (${fp(pv)}) ${sig ? 'es menor que α, por lo que SE RECHAZA la hipótesis nula: existe evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2 : 'no es menor que α, por lo que NO SE RECHAZA la hipótesis nula: los datos no aportan evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2}. En términos prácticos, el p-valor expresa la probabilidad de observar un coeficiente al menos tan extremo como ${rr.toFixed(3)} si en la población la relación fuese nula. ${Number.isFinite(pot) ? 'La potencia estimada de ' + (pot >= 0.999 ? '> .999' : pot.toFixed(3).replace(/^0\./, '.')) + (pot >= 0.8 ? ' supera el umbral convencional de .80, lo que indica una capacidad adecuada del estudio para detectar un efecto de esta magnitud con el tamaño muestral disponible.' : ' se sitúa por debajo del umbral convencional de .80, de modo que un resultado no significativo debe interpretarse con cautela: la muestra podría ser insuficiente para detectar efectos de esta magnitud.') : ''} Debe recordarse que significancia estadística no equivale a relevancia práctica: la magnitud del efecto y su intervalo de confianza completan la valoración.`);
         }
 
-        // ---- Mejor forma funcional del par principal (bivariado) ----
-        if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple.mejorModelo) {
-            try {
-                const MM = RegresionMultiple.mejorModelo(var1, var2, et1, et2);
-                if (!MM.error && MM.tipoY === 'continua' && MM.candidatos) {
-                    const RMf = RegresionMultiple;
-                    h += this._seccion('Selección de la forma funcional de la relación');
-                    h += this._tablaAPA(`Comparación de modelos para la relación entre ${et1} y ${et2} (n = ${MM.n})`,
-                        ['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'],
-                        MM.candidatos.map(c => [c === MM.ganador ? c.nombre + ' (seleccionado)' : c.nombre,
-                            c.ec, RMf._fx(c.R2, 3), RMf._fx(c.AIC, 1), RMf._fx(c.dAIC, 1)]),
-                        'AIC: criterio de información de Akaike (menor = mejor equilibrio entre ajuste y complejidad). Ante diferencias de AIC inferiores a 2 se prefiere el modelo más simple (parsimonia).');
-                    h += this._p(`Para descartar que la relación entre ${et1} y ${et2} adopte una forma distinta de la lineal, se compararon cinco formas funcionales mediante el criterio de información de Akaike. El modelo seleccionado fue el ${MM.ganador.nombre.toLowerCase()}${MM.parsimonia ? ', elegido por parsimonia al empatar en la práctica con alternativas más complejas' : ', por presentar el menor AIC'}, con un R² de ${RegresionMultiple._fx(MM.ganador.R2, 3)}. ${MM.ganador.nombre === 'Lineal' ? 'Este resultado respalda el uso del coeficiente de correlación lineal como resumen adecuado de la relación.' : 'La presencia de curvatura sugiere que el coeficiente de correlación lineal subestima la intensidad real de la asociación, por lo que la forma ' + MM.ganador.nombre.toLowerCase() + ' debe considerarse al interpretar los resultados.'}`);
-                }
-            } catch (e) { /* sección opcional */ }
+        // ---- Regresión bivariada (solo si el investigador la ejecutó) ----
+        if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaBivariada) {
+            const BV = RegresionMultiple._ultimaBivariada, RMf = RegresionMultiple;
+            const Rb = BV.R, c1 = Rb.coefs[1];
+            h += this._seccion('Análisis de regresión bivariada');
+            h += this._p(`Mientras la correlación cuantifica la asociación de forma simétrica, la regresión es direccional: estima el cambio esperado en ${BV.etY} por cada unidad de ${BV.etX} y permite la predicción. Se ajustó el modelo por mínimos cuadrados y, adicionalmente, se compararon formas funcionales alternativas para verificar que la especificación elegida sea la que mejor describe los datos.`);
+            h += this._tablaAPA(`Regresión lineal de ${BV.etY} sobre ${BV.etX}`,
+                ['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', 'F', 'gl', 'p modelo'],
+                [[RMf._fx(c1.b), RMf._fx(c1.se), RMf._fx(c1.t, 2), RMf._fp(c1.pValor),
+                  `[${RMf._fx(c1.ic[0], 2)}, ${RMf._fx(c1.ic[1], 2)}]`, RMf._fx(Rb.R2), RMf._fx(Rb.F, 2),
+                  `(${Rb.glR}, ${Rb.glE})`, RMf._fp(Rb.pF)]],
+                `Ecuación ajustada: ŷ = ${RMf._fx(Rb.coefs[0].b)} + ${RMf._fx(c1.b)}·x. n = ${Rb.n} casos completos.`);
+            if (BV.MM && BV.MM.candidatos) {
+                h += this._tablaAPA(`Comparación de formas funcionales para la relación entre ${BV.etX} y ${BV.etY}`,
+                    ['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'],
+                    BV.MM.candidatos.map(c => [c === BV.MM.ganador ? c.nombre + ' (seleccionado)' : c.nombre,
+                        c.ec, RMf._fx(c.R2, 3), RMf._fx(c.AIC, 1), RMf._fx(c.dAIC, 1)]),
+                    'AIC: criterio de información de Akaike (menor = mejor). Ante ΔAIC < 2 se prefiere el modelo más simple (parsimonia).');
+            }
+            if (RegresionMultiple._ultimoGrafico) {
+                this._png = this._png || {};
+                this._png['regBivariada'] = RegresionMultiple._ultimoGrafico;
+                h += this._figura('regBivariada',
+                    `Diagrama de dispersión de ${BV.etY} según ${BV.etX} con el modelo ${BV.MM ? BV.MM.ganador.nombre.toLowerCase() : 'lineal'} ajustado`,
+                    'Los puntos representan a los participantes; la curva corresponde al modelo seleccionado por el criterio de Akaike.');
+                h += this._p(`La figura anterior permite valorar visualmente el ajuste: la curva del modelo ${BV.MM ? BV.MM.ganador.nombre.toLowerCase() : 'lineal'} atraviesa la nube de puntos siguiendo su tendencia. ${BV.MM && BV.MM.ganador.nombre !== 'Lineal' ? 'La curvatura visible confirma que la relación no es estrictamente lineal, información que la correlación de Pearson por sí sola no revela.' : 'La tendencia esencialmente rectilínea respalda la lectura lineal de la relación.'}`);
+            }
         }
 
         // ---- Matriz de correlaciones ----
