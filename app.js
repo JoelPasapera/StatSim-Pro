@@ -1143,6 +1143,18 @@ function mostrarCorrelacion(var1, var2, resultado) {
         
     `;
 
+    // Selección automática de la mejor forma funcional para ESTE par (bivariado).
+    if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple.mejorModelo) {
+        try {
+            const MM = RegresionMultiple.mejorModelo(var1, var2,
+                (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(var1) : var1),
+                (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(var2) : var2));
+            if (!MM.error) {
+                html += `<div class="card" style="margin-top:1rem;padding:1rem 1.25rem;">${RegresionMultiple._htmlMejorModelo(MM)}</div>`;
+            }
+        } catch (e) { /* el análisis principal no se ve afectado */ }
+    }
+
     container.innerHTML = html;
     container.style.display = 'block';
 }
