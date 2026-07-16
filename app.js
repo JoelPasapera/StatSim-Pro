@@ -738,14 +738,17 @@ function ejecutarAnalisis() {
 
 // Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
 // ---- Fusión multivariada: variables y predictores dinámicos ----
-function _selectExtra(placeholder) {
+function _selectExtra(placeholder, modo) {
+    // modo 'form'  → réplica de los .form-group de Variable 1/2 (correlación)
+    // modo 'flex'  → réplica de las columnas flex de regDep/regInd (regresión)
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'flex:1; min-width:14rem;';
+    if (modo === 'form') wrap.className = 'form-group';
+    else wrap.style.cssText = 'flex:1; min-width:14rem;';
     const fila = document.createElement('div');
-    fila.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:0.25rem;';
+    fila.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:0.4rem;';
     const lab = document.createElement('label');
-    lab.className = 'label';
-    lab.style.cssText = 'font-weight:normal; margin:0;';
+    if (modo === 'form') { lab.style.cssText = 'margin:0;'; }
+    else { lab.className = 'label'; lab.style.cssText = 'font-weight:normal; margin:0;'; }
     lab.textContent = placeholder; // se renumera al agregar/quitar
     const btn = document.createElement('button');
     btn.type = 'button'; btn.textContent = '✕'; btn.title = 'Quitar';
@@ -781,14 +784,14 @@ function _renumerarExtras(cont) {
 function agregarVariableExtra() {
     const cont = document.getElementById('varsExtraCont');
     if (!cont || cont.children.length >= 6) return;
-    cont.appendChild(_selectExtra('Variable adicional…'));
+    cont.appendChild(_selectExtra('Variable adicional…', 'form'));
     _renumerarExtras(cont);
     actualizarHintMultiVars();
 }
 function agregarPredictorExtra() {
     const cont = document.getElementById('regPredsCont');
     if (!cont || cont.children.length >= 6) return;
-    cont.appendChild(_selectExtra('Predictor adicional…'));
+    cont.appendChild(_selectExtra('Predictor adicional…', 'flex'));
     _renumerarExtras(cont);
     actualizarTituloRegresion();
 }
