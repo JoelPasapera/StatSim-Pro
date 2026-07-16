@@ -836,7 +836,12 @@ function ejecutarRegresionBivariadaOpcional() {
     }
     if (R.error) { mostrarToast('Regresión: ' + R.error, 'warning'); return; }
     if (container) {
-        container.insertAdjacentHTML('beforeend', `<div style="margin-top:1rem;">${R.html}</div>`);
+        // Colocación: justo DESPUÉS del análisis de correlación (ancla), nunca
+        // al final del contenedor (donde quedan las referencias del capítulo).
+        const ancla = document.getElementById('anclaRegBiv');
+        const bloque = `<div style="margin-top:1rem;">${R.html}</div>`;
+        if (ancla) ancla.insertAdjacentHTML('afterend', bloque);
+        else container.insertAdjacentHTML('beforeend', bloque);
         container.style.display = 'block';
     }
 }
@@ -1311,6 +1316,7 @@ function mostrarCorrelacion(var1, var2, resultado) {
             </div>
         </div>
         
+        <div id="anclaRegBiv"></div>
     `;
 
     container.innerHTML = html;
