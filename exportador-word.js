@@ -334,6 +334,7 @@ const ExportadorWord = {
                  ['Máximo', fmt(d1.maximo ?? d1.max), fmt(d2.maximo ?? d2.max)],
                  ['Asimetría', fmt(d1.asimetria), fmt(d2.asimetria)],
                  ['Curtosis', fmt(d1.curtosis), fmt(d2.curtosis)]], null);
+            h += this._p('Estos estadísticos merecen leerse como algo más que un trámite. La media es el centro de gravedad de la distribución — el punto donde los datos se equilibran, razón por la cual los valores extremos la arrastran hacia sí —, y la desviación estándar es la distancia típica de un participante a ese centro: bajo normalidad, alrededor del 68 % de los casos se sitúa a ±1 DE de la media y cerca del 95 % a ±2 DE, de modo que dos números condensan un mapa de dónde se encuentra casi toda la muestra. La asimetría narra la historia de las colas (un valor positivo indica una cola derecha larga que arrastra la media por encima de la mediana) y la curtosis expresa la propensión a producir valores extremos. Conviene subrayar el porqué de fondo: el resumen «media ± DE» solo es honesto cuando la forma de la distribución es aproximadamente normal; con formas deformadas, los mismos dos números inducen a error — y esa es precisamente la razón por la que el análisis verifica la normalidad antes de cualquier decisión.');
             const de1 = d1.desviacion ?? d1.desviacionEstandar, de2 = d2.desviacion ?? d2.desviacionEstandar;
             h += this._p(`La tabla de estadísticos descriptivos resume el comportamiento de ambas variables en los ${resultado.n} participantes. ${et1} presentó una media de ${fmt(d1.media)} con una desviación estándar de ${fmt(de1)}, lo que indica que los puntajes típicos se ubicaron alrededor de ese promedio con una dispersión de ±${fmt(de1)} puntos, dentro de un rango observado de ${fmt(d1.minimo ?? d1.min)} a ${fmt(d1.maximo ?? d1.max)}. Por su parte, ${et2} obtuvo una media de ${fmt(d2.media)} (DE = ${fmt(de2)}), con puntajes entre ${fmt(d2.minimo ?? d2.min)} y ${fmt(d2.maximo ?? d2.max)}. La asimetría informa hacia dónde se estira la cola de la distribución (valores positivos: cola derecha; negativos: cola izquierda; cercanos a cero: simetría) y la curtosis compara su apuntamiento con el de la curva normal (positiva: más concentrada en el centro y con colas más pesadas; negativa: más plana). Con asimetrías de ${fmt(d1.asimetria)} y ${fmt(d2.asimetria)} y curtosis de ${fmt(d1.curtosis)} y ${fmt(d2.curtosis)}, ambas variables ${Math.abs(d1.asimetria) < 1 && Math.abs(d2.asimetria) < 1 ? 'se mantienen dentro de márgenes razonables de simetría' : 'muestran desviaciones de la simetría que conviene considerar'}, aspecto que se examina formalmente en la prueba de normalidad siguiente.`);
         }
@@ -379,6 +380,8 @@ const ExportadorWord = {
             h += this._p(`El diagrama de dispersión anterior es la representación visual más informativa de la relación estudiada y conviene leerlo con detenimiento. Cada punto corresponde a un participante: su posición horizontal indica su puntaje en ${et1} y la vertical su puntaje en ${et2}, de modo que la nube completa retrata simultáneamente a los ${resultado.n} casos. La recta trazada es la de mínimos cuadrados, la línea que mejor resume la tendencia conjunta, y la banda sombreada delimita el intervalo de confianza al 95 % de esa recta: cuanto más angosta, mayor precisión en la estimación de la tendencia.`);
             h += this._p(`En estos datos la nube ${rr >= 0 ? 'asciende de izquierda a derecha, patrón propio de una relación positiva: quienes puntúan alto en ' + et1 + ' tienden también a puntuar alto en ' + et2 : 'desciende de izquierda a derecha, patrón propio de una relación negativa: a mayores puntajes en ' + et1 + ' corresponden, en tendencia, menores puntajes en ' + et2}. La dispersión de los puntos alrededor de la recta expresa la fuerza del vínculo: con un coeficiente de ${rr.toFixed(3)}, la asociación observada es de magnitud ${fuerzaTxt}, ${aR < .30 ? 'por lo que los puntos se apartan bastante de la recta y el conocimiento de una variable permite anticipar solo débilmente la otra' : aR < .50 ? 'con puntos moderadamente próximos a la recta: existe un patrón claro aunque con variabilidad individual apreciable' : 'con puntos notablemente alineados a la recta, señal de un patrón consistente entre ambas variables'}. Conviene además inspeccionar visualmente la linealidad (que la relación no dibuje curvas) y la presencia de casos atípicos alejados de la nube, pues ambos aspectos condicionan la interpretación del coeficiente.`);
         }
+
+        h += this._p('¿Por qué la normalidad decide el coeficiente? El coeficiente de Pearson se construye multiplicando desviaciones conjuntas, (xi − x̄)(yi − ȳ), y en esa multiplicación reside su vulnerabilidad: un solo participante extremo aporta un producto desproporcionado capaz de dominar la suma completa; adicionalmente, la validez de su p-valor se deriva bajo el supuesto de normalidad y su alcance se limita a relaciones lineales. El coeficiente de Spearman resuelve el problema con una operación elegante: sustituye cada valor por su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al conservar únicamente el orden, las distancias — el territorio donde habitan los atípicos y las deformidades distribucionales — dejan de existir para el cálculo: el valor más extremo de la muestra se convierte, sencillamente, en el último de la fila. Se trata de robustez por diseño, no de un remiendo.');
 
         // ---- Contraste de hipótesis y decisión estadística ----
         {
@@ -446,6 +449,7 @@ const ExportadorWord = {
                 MX.cols.map((c, i) => [`${i + 1}. ${(MX.etiquetas && MX.etiquetas[i]) || c}`,
                     ...MX.cols.map((_, j) => j > i ? '' : (j === i ? '1' : `${RMf._fx(idx(i, j).r, 2)}${idx(i, j).sig ? '*' : ''}`))]),
                 'Triángulo inferior. Pearson si ambas variables son normales; Spearman en caso contrario. * p < .05 tras la corrección de Holm.');
+            h += this._p('¿Por qué la corrección de Holm y no la clásica de Bonferroni? Ambas garantizan exactamente el mismo control del error familiar — la probabilidad de proclamar al menos un falso hallazgo entre todas las comparaciones —, pero administran el presupuesto de error de manera distinta. Bonferroni lo reparte en partes iguales y exige a cada comparación el umbral α/m, un criterio derrochador. Holm lo gasta con inteligencia secuencial: ordena los p-valores de menor a mayor y exige α/m solo al primero, α/(m−1) al segundo, y así sucesivamente — cada hipótesis superada libera presupuesto para las siguientes. El resultado es un procedimiento uniformemente más potente que Bonferroni con idéntica protección y sin supuestos adicionales: protege igual de bien y descubre más.');
         }
 
         // ---- Regresión múltiple avanzada (si el investigador la ejecutó) ----
@@ -600,6 +604,46 @@ const ExportadorWord = {
                         [[P.nombre, CG._fx(P.estadistico, 3), glTxt, CG._fp(P.pValor), CG._fx(P.efecto.valor, 3), P.magnitud,
                           P.significativa ? 'Diferencias significativas' : 'Sin diferencias significativas']],
                         `La prueba se eligió porque ${R.razon}.`);
+                    h += this._p(ComparacionGrupos._porqueDidactico(R).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+                });
+                // ---- ANCOVA (si el investigador la ejecutó) ----
+                if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaAncova) {
+                    const RA = RegresionMultiple._ultimaAncova, RMf = RegresionMultiple;
+                    h += this._seccion('Análisis de covarianza (ANCOVA)');
+                    h += this._p(`Para descartar que las diferencias entre los grupos de ${RA.etGrupo} en ${RA.etY} se deban a niveles distintos de ${RA.etCov}, se aplicó un análisis de covarianza: la técnica descuenta primero el efecto de la covariable y contrasta después las medias ajustadas — el equivalente estadístico de comparar a todos los grupos con el mismo nivel de ${RA.etCov} (fijado en su media global, ${RMf._fx(RA.mCov, 2)}).`);
+                    h += this._tablaAPA(`Medias crudas y ajustadas de ${RA.etY} por ${RA.etGrupo}`,
+                        ['Grupo', 'n', 'Media cruda', 'Media ajustada'],
+                        RA.mediasAjustadas.map(g => [g.grupo, g.n, RMf._fx(g.mediaCruda, 2), RMf._fx(g.mediaAjustada, 2)]),
+                        `Medias ajustadas evaluadas con ${RA.etCov} en su media global.`);
+                    h += this._tablaAPA(`ANCOVA para ${RA.etY}`,
+                        ['Efecto', 'F', 'gl', 'p', 'η² parcial'],
+                        [[`${RA.etGrupo} (ajustado)`, RMf._fx(RA.Ffactor, 2), `(${RA.gl[0]}, ${RA.gl[1]})`, RMf._fp(RA.pFactor), RMf._fx(RA.eta2p, 3)],
+                         [`${RA.etCov} (covariable)`, RMf._fx(RA.Fcov, 2), `(1, ${RA.gl[1]})`, RMf._fp(RA.pCov), '—']],
+                        RA.pendientes ? `Supuesto de homogeneidad de pendientes: ${RA.pendientes.paralelas ? 'satisfecho' : 'VIOLADO'} (F(${RA.pendientes.gl[0]}, ${RA.pendientes.gl[1]}) = ${RMf._fx(RA.pendientes.F, 2)}, p ${RMf._fp(RA.pendientes.pValor)}).` : null);
+                    h += this._p(RA.significativo
+                        ? `El efecto de ${RA.etGrupo} se mantiene tras el ajuste (p ${RMf._fp(RA.pFactor)}): las diferencias en ${RA.etY} no se explican por ${RA.etCov}.`
+                        : `Tras igualar estadísticamente los grupos en ${RA.etCov}, las diferencias en ${RA.etY} dejan de ser significativas (p ${RMf._fp(RA.pFactor)}), lo que sugiere que la disparidad observada era atribuible, al menos en parte, a la covariable.`);
+                    if (RA.pendientes && !RA.pendientes.paralelas) {
+                        h += this._p(`Nota metodológica: el supuesto de pendientes paralelas resultó violado — la relación entre ${RA.etCov} y ${RA.etY} difiere entre grupos —, por lo que las medias ajustadas deben interpretarse con cautela: la diferencia entre grupos depende del nivel de la covariable (interacción), y el análisis apropiado es el de moderación.`);
+                    }
+                }
+                // ---- MANOVA (si el investigador lo ejecutó) ----
+                if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaManova) {
+                    const MA = RegresionMultiple._ultimaManova, RMf = RegresionMultiple;
+                    h += this._seccion('Análisis multivariado de la varianza (MANOVA)');
+                    h += this._p(`Dado que el interés recae en ${MA.p} variables de resultado simultáneas (${MA.etsY.join(', ')}), se empleó un MANOVA en lugar de ${MA.p} ANOVAs separados, por dos razones metodológicas. Primera, el control del error: con ${MA.p} pruebas independientes al 5 %, la probabilidad de al menos un falso hallazgo asciende a aproximadamente el ${(100 * (1 - Math.pow(0.95, MA.p))).toFixed(0)} %. Segunda, la sensibilidad al patrón conjunto: las variables de resultado suelen correlacionar, y el análisis multivariado puede detectar una separación entre grupos que ninguna variable evidencia con claridad por sí sola.`);
+                    h += this._tablaAPA(`MANOVA: efecto de ${MA.etGrupo} sobre el conjunto de variables`,
+                        ['Λ de Wilks', 'F', 'gl', 'p', 'η² parcial'],
+                        [[RMf._fx(MA.lambda, 3), RMf._fx(MA.F, 2), `(${MA.df1}, ${RMf._fx(MA.df2, 1)})`, RMf._fp(MA.pValor), RMf._fx(MA.eta2p, 3)]],
+                        'Λ de Wilks: proporción de variabilidad no explicada por los grupos (valores menores indican mayor separación). Aproximación F de Rao.');
+                    h += this._tablaAPA(`Medias por grupo en las variables analizadas`,
+                        ['Grupo', 'n', ...MA.etsY],
+                        MA.porGrupo.map(g => [g.grupo, g.n, ...g.medias.map(x => RMf._fx(x, 2))]), null);
+                    h += this._p(MA.significativo
+                        ? `El contraste multivariado resultó significativo (Λ = ${RMf._fx(MA.lambda, 3)}, p ${RMf._fp(MA.pValor)}): los grupos difieren en el perfil conjunto de las variables. Conforme al protocolo, los análisis univariados de seguimiento reportados en este capítulo permiten localizar en qué variables reside la diferencia.`
+                        : `El contraste multivariado no alcanzó significación (p ${RMf._fp(MA.pValor)}): no hay evidencia de diferencias en el perfil conjunto, y este resultado global protege frente a los falsos hallazgos que múltiples pruebas separadas podrían producir por azar.`);
+                }
+                (() => {
                     if (R.postHoc) {
                         h += this._tablaAPA(`Comparaciones por pares para ${R.etNum} según ${R.etGrupo} (corrección de Holm)`,
                             ['Par', 'Prueba', 'Estadístico', 'p', 'p (Holm)', 'Decisión'],
