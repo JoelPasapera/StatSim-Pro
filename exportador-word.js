@@ -504,6 +504,38 @@ const ExportadorWord = {
             (RG.avisos || []).forEach(a => { h += this._p(`Nota metodológica: ${a}`); });
         }
 
+        // ---- SEM (si el investigador ajustó modelos) ----
+        if (typeof SEM !== 'undefined' && SEM._ultimos && SEM._ultimos.length) {
+            const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
+            const fp = p => !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
+            h += this._seccion('Modelado de ecuaciones estructurales (SEM)');
+            h += this._p('El modelado de ecuaciones estructurales pone a prueba simultáneamente la calidad de la medición (si los indicadores reflejan los constructos propuestos) y las relaciones teóricas entre constructos: el modelo especificado implica una matriz de covarianzas, y su ajuste se evalúa contrastando esa matriz implicada con la observada mediante máxima verosimilitud. Los índices se interpretan con los umbrales de Hu y Bentler (1999): CFI y TLI ≥ .95 (aceptable desde .90), RMSEA ≤ .06 (razonable hasta .08) y SRMR ≤ .08; el χ² se reporta siempre, con la salvedad de su sensibilidad al tamaño muestral.');
+            h += this._tablaAPA('Índices de ajuste de los modelos estimados',
+                ['Modelo', 'χ²', 'gl', 'p', 'CFI', 'TLI', 'RMSEA [IC 90 %]', 'SRMR'],
+                SEM._ultimos.map(M => [M.etiquetaModelo, fx(M.chi2, 2), M.gl, fp(M.pChi2), fx(M.CFI, 3), fx(M.TLI, 3),
+                    `${fx(M.RMSEA, 3)} [${fx(M.rmseaIC[0], 3)}, ${fx(M.rmseaIC[1], 3)}]`, fx(M.SRMR, 3)]),
+                'Estimación por máxima verosimilitud. n = ' + SEM._ultimos[SEM._ultimos.length - 1].n + '.');
+            const F = SEM._ultimos[SEM._ultimos.length - 1];
+            h += this._tablaAPA(`Parámetros del modelo «${F.etiquetaModelo}»`,
+                ['Parámetro', 'Estimado', 'Estandarizado', 'EE', 'z', 'p'],
+                F.parametros.map(p => [p.nombre, fx(p.estimado), p.tipo === 'coeficiente' && typeof SEMUI !== 'undefined' ? fx(SEMUI._std(F, p.nombre, p.estimado), 2) : '—', fx(p.se), fx(p.z, 2), fp(p.pValor)]),
+                'Estandarizados calculados con las desviaciones típicas implicadas por el modelo. La primera carga de cada factor se fija en 1 (método del marcador).');
+            if (SEM._ultimoDiagramaPNG) {
+                this._png = this._png || {};
+                this._png['semDiagrama'] = SEM._ultimoDiagramaPNG;
+                h += this._figura('semDiagrama', `Diagrama de rutas del modelo «${F.etiquetaModelo}»`,
+                    'Rectángulos: variables observadas; elipses: variables latentes. Los valores sobre las flechas son coeficientes estandarizados.');
+            }
+            if (typeof SEMUI !== 'undefined' && SEM._ultimos.length >= 2) {
+                h += this._p(SEMUI.htmlComparacion().replace(/<table[\s\S]*?<\/table>/, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+            }
+            h += this._p(`Lectura del ajuste del modelo «${F.etiquetaModelo}»: ${F.CFI >= 0.95 && F.RMSEA <= 0.06 && F.SRMR <= 0.08
+                ? 'los índices se sitúan en la zona de excelente ajuste conjunto (regla combinada de Hu y Bentler, 1999): la estructura propuesta reproduce fielmente el patrón de covariación observado.'
+                : F.CFI >= 0.90 && F.RMSEA <= 0.08
+                    ? 'los índices se sitúan en la zona aceptable: el modelo constituye una aproximación razonable, aunque los residuos mayores merecen revisión antes de considerarlo definitivo.'
+                    : 'los índices quedan por debajo de los umbrales convencionales: el modelo requiere reespecificación con fundamento teórico (revisar la pertenencia de indicadores, la dimensionalidad de los constructos o relaciones omitidas) antes de cualquier interpretación sustantiva.'}`);
+        }
+
         // ---- Matriz de correlaciones ----
         if (typeof correlacionPearsonSimple === 'function' && typeof esAproxNormalSimple === 'function') {
             const colsMx = [[var1, et1], [var2, et2]];
