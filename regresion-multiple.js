@@ -537,7 +537,8 @@ const RegresionMultiple = {
             + this._tab(this._tr(['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', `F(${R.glR}, ${R.glE})`, 'p modelo'], true)
                 + this._tr([this._fx(c1.b), this._fx(c1.se), this._fx(c1.t, 2), this._fp(c1.pValor),
                     `[${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}]`, this._fx(R.R2), this._fx(R.F, 2), this._fp(R.pF)]))
-            + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${this._fx(R.coefs[0].b)} + ${this._fx(c1.b)}·x — por cada unidad adicional de ${etX || colX}, ${R.etY} cambia en promedio ${this._fx(c1.b, 2)} unidades.</p>`;
+            + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${this._fx(R.coefs[0].b)} + ${this._fx(c1.b)}·x.</p>`
+            + this._pedagogiaBivariada(R, etX || colX);
         if (!MM.error) html += this._htmlMejorModelo(MM);
         if (img) html += `<p style="text-align:center;margin:0.6rem 0 0;"><img src="${img.url}" style="max-width:100%;border:1px solid #eee;border-radius:0.4rem;" alt="Modelo ajustado"></p>`;
         html += `</div>`;
@@ -774,6 +775,26 @@ const RegresionMultiple = {
         return R;
     },
 
+    // Explicación exhaustiva del modelo lineal bivariado, con los valores reales.
+    _pedagogiaBivariada(R, etX) {
+        const c1 = R.coefs[1], c0 = R.coefs[0];
+        const sig = c1.pValor < 0.05;
+        return `<p style="margin:0.5rem 0 0;">Cómo leer este modelo, pieza por pieza. La <b>pendiente</b> (B = ${this._fx(c1.b)}) es el corazón de la regresión: indica que, por cada punto adicional en ${etX}, ${R.etY} ${c1.b >= 0 ? 'aumenta' : 'disminuye'} en promedio ${this._fx(Math.abs(c1.b), 2)} puntos. Su <b>error estándar</b> (${this._fx(c1.se)}) mide la incertidumbre de esa estimación, y el <b>intervalo de confianza al 95 %</b> [${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}] delimita el rango plausible de la pendiente en la población: ${c1.ic[0] > 0 || c1.ic[1] < 0 ? 'como no incluye el cero, el efecto es estadísticamente distinguible de la ausencia de relación' : 'como incluye el cero, no puede descartarse la ausencia de efecto'}. La <b>constante</b> (${this._fx(c0.b)}) es el valor esperado de ${R.etY} cuando ${etX} vale cero (a veces un punto solo teórico).</p>
+        <p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> cuantifica la capacidad explicativa: el ${(100 * R.R2).toFixed(1)} % de las diferencias entre participantes en ${R.etY} queda explicado por ${etX}; el ${(100 * (1 - R.R2)).toFixed(1)} % restante obedece a otros factores no incluidos (otras variables, medición, azar). El <b>error típico</b> (${this._fx(R.errorTipico, 2)}) expresa cuánto se desvían, en promedio, las predicciones de los valores reales — la precisión práctica del modelo. Finalmente, la prueba <b>F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}</b> (p ${this._fp(R.pF)}) evalúa el modelo en conjunto: ${sig ? 'el modelo predice significativamente mejor que usar la simple media de ' + R.etY : 'el modelo no mejora significativamente a la simple media de ' + R.etY}.</p>`;
+    },
+
+    // Lectura pedagógica del modelo múltiple (B vs β, R² ajustado, VIF, síntesis).
+    _pedagogiaMultiple(R) {
+        const preds = R.coefs.slice(1);
+        const sig = preds.filter(c => c.pValor < 0.05 && c.beta !== null).sort((a, b) => Math.abs(b.beta) - Math.abs(a.beta));
+        let h = `<p style="margin:0.5rem 0 0;">Cómo leer los coeficientes. Cada <b>B</b> indica el cambio esperado en ${R.etY} por cada unidad del predictor <i>manteniendo constantes los demás</i> — esa cláusula es la esencia de la regresión múltiple: aísla el aporte propio de cada variable descontando lo que comparte con las otras. Como los B dependen de las unidades de medida de cada predictor, no sirven para compararlos entre sí; para eso están los <b>β estandarizados</b>, que expresan todos los efectos en la misma moneda (desviaciones estándar) y permiten ordenar la importancia relativa.</p>`;
+        h += `<p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> indica que el conjunto de predictores explica el ${(100 * R.R2).toFixed(1)} % de la variabilidad de ${R.etY}; el <b>R² ajustado = ${this._fx(R.R2aj)}</b> corrige ese valor penalizando cada predictor añadido, porque el R² bruto sube mecánicamente con cualquier variable extra aunque no aporte — por eso el ajustado es el honesto para comparar modelos de distinto tamaño. El <b>VIF</b> vigila la colinealidad: cuando dos predictores comparten mucha información, sus errores estándar se inflan y los aportes individuales se vuelven borrosos (valores &gt; 5 encienden la alerta${Number.isFinite(Math.max(...(R.vifs || [1]))) && Math.max(...R.vifs) > 5 ? ' — como ocurre aquí' : '; aquí están en zona segura'}).</p>`;
+        h += `<p style="margin:0.4rem 0 0;"><b>Síntesis:</b> ${sig.length
+            ? `contribuyen de forma independiente ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._fp(c.pValor)})`).join('; ')}${sig.length > 1 ? ` — siendo ${sig[0].nombre} el de mayor peso relativo` : ''}. Los predictores no significativos no aportan poder explicativo propio una vez considerados los demás (lo que no niega que se relacionen con ${R.etY} de forma cruda).`
+            : `ningún predictor alcanza significancia individual una vez controlados los demás: el modelo${R.significativo === false || R.pF >= 0.05 ? ' tampoco es significativo en conjunto' : ' puede ser significativo en conjunto por efectos repartidos, pero sin un responsable claro'}.`}</p>`;
+        return h;
+    },
+
     _htmlMejorModelo(MM) {
         let h = `<h4 style="margin:0.6rem 0 0.2rem;">🔍 ¿Qué modelo explica mejor esta relación?</h4>`;
         if (MM.tipoY === 'binaria') {
@@ -787,11 +808,7 @@ const RegresionMultiple = {
         h += this._tab(this._tr(['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'], true)
             + MM.candidatos.map(c => this._tr([c === MM.ganador ? `<b>${c.nombre} ✔</b>` : c.nombre, c.ec,
                 this._fx(c.R2, 3), this._fx(c.AIC, 1), this._fx(c.dAIC, 1)])).join(''));
-        h += `<p style="margin:0.2rem 0 0;">El criterio AIC premia el ajuste y penaliza la complejidad (menor = mejor). `
-            + `<b>${MM.ganador.nombre}</b> es el modelo seleccionado`
-            + (MM.parsimonia ? ` por <i>parsimonia</i>: su AIC empata en la práctica (Δ &lt; 2) con modelos más complejos, y ante el empate se prefiere el más simple para evitar sobreajuste.` : ` por presentar el menor AIC.`)
-            + ` R² del ganador: ${this._fx(MM.ganador.R2, 3)} (${(100 * MM.ganador.R2).toFixed(1)} % de la variabilidad de ${MM.etY} explicada).`
-            + ` Si el ganador no es el lineal, la relación entre ${MM.etX} y ${MM.etY} presenta curvatura que la correlación de Pearson subestimaría.</p>`;
+        h += this._justificacionAIC(MM);
         return h;
     },
 
@@ -831,6 +848,7 @@ const RegresionMultiple = {
                         c.beta === null ? '—' : this._fx(c.beta), this._fx(c.t, 2), this._fp(c.pValor),
                         `[${this._fx(c.ic[0], 2)}, ${this._fx(c.ic[1], 2)}]`,
                         j === 0 ? '—' : this._fx(R.vifs[j - 1], 2)])).join(''));
+            h += this._pedagogiaMultiple(R);
             if (R.jerarquica) {
                 const J = R.jerarquica;
                 h += `<h4 style="margin:0.6rem 0 0.2rem;">Análisis jerárquico por bloques</h4>
@@ -873,6 +891,25 @@ const RegresionMultiple = {
         });
         h += `</div>`;
         return { html: h };
+    },
+
+    // Justificación detallada de la selección de modelo (Burnham & Anderson).
+    _justificacionAIC(MM) {
+        const g = MM.ganador;
+        const orden = [...MM.candidatos].sort((a, b) => a.AIC - b.AIC);
+        const rival = orden.find(c => c !== g) || orden[1];
+        const zona = d => d < 2 ? 'apoyo prácticamente equivalente' : d <= 7 ? 'considerablemente menos apoyo empírico' : 'apoyo esencialmente nulo';
+        let h = `<p style="margin:0.4rem 0 0;">Por qué se eligió este modelo. El <b>criterio de información de Akaike (AIC)</b> resuelve el dilema central de la selección de modelos: un modelo con más parámetros siempre ajusta mejor <i>a esta muestra</i>, pero corre el riesgo de memorizar su ruido (sobreajuste) y fallar con datos nuevos. El AIC equilibra ambas fuerzas — premia la verosimilitud del ajuste y descuenta 2 puntos por cada parámetro — de modo que <b>menor AIC = mejor compromiso</b> entre fidelidad y simplicidad. Las diferencias (ΔAIC) se interpretan con las convenciones de Burnham y Anderson: Δ &lt; 2, modelos prácticamente equivalentes; Δ entre 4 y 7, el rival pierde apoyo de forma considerable; Δ &gt; 10, el rival queda sin apoyo empírico.</p>`;
+        if (rival) {
+            const d = rival.AIC - g.AIC;
+            h += `<p style="margin:0.4rem 0 0;">En estos datos, <b>${g.nombre}</b> ${MM.parsimonia
+                ? `empata en la práctica con alternativas más complejas (Δ &lt; 2) y se impone por <b>parsimonia</b>: cuando la evidencia no distingue entre un modelo simple y uno complejo, la ciencia elige el simple, porque cada parámetro extra que no gana apoyo real solo añade riesgo de sobreajuste`
+                : `presenta el menor AIC; su rival más cercano (${rival.nombre}) queda a ΔAIC = ${this._fx(d, 1)}, es decir, con ${zona(d)}`}. En términos de ajuste, el ganador explica el ${(100 * g.R2).toFixed(1)} % de la variabilidad de ${MM.etY} (R² = ${this._fx(g.R2, 3)})${Math.abs(g.R2 - rival.R2) < 0.01 ? `, prácticamente lo mismo que ${rival.nombre} (R² = ${this._fx(rival.R2, 3)}) — otra señal de que la complejidad extra no compra ajuste real` : ` frente al ${(100 * rival.R2).toFixed(1)} % de ${rival.nombre}`}.</p>`;
+        }
+        h += `<p style="margin:0.4rem 0 0;"><b>Implicación práctica:</b> ${g.nombre === 'Lineal'
+            ? `la relación entre ${MM.etX} y ${MM.etY} se describe adecuadamente con una recta, lo que valida el uso del coeficiente de correlación lineal como resumen fiel de la asociación.`
+            : `la relación entre ${MM.etX} y ${MM.etY} presenta curvatura (forma ${g.nombre.toLowerCase()}): el coeficiente de correlación lineal subestima la intensidad real del vínculo, y las conclusiones deben apoyarse en esta forma funcional.`}</p>`;
+        return h;
     },
 
     // Interpretación en lenguaje llano (compartida con el Word).
