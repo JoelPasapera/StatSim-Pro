@@ -343,6 +343,17 @@ class ScientificCharts {
             options.yLabel || ''
         );
 
+        // Subtítulo con el coeficiente empleado (coherente con el análisis).
+        if (options.subtitle) {
+            g.append('text')
+                .attr('x', anchoContenido / 2)
+                .attr('y', -8)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', 11)
+                .attr('fill', '#555')
+                .text(options.subtitle);
+        }
+
         // Subgrupo de la matriz, desplazado para dejar sitio a las etiquetas.
         const gMatriz = g.append('g')
             .attr('transform', `translate(${margenEtiquetasFila}, ${margenEtiquetasColumna})`);
