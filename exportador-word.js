@@ -417,12 +417,14 @@ const ExportadorWord = {
                   `[${RMf._fx(c1.ic[0], 2)}, ${RMf._fx(c1.ic[1], 2)}]`, RMf._fx(Rb.R2), RMf._fx(Rb.F, 2),
                   `(${Rb.glR}, ${Rb.glE})`, RMf._fp(Rb.pF)]],
                 `Ecuación ajustada: ŷ = ${RMf._fx(Rb.coefs[0].b)} + ${RMf._fx(c1.b)}·x. n = ${Rb.n} casos completos.`);
+            h += this._p(RMf._pedagogiaBivariada(Rb, BV.etX).replace(/<[^>]+>/g, ''));
             if (BV.MM && BV.MM.candidatos) {
                 h += this._tablaAPA(`Comparación de formas funcionales para la relación entre ${BV.etX} y ${BV.etY}`,
                     ['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'],
                     BV.MM.candidatos.map(c => [c === BV.MM.ganador ? c.nombre + ' (seleccionado)' : c.nombre,
                         c.ec, RMf._fx(c.R2, 3), RMf._fx(c.AIC, 1), RMf._fx(c.dAIC, 1)]),
                     'AIC: criterio de información de Akaike (menor = mejor). Ante ΔAIC < 2 se prefiere el modelo más simple (parsimonia).');
+                h += this._p(RMf._justificacionAIC(BV.MM).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
             }
             if (RegresionMultiple._ultimoGrafico) {
                 this._png = this._png || {};
@@ -462,6 +464,7 @@ const ExportadorWord = {
                         RMf._fx(c.t, 2), RMf._fp(c.pValor), `[${RMf._fx(c.ic[0], 2)}, ${RMf._fx(c.ic[1], 2)}]`,
                         j === 0 ? '—' : RMf._fx(RG.vifs[j - 1], 2)]),
                     RG.normResid ? `Normalidad de los residuos (${RG.normResid.prueba}): p ${RMf._fp(RG.normResid.pValor)}. VIF > 5 sugiere colinealidad problemática.` : null);
+                h += this._p(RMf._pedagogiaMultiple(RG).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').replace(/&gt;/g, '>'));
                 if (RG.jerarquica) {
                     const J = RG.jerarquica;
                     h += this._tablaAPA(`Regresión jerárquica: aporte de ${J.focal} sobre los controles`,
