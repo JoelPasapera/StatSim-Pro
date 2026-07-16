@@ -706,10 +706,10 @@
                         <div class="form-group" style="margin-top:1rem;">
                             <label class="label" id="regTituloOpc" style="margin-bottom:0.2rem;">Regresión (predicción bivariada) — opcional</label>
                             <p class="help-text" style="margin:0 0 0.5rem;">Déjala en blanco para omitirla. Si eliges ambas variables, el análisis de regresión (modelo, comparación de formas funcionales y gráfico) se añadirá a los resultados de la correlación y al Word.</p>
-                            <div style="display:flex; gap:1rem; flex-wrap:wrap;">
-                                <div style="flex:1; min-width:14rem;"><label class="label" for="regDep" style="font-weight:normal;">Variable dependiente (Y — lo que se predice)</label>
+                            <div class="form-row">
+                                <div class="form-group"><label for="regDep" style="font-weight:normal;">Variable dependiente (Y — lo que se predice)</label>
                                     <select id="regDep" class="input"><option value="">Seleccionar variable…</option></select></div>
-                                <div style="flex:1; min-width:14rem;"><label class="label" for="regInd" style="font-weight:normal;">Variable independiente (X — el predictor)</label>
+                                <div class="form-group"><label for="regInd" style="font-weight:normal;">Variable independiente (X — el predictor)</label>
                                     <select id="regInd" class="input"><option value="">Seleccionar variable…</option></select></div>
                                 <div id="regPredsCont" style="display:contents"></div>
                                 <div style="flex-basis:100%;">
@@ -980,7 +980,7 @@
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: app.js?v=20 → app.js?v=20). Eso obliga a navegadores y CDN
+         (ej: app.js?v=23 → app.js?v=23). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1004,8 +1004,8 @@
 
     <!-- Hallazgos por variables sociodemográficas -->
     <script src="criba-sociodemografica.js?v=9"></script>
-    <script src="comparacion-grupos.js?v=3"></script>
-    <script src="regresion-multiple.js?v=5"></script>
+    <script src="comparacion-grupos.js?v=5"></script>
+    <script src="regresion-multiple.js?v=7"></script>
 
     <!-- Matriz de consistencia -->
     <script src="matriz-consistencia.js?v=9"></script>
@@ -1030,7 +1030,7 @@
 
     <!-- Exportador del capítulo de resultados a Word (APA 7) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html-docx-js/0.3.1/html-docx.min.js"></script>
-    <script src="exportador-word.js?v=17"></script>
+    <script src="exportador-word.js?v=19"></script>
 
     <!-- Librería de gráficos científicos (depende de d3) -->
     <script src="graficas.js?v=11"></script>
@@ -1039,7 +1039,7 @@
     <script src="guia-coherencia.js?v=9"></script>
 
     <!-- Código de app.js -->
-    <script src="app.js?v=20"></script>
+    <script src="app.js?v=23"></script>
 </body>
 
 </html>
