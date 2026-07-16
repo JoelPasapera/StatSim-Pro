@@ -317,6 +317,16 @@ const ComparacionGrupos = {
             En <b>Variable de agrupación</b> elige una columna categórica que divide tu muestra en grupos (p. ej., Sexo, Carrera, Turno): define <i>quiénes se comparan</i>.
             En <b>Variable numérica</b> elige el puntaje que quieres contrastar entre esos grupos (p. ej., General_IE o una dimensión): define <i>qué se compara</i>.
             La app verificará los supuestos por ti y explicará qué prueba aplicó y por qué.</p>
+          <div style="margin-top:0.9rem; padding-top:0.7rem; border-top:1px dashed #ddd;">
+            <p style="margin:0 0 0.2rem; font-weight:600;">¿Sospechas que los grupos parten con ventaja en otra variable? <span style="font-weight:normal;">(ANCOVA)</span></p>
+            <p class="help-text" style="margin:0 0 0.4rem; font-size:0.86em;">Ejemplo: «¿difieren las carreras en inteligencia emocional… o es que unas tienen estudiantes de más edad?». Elige la variable a igualar y la comparación se repetirá descontando su efecto. Déjalo en blanco para comparar tal cual.</p>
+            <select id="cgCov" class="input" style="min-width:16rem;"><option value="">Sin covariable — comparar tal cual</option></select>
+          </div>
+          <div style="margin-top:0.8rem;">
+            <p style="margin:0 0 0.2rem; font-weight:600;">¿Crees que el factor afecta a varios resultados a la vez? <span style="font-weight:normal;">(MANOVA)</span></p>
+            <p class="help-text" style="margin:0 0 0.4rem; font-size:0.86em;">Ejemplo: un tratamiento que mueve ansiedad, estrés y autoestima al mismo tiempo. Marca las variables de resultado <b>adicionales</b> a la elegida arriba y se analizarán en conjunto — evitando el riesgo de hacer varias pruebas sueltas.</p>
+            <div id="cgDVs" style="max-height:7.5rem; overflow:auto; border:1px solid #ddd; border-radius:0.4rem; padding:0.4rem 0.6rem;"><span class="help-text">Carga datos para ver las variables.</span></div>
+          </div>
           <div id="cgEstado" class="help-text" style="margin-top:0.5rem;"></div>
           <div id="cgResultado" style="margin-top:0.8rem;"></div>`;
         seccion.appendChild(card);
@@ -338,6 +348,21 @@ const ComparacionGrupos = {
         const estado = document.getElementById('cgEstado');
         if (estado) estado.textContent = (!cats.length || !nums.length)
             ? 'Genera o carga una base de datos para habilitar la comparación.' : '';
+        // ANCOVA/MANOVA: covariable y variables de resultado adicionales.
+        try {
+            const numsAM = (typeof obtenerColumnasNumericas === 'function' && datos.length) ? obtenerColumnasNumericas(datos) : [];
+            const cov = document.getElementById('cgCov');
+            if (cov) {
+                const val = cov.value;
+                cov.innerHTML = '<option value="">Sin covariable — comparar tal cual</option>'
+                    + numsAM.map(c => `<option value="${c}">${c}</option>`).join('');
+                cov.value = val;
+            }
+            const dvs = document.getElementById('cgDVs');
+            if (dvs) dvs.innerHTML = numsAM.length
+                ? numsAM.map(c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${c}</label>`).join('')
+                : '<span class="help-text">Carga datos para ver las variables.</span>';
+        } catch (e) { /* opcional */ }
     },
 
     _fp(p) { return !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'); },
@@ -366,6 +391,26 @@ const ComparacionGrupos = {
             + tabla(fila(['Grupo', 'n', 'Prueba', 'p', 'Decisión'], true)
                 + R.normalidad.map(x => fila([x.grupo, x.n, x.prueba, this._fp(x.pValor), x.normal ? 'Normal' : 'No normal'])).join('')
                 + fila(['<b>Levene (varianzas)</b>', '', `F(${R.levene.gl[0]}, ${R.levene.gl[1]})`, this._fp(R.levene.pValor), R.levene.homogeneas ? 'Homogéneas' : 'No homogéneas']));
+        html += this._porqueDidactico(R);
+
+        // ANCOVA (si eligió covariable) y MANOVA (si marcó resultados extra).
+        if (typeof RegresionMultiple !== 'undefined') {
+            RegresionMultiple._ultimaAncova = null;
+            RegresionMultiple._ultimaManova = null;
+            const cov = (document.getElementById('cgCov') || {}).value || '';
+            if (cov && cov !== colN) {
+                const RA = RegresionMultiple.ancova(colG, colN, cov, { grupo: colG, y: (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(colN) : colN), cov });
+                html += RA.error ? `<p class="help-text">⚠️ ANCOVA: ${RA.error}</p>` : RegresionMultiple._htmlAncova(RA);
+            } else if (cov === colN) {
+                html += `<p class="help-text">⚠️ ANCOVA: la covariable no puede ser la misma variable numérica que comparas.</p>`;
+            }
+            const dvsExtra = [...document.querySelectorAll('#cgDVs input:checked')].map(x => x.value).filter(c => c !== colN);
+            if (dvsExtra.length) {
+                const cols = [colN, ...dvsExtra];
+                const MA = RegresionMultiple.manova(colG, cols, { grupo: colG, ys: cols.map(c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c)) });
+                html += MA.error ? `<p class="help-text">⚠️ MANOVA: ${MA.error}</p>` : RegresionMultiple._htmlManova(MA);
+            }
+        }
 
         const P = R.prueba;
         const glTxt = Array.isArray(P.gl) ? `(${P.gl[0]}, ${P.gl[1]})` : (P.gl != null ? `(${this._fx(P.gl, 1)})` : '');
@@ -406,6 +451,23 @@ const ComparacionGrupos = {
 
     // ---------- Generación automática para el capítulo Word ----------
     // Recorre las variables categóricas (2-8 grupos) × las variables indicadas.
+    // Los porqués de las pruebas empleadas (compartido web/Word).
+    _porqueDidactico(R) {
+        const p = String((R.prueba && (R.prueba.nombre || R.prueba)) || '');
+        let h = `<p style="margin:0.5rem 0 0; padding:0.5rem 0.7rem; background:#f0f6ff; border-left:3px solid #2E5BBA; border-radius:0.3rem; font-size:0.9em;"><b>💡 Los porqués del protocolo.</b> `;
+        h += `<b>¿Por qué Levene vigila las varianzas?</b> Porque su truco es convertir cada dato en su desviación absoluta respecto al centro de su grupo y hacerles un análisis de varianza a <i>esas desviaciones</i>: si un grupo es más disperso, sus desviaciones promedian más alto y la F lo delata. Importa porque las pruebas clásicas reparten el error asumiendo dispersiones iguales — con varianzas desiguales, sus p-valores pierden calibración (y por eso existe la variante de Welch, que renuncia a ese supuesto). `;
+        if (/Mann-Whitney|Kruskal/i.test(p)) {
+            h += `<b>¿Por qué ${/Kruskal/i.test(p) ? 'Kruskal-Wallis' : 'Mann-Whitney'} usa rangos?</b> Porque cambia la pregunta a una más robusta: no «¿difieren las medias?» sino «¿los valores de un grupo <i>tienden a superar</i> a los del otro?». Al ordenar todos los datos y trabajar con posiciones (1.º, 2.º, 3.º…), las distancias exactas — donde viven los atípicos y la no-normalidad que invalidaron la prueba paramétrica — se vuelven irrelevantes: el caso más extremo es solo «el último de la fila». `;
+        }
+        if (/ANOVA|Welch|Student|t de/i.test(p)) {
+            h += `<b>¿Por qué ${/ANOVA/i.test(p) ? 'un ANOVA compara varianzas para hablar de medias' : 'la prueba t divide la diferencia por su error'}?</b> ${/ANOVA/i.test(p)
+                ? 'Es la genialidad de Fisher: si las medias grupales realmente difieren, los grupos están «separados», y esa separación infla la variabilidad ENTRE grupos respecto a la variabilidad DENTRO de ellos (el ruido individual). El estadístico F es literalmente un cociente señal/ruido: F cercano a 1 significa que las medias fluctúan lo que fluctuaría el azar; F mucho mayor que 1 delata separación real.'
+                : 'La diferencia de medias por sí sola no dice nada: 5 puntos pueden ser enormes o triviales según cuánto fluctúa la gente. Al dividirla por su error estándar, la t expresa la diferencia en unidades de ruido — cuántas veces supera la señal a la fluctuación esperable por azar.'} `;
+        }
+        h += `</p>`;
+        return h;
+    },
+
     generarParaWord(vars) {
         const cats = (typeof obtenerColumnasCategoricas === 'function') ? obtenerColumnasCategoricas(8) : [];
         const res = [];
