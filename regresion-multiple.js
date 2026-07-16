@@ -356,6 +356,180 @@ const RegresionMultiple = {
                  ec: `logit(p) = ${this._fx(b0, 3)} + ${this._fx(b1, 3)}·x` };
     },
 
+    // ================= ANCOVA Y MANOVA =================
+    // Determinante por eliminación gaussiana con pivoteo (para Wilks' Λ).
+    _det(M) {
+        const n = M.length, A = M.map(f => [...f]);
+        let det = 1;
+        for (let c = 0; c < n; c++) {
+            let piv = c;
+            for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+            if (Math.abs(A[piv][c]) < 1e-300) return 0;
+            if (piv !== c) { [A[c], A[piv]] = [A[piv], A[c]]; det = -det; }
+            det *= A[c][c];
+            for (let r = c + 1; r < n; r++) {
+                const f = A[r][c] / A[c][c];
+                for (let j = c; j < n; j++) A[r][j] -= f * A[c][j];
+            }
+        }
+        return det;
+    },
+
+    // ---------- ANCOVA: factor (grupos) + covariable, vía modelo lineal ----------
+    // Pregunta que responde: ¿difieren los grupos en Y una vez IGUALADOS
+    // estadísticamente en la covariable?
+    ancova(colGrupo, colY, colCov, ets = {}) {
+        const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
+        const datos = A ? (A.obtenerDatos() || []) : [];
+        const filas = datos.map(d => ({ g: d[colGrupo], y: +d[colY], c: +d[colCov] }))
+            .filter(f => f.g != null && String(f.g).trim() !== '' && Number.isFinite(f.y) && Number.isFinite(f.c));
+        const niveles = [...new Set(filas.map(f => String(f.g)))].sort();
+        const k = niveles.length, n = filas.length;
+        if (k < 2) return { error: 'La variable de agrupación necesita al menos 2 grupos.' };
+        if (k > 8) return { error: 'Demasiados grupos (máximo 8) para el ANCOVA.' };
+        if (n < k + 4) return { error: 'Casos insuficientes para el ANCOVA.' };
+
+        const y = filas.map(f => f.y);
+        const cov = filas.map(f => f.c);
+        const mCov = this._media(cov);
+        // Dummies (referencia: primer nivel) y columnas de los tres modelos.
+        const dummies = niveles.slice(1).map(nv => filas.map(f => String(f.g) === nv ? 1 : 0));
+        const M_cov = this._olsFull(y, [cov], ['Cov']);                          // solo covariable
+        const M_full = this._olsFull(y, [cov, ...dummies], ['Cov', ...niveles.slice(1)]); // covariable + grupos
+        if (M_cov.error || M_full.error) return { error: 'No fue posible estimar el modelo (¿colinealidad?).' };
+
+        // F del factor AJUSTADO por la covariable: cambio entre modelos anidados.
+        const q = k - 1;
+        const Ffactor = ((M_cov.SSE - M_full.SSE) / q) / (M_full.SSE / M_full.glE);
+        const pFactor = this._pF(Ffactor, q, M_full.glE);
+
+        // F de la covariable dentro del modelo completo (su t²).
+        const tCov = M_full.coefs[1].t;
+        const Fcov = tCov * tCov, pCov = M_full.coefs[1].pValor;
+
+        // Supuesto de PENDIENTES PARALELAS: añadir interacciones grupo×covariable
+        // y comprobar que no mejoran el modelo (homogeneidad de la regresión).
+        const inter = dummies.map(dm => dm.map((v, i) => v * (cov[i] - mCov)));
+        const M_int = this._olsFull(y, [cov, ...dummies, ...inter], ['Cov', ...niveles.slice(1), ...niveles.slice(1).map(nv => nv + '×Cov')]);
+        let pendientes = null;
+        if (!M_int.error) {
+            const Fint = ((M_full.SSE - M_int.SSE) / q) / (M_int.SSE / M_int.glE);
+            pendientes = { F: Fint, gl: [q, M_int.glE], pValor: this._pF(Fint, q, M_int.glE) };
+            pendientes.paralelas = pendientes.pValor > 0.05;
+        }
+
+        // Medias ajustadas: predicción de cada grupo con la covariable en su media.
+        const B = M_full.coefs.map(c => c.b);
+        const mediasAjustadas = niveles.map((nv, i) => {
+            let pred = B[0] + B[1] * mCov;
+            if (i > 0) pred += B[1 + i];
+            const obs = filas.filter(f => String(f.g) === nv);
+            return { grupo: nv, n: obs.length,
+                     mediaCruda: this._media(obs.map(o => o.y)),
+                     mediaAjustada: pred };
+        });
+
+        // Eta² parcial del factor.
+        const eta2p = (M_cov.SSE - M_full.SSE) / M_cov.SSE;
+        const R = { etGrupo: ets.grupo || colGrupo, etY: ets.y || colY, etCov: ets.cov || colCov,
+                    n, k, niveles, Ffactor, gl: [q, M_full.glE], pFactor, eta2p,
+                    Fcov, pCov, pendientes, mediasAjustadas, mCov,
+                    significativo: pFactor < 0.05 };
+        this._ultimaAncova = R;
+        return R;
+    },
+
+    // ---------- MANOVA: un factor, varias variables dependientes ----------
+    // Pregunta que responde: ¿difieren los grupos en el CONJUNTO de resultados,
+    // considerados simultáneamente (con sus correlaciones)?
+    manova(colGrupo, colsY, ets = {}) {
+        const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
+        const datos = A ? (A.obtenerDatos() || []) : [];
+        const p = colsY.length;
+        if (p < 1) return { error: 'Elige al menos una variable dependiente.' };
+        const filas = datos.map(d => ({ g: d[colGrupo], ys: colsY.map(c => +d[c]) }))
+            .filter(f => f.g != null && String(f.g).trim() !== '' && f.ys.every(Number.isFinite));
+        const niveles = [...new Set(filas.map(f => String(f.g)))].sort();
+        const k = niveles.length, n = filas.length;
+        if (k < 2) return { error: 'Se necesitan al menos 2 grupos.' };
+        if (n < k + p + 2) return { error: 'Casos insuficientes para el MANOVA.' };
+
+        // Medias globales y por grupo.
+        const mediaG = colsY.map((_, j) => this._media(filas.map(f => f.ys[j])));
+        const porGrupo = niveles.map(nv => {
+            const obs = filas.filter(f => String(f.g) === nv);
+            return { nv, n: obs.length, medias: colsY.map((_, j) => this._media(obs.map(o => o.ys[j]))), obs };
+        });
+
+        // Matrices SSCP: H (entre grupos) y E (dentro de grupos).
+        const H = Array.from({ length: p }, () => new Array(p).fill(0));
+        const E = Array.from({ length: p }, () => new Array(p).fill(0));
+        porGrupo.forEach(G => {
+            for (let a = 0; a < p; a++) for (let b = 0; b < p; b++)
+                H[a][b] += G.n * (G.medias[a] - mediaG[a]) * (G.medias[b] - mediaG[b]);
+            G.obs.forEach(o => {
+                for (let a = 0; a < p; a++) for (let b = 0; b < p; b++)
+                    E[a][b] += (o.ys[a] - G.medias[a]) * (o.ys[b] - G.medias[b]);
+            });
+        });
+        const HE = H.map((f, i) => f.map((v, j) => v + E[i][j]));
+        const detE = this._det(E), detHE = this._det(HE);
+        if (!(detHE > 0)) return { error: 'Matrices singulares: revisa que las variables no sean redundantes.' };
+        const lambda = detE / detHE; // Wilks' Λ
+
+        // Aproximación F de Rao.
+        const q = k - 1;
+        let t = 1;
+        const den = p * p + q * q - 5;
+        if (den > 0) t = Math.sqrt((p * p * q * q - 4) / den);
+        const m = (n - 1) - (p + k) / 2;
+        const df1 = p * q;
+        const df2 = m * t - df1 / 2 + 1;
+        const L1t = Math.pow(lambda, 1 / t);
+        const F = ((1 - L1t) / L1t) * (df2 / df1);
+        const pValor = this._pF(F, df1, df2);
+        const eta2p = 1 - L1t; // parcial multivariado (aprox. 1 − Λ^(1/t))
+
+        const R = { etGrupo: ets.grupo || colGrupo, colsY, etsY: ets.ys || colsY,
+                    n, k, p, niveles, lambda, F, df1, df2, pValor, eta2p,
+                    porGrupo: porGrupo.map(G => ({ grupo: G.nv, n: G.n, medias: G.medias })),
+                    significativo: pValor < 0.05 };
+        this._ultimaManova = R;
+        return R;
+    },
+
+    _htmlAncova(R) {
+        let h = `<h4 style="margin:0.8rem 0 0.2rem;">⚖️➕ ANCOVA: comparar igualando estadísticamente en ${R.etCov}</h4>
+        <p class="help-text" style="margin:0 0 0.4rem;font-size:0.9em;">Pregunta que responde: <b>¿difieren los grupos en ${R.etY} una vez igualados en ${R.etCov}?</b> El ANCOVA descuenta primero el efecto de la covariable y compara lo que queda — es como preguntar qué pasaría si todos los grupos tuvieran el mismo nivel de ${R.etCov} (fijado en su media global, ${this._fx(R.mCov, 2)}).</p>`;
+        h += this._tab(this._tr(['Grupo', 'n', 'Media cruda', 'Media ajustada'], true)
+            + R.mediasAjustadas.map(g => this._tr([g.grupo, g.n, this._fx(g.mediaCruda, 2), `<b>${this._fx(g.mediaAjustada, 2)}</b>`])).join(''));
+        h += this._tab(this._tr(['Efecto', 'F', 'gl', 'p', 'η² parcial'], true)
+            + this._tr([`${R.etGrupo} (ajustado)`, this._fx(R.Ffactor, 2), `(${R.gl[0]}, ${R.gl[1]})`, this._fp(R.pFactor), this._fx(R.eta2p, 3)])
+            + this._tr([`${R.etCov} (covariable)`, this._fx(R.Fcov, 2), `(1, ${R.gl[1]})`, this._fp(R.pCov), '—']));
+        h += `<p style="margin:0.3rem 0 0;">${R.significativo
+            ? `Aun igualados en ${R.etCov}, los grupos difieren en ${R.etY} (p ${this._fp(R.pFactor)}): la diferencia <b>no</b> se explica por la covariable.`
+            : `Una vez igualados en ${R.etCov}, los grupos ya no difieren significativamente en ${R.etY} (p ${this._fp(R.pFactor)}): la diferencia cruda ${Math.abs(R.mediasAjustadas[0].mediaCruda - R.mediasAjustadas[R.mediasAjustadas.length-1].mediaCruda) > 0.01 ? 'era atribuible, al menos en parte, a que los grupos partían con distintos niveles de la covariable' : 'tampoco existía de partida'}.`} Compara las columnas de medias: la <i>cruda</i> es lo observado; la <i>ajustada</i>, lo esperable con todos al mismo nivel de ${R.etCov}.</p>`;
+        if (R.pendientes) {
+            h += R.pendientes.paralelas
+                ? `<p class="help-text" style="font-size:0.85em;margin-top:0.3rem;">Supuesto de pendientes paralelas: satisfecho (F(${R.pendientes.gl[0]}, ${R.pendientes.gl[1]}) = ${this._fx(R.pendientes.F, 2)}, p ${this._fp(R.pendientes.pValor)}). ¿Por qué importa? El ajuste solo tiene sentido si la relación entre ${R.etCov} y ${R.etY} es la misma en todos los grupos; si cada grupo tuviera su propia pendiente, no existiría UNA respuesta ajustada válida para todos los niveles de la covariable.</p>`
+                : `<p style="margin:0.4rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ <b>Supuesto de pendientes paralelas violado</b> (p ${this._fp(R.pendientes.pValor)}): la relación entre ${R.etCov} y ${R.etY} difiere entre grupos, así que las medias ajustadas deben tomarse con cautela — la diferencia entre grupos <i>depende</i> del nivel de la covariable (una interacción, no un efecto uniforme). Interpreta la moderación en lugar del ANCOVA clásico.</p>`;
+        }
+        return h;
+    },
+
+    _htmlManova(M) {
+        let h = `<h4 style="margin:0.8rem 0 0.2rem;">⚖️✳️ MANOVA: ${M.etsY.join(', ')} analizadas en conjunto</h4>
+        <p class="help-text" style="margin:0 0 0.4rem;font-size:0.9em;"><b>¿Por qué no ${M.p} ANOVAs separados?</b> Por dos razones. Primera: cada prueba al 5 % acumula riesgo — con ${M.p} pruebas, la probabilidad de al menos un falso hallazgo sube a ≈ ${(100 * (1 - Math.pow(0.95, M.p))).toFixed(0)} %. Segunda: las variables de resultado suelen correlacionar, y el MANOVA aprovecha ese patrón conjunto — puede detectar una separación entre grupos que ninguna variable muestra con claridad por sí sola.</p>`;
+        h += this._tab(this._tr(['Λ de Wilks', 'F', 'gl', 'p', 'η² parcial'], true)
+            + this._tr([this._fx(M.lambda, 3), this._fx(M.F, 2), `(${M.df1}, ${this._fx(M.df2, 1)})`, this._fp(M.pValor), this._fx(M.eta2p, 3)]));
+        h += this._tab(this._tr(['Grupo', 'n', ...M.etsY.map(e => `M(${e})`)], true)
+            + M.porGrupo.map(g => this._tr([g.grupo, g.n, ...g.medias.map(m => this._fx(m, 2))])).join(''));
+        h += `<p style="margin:0.3rem 0 0;">La <b>Λ de Wilks</b> se lee al revés que un R²: es la proporción de variabilidad <i>no explicada</i> por los grupos (menor = grupos más separados). ${M.significativo
+            ? `Aquí Λ = ${this._fx(M.lambda, 3)} con p ${this._fp(M.pValor)}: los grupos difieren en el <b>perfil conjunto</b> de ${M.etsY.join(', ')}. El paso siguiente del protocolo es examinar cada variable por separado (los ANOVAs de seguimiento de arriba) para localizar dónde vive la diferencia.`
+            : `Aquí p ${this._fp(M.pValor)}: no hay evidencia de que los grupos difieran en el perfil conjunto — y este resultado global protege contra falsos hallazgos que ${M.p} pruebas sueltas podrían producir por azar.`}</p>`;
+        return h;
+    },
+
     // ---------- Formato ----------
     _fp(p) { return !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'); },
     _fx(x, d = 3) { return Number.isFinite(x) ? x.toFixed(d) : '—'; },
@@ -780,7 +954,8 @@ const RegresionMultiple = {
         const c1 = R.coefs[1], c0 = R.coefs[0];
         const sig = c1.pValor < 0.05;
         return `<p style="margin:0.5rem 0 0;">Cómo leer este modelo, pieza por pieza. La <b>pendiente</b> (B = ${this._fx(c1.b)}) es el corazón de la regresión: indica que, por cada punto adicional en ${etX}, ${R.etY} ${c1.b >= 0 ? 'aumenta' : 'disminuye'} en promedio ${this._fx(Math.abs(c1.b), 2)} puntos. Su <b>error estándar</b> (${this._fx(c1.se)}) mide la incertidumbre de esa estimación, y el <b>intervalo de confianza al 95 %</b> [${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}] delimita el rango plausible de la pendiente en la población: ${c1.ic[0] > 0 || c1.ic[1] < 0 ? 'como no incluye el cero, el efecto es estadísticamente distinguible de la ausencia de relación' : 'como incluye el cero, no puede descartarse la ausencia de efecto'}. La <b>constante</b> (${this._fx(c0.b)}) es el valor esperado de ${R.etY} cuando ${etX} vale cero (a veces un punto solo teórico).</p>
-        <p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> cuantifica la capacidad explicativa: el ${(100 * R.R2).toFixed(1)} % de las diferencias entre participantes en ${R.etY} queda explicado por ${etX}; el ${(100 * (1 - R.R2)).toFixed(1)} % restante obedece a otros factores no incluidos (otras variables, medición, azar). El <b>error típico</b> (${this._fx(R.errorTipico, 2)}) expresa cuánto se desvían, en promedio, las predicciones de los valores reales — la precisión práctica del modelo. Finalmente, la prueba <b>F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}</b> (p ${this._fp(R.pF)}) evalúa el modelo en conjunto: ${sig ? 'el modelo predice significativamente mejor que usar la simple media de ' + R.etY : 'el modelo no mejora significativamente a la simple media de ' + R.etY}.</p>`;
+        <p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> cuantifica la capacidad explicativa: el ${(100 * R.R2).toFixed(1)} % de las diferencias entre participantes en ${R.etY} queda explicado por ${etX}; el ${(100 * (1 - R.R2)).toFixed(1)} % restante obedece a otros factores no incluidos (otras variables, medición, azar). El <b>error típico</b> (${this._fx(R.errorTipico, 2)}) expresa cuánto se desvían, en promedio, las predicciones de los valores reales — la precisión práctica del modelo. Finalmente, la prueba <b>F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}</b> (p ${this._fp(R.pF)}) evalúa el modelo en conjunto: ${sig ? 'el modelo predice significativamente mejor que usar la simple media de ' + R.etY : 'el modelo no mejora significativamente a la simple media de ' + R.etY}.</p>
+        <p style="margin:0.4rem 0 0;"><b>¿Por qué una correlación significativa puede convivir con un R² pequeño?</b> Porque la p y el R² responden preguntas distintas: la p pregunta <i>«¿existe el efecto?»</i> y el R² pregunta <i>«¿cuánto importa?»</i>. La significancia depende del tamaño muestral — el error estándar se encoge en proporción a √n, de modo que con muestras grandes hasta efectos diminutos se vuelven detectables —, mientras que el R² mide magnitud y no mejora por tener más casos. Además, r y R² se relacionan <i>cuadráticamente</i>: una correlación de .30, considerada moderada, explica apenas el 9 % de la variabilidad (.30² = .09)${R.R2 < 0.25 && R.pF < 0.05 ? ` — exactamente el fenómeno de estos datos: el efecto es real (p ${this._fp(R.pF)}) y a la vez modesto en magnitud (R² = ${this._fx(R.R2)})` : ''}. Un resultado puede ser estadísticamente innegable y prácticamente humilde; reportar ambos números evita confundir certeza con importancia.</p>`;
     },
 
     // Lectura pedagógica del modelo múltiple (B vs β, R² ajustado, VIF, síntesis).
@@ -788,7 +963,9 @@ const RegresionMultiple = {
         const preds = R.coefs.slice(1);
         const sig = preds.filter(c => c.pValor < 0.05 && c.beta !== null).sort((a, b) => Math.abs(b.beta) - Math.abs(a.beta));
         let h = `<p style="margin:0.5rem 0 0;">Cómo leer los coeficientes. Cada <b>B</b> indica el cambio esperado en ${R.etY} por cada unidad del predictor <i>manteniendo constantes los demás</i> — esa cláusula es la esencia de la regresión múltiple: aísla el aporte propio de cada variable descontando lo que comparte con las otras. Como los B dependen de las unidades de medida de cada predictor, no sirven para compararlos entre sí; para eso están los <b>β estandarizados</b>, que expresan todos los efectos en la misma moneda (desviaciones estándar) y permiten ordenar la importancia relativa.</p>`;
-        h += `<p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> indica que el conjunto de predictores explica el ${(100 * R.R2).toFixed(1)} % de la variabilidad de ${R.etY}; el <b>R² ajustado = ${this._fx(R.R2aj)}</b> corrige ese valor penalizando cada predictor añadido, porque el R² bruto sube mecánicamente con cualquier variable extra aunque no aporte — por eso el ajustado es el honesto para comparar modelos de distinto tamaño. El <b>VIF</b> vigila la colinealidad: cuando dos predictores comparten mucha información, sus errores estándar se inflan y los aportes individuales se vuelven borrosos (valores &gt; 5 encienden la alerta${Number.isFinite(Math.max(...(R.vifs || [1]))) && Math.max(...R.vifs) > 5 ? ' — como ocurre aquí' : '; aquí están en zona segura'}).</p>`;
+        h += `<p style="margin:0.4rem 0 0;"><b>¿Por qué controlar variables?</b> Porque en datos no experimentales acecha la <i>tercera variable</i>: si un predictor se asocia con la dependiente solo porque ambos dependen de algo más (edad, nivel socioeconómico…), la asociación cruda le atribuye un crédito que no le pertenece. Al incluir esa tercera variable en el modelo, la regresión reparte el crédito: cada B queda depurado de lo que se explica por las demás. Controlar es, en esencia, comparar personas <i>estadísticamente equiparadas</i> en las covariables.</p>`;
+        h += `<p style="margin:0.4rem 0 0;"><b>¿Y los residuos?</b> Son la parte de ${R.etY} que el modelo no logra explicar — la distancia entre lo observado y lo predicho — y funcionan como la radiografía del modelo: si se distribuyen de forma aproximadamente normal y sin patrones, el modelo capturó la estructura y dejó solo ruido; ese supuesto importa porque las pruebas t y F que validan los coeficientes se derivan matemáticamente asumiendo residuos normales — con residuos patológicos, los p-valores pierden su garantía.</p>`;
+        h += `<p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> indica que el conjunto de predictores explica el ${(100 * R.R2).toFixed(1)} % de la variabilidad de ${R.etY}; el <b>R² ajustado = ${this._fx(R.R2aj)}</b> corrige ese valor penalizando cada predictor añadido, porque el R² bruto sube mecánicamente con cualquier variable extra aunque no aporte — por eso el ajustado es el honesto para comparar modelos de distinto tamaño. El <b>VIF</b> vigila la colinealidad: cuando dos predictores comparten mucha información, sus errores estándar se inflan y los aportes individuales se vuelven borrosos (su mecánica: el VIF de cada predictor equivale a 1/(1−R²) de regresarlo sobre los demás, de modo que mide cuánta información suya ya está contenida en el resto; cuando dos predictores comparten mucha información, el modelo no puede decidir a quién atribuir el efecto común, la incertidumbre de ambos coeficientes crece y efectos reales pueden aparecer como no significativos. Valores &gt; 5 encienden la alerta${Number.isFinite(Math.max(...(R.vifs || [1]))) && Math.max(...R.vifs) > 5 ? ' — como ocurre aquí' : '; aquí están en zona segura'}).</p>`;
         h += `<p style="margin:0.4rem 0 0;"><b>Síntesis:</b> ${sig.length
             ? `contribuyen de forma independiente ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._fp(c.pValor)})`).join('; ')}${sig.length > 1 ? ` — siendo ${sig[0].nombre} el de mayor peso relativo` : ''}. Los predictores no significativos no aportan poder explicativo propio una vez considerados los demás (lo que no niega que se relacionen con ${R.etY} de forma cruda).`
             : `ningún predictor alcanza significancia individual una vez controlados los demás: el modelo${R.significativo === false || R.pF >= 0.05 ? ' tampoco es significativo en conjunto' : ' puede ser significativo en conjunto por efectos repartidos, pero sin un responsable claro'}.`}</p>`;
@@ -899,7 +1076,9 @@ const RegresionMultiple = {
         const orden = [...MM.candidatos].sort((a, b) => a.AIC - b.AIC);
         const rival = orden.find(c => c !== g) || orden[1];
         const zona = d => d < 2 ? 'apoyo prácticamente equivalente' : d <= 7 ? 'considerablemente menos apoyo empírico' : 'apoyo esencialmente nulo';
-        let h = `<p style="margin:0.4rem 0 0;">Por qué se eligió este modelo. El <b>criterio de información de Akaike (AIC)</b> resuelve el dilema central de la selección de modelos: un modelo con más parámetros siempre ajusta mejor <i>a esta muestra</i>, pero corre el riesgo de memorizar su ruido (sobreajuste) y fallar con datos nuevos. El AIC equilibra ambas fuerzas — premia la verosimilitud del ajuste y descuenta 2 puntos por cada parámetro — de modo que <b>menor AIC = mejor compromiso</b> entre fidelidad y simplicidad. Las diferencias (ΔAIC) se interpretan con las convenciones de Burnham y Anderson: Δ &lt; 2, modelos prácticamente equivalentes; Δ entre 4 y 7, el rival pierde apoyo de forma considerable; Δ &gt; 10, el rival queda sin apoyo empírico.</p>`;
+        let h = `<p style="margin:0.4rem 0 0;"><b>El problema de fondo: el sobreajuste.</b> Toda muestra contiene dos ingredientes mezclados: la <i>señal</i> (la relación real que también existirá en otras muestras) y el <i>ruido</i> (las fluctuaciones aleatorias propias de estos participantes concretos). Un modelo sobreajustado es el que, en su afán de ceñirse a los datos, aprende también el ruido — como un estudiante que memoriza las respuestas del examen de práctica en lugar de entender la materia: brilla en esa prueba y fracasa en la siguiente. Por eso un modelo puede explicar casi perfectamente <i>esta</i> muestra y desplomarse en otra: la parte del ajuste que perseguía ruido no se replica, porque el ruido nuevo es distinto.</p>
+        <p style="margin:0.4rem 0 0;"><b>¿Por qué el modelo cúbico casi siempre gana en R²?</b> Por construcción matemática, no por mérito: el cúbico contiene al cuadrático y al lineal como casos particulares (basta fijar en cero sus términos extra), así que su ajuste nunca puede ser peor — cada parámetro adicional es un grado de libertad más para doblarse hacia los puntos, y la suma de errores solo puede bajar o quedar igual. De ahí que <b>elegir por mayor R² sería un criterio trampa</b>: coronaría siempre al modelo más complejo, garantizando el sobreajuste que queremos evitar.</p>
+        <p style="margin:0.4rem 0 0;"><b>La solución del AIC.</b> El criterio de información de Akaike trata cada parámetro como una <i>licencia para perseguir ruido</i> y le cobra un precio: premia la verosimilitud del ajuste pero descuenta 2 puntos por parámetro, de modo que un término extra solo compensa si mejora el ajuste más de lo que cuesta. <b>Menor AIC = mejor compromiso</b> entre fidelidad a los datos y capacidad de generalizar. Las diferencias (ΔAIC) se leen con las convenciones de Burnham y Anderson: Δ &lt; 2, modelos prácticamente equivalentes; Δ entre 4 y 7, el rival pierde apoyo considerable; Δ &gt; 10, el rival queda sin apoyo empírico.</p>`;
         if (rival) {
             const d = rival.AIC - g.AIC;
             h += `<p style="margin:0.4rem 0 0;">En estos datos, <b>${g.nombre}</b> ${MM.parsimonia
