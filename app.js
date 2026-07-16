@@ -2595,7 +2595,8 @@ function inicializarGraficos() {
                 primaryColor: '#2E5BBA'
             });
             chartCorr.createCorrelationMatrix(datosParaGraficos.correlaciones, datosParaGraficos.labels, {
-                title: 'Matriz de Correlaciones'
+                title: 'Matriz de Correlaciones',
+                subtitle: datosParaGraficos.metodoCorrelacion
             });
         }
 
@@ -2715,6 +2716,25 @@ function esAproxNormalSimple(v) {
     const m4 = v.reduce((s, x) => s + (x - media) ** 4, 0) / n;
     const asimetria = m3 / Math.pow(m2, 1.5);
     const curtosis = m4 / (m2 * m2) - 3;
+    // Criterio ALINEADO con el análisis: si el analizador está disponible se usa
+    // la MISMA prueba formal (Shapiro-Wilk / K-S Lilliefors) que decide el
+    // coeficiente en los resultados; el atajo de momentos queda como respaldo.
+    if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.shapiroWilk) {
+        try {
+            const r = valores.length < 50
+                ? AnalizadorEstadistico.shapiroWilk(valores)
+                : AnalizadorEstadistico.kolmogorovSmirnov(valores);
+            if (r && Number.isFinite(r.pValor)) return r.pValor > 0.05;
+        } catch (e) { /* respaldo por momentos */ }
+    }
+    if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.shapiroWilk) {
+        try {
+            const r = valores.length < 50
+                ? AnalizadorEstadistico.shapiroWilk(valores)
+                : AnalizadorEstadistico.kolmogorovSmirnov(valores);
+            if (r && Number.isFinite(r.pValor)) return r.pValor > 0.05;
+        } catch (e) { /* respaldo por momentos */ }
+    }
     // Umbrales habituales de tolerancia (|asimetría| < 2 y |curtosis| < 7).
     return Math.abs(asimetria) < 2 && Math.abs(curtosis) < 7;
 }
@@ -2737,10 +2757,13 @@ function prepararDatosParaGraficos(datos) {
     // Pearson si AMBAS columnas son aproximadamente normales, y Spearman si no
     // (la misma regla con la que el analizador elige la prueba).
     const normalPorColumna = valoresPorColumna.map(v => esAproxNormalSimple(v));
+    const metodosUsados = new Set();
     const correlaciones = columnas.map((_, i) =>
         columnas.map((__, j) => {
             if (i === j) return 1;
-            const r = (normalPorColumna[i] && normalPorColumna[j])
+            const usarPearson = normalPorColumna[i] && normalPorColumna[j];
+            metodosUsados.add(usarPearson ? 'Pearson' : 'Spearman');
+            const r = usarPearson
                 ? correlacionPearsonSimple(valoresPorColumna[i], valoresPorColumna[j])
                 : correlacionSpearmanSimple(valoresPorColumna[i], valoresPorColumna[j]);
             return Math.round(r * 100) / 100;
@@ -2749,7 +2772,12 @@ function prepararDatosParaGraficos(datos) {
 
     const labels = columnas.slice();
 
+    const metodoCorrelacion = metodosUsados.size === 1
+        ? (metodosUsados.has('Pearson') ? 'Coeficiente: r de Pearson' : 'Coeficiente: ρ de Spearman')
+        : 'Coeficiente por par: Pearson o Spearman según normalidad';
+
     return {
+        metodoCorrelacion,
         distribucion,
         correlaciones,
         cajas: valoresPorColumna,
