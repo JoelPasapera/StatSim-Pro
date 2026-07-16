@@ -683,8 +683,8 @@
                                 <option value="">Seleccionar variable...</option>
                             </select>
                         </div>
+                        <div id="varsExtraCont" style="display:contents"></div>
                         <div style="flex-basis:100%;">
-                            <div id="varsExtraCont" style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.6rem;"></div>
                             <button type="button" id="btnAgregarVariable" class="btn btn-outline" style="padding:0.3rem 0.8rem; margin-top:0.4rem; display:none;">＋ Agregar variable</button>
                             <p id="hintMultiVars" class="help-text" style="display:none; margin:0.3rem 0 0;">Con 3 o más variables, el análisis pasa a ser una <b>matriz de correlaciones</b> entre todas ellas.</p>
                         </div>
@@ -711,8 +711,8 @@
                                     <select id="regDep" class="input"><option value="">Seleccionar variable…</option></select></div>
                                 <div style="flex:1; min-width:14rem;"><label class="label" for="regInd" style="font-weight:normal;">Variable independiente (X — el predictor)</label>
                                     <select id="regInd" class="input"><option value="">Seleccionar variable…</option></select></div>
+                                <div id="regPredsCont" style="display:contents"></div>
                                 <div style="flex-basis:100%;">
-                                    <div id="regPredsCont" style="display:flex; gap:1rem; flex-wrap:wrap; margin-top:0.6rem;"></div>
                                     <button type="button" id="btnAgregarPredictor" class="btn btn-outline" style="padding:0.3rem 0.8rem; margin-top:0.4rem;">＋ Agregar predictor</button>
                                     <div id="regOpciones" style="margin-top:0.5rem; display:none;">
                                         <label style="display:block; font-size:0.9em; margin:0.15rem 0;"><input type="checkbox" id="regInter" style="margin-right:0.4rem;">Incluir interacción entre los dos primeros predictores (moderación, centrada)</label>
@@ -980,7 +980,7 @@
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: app.js?v=19 → app.js?v=19). Eso obliga a navegadores y CDN
+         (ej: app.js?v=20 → app.js?v=20). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1039,7 +1039,7 @@
     <script src="guia-coherencia.js?v=9"></script>
 
     <!-- Código de app.js -->
-    <script src="app.js?v=19"></script>
+    <script src="app.js?v=20"></script>
 </body>
 
 </html>
