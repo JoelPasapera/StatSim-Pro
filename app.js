@@ -705,7 +705,7 @@ function ejecutarAnalisis() {
         // catch externo no los vería y el toast nunca aparecería.
         try {
             limpiarResultados();
-            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; RegresionMultiple._ultimaMultiple = null; RegresionMultiple._ultimaMatrizFlujo = null; }
+            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; RegresionMultiple._ultimaMultiple = null; RegresionMultiple._ultimaMatrizFlujo = null; RegresionMultiple._ultimaAncova = null; RegresionMultiple._ultimaManova = null; }
             if (tipoAnalisis === 'comparacion') {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {
@@ -747,7 +747,7 @@ function _selectExtra(placeholder, modo) {
     const fila = document.createElement('div');
     fila.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:0.4rem;';
     const lab = document.createElement('label');
-    if (modo === 'form') { lab.style.cssText = 'margin:0;'; }
+    if (modo === 'form') { lab.style.cssText = 'margin:0; font-weight:normal;'; }
     else { lab.className = 'label'; lab.style.cssText = 'font-weight:normal; margin:0;'; }
     lab.textContent = placeholder; // se renumera al agregar/quitar
     const btn = document.createElement('button');
@@ -791,7 +791,7 @@ function agregarVariableExtra() {
 function agregarPredictorExtra() {
     const cont = document.getElementById('regPredsCont');
     if (!cont || cont.children.length >= 6) return;
-    cont.appendChild(_selectExtra('Predictor adicional…', 'flex'));
+    cont.appendChild(_selectExtra('Predictor adicional…', 'form'));
     _renumerarExtras(cont);
     actualizarTituloRegresion();
 }
@@ -1211,6 +1211,12 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
                     ${InterpretacionesEstadisticas.generarInterpretacionNormalidad(var1, var2, resultado)}
                 </p>
             </div>
+        </div>
+
+        <div class="card" style="padding:1rem 1.25rem; margin-top:1rem;">
+            <h5 style="margin:0 0 0.4rem;">💡 Los porqués detrás de estos números</h5>
+            <p style="margin:0 0 0.4rem;"><b>¿Por qué media y desviación estándar?</b> La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la <i>distancia típica</i> de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.</p>
+            <p style="margin:0;"><b>¿Por qué la normalidad decide el coeficiente?</b> Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el <i>orden</i>, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.</p>
         </div>
 
     `;
