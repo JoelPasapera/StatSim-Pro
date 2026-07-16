@@ -434,6 +434,7 @@ function configurarAnalizador() {
     const bAP = document.getElementById('btnAgregarPredictor');
     if (bAP) bAP.addEventListener('click', agregarPredictorExtra);
     actualizarTituloRegresion();
+    try { actualizarEtiquetasAnalisis(); } catch (e) {}
 
     document.querySelectorAll('input[name="tipoAnalisis"]').forEach(radio => {
         radio.addEventListener('change', actualizarEtiquetasAnalisis);
@@ -461,6 +462,15 @@ function actualizarEtiquetasAnalisis() {
     } else {
         if (label1) label1.textContent = 'Variable 1';
         if (label2) label2.textContent = 'Variable 2';
+    }
+    const hintTA = document.getElementById('hintTipoAnalisis');
+    if (hintTA) {
+        const textos = {
+            correlacion: 'Finalidad: medir si dos variables cuantitativas se mueven juntas — la dirección (positiva/negativa) y la fuerza de esa asociación. Responde a preguntas como «¿a mayor inteligencia emocional, mayor rendimiento?» (asociación, no causa).',
+            comparacion: 'Finalidad: comprobar si los grupos de una variable categórica difieren en una variable numérica (p. ej., ¿difiere el puntaje entre hombres y mujeres, o entre carreras?).',
+            asociacion: 'Finalidad: evaluar si dos variables categóricas están relacionadas entre sí (p. ej., ¿el sexo se asocia con la elección de carrera?).'
+        };
+        hintTA.textContent = textos[tipo] || '';
     }
 }
 
@@ -730,28 +740,56 @@ function ejecutarAnalisis() {
 // ---- Fusión multivariada: variables y predictores dinámicos ----
 function _selectExtra(placeholder) {
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex; align-items:center; gap:0.3rem;';
+    wrap.style.cssText = 'flex:1; min-width:14rem;';
+    const fila = document.createElement('div');
+    fila.style.cssText = 'display:flex; align-items:center; justify-content:space-between; margin-bottom:0.25rem;';
+    const lab = document.createElement('label');
+    lab.className = 'label';
+    lab.style.cssText = 'font-weight:normal; margin:0;';
+    lab.textContent = placeholder; // se renumera al agregar/quitar
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.textContent = '✕'; btn.title = 'Quitar';
+    btn.setAttribute('aria-label', 'Quitar');
+    btn.style.cssText = 'background:none; border:none; color:#9aa0a6; cursor:pointer; font-size:0.95em; line-height:1; padding:0 0.2rem;';
+    btn.addEventListener('mouseenter', () => { btn.style.color = '#c0392b'; });
+    btn.addEventListener('mouseleave', () => { btn.style.color = '#9aa0a6'; });
+    btn.addEventListener('click', () => {
+        const cont = wrap.parentElement;
+        wrap.remove();
+        if (cont) _renumerarExtras(cont);
+        actualizarTituloRegresion(); actualizarHintMultiVars();
+    });
     const sel = document.createElement('select');
     sel.className = 'input';
-    sel.innerHTML = '<option value="">' + placeholder + '</option>'
+    sel.style.width = '100%';
+    sel.innerHTML = '<option value="">Seleccionar variable…</option>'
         + (window.__numsDisponibles || []).map(c => `<option value="${c}">${c}</option>`).join('');
-    const btn = document.createElement('button');
-    btn.type = 'button'; btn.textContent = '✖';
-    btn.className = 'btn btn-outline'; btn.style.cssText = 'padding:0.2rem 0.5rem;';
-    btn.addEventListener('click', () => { wrap.remove(); actualizarTituloRegresion(); actualizarHintMultiVars(); });
-    wrap.appendChild(sel); wrap.appendChild(btn);
+    fila.appendChild(lab); fila.appendChild(btn);
+    wrap.appendChild(fila); wrap.appendChild(sel);
     return wrap;
+}
+// Renumera los labels de un contenedor de extras según su categoría.
+function _renumerarExtras(cont) {
+    if (!cont) return;
+    const esVars = cont.id === 'varsExtraCont';
+    const base = esVars ? 3 : 2; // Variables extra: 3, 4… · Predictores extra: 2, 3…
+    [...cont.children].forEach((w, i) => {
+        const lab = w.querySelector('label');
+        if (lab) lab.textContent = (esVars ? 'Variable ' : 'Predictor ') + (base + i);
+    });
 }
 function agregarVariableExtra() {
     const cont = document.getElementById('varsExtraCont');
     if (!cont || cont.children.length >= 6) return;
     cont.appendChild(_selectExtra('Variable adicional…'));
+    _renumerarExtras(cont);
     actualizarHintMultiVars();
 }
 function agregarPredictorExtra() {
     const cont = document.getElementById('regPredsCont');
     if (!cont || cont.children.length >= 6) return;
     cont.appendChild(_selectExtra('Predictor adicional…'));
+    _renumerarExtras(cont);
     actualizarTituloRegresion();
 }
 function _variablesExtra() {
