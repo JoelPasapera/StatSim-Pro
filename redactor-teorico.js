@@ -420,6 +420,10 @@ const RedactorTeorico = {
             if (typeof IAAsistente === 'undefined') throw new Error('El asistente de IA no está cargado.');
             const vars = await IAAsistente.extraerVariables(problema);
             if (caja) caja.value = vars.map(v => `${v.nombre} — ${v.definicion}`).join('\n');
+            const hintIns = document.getElementById('redHintInstrumento');
+            if (!hintIns && caja && caja.parentElement) {
+                caja.insertAdjacentHTML('afterend', '<p id="redHintInstrumento" class="help-text" style="margin:0.3rem 0 0;font-size:0.85em;">💡 Opcional pero recomendado: añade al final de cada línea « — Instrumento: [nombre del test o inventario]». El redactor lo usará para <b>delimitar el modelo teórico</b> que adopta tu investigación (p. ej., habilidad vs. rasgo) anclándolo a cómo medirás la variable.</p>');
+            }
             if (estado) estado.textContent = `✓ ${vars.length} variable(s) identificada(s). Revísalas y edítalas a tu criterio.`;
         } catch (e) {
             if (estado) estado.textContent = '❌ ' + (e.message || 'No se pudieron identificar las variables.');
@@ -443,7 +447,10 @@ const RedactorTeorico = {
         const t = (document.getElementById('redVariables') || {}).value || '';
         return t.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
             const [nombre, ...resto] = l.split('—');
-            return { nombre: (nombre || '').trim(), definicion: resto.join('—').trim() };
+            let definicion = resto.join('—').trim(), instrumento = '';
+            const mi = definicion.match(/\s*[—-]\s*Instrumento\s*:\s*(.+)$/i);
+            if (mi) { instrumento = mi[1].trim(); definicion = definicion.slice(0, mi.index).trim(); }
+            return { nombre: (nombre || '').trim(), definicion, instrumento };
         }).filter(v => v.nombre);
     },
 
@@ -451,34 +458,48 @@ const RedactorTeorico = {
     // sección larga en varias llamadas con fuentes distintas (más exhaustivo).
     _construirPlanSecciones(variables) {
         const plan = [];
-        plan.push({ titulo: 'Planteamiento del problema', afinidad: '', partes: 1,
-            instrucciones: 'Presenta la magnitud y relevancia del problema (datos epidemiológicos o de '
-                + 'prevalencia SOLO si aparecen en los resúmenes), el contexto, las consecuencias y el vacío '
-                + 'que justifica investigarlo. Cierra con la formulación del problema como pregunta.' });
-        plan.push({ titulo: 'Estado de la cuestión', afinidad: '', partes: 1,
+        plan.push({ titulo: 'Planteamiento del problema', capitulo: 'I', afinidad: '', partes: 1,
+            instrucciones: 'Redacta el planteamiento del problema: describe el fenómeno (con cifras de las fuentes '
+                + 'solo si aparecen en los resúmenes), el contexto y las consecuencias. REGLA DE COHERENCIA DEL '
+                + 'VACÍO: como la investigación es de tipo correlacional, el vacío que identifiques DEBE ser '
+                + 'coherente con esa pregunta — controversia o desacuerdo teórico sobre la relación (o independencia) '
+                + 'entre los constructos, hallazgos inconsistentes entre estudios previos, o ausencia de evidencia '
+                + 'sobre esa relación en la población y contexto del estudio. PROHIBIDO justificar el estudio por '
+                + 'falta de datos de prevalencia o epidemiológicos: ese es un vacío descriptivo de salud pública, '
+                + 'discordante con una pregunta correlacional. Cierra formulando la pregunta general en forma '
+                + 'correlacional (¿Existe relación entre X e Y en [población]?).' });
+        plan.push({ titulo: 'Justificación', capitulo: 'I', afinidad: '', partes: 1,
+            instrucciones: 'Redacta la justificación del estudio en sus formas pertinentes (teórica, práctica, '
+                + 'metodológica y/o social), cada argumento sustentado con citas de las fuentes.' });
+
+        plan.push({ titulo: 'Estado de la cuestión', capitulo: 'II', afinidad: '', partes: 1,
             instrucciones: 'Sintetiza qué se sabe actualmente sobre el tema, ORGANIZADO POR CONCEPTOS (no '
                 + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos.' });
-        plan.push({ titulo: 'Antecedentes', afinidad: '', partes: 2,
+        plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 2,
             instrucciones: 'Presenta los estudios previos UNO POR UNO en párrafos: para cada estudio citado '
                 + 'indica autores y año (cita narrativa), objetivo, muestra/contexto, y hallazgos principales. '
                 + 'Cubre TODOS los estudios de la lista de fuentes proporcionada.' });
         for (const v of variables) {
-            plan.push({ titulo: `Bases teóricas: ${v.nombre}`, afinidad: v.nombre + ' ' + v.definicion, partes: 1,
+            plan.push({ titulo: `Bases teóricas: ${v.nombre}`, capitulo: 'II', afinidad: v.nombre + ' ' + v.definicion, partes: 1,
                 instrucciones: `Desarrolla con profundidad la variable «${v.nombre}»: definiciones de distintos `
-                    + 'autores (cada una con su cita), evolución del concepto, componentes o dimensiones, y su '
-                    + 'importancia. Solo con lo que las fuentes sustenten.' });
+                    + `autores (cada una con su cita), evolución del concepto y componentes o dimensiones. `
+                    + `DELIMITACIÓN CONCEPTUAL OBLIGATORIA: si en las fuentes coexisten aproximaciones u `
+                    + `operacionalizaciones rivales del constructo, preséntalas Y declara explícitamente cuál `
+                    + `adopta esta investigación, justificando la elección`
+                    + (v.instrumento ? ` por su correspondencia con el instrumento previsto («${v.instrumento}»)` : ` por su correspondencia con el instrumento de medición que la operacionalizará`)
+                    + `; mantén esa adopción de forma consistente en el resto del texto.` });
         }
         for (const v of variables) {
-            plan.push({ titulo: `Modelos teóricos de ${v.nombre}`, afinidad: v.nombre + ' modelo teoría enfoque', partes: 1,
+            plan.push({ titulo: `Modelos teóricos de ${v.nombre}`, capitulo: 'II', afinidad: v.nombre + ' modelo teoría enfoque', partes: 1,
                 instrucciones: `Expón los modelos o teorías que explican «${v.nombre}» SEGÚN LAS FUENTES: nombre `
-                    + 'del modelo/teoría, autores que lo emplean o citan, y sus postulados centrales. Si las '
-                    + 'fuentes mencionan pocos modelos, desarróllalos con detalle en lugar de inventar otros.' });
+                    + `del modelo, autores (con cita) y postulados centrales; señala convergencias y diferencias. `
+                    + `Si los modelos son rivales o parten de perspectivas opuestas, CIERRA declarando cuál adopta `
+                    + `esta investigación y por qué`
+                    + (v.instrumento ? ` (el instrumento previsto, «${v.instrumento}», operacionaliza esa perspectiva)` : ` (anclando la elección al instrumento de medición previsto)`)
+                    + `.` });
         }
-        plan.push({ titulo: 'Justificación', afinidad: '', partes: 1,
-            instrucciones: 'Redacta la justificación del estudio en sus formas pertinentes (teórica, práctica, '
-                + 'metodológica y/o social), cada argumento sustentado con citas de las fuentes.' });
-        plan.push({ titulo: 'Definición conceptual de las variables', afinidad: variables.map(v => v.nombre).join(' '), partes: 1,
-            instrucciones: 'Para CADA variable de estudio, presenta su definición conceptual formal con la cita '
+                plan.push({ titulo: 'Definición conceptual de las variables', capitulo: 'II', afinidad: variables.map(v => v.nombre).join(' '), partes: 1,
+            instrucciones: 'Para CADA variable de estudio, presenta su definición conceptual formal con la cita  La definición final de cada variable debe corresponder EXACTAMENTE al modelo o aproximación adoptado en las bases teóricas (coherencia de delimitación conceptual).'
                 + 'del autor correspondiente (una definición principal y, si las fuentes lo permiten, una alternativa).' });
         return plan;
     },
@@ -614,7 +635,7 @@ const RedactorTeorico = {
         const secciones = [];
         for (const sec of plan) {
             const partes = resultados.filter(r => r && r.seccion === sec.titulo).map(r => this._limpiarTexto(r.texto));
-            secciones.push({ titulo: sec.titulo, texto: partes.join('\n\n') });
+            secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n') });
         }
         const textoCompleto = secciones.map(s => s.texto).join('\n\n');
         const citadas = this._fuentesCitadas(textoCompleto, fuentes);
@@ -624,7 +645,15 @@ const RedactorTeorico = {
         const palabras = textoCompleto.split(/\s+/).filter(Boolean).length;
         if (res) {
             res.style.display = '';
-            res.textContent = secciones.map(s => s.titulo.toUpperCase() + '\n\n' + s.texto).join('\n\n\n');
+            let capAct = '';
+            res.textContent = secciones.map(s => {
+                let enc = '';
+                if ((s.capitulo || 'II') !== capAct) {
+                    capAct = s.capitulo || 'II';
+                    enc = (capAct === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO') + '\n\n';
+                }
+                return enc + s.titulo.toUpperCase() + '\n\n' + s.texto;
+            }).join('\n\n\n');
         }
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
@@ -700,9 +729,15 @@ const RedactorTeorico = {
         const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const parrafos = txt => String(txt || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
             .map(p => `<p style="text-indent:0.5in; margin:0 0 0pt;">${esc(p).replace(/\n/g, '<br>')}</p>`).join('\n');
-        const cuerpo = doc.secciones.map(s =>
-            `<h1 style="text-align:center; font-size:12pt; margin:24pt 0 12pt;">${esc(s.titulo)}</h1>\n${parrafos(s.texto)}`
-        ).join('\n');
+        let capW = '';
+        const cuerpo = doc.secciones.map(s => {
+            let enc = '';
+            if ((s.capitulo || 'II') !== capW) {
+                capW = s.capitulo || 'II';
+                enc = `<h1 style="text-align:center; font-size:14pt; margin:24pt 0 12pt;">${capW === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO'}</h1>\n`;
+            }
+            return enc + `<h1 style="text-align:center; font-size:12pt; margin:24pt 0 12pt;">${esc(s.titulo)}</h1>\n${parrafos(s.texto)}`;
+        }).join('\n');
         // Referencias: solo las citadas, orden alfabético, sangría francesa.
         const refs = doc.citadas.slice().sort((a, b) => String(a.ref).localeCompare(String(b.ref), 'es'))
             .map(f => `<p style="margin:0 0 0pt; margin-left:0.5in; text-indent:-0.5in;">${String(f.ref)
@@ -770,10 +805,11 @@ const RedactorTeorico = {
             if (typeof IAAsistente === 'undefined') throw new Error('El asistente de IA no está cargado.');
             const texto = await IAAsistente.redactarSeccion({
                 titulo: 'Planteamiento del problema',
-                instrucciones: 'Presenta la magnitud y relevancia del problema (con datos epidemiológicos o '
-                    + 'de prevalencia SOLO si aparecen en los resúmenes de las fuentes), el contexto en que '
-                    + 'ocurre, sus consecuencias y el vacío que justifica investigarlo. Cierra con la '
-                    + 'formulación del problema en forma de pregunta.',
+                instrucciones: 'Redacta el planteamiento del problema: fenómeno, contexto y consecuencias '
+                    + '(cifras solo si están en los resúmenes). El vacío identificado debe ser coherente con '
+                    + 'un estudio correlacional: controversia teórica o inconsistencia de hallazgos sobre la '
+                    + 'relación entre las variables — NUNCA falta de datos de prevalencia (vacío descriptivo '
+                    + 'ajeno a la pregunta). Cierra con la pregunta de investigación en forma correlacional.',
                 problema,
                 variablesTexto,
                 fuentes,
