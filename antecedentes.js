@@ -189,13 +189,53 @@ const Antecedentes = {
         const tareas = [
             this._fetchJSON(this.urlSemantic(query, f)).then(d => (d.data || []).map(x => this.normSemantic(x))),
             this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x))),
-            this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x)))
+            this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x))),
+            this._fetchJSON(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
+                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))
         ];
         const res = await Promise.allSettled(tareas);
         const listas = res.filter(r => r.status === 'fulfilled').map(r => r.value);
         const caidas = res.filter(r => r.status === 'rejected').length;
         if (!listas.length) throw new Error('ninguna fuente respondió');
         return { obras: this.fusionar(listas, query, f.idioma), fuentesOK: listas.length, caidas };
+    },
+
+    // ---- OMS · IRIS (repositorio institucional, DSpace 7 REST) ----
+    // Guías, informes técnicos y publicaciones oficiales de la OMS — citables
+    // como (Organización Mundial de la Salud, año). Endpoint estándar DSpace 7:
+    // /server/api/discover/search/objects?query=&page=&size=  (JSON HAL).
+    urlIRIS(query, f = {}) {
+        const p = new URLSearchParams({ query: String(query).trim(), page: '0',
+            size: String(this.CONFIG.POR_FUENTE), dsoType: 'item', sort: 'score,DESC' });
+        return `https://iris.who.int/server/api/discover/search/objects?${p.toString()}`;
+    },
+    normIRIS(o) {
+        // o = indexableObject de DSpace: { uuid, name, metadata: { 'dc.x': [{value}] } }
+        const md = (o && o.metadata) || {};
+        const uno = c => (md[c] && md[c][0] && md[c][0].value) || '';
+        const todos = c => (md[c] || []).map(x => x.value).filter(Boolean);
+        const anioTxt = uno('dc.date.issued');
+        const anio = (anioTxt.match(/\d{4}/) || [])[0] || 's. f.';
+        const autores = todos('dc.contributor.author');
+        const uri = uno('dc.identifier.uri');
+        return {
+            titulo: uno('dc.title') || o.name || '(sin título)',
+            autores: autores.length ? autores : ['Organización Mundial de la Salud'],
+            anio, doi: (uno('dc.identifier.doi') || '').replace(/^https?:\/\/doi\.org\//, ''),
+            fuente: 'OMS · IRIS', volumen: '', numero: '', paginas: '',
+            citas: 0, idioma: uno('dc.language.iso') || '',
+            resumen: uno('dc.description.abstract'),
+            url: uri || (o.uuid ? `https://iris.who.int/items/${o.uuid}` : ''),
+            fuentesAPI: ['OMS/IRIS']
+        };
+    },
+    // Extrae los items del sobre HAL de DSpace con tolerancia a variantes.
+    _extraerIRIS(d) {
+        const objs = (d && d._embedded && d._embedded.searchResult
+            && d._embedded.searchResult._embedded
+            && d._embedded.searchResult._embedded.objects) || [];
+        return objs.map(x => (x && x._embedded && x._embedded.indexableObject) || null)
+            .filter(o => o && (!o.type || /item/i.test(o.type)));
     },
 
     urlScholar(query, f = {}) {
