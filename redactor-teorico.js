@@ -475,7 +475,7 @@ const RedactorTeorico = {
         plan.push({ titulo: 'Estado de la cuestión', capitulo: 'II', afinidad: '', partes: 1,
             instrucciones: 'Sintetiza qué se sabe actualmente sobre el tema, ORGANIZADO POR CONCEPTOS (no '
                 + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos.' });
-        plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 2,
+        plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 4,
             instrucciones: 'Presenta los estudios previos UNO POR UNO en párrafos: para cada estudio citado '
                 + 'indica autores y año (cita narrativa), objetivo, muestra/contexto, y hallazgos principales. '
                 + 'Cubre TODOS los estudios de la lista de fuentes proporcionada.' });
@@ -506,7 +506,7 @@ const RedactorTeorico = {
 
     // Selección de fuentes por afinidad simple (palabras clave en título+resumen),
     // con relleno rotatorio para repartir las fuentes entre secciones/partes.
-    _seleccionarFuentes(fuentes, afinidad, n = 20, offset = 0) {
+    _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0) {
         if (fuentes.length <= n) return fuentes.slice();
         const claves = this._normTexto(afinidad).split(/\W+/).filter(w => w.length > 3);
         const puntuadas = fuentes.map((f, i) => {
@@ -549,10 +549,10 @@ const RedactorTeorico = {
         const tareas = [];
         let off = 0;
         for (const sec of plan) {
-            const porParte = Math.min(20, Math.max(8, Math.ceil(fuentes.length / sec.partes)));
+            const porParte = Math.min(32, Math.max(8, Math.ceil(fuentes.length / sec.partes)));
             for (let p = 0; p < sec.partes; p++) {
                 const fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off);
-                off += 7; // desplaza el relleno para variar entre tareas
+                off += porParte; // desplaza una ventana completa: cada parte trae fuentes distintas
                 tareas.push({
                     seccion: sec.titulo,
                     titulo: sec.partes > 1 ? `${sec.titulo} (parte ${p + 1} de ${sec.partes})` : sec.titulo,
