@@ -514,13 +514,23 @@ const RedactorTeorico = {
         return (f.autores || []).some(a => /Organizaci[oó]n Mundial de la Salud|World Health Organization|Organizaci[oó]n Panamericana|Pan American Health/i.test(String(a)));
     },
 
-    // Antepone las fuentes OMS al subconjunto de una tarea (convención: los
-    // antecedentes internacionales abren la sección). Mantiene el tamaño n.
-    _priorizarOMS(fsel, fuentes, maxOMS, n) {
+    // ¿Es una fuente de la ONU (no sanitaria)? Biblioteca Digital o autoría institucional.
+    _esONU(f) {
+        if (!f || this._esOMS(f)) return false; // la OMS tiene su propia prioridad
+        if (/ONU|UNDL|Biblioteca Digital/i.test(String(f.fuente || ''))) return true;
+        if ((f.fuentesAPI || []).some(x => /ONU|UNDL/i.test(String(x)))) return true;
+        return (f.autores || []).some(a => /Naciones Unidas|United Nations|UNICEF|UNESCO|PNUD|UNDP|CEPAL/i.test(String(a)));
+    },
+
+    // Antepone las fuentes internacionales al subconjunto de una tarea, en el
+    // orden convencional: OMS/OPS primero, después ONU. Mantiene el tamaño n.
+    _priorizarOMS(fsel, fuentes, maxOMS, n, maxONU = Math.ceil(maxOMS / 2)) {
         const oms = fuentes.filter(f => this._esOMS(f)).slice(0, maxOMS);
-        if (!oms.length) return { fsel, oms: 0 };
-        const resto = fsel.filter(f => !oms.includes(f));
-        return { fsel: [...oms, ...resto].slice(0, Math.max(n, oms.length)), oms: oms.length };
+        const onu = fuentes.filter(f => this._esONU(f)).slice(0, maxONU);
+        const cabeza = [...oms, ...onu];
+        if (!cabeza.length) return { fsel, oms: 0, onu: 0 };
+        const resto = fsel.filter(f => !cabeza.includes(f));
+        return { fsel: [...cabeza, ...resto].slice(0, Math.max(n, cabeza.length)), oms: oms.length, onu: onu.length };
     },
 
     _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0) {
@@ -574,15 +584,16 @@ const RedactorTeorico = {
                 if (sec.titulo === 'Antecedentes' && p === 0) {
                     const pr = this._priorizarOMS(fsel, fuentes, 8, porParte);
                     fsel = pr.fsel;
-                    if (pr.oms) notaOMS = ' CONVENCIÓN DE ORDEN OBLIGATORIA: abre la sección con los antecedentes'
-                        + ' internacionales de organismos oficiales (OMS/OPS) — son las primeras fuentes de tu'
-                        + ' lista — y solo después continúa con los demás estudios (internacional → nacional → local).';
+                    if (pr.oms || pr.onu) notaOMS = ' CONVENCIÓN DE ORDEN OBLIGATORIA: abre la sección con los antecedentes'
+                        + ' internacionales de organismos oficiales — son las primeras fuentes de tu lista, en este'
+                        + ' orden: primero OMS/OPS, después ONU y sus agencias — y solo entonces continúa con los'
+                        + ' demás estudios (internacional → nacional → local).';
                 } else if (sec.titulo === 'Planteamiento del problema') {
                     const pr = this._priorizarOMS(fsel, fuentes, 4, porParte);
                     fsel = pr.fsel;
-                    if (pr.oms) notaOMS = ' Al abrir el planteamiento, usa los informes de organismos internacionales'
-                        + ' (las primeras fuentes de tu lista, OMS/OPS) para dimensionar el contexto global del'
-                        + ' fenómeno — como marco de apertura, sin convertir la prevalencia en el vacío del estudio.';
+                    if (pr.oms || pr.onu) notaOMS = ' Al abrir el planteamiento, usa los informes de organismos internacionales'
+                        + ' (las primeras fuentes de tu lista: OMS/OPS primero, luego ONU) para dimensionar el contexto'
+                        + ' global del fenómeno — como marco de apertura, sin convertir la prevalencia en el vacío del estudio.';
                 }
                 tareas.push({
                     seccion: sec.titulo,
@@ -687,7 +698,7 @@ const RedactorTeorico = {
             }).join('\n\n\n');
         }
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
-                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS) e importa la matriz actualizada.')
+                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y la Biblioteca Digital de la ONU) e importa la matriz actualizada.')
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
             + (conError ? ` (${conError} parte(s) con error)` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
