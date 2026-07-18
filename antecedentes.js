@@ -191,6 +191,8 @@ const Antecedentes = {
             this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x))),
             this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x))),
             this._fetchJSON(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
+                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde)),
+            this._fetchJSON(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
                 .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))
         ];
         const res = await Promise.allSettled(tareas);
@@ -237,6 +239,40 @@ const Antecedentes = {
         return objs.map(x => (x && x._embedded && x._embedded.indexableObject) || null)
             .filter(o => o && (!o.type || /item/i.test(o.type)));
     },
+
+    // ---- ONU · Biblioteca Digital (digitallibrary.un.org, Invenio) ----
+    // Documentos oficiales, informes y publicaciones insignia de Naciones Unidas.
+    // API JSON documentada: /search?p=&of=recjson&ot=campos&rg=N
+    urlUNDL(query, f = {}) {
+        const p = new URLSearchParams({ p: String(query).trim(), of: 'recjson',
+            ot: 'recid,title,authors,abstract,creation_date,imprint,publication_info',
+            rg: String(this.CONFIG.POR_FUENTE) });
+        return `https://digitallibrary.un.org/search?${p.toString()}`;
+    },
+    normUNDL(o) {
+        // recjson de Invenio: los campos pueden ser string u objeto según el registro.
+        const texto = x => {
+            if (!x) return '';
+            if (typeof x === 'string') return x;
+            if (Array.isArray(x)) return texto(x[0]);
+            return x.title || x.summary || x.a || x.value || '';
+        };
+        const titulo = texto(o.title) || '(sin título)';
+        const resumen = texto(o.abstract);
+        const autores = (Array.isArray(o.authors) ? o.authors : [])
+            .map(a => (a && (a.full_name || a.last_name)) || (typeof a === 'string' ? a : ''))
+            .filter(Boolean);
+        const crudoFecha = [texto(o.imprint && o.imprint.date), o.creation_date, texto(o.publication_info)].join(' ');
+        const anio = (String(crudoFecha).match(/(19|20)\d{2}/) || [])[0] || 's. f.';
+        return {
+            titulo, autores: autores.length ? autores : ['Naciones Unidas'],
+            anio, doi: '', fuente: 'ONU · Biblioteca Digital', volumen: '', numero: '', paginas: '',
+            citas: 0, idioma: '', resumen,
+            url: o.recid ? `https://digitallibrary.un.org/record/${o.recid}` : '',
+            fuentesAPI: ['ONU/UNDL']
+        };
+    },
+    _extraerUNDL(d) { return Array.isArray(d) ? d.filter(x => x && (x.recid || x.title)) : []; },
 
     urlScholar(query, f = {}) {
         const p = new URLSearchParams({ q: query, hl: 'es' });
