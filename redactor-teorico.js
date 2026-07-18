@@ -506,6 +506,23 @@ const RedactorTeorico = {
 
     // Selección de fuentes por afinidad simple (palabras clave en título+resumen),
     // con relleno rotatorio para repartir las fuentes entre secciones/partes.
+    // ¿Es una fuente de la OMS/organismo internacional de salud? (IRIS o autoría institucional)
+    _esOMS(f) {
+        if (!f) return false;
+        if (/OMS|IRIS/i.test(String(f.fuente || ''))) return true;
+        if ((f.fuentesAPI || []).some(x => /OMS|IRIS|WHO/i.test(String(x)))) return true;
+        return (f.autores || []).some(a => /Organizaci[oó]n Mundial de la Salud|World Health Organization|Organizaci[oó]n Panamericana|Pan American Health/i.test(String(a)));
+    },
+
+    // Antepone las fuentes OMS al subconjunto de una tarea (convención: los
+    // antecedentes internacionales abren la sección). Mantiene el tamaño n.
+    _priorizarOMS(fsel, fuentes, maxOMS, n) {
+        const oms = fuentes.filter(f => this._esOMS(f)).slice(0, maxOMS);
+        if (!oms.length) return { fsel, oms: 0 };
+        const resto = fsel.filter(f => !oms.includes(f));
+        return { fsel: [...oms, ...resto].slice(0, Math.max(n, oms.length)), oms: oms.length };
+    },
+
     _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0) {
         if (fuentes.length <= n) return fuentes.slice();
         const claves = this._normTexto(afinidad).split(/\W+/).filter(w => w.length > 3);
@@ -551,12 +568,26 @@ const RedactorTeorico = {
         for (const sec of plan) {
             const porParte = Math.min(32, Math.max(8, Math.ceil(fuentes.length / sec.partes)));
             for (let p = 0; p < sec.partes; p++) {
-                const fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off);
+                let fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off);
                 off += porParte; // desplaza una ventana completa: cada parte trae fuentes distintas
+                let notaOMS = '';
+                if (sec.titulo === 'Antecedentes' && p === 0) {
+                    const pr = this._priorizarOMS(fsel, fuentes, 8, porParte);
+                    fsel = pr.fsel;
+                    if (pr.oms) notaOMS = ' CONVENCIÓN DE ORDEN OBLIGATORIA: abre la sección con los antecedentes'
+                        + ' internacionales de organismos oficiales (OMS/OPS) — son las primeras fuentes de tu'
+                        + ' lista — y solo después continúa con los demás estudios (internacional → nacional → local).';
+                } else if (sec.titulo === 'Planteamiento del problema') {
+                    const pr = this._priorizarOMS(fsel, fuentes, 4, porParte);
+                    fsel = pr.fsel;
+                    if (pr.oms) notaOMS = ' Al abrir el planteamiento, usa los informes de organismos internacionales'
+                        + ' (las primeras fuentes de tu lista, OMS/OPS) para dimensionar el contexto global del'
+                        + ' fenómeno — como marco de apertura, sin convertir la prevalencia en el vacío del estudio.';
+                }
                 tareas.push({
                     seccion: sec.titulo,
                     titulo: sec.partes > 1 ? `${sec.titulo} (parte ${p + 1} de ${sec.partes})` : sec.titulo,
-                    instrucciones: sec.instrucciones + (sec.partes > 1
+                    instrucciones: sec.instrucciones + notaOMS + (sec.partes > 1
                         ? ` Esta es la PARTE ${p + 1} de ${sec.partes}: cubre únicamente las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales.` : ''),
                     fuentes: fsel
                 });
@@ -656,6 +687,7 @@ const RedactorTeorico = {
             }).join('\n\n\n');
         }
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
+                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS) e importa la matriz actualizada.')
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
             + (conError ? ` (${conError} parte(s) con error)` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
