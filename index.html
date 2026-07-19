@@ -89,77 +89,8 @@
         <section id="simulador" class="section active">
             <div class="container">
                 <div class="section-header">
-                    <h2 class="section-title">Simulador de Estudios</h2>
+                    <h2 class="section-title">Generador de Base de Datos</h2>
                     <p class="section-subtitle">Crea bases de datos sintéticas y reproducibles para practicar sin arriesgar datos reales: define el tamaño muestral, fija una semilla para regenerar exactamente el mismo conjunto, elige las propiedades estadísticas de tus variables y expórtalas — o pásalas directo al Analizador con un clic</p>
-                </div>
-
-                <style>
-                    #simulador .sim-stepper { display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:center; margin:0 0 1.2rem; }
-                    #simulador .sim-paso {
-                        display:inline-flex; align-items:center; gap:0.45rem; padding:0.45rem 1rem;
-                        border-radius:999px; border:1px solid var(--color-border,#e0e0e0); background:#fff;
-                        font-size:0.92rem; font-weight:600; color:#444; text-decoration:none;
-                        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-                    }
-                    #simulador .sim-paso:hover { transform:translateY(-2px); border-color:#2E5BBA; color:#2E5BBA; box-shadow:0 8px 18px rgba(46,91,186,0.15); }
-                    #simulador .sim-paso b { color:#2E5BBA; }
-                    #simulador .sim-presets { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:0.9rem; margin:0 0 1.4rem; }
-                    #simulador .sim-preset {
-                        text-align:left; padding:1rem 1.1rem; border-radius:1rem; cursor:pointer;
-                        border:1px solid var(--color-border,#e0e0e0);
-                        background:linear-gradient(160deg, rgba(46,91,186,0.05), transparent 60%);
-                        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-                    }
-                    #simulador .sim-preset:hover { transform:translateY(-3px); border-color:#2E5BBA; box-shadow:0 10px 22px rgba(46,91,186,0.16); }
-                    #simulador .sim-preset h4 { margin:0 0 0.25rem; font-size:1rem; }
-                    #simulador .sim-preset p { margin:0; font-size:0.85rem; color:var(--color-text-soft,#666); line-height:1.45; }
-                    #simulador details.sim-avanzadas { margin-top:0.4rem; }
-                    #simulador details.sim-avanzadas > summary { cursor:pointer; font-weight:600; color:#2E5BBA; padding:0.3rem 0; list-style-position:inside; }
-                    #simulador details.sim-avanzadas[open] > summary { margin-bottom:0.4rem; }
-                    /* Identidad por paso: acento lateral y cabecera con vida */
-                    #simulador .card { border-left:4px solid transparent; transition: box-shadow .2s ease; }
-                    #simulador .card:has(#pasoDisena), #simulador .card:has(.card-title:not([id])) { border-left-color:#2E5BBA22; }
-                    #simulador .card:has([id="pasoDisena"]) { border-left-color:#2E5BBA; }
-                    #simulador .card:has([id="pasoRelaciona"]) { border-left-color:#7C4DFF; }
-                    #simulador .card:hover { box-shadow:0 8px 24px rgba(20,40,90,0.08); }
-                    #simulador tbody tr { transition: background .12s ease; }
-                    #simulador tbody tr:hover { background: rgba(46,91,186,0.045); }
-                    /* Banda de logros tras generar */
-                    #simulador .sim-logros {
-                        margin:1.2rem 0 0.9rem; padding:1rem 1.2rem; border-radius:1rem;
-                        border:1px solid #cfe0ff; background:linear-gradient(160deg, rgba(46,91,186,0.08), rgba(124,77,255,0.04));
-                        box-shadow:0 8px 24px rgba(46,91,186,0.10);
-                    }
-                    #simulador .sim-logros h4 { margin:0 0 0.5rem; font-size:1.02rem; }
-                    #simulador .sim-kpis { display:flex; flex-wrap:wrap; gap:0.55rem; }
-                    #simulador .sim-kpi {
-                        display:inline-flex; align-items:center; gap:0.5rem; padding:0.4rem 0.85rem;
-                        border-radius:999px; background:#fff; border:1px solid var(--color-border,#e0e0e0);
-                        font-size:0.88rem; font-weight:600;
-                    }
-                    #simulador .sim-kpi svg { display:block; }
-                    #simulador .sim-kpi .ok { color:#1e9e5a; } #simulador .sim-kpi .casi { color:#c98a00; }
-                </style>
-
-                <nav class="sim-stepper" aria-label="Pasos del simulador">
-                    <a class="sim-paso" href="#pasoDisena"><b>①</b> Diseña tu estudio</a>
-                    <a class="sim-paso" href="#pasoRelaciona"><b>②</b> Define las relaciones</a>
-                    <a class="sim-paso" href="#pasoGenera"><b>③</b> Genera y revisa</a>
-                </nav>
-
-                <div class="sim-presets">
-                    <div class="sim-preset" role="button" tabindex="0" onclick="presetSimulador('correlacional')">
-                        <h4>🎓 Tesis correlacional clásica</h4>
-                        <p>Dos escalas (Inteligencia Emocional y Rendimiento Académico), n = 200, semilla fija y una correlación objetivo de r = .35 lista para ajustar.</p>
-                    </div>
-                    <div class="sim-preset" role="button" tabindex="0" onclick="presetSimulador('grupos')">
-                        <h4>⚖️ Comparación de grupos</h4>
-                        <p>Una escala (Ansiedad Académica) con n = 160 y semilla fija — añade tu variable de grupo en Sociodemográficos y define la diferencia en el paso ②.</p>
-                    </div>
-                    <div class="sim-preset" role="button" tabindex="0" onclick="presetSimulador('completo')">
-                        <h4>🧪 Estudio completo</h4>
-                        <p>Las dos escalas correlacionadas del preset clásico con n = 250 — el punto de partida para practicar todo el flujo, de la matriz al Word.</p>
-                    </div>
                 </div>
 
                 <!-- Configuración General -->
@@ -171,9 +102,6 @@
                             <input type="number" id="tamanoMuestra" class="input" min="2" max="100000" value="100" placeholder="Ej: 100">
                             <span class="help-text">Número de participantes/unidades de análisis</span>
                         </div>
-                        <details class="sim-avanzadas form-group" style="grid-column:1/-1;">
-                          <summary>⚙️ Opciones avanzadas (semilla y percentiles)</summary>
-                          <div class="form-row" style="margin-top:0.3rem;">
                         <div class="form-group">
                             <label for="semilla">Semilla (opcional)</label>
                             <input type="number" id="semilla" class="input" step="1" placeholder="Ej: 42">
@@ -186,15 +114,13 @@
                             </label>
                             <span class="help-text">Añade una columna PC_ por escala: posición relativa (0–100) de cada persona en la muestra. Útil para baremos; desactívalo si no lo necesitas.</span>
                         </div>
-                          </div>
-                        </details>
                     </div>
                 </div>
 
                 <!-- Tabla I: Pruebas Aplicadas -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title" id="pasoDisena">① Diseña · Instrumentos y escalas</h3>
+                        <h3 class="card-title">I. Pruebas Aplicadas</h3>
                         <div style="display: flex; gap: 10px;">
                             <button id="btnImportarPruebas" class="btn btn-outline"
                                 title="Importar configuración desde CSV">
@@ -409,7 +335,7 @@
                 <!-- Tabla II: Datos Sociodemográficos -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">① Diseña · Datos sociodemográficos</h3>
+                        <h3 class="card-title">II. Datos Sociodemográficos</h3>
                         <div style="display: flex; gap: 10px;">
                             <button id="btnImportarSocio" class="btn btn-outline"
                                 title="Importar configuración desde CSV">
@@ -520,8 +446,7 @@
                 <!-- Tabla III: Correlaciones objetivo (opcional) -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title" id="pasoRelaciona">② Relaciona · Correlaciones objetivo <span style="font-weight:normal;font-size:0.85em;color:#888;">(opcional)</span></h3>
-                    <p class="help-text" style="margin:0.2rem 0 0.4rem;">Pide la r que tu estudio necesita y el generador ajustará los datos hasta acercarse a ella — luego compárala con la que reporte el Analizador.</p>
+                        <h3 class="card-title">III. Correlaciones Objetivo (opcional)</h3>
                         <button id="btnAgregarCorrelacion" type="button" class="btn btn-secondary">
                             <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
                                 <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -553,8 +478,7 @@
                 <!-- Tabla IV: Diferencias por grupo (opcional) -->
                 <div class="card">
                     <div class="card-header">
-                        <h3 class="card-title">② Relaciona · Diferencias por grupo <span style="font-weight:normal;font-size:0.85em;color:#888;">(opcional)</span></h3>
-                    <p class="help-text" style="margin:0.2rem 0 0.4rem;">Define qué grupos deben diferir y cuánto: perfecto para practicar t, ANOVA y tamaños del efecto con un resultado conocido de antemano.</p>
+                        <h3 class="card-title">IV. Diferencias por Grupo (opcional)</h3>
                         <button id="btnAgregarDiferencia" type="button" class="btn btn-secondary">
                             <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
                                 <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -584,14 +508,13 @@
 
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
-                    <span id="pasoGenera"></span><button id="btnGenerar" class="btn btn-primary btn-lg" style="scroll-margin-top:5rem;" >
+                    <button id="btnGenerar" class="btn btn-primary btn-lg">
                         <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
                             <path d="M10 3V17M10 17L6 13M10 17L14 13" stroke="currentColor" stroke-width="2"
                                 stroke-linecap="round" stroke-linejoin="round" />
                         </svg>
                         Generar Base de Datos
                     </button>
-                    <button id="btnAnalizarDatos" class="btn btn-primary" disabled title="Genera los datos primero">📊 Analizar estos datos</button>
                     <button id="btnDescargarCSV" class="btn btn-outline" disabled title="Separador ; y decimales con coma — abre en columnas en Excel en español">
                         <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
                             <path
@@ -981,6 +904,8 @@
                 </div>
             </div>
         </section>
+    </main>
+
     <!-- Sección Contacto -->
     <style>
         /* ---- Rediseño de la sección Contacto ---- */
@@ -992,9 +917,8 @@
         }
         #contacto .perfil-foto {
             width: 148px; height: 148px; border-radius: 50%; object-fit: cover;
-            border: 4px solid #fff;
-            box-shadow: 0 0 0 3px #2E5BBA, 0 0 0 6px rgba(46,91,186,0.18), 0 8px 22px rgba(20, 40, 90, 0.2);
-            margin-bottom: 1.1rem;
+            border: 4px solid #fff; box-shadow: 0 6px 20px rgba(20, 40, 90, 0.18);
+            margin-bottom: 1rem;
         }
         #contacto .perfil-fallback {
             width: 148px; height: 148px; border-radius: 50%; margin: 0 auto 1rem;
@@ -1027,27 +951,7 @@
             transform: translateY(-2px); box-shadow: 0 8px 18px rgba(20, 40, 90, 0.12);
             border-color: #2E5BBA;
         }
-        #contacto .contact-card .icon {
-            width: 21px; height: 21px; color: #2E5BBA;
-            transition: color 0.15s ease, transform 0.15s ease;
-        }
-        #contacto .contact-card:hover .icon { transform: scale(1.18); }
-        /* Cada chip toma el color de su marca al pasar el ratón */
-        #contacto .contact-card[href*="facebook"]:hover { border-color:#1877F2; box-shadow:0 8px 18px rgba(24,119,242,0.28); }
-        #contacto .contact-card[href*="facebook"]:hover .icon,
-        #contacto .contact-card[href*="facebook"]:hover h3 { color:#1877F2; }
-        #contacto .contact-card[href*="instagram"]:hover { border-color:#E4405F; box-shadow:0 8px 18px rgba(228,64,95,0.28); }
-        #contacto .contact-card[href*="instagram"]:hover .icon,
-        #contacto .contact-card[href*="instagram"]:hover h3 { color:#E4405F; }
-        #contacto .contact-card[href*="youtube"]:hover { border-color:#FF0000; box-shadow:0 8px 18px rgba(255,0,0,0.22); }
-        #contacto .contact-card[href*="youtube"]:hover .icon,
-        #contacto .contact-card[href*="youtube"]:hover h3 { color:#FF0000; }
-        #contacto .contact-card[href*="github"]:hover { border-color:#24292e; box-shadow:0 8px 18px rgba(36,41,46,0.25); }
-        #contacto .contact-card[href*="github"]:hover .icon,
-        #contacto .contact-card[href*="github"]:hover h3 { color:#24292e; }
-        #contacto .contact-card[href*="tiktok"]:hover { border-color:#FE2C55; box-shadow:0 8px 18px rgba(254,44,85,0.26); }
-        #contacto .contact-card[href*="tiktok"]:hover .icon,
-        #contacto .contact-card[href*="tiktok"]:hover h3 { color:#FE2C55; }
+        #contacto .contact-card .icon { width: 21px; height: 21px; color: #2E5BBA; }
         #contacto .contact-card h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
         #contacto .contact-card p { display: none; }
     </style>
@@ -1064,7 +968,7 @@
                 <div class="perfil-fallback">JP</div>
                 <h3 class="perfil-nombre">Joel Pasapera</h3>
                 <p class="perfil-tag">Psicología · Estadística · Divulgación — creador de StatSim Pro</p>
-                <p class="perfil-bio">Me gusta programar y automatizar procesos de análisis de datos — honestamente, me divierte. De esa mezcla de estadística, código y el gusto por crear herramientas útiles nació StatSim Pro: un laboratorio completo donde la estadística no solo se calcula — se entiende. Lo construyo con un estándar doble: rigor publicable y pedagogía exhaustiva, porque una tesis se defiende mejor cuando puedes explicar el porqué de cada número. Si esta herramienta te ahorra noches de lucha con el SPSS o te enseña algo que ningún manual te explicó, ya cumplió su misión.</p>
+                <p class="perfil-bio">StatSim Pro nació como la herramienta para mi propia tesis en psicología y creció hasta convertirse en lo que tienes delante: un laboratorio completo donde la estadística no solo se calcula — se entiende. Lo construyo con un estándar doble: rigor publicable y pedagogía exhaustiva, porque una tesis se defiende mejor cuando puedes explicar el porqué de cada número. Si esta herramienta te ahorra noches de lucha con el SPSS o te enseña algo que ningún manual te explicó, ya cumplió su misión.</p>
             </div>
 
             <div class="contact-grid">
@@ -1102,10 +1006,6 @@
             </div>
         </div>
     </section>
-
-    </main>
-
-
 
     <!-- Footer -->
     <footer class="footer">
@@ -1190,128 +1090,6 @@
 
     <!-- Código de app.js -->
     <script src="app.js?v=24"></script>
-<script>
-    // ---- Tanda A del Simulador: presets de un clic + puente al Analizador ----
-    function presetSimulador(tipo) {
-        try {
-            const set = (el, val) => { if (el) { el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); } };
-            const llenarPrueba = (fila, nombre, dim) => {
-                if (!fila) return;
-                const textos = fila.querySelectorAll('input[type="text"]');
-                set(textos[0], nombre); set(textos[1], dim);
-                const nums = fila.querySelectorAll('input[type="number"]');
-                const base = [20, 50, 10, 0.85]; // ítems, media, DE, α — valores plausibles y editables
-                nums.forEach((inp, i) => { if (i < base.length && !inp.value) set(inp, base[i]); });
-            };
-            set(document.getElementById('tamanoMuestra'), tipo === 'grupos' ? 160 : tipo === 'completo' ? 250 : 200);
-            const av = document.querySelector('#simulador details.sim-avanzadas');
-            if (av) av.open = true;
-            set(document.getElementById('semilla'), 42);
-
-            const body = document.getElementById('bodyPruebas');
-            const filas = () => body ? body.querySelectorAll('.fila-prueba') : [];
-            llenarPrueba(filas()[0], tipo === 'grupos' ? 'Ansiedad Académica' : 'Inteligencia Emocional',
-                                     tipo === 'grupos' ? 'General' : 'General');
-            if (tipo !== 'grupos') {
-                if (filas().length < 2 && typeof agregarFilaPrueba === 'function') agregarFilaPrueba();
-                llenarPrueba(filas()[1], 'Rendimiento Académico', 'Promedio');
-                // Fila de correlación con r = .35 (requiere las 2 variables ya nombradas)
-                if (typeof agregarFilaCorrelacion === 'function') {
-                    const bc = document.getElementById('bodyCorrelaciones');
-                    const antes = bc ? bc.children.length : 0;
-                    agregarFilaCorrelacion();
-                    const fc = bc && bc.children.length > antes ? bc.lastElementChild : null;
-                    if (fc) {
-                        const sels = fc.querySelectorAll('select');
-                        if (sels[0] && sels[0].options.length > 1) sels[0].selectedIndex = 1;
-                        if (sels[1] && sels[1].options.length > 2) sels[1].selectedIndex = 2;
-                        set(fc.querySelector('input[type="number"]'), 0.35);
-                    }
-                }
-            }
-            const destino = document.getElementById('pasoDisena');
-            if (destino && destino.scrollIntoView) destino.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            if (typeof mostrarToast === 'function') mostrarToast('Preset aplicado: revisa y ajusta lo que quieras ✨', 'success');
-        } catch (e) { console.warn('Preset:', e); }
-    }
-    // CTA: habilitar tras generar y saltar al Analizador con los datos cargados.
-    (function () {
-        const btnG = document.getElementById('btnGenerar');
-        const btnA = document.getElementById('btnAnalizarDatos');
-        // Pearson muestral simple para la banda de logros.
-        const pearson = (xs, ys) => {
-            const n = Math.min(xs.length, ys.length);
-            if (n < 3) return NaN;
-            let sx=0, sy=0; for (let i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; }
-            const mx=sx/n, my=sy/n;
-            let sxy=0, sxx=0, syy=0;
-            for (let i=0;i<n;i++){ const a=xs[i]-mx, b=ys[i]-my; sxy+=a*b; sxx+=a*a; syy+=b*b; }
-            return sxy/Math.sqrt(sxx*syy);
-        };
-        // Mini-histograma SVG (sparkline) de una variable numérica.
-        const sparkline = vals => {
-            const B=12, min=Math.min(...vals), max=Math.max(...vals), rango=(max-min)||1;
-            const bins=new Array(B).fill(0);
-            vals.forEach(v=>{ bins[Math.min(B-1, Math.floor((v-min)/rango*B))]++; });
-            const top=Math.max(...bins)||1, w=5, h=22;
-            const barras=bins.map((b,i)=>`<rect x="${i*w}" y="${h-(b/top)*h}" width="${w-1}" height="${(b/top)*h}" rx="1" fill="#2E5BBA" opacity="0.85"/>`).join('');
-            return `<svg width="${B*w}" height="${h}" viewBox="0 0 ${B*w} ${h}" aria-hidden="true">${barras}</svg>`;
-        };
-        const construirBanda = () => {
-            const datos = window.datosGenerados || [];
-            if (!datos.length) return;
-            const cols = Object.keys(datos[0]);
-            const numericas = cols.filter(c => datos.every(d => Number.isFinite(+d[c]))).slice(0, 8);
-            let kpis = `<span class="sim-kpi">👥 N = ${datos.length}</span>
-                        <span class="sim-kpi">🧮 ${cols.length} variables</span>`;
-            // Correlaciones objetivo vs logradas (lee las filas del paso ②).
-            document.querySelectorAll('#bodyCorrelaciones tr').forEach(f => {
-                const sels = f.querySelectorAll('select');
-                const rObj = parseFloat((f.querySelector('input[type="number"]')||{}).value);
-                if (sels.length < 2 || !Number.isFinite(rObj)) return;
-                const a = sels[0].value, b = sels[1].value;
-                const ca = cols.find(c => c === a || c.includes(a)), cb = cols.find(c => c === b || c.includes(b));
-                if (!ca || !cb) return;
-                const r = pearson(datos.map(d=>+d[ca]), datos.map(d=>+d[cb]));
-                if (!Number.isFinite(r)) return;
-                const cerca = Math.abs(r - rObj) <= 0.05;
-                kpis += `<span class="sim-kpi">🎯 r objetivo ${rObj.toFixed(2)} → lograda <b class="${cerca?'ok':'casi'}">&nbsp;${r.toFixed(2)} ${cerca?'✓':''}</b></span>`;
-            });
-            const sparks = numericas.map(c => `<span class="sim-kpi" title="Distribución de ${c}">${c} ${sparkline(datos.map(d=>+d[c]))}</span>`).join('');
-            let banda = document.getElementById('simBandaLogros');
-            if (!banda) {
-                banda = document.createElement('div');
-                banda.id = 'simBandaLogros';
-                banda.className = 'sim-logros';
-                const tituloVP = [...document.querySelectorAll('#simulador .card-title')].find(h => /Vista Previa/i.test(h.textContent));
-                const cardVP = tituloVP && tituloVP.closest('.card');
-                if (cardVP && cardVP.parentElement) cardVP.parentElement.insertBefore(banda, cardVP);
-                else return;
-            }
-            banda.innerHTML = `<h4>✨ Base generada — así quedó tu estudio</h4>
-                <div class="sim-kpis">${kpis}</div>
-                ${sparks ? `<div class="sim-kpis" style="margin-top:0.5rem;">${sparks}</div>` : ''}`;
-            if (banda.scrollIntoView) banda.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        };
-        if (btnG && btnA) btnG.addEventListener('click', () => {
-            let tics = 0;
-            const t = setInterval(() => {
-                if (window.datosGenerados && window.datosGenerados.length) {
-                    btnA.disabled = false; clearInterval(t); construirBanda();
-                }
-                if (++tics > 40) clearInterval(t);
-            }, 250);
-        });
-        if (btnA) btnA.addEventListener('click', () => {
-            const nav = document.querySelector('.nav-link[href="#analizador"]');
-            if (nav) nav.click(); else location.hash = '#analizador';
-            setTimeout(() => {
-                const usar = document.getElementById('btnUsarGenerados');
-                if (usar) usar.click();
-            }, 250);
-        });
-    })();
-    </script>
 </body>
 
 </html>
