@@ -14,7 +14,6 @@ const Antecedentes = {
 
     CONFIG: {
         POR_FUENTE: 25,
-        RECORTE_RESUMEN: 350,
         UNPAYWALL_EMAIL: 'statsim.research@gmail.com', // Unpaywall rechaza dominios inexistentes/de prueba (422)
         MAILTO: '',
         SINONIMOS: {
@@ -304,7 +303,6 @@ const Antecedentes = {
     // API JSON documentada: /search?p=&of=recjson&ot=campos&rg=N
     urlUNDL(query, f = {}) {
         const p = new URLSearchParams({ p: String(query).trim(), of: 'recjson',
-            ot: 'recid,title,authors,abstract,creation_date,imprint,publication_info',
             rg: String(this._nInput('antNumONU', this.CONFIG.POR_FUENTE)) });
         return `https://digitallibrary.un.org/search?${p.toString()}`;
     },
@@ -337,6 +335,36 @@ const Antecedentes = {
     // Invenio — más lento de pedir pero mucho más estable que recjson.
     // Campos MARC: 245 título · 100 autor persona · 110/710 autor CORPORATIVO ·
     // 520 resumen · 260/264 $c año · controlfield 001 número de registro.
+    // ReliefWeb (OCHA/ONU): la vía OFICIAL para acceso programático a informes
+    // de la ONU y sus agencias — API JSON pública con CORS abierto, pensada para
+    // llamarse directo desde el navegador (sin proxies). Límite amable: 1000/día.
+    // Desde nov-2025 piden appname pre-aprobado; se intenta el propio y, si lo
+    // rechazan, el de los ejemplos oficiales de su documentación.
+    urlReliefWeb(query, f = {}, appname = 'statsim-pro') {
+        const p = new URLSearchParams({ appname, 'query[value]': String(query).trim(),
+            limit: String(this._nInput('antNumONU', this.CONFIG.POR_FUENTE)) });
+        ['title', 'date', 'source', 'url', 'body'].forEach(c => p.append('fields[include][]', c));
+        if (f.desde) {
+            p.append('filter[field]', 'date.created');
+            p.append('filter[value][from]', `${f.desde}-01-01T00:00:00+00:00`);
+        }
+        return `https://api.reliefweb.int/v1/reports?${p.toString()}`;
+    },
+    normReliefWeb(o) {
+        const c = (o && o.fields) || {};
+        const fuentes = (c.source || []).map(s => s && (s.name || s.shortname)).filter(Boolean);
+        const anio = ((c.date && (c.date.original || c.date.created) || '').match(/(19|20)\d{2}/) || [])[0] || 's. f.';
+        const resumen = String(c.body || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+        return {
+            titulo: c.title || '(sin título)',
+            autores: fuentes.length ? fuentes : ['Naciones Unidas'],
+            anio, doi: '', fuente: 'ONU · ReliefWeb', volumen: '', numero: '', paginas: '',
+            citas: 0, idioma: '', resumen,
+            link: c.url || (o && o.href) || '',
+            fuentesAPI: ['ONU/ReliefWeb']
+        };
+    },
+
     urlUNDLxm(query, f = {}) {
         const p = new URLSearchParams({ p: String(query).trim(), of: 'xm',
             rg: String(this._nInput('antNumONU', this.CONFIG.POR_FUENTE)) });
@@ -1203,20 +1231,30 @@ const Antecedentes = {
         if (usarONU && this._nInput('antNumONU', 10) > 0) {
             const filtroAnio = o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde;
             tareas.push((async () => {
-                // 1º intento: recjson (rápido cuando funciona).
+                // 1º: ReliefWeb — directo desde el navegador (CORS por diseño).
+                for (const appname of ['statsim-pro', 'vocabulary']) {
+                    try {
+                        const d = await this._fetchJSONConRescate(this.urlReliefWeb(q, f, appname), { timeout: 15000 });
+                        const obras = ((d && d.data) || []).map(x => this.normReliefWeb(x))
+                            .filter(filtroAnio);
+                        if (obras.length) return { obras, info: `ONU · ReliefWeb (${obras.length} result.)` };
+                        if (d && d.data) break; // respondió bien pero sin resultados: no reintentar appname
+                    } catch (e) { /* probar el siguiente appname */ }
+                }
+                // 2º: Biblioteca Digital (recjson) — puede estar tras muro anti-bot.
                 try {
                     const d = await this._fetchJSONConRescate(this.urlUNDL(q, f), { timeout: 15000 });
                     const obras = this._extraerUNDL(d).map(x => this.normUNDL(x)).filter(filtroAnio);
                     if (obras.length) return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.)` };
                 } catch (e) { /* siguiente formato */ }
-                // 2º intento: MARCXML (of=xm), el formato cacheado de Invenio.
+                // 3º: Biblioteca Digital (MARCXML).
                 try {
                     const xml = await this._fetchTextoConRescate(this.urlUNDLxm(q, f),
                         t => typeof t === 'string' && t.includes('<record'), { timeout: 20000 });
                     const obras = this._parseMARCXML(xml).filter(filtroAnio);
                     return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.${obras.length ? ', vía MARCXML' : ''})` };
                 } catch (e2) {
-                    return { obras: [], info: `ONU · Biblioteca Digital falló (${e2.message})` };
+                    return { obras: [], info: `ONU falló en las 3 vías (${e2.message})` };
                 }
             })());
         }
