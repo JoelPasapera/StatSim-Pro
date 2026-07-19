@@ -422,9 +422,10 @@ const Antecedentes = {
             <div>
               <div class="form-row">
                 <div class="form-group" style="flex:2;">
-                  <label class="label">Términos de búsqueda</label>
-                  <input type="text" id="antQuery" class="input" value="${sugerida}"
-                    placeholder="Ej: inteligencia emocional rendimiento académico">
+                  <label class="label">Problema de investigación / términos de búsqueda</label>
+                  <textarea id="antQuery" class="input" rows="2" style="resize:vertical;"
+                    placeholder="Ej.: ¿Existe relación entre la inteligencia emocional y el rendimiento académico en universitarios de Lima? — o simplemente: inteligencia emocional rendimiento académico">${sugerida}</textarea>
+                  <p class="help-text" style="margin:0.3rem 0 0; font-size:0.85em;">Un solo campo para ambas búsquedas: la <b>individual</b> lo usa tal cual; la <b>intensiva</b> lo toma como semilla para generar variantes con IA.</p>
                   <div id="antSinonimos" class="help-text" style="margin-top:0.35rem;"></div>
                 </div>
                 <div class="form-group"><label class="label">Desde el año</label>
@@ -474,7 +475,25 @@ const Antecedentes = {
               <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;">
                 ⚠️ Scopus indexa casi exclusivamente artículos en <strong>inglés</strong>. Con el idioma en «Español», es probable que devuelva pocos o ningún resultado. Para aprovechar Scopus, cambia «Priorizar idioma» a <strong>Inglés</strong>: la consulta se traducirá automáticamente.
               </div>
-              <button id="antBuscar" class="btn btn-primary">🔎 Buscar</button>
+              <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.2rem 0 0.6rem;">
+                <button id="antBuscar" class="btn btn-primary">🔎 Búsqueda individual</button>
+                <button id="antIntensivaBtn" class="btn btn-primary">🚀 Búsqueda intensiva con variantes</button>
+                <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
+                <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
+                  style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
+              </div>
+              <div id="antVariantesZona" style="display:none; margin:0 0 0.6rem;">
+                <textarea id="antVariantes" class="input" rows="5" style="resize:vertical;"
+                  placeholder="Aquí aparecerán las variantes generadas, una por línea. Puedes editarlas, borrar las que no quieras o añadir las tuyas."></textarea>
+                <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-top:0.5rem;">
+                  <button id="antGenerarVariantes" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🔀 Regenerar variantes</button>
+                  <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85em; color:var(--color-text-soft, #666);">
+                    <input type="checkbox" id="antIncluirOriginal" checked> Incluir también la consulta original
+                  </label>
+                  <span class="help-text" style="font-size:0.82em;">Edita libremente y vuelve a pulsar 🚀: buscará exactamente con las que dejes aquí.</span>
+                </div>
+              </div>
+              <div id="antVariantesEstado" class="help-text" style="margin:0 0 0.4rem;"></div>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
               <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
@@ -485,16 +504,10 @@ const Antecedentes = {
               <div id="antSeleccion"></div>
 
               <div id="antIntensiva" style="margin-top:2rem; border-top:2px solid var(--color-border, #e5e5e5); padding-top:1.5rem;">
-                <h3 style="margin:0 0 0.3rem; font-size:1.15rem;">✨ Búsqueda intensiva con IA</h3>
-                <p class="help-text" style="margin:0 0 1rem;">Genera criterios de selección, expande la consulta y filtra por relevancia con ayuda de un modelo de IA.</p>
+                <h3 style="margin:0 0 0.3rem; font-size:1.15rem;">✨ Criba con IA — criterios y relevancia</h3>
+                <p class="help-text" style="margin:0 0 1rem;">Genera criterios de inclusión/exclusión a partir de tu problema y evalúa la relevancia de cada artículo de la matriz con ayuda de un modelo de IA.</p>
 
-                <div class="form-group">
-                  <label class="label" for="antProblema">Problema de investigación</label>
-                  <textarea id="antProblema" class="input" rows="3" style="resize:vertical;"
-                    placeholder="Ej.: ¿Existe relación entre la inteligencia emocional y el rendimiento académico en estudiantes universitarios de Lima?"></textarea>
-                </div>
-
-                <div id="antVariablesSlot"></div>
+                                <div id="antVariablesSlot"></div>
 
                 <div class="form-group">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
@@ -507,33 +520,7 @@ const Antecedentes = {
                   <div id="antCriteriosEstado" class="help-text" style="margin-top:0.4rem;"></div>
                 </div>
 
-                <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
-                  <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
-                    <label class="label" style="margin:0;">Expandir la consulta con variantes</label>
-                    <div style="display:flex; align-items:center; gap:0.5rem;">
-                      <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
-                      <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
-                        style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
-                      <button id="antGenerarVariantes" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🔀 Generar variantes</button>
-                    </div>
-                  </div>
-                  <p class="help-text" style="margin:0 0 0.6rem;">La IA reformula tu búsqueda en varias frases para encontrar más artículos. Cada variante usará la misma configuración de arriba (fuentes, año, idioma, cantidades).</p>
-
-                  <div id="antVariantesZona" style="display:none;">
-                    <textarea id="antVariantes" class="input" rows="6" style="resize:vertical;"
-                      placeholder="Aquí aparecerán las variantes generadas, una por línea. Puedes editarlas, borrar las que no quieras o añadir las tuyas antes de buscar."></textarea>
-                    <p class="help-text" style="margin:0.4rem 0 0;">Una variante por línea. Edítalas libremente: la búsqueda usará exactamente las que dejes aquí.</p>
-                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-top:0.7rem;">
-                      <button id="antBuscarIntensivo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">🚀 Buscar con todas las variantes</button>
-                      <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85em; color:var(--color-text-soft, #666);">
-                        <input type="checkbox" id="antIncluirOriginal" checked> Incluir también la consulta original
-                      </label>
-                    </div>
-                  </div>
-                  <div id="antVariantesEstado" class="help-text" style="margin-top:0.5rem;"></div>
-                </div>
-
-                <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
+                                <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
                   <div style="display:flex; align-items:center; justify-content:space-between; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.4rem;">
                     <label class="label" style="margin:0;">Relevancia de las investigaciones</label>
                     <button id="antAnalizarRelevancia" class="btn btn-primary" style="padding:0.4rem 1rem;">🔎 Analizar relevancia</button>
@@ -563,8 +550,8 @@ const Antecedentes = {
         if (btnCrit) btnCrit.addEventListener('click', () => this._onGenerarCriterios());
         const btnVar = document.getElementById('antGenerarVariantes');
         if (btnVar) btnVar.addEventListener('click', () => this._onGenerarVariantes());
-        const btnInt = document.getElementById('antBuscarIntensivo');
-        if (btnInt) btnInt.addEventListener('click', () => this._onBuscarIntensivo());
+        const btnInt = document.getElementById('antIntensivaBtn');
+        if (btnInt) btnInt.addEventListener('click', () => this._onIntensiva());
         const btnRel = document.getElementById('antAnalizarRelevancia');
         if (btnRel) btnRel.addEventListener('click', () => this._onAnalizarRelevancia());
         const selUmbral = document.getElementById('antUmbralRelevancia');
@@ -810,10 +797,20 @@ const Antecedentes = {
         this._renderResultados(this._obras);
     },
 
+    // Búsqueda intensiva en 1 clic: si aún no hay variantes, las genera con IA
+    // (usando el Nº configurado) y a continuación busca con todas ellas. Si la
+    // caja ya tiene variantes (generadas o editadas a mano), busca directamente.
+    async _onIntensiva() {
+        const caja = document.getElementById('antVariantes');
+        if (!caja) return;
+        if (!caja.value.trim()) await this._onGenerarVariantes();
+        if (caja.value.trim()) await this._onBuscarIntensivo();
+    },
+
     async _onBuscarIntensivo() {
         const caja = document.getElementById('antVariantes');
         const estado = document.getElementById('antVariantesEstado');
-        const btn = document.getElementById('antBuscarIntensivo');
+        const btn = document.getElementById('antIntensivaBtn');
         const estadoBuscador = document.getElementById('antEstado');
 
         // Recoger las variantes (una por línea, ya editadas por el usuario).
@@ -894,7 +891,7 @@ const Antecedentes = {
 
     // ---- Búsqueda intensiva · Generar criterios de inclusión/exclusión con IA ----
     async _onGenerarCriterios() {
-        const problema = (document.getElementById('antProblema') || {}).value || '';
+        const problema = (document.getElementById('antQuery') || {}).value || '';
         const cajaCriterios = document.getElementById('antCriterios');
         const estado = document.getElementById('antCriteriosEstado');
         const btn = document.getElementById('antGenerarCriterios');
@@ -902,7 +899,7 @@ const Antecedentes = {
         // Validación amable antes de llamar a la IA.
         if (problema.trim().length < 15) {
             if (estado) estado.textContent = '⚠️ Primero describe el problema de investigación (al menos una frase completa).';
-            const p = document.getElementById('antProblema');
+            const p = document.getElementById('antQuery');
             if (p) p.focus();
             return;
         }
