@@ -228,7 +228,7 @@ const Antecedentes = {
     //      consultas entre variantes y así no gastamos peticiones de más.
     // ------------------------------------------------------------------
     _cacheJSON: new Map(),
-    async _fetchJSONConRescate(url) {
+    async _fetchJSONConRescate(url, op = {}) {
         if (this._cacheJSON.has(url)) return this._cacheJSON.get(url);
         let dato;
         try {
@@ -239,11 +239,30 @@ const Antecedentes = {
             const r = await ProxiesCORS.carrera(url, txt => {
                 try { const j = JSON.parse(txt); return j ? [j] : null; }
                 catch (_) { return null; }
-            }, { anchura: 3, timeout: 12000 });
+            }, { anchura: 3, timeout: op.timeout || 12000 });
             dato = r.obras[0];
         }
         this._cacheJSON.set(url, dato); // 3) caché de sesión
         return dato;
+    },
+
+    // Igual que el anterior, pero para respuestas de TEXTO (p. ej. MARCXML).
+    async _fetchTextoConRescate(url, validar, op = {}) {
+        if (this._cacheJSON.has(url)) return this._cacheJSON.get(url);
+        let txt;
+        try {
+            const r = await fetch(url);
+            if (!r.ok) throw new Error('HTTP' + r.status);
+            txt = await r.text();
+            if (!validar(txt)) throw new Error('respuesta no válida');
+        } catch (e) {
+            if (typeof ProxiesCORS === 'undefined') throw e;
+            const r = await ProxiesCORS.carrera(url, t => validar(t) ? [t] : null,
+                { anchura: 3, timeout: op.timeout || 20000 });
+            txt = r.obras[0];
+        }
+        this._cacheJSON.set(url, txt);
+        return txt;
     },
 
     urlIRIS(query, f = {}) {
@@ -313,6 +332,47 @@ const Antecedentes = {
         };
     },
     _extraerUNDL(d) { return Array.isArray(d) ? d.filter(x => x && (x.recid || x.title)) : []; },
+
+    // Plan B de la ONU: MARCXML (of=xm), el formato bibliotecario cacheado de
+    // Invenio — más lento de pedir pero mucho más estable que recjson.
+    // Campos MARC: 245 título · 100 autor persona · 110/710 autor CORPORATIVO ·
+    // 520 resumen · 260/264 $c año · controlfield 001 número de registro.
+    urlUNDLxm(query, f = {}) {
+        const p = new URLSearchParams({ p: String(query).trim(), of: 'xm',
+            rg: String(this._nInput('antNumONU', this.CONFIG.POR_FUENTE)) });
+        return `https://digitallibrary.un.org/search?${p.toString()}`;
+    },
+    _parseMARCXML(xmlTexto) {
+        try {
+            const doc = new DOMParser().parseFromString(xmlTexto, 'text/xml');
+            const registros = [...doc.getElementsByTagName('record')];
+            const sub = (rec, tag, code) => [...rec.getElementsByTagName('datafield')]
+                .filter(d => d.getAttribute('tag') === tag)
+                .flatMap(d => [...d.getElementsByTagName('subfield')]
+                    .filter(s => !code || s.getAttribute('code') === code)
+                    .map(s => s.textContent.trim()))
+                .filter(Boolean);
+            return registros.map(rec => {
+                const recid = ([...rec.getElementsByTagName('controlfield')]
+                    .find(c => c.getAttribute('tag') === '001') || {}).textContent || '';
+                const titulo = [sub(rec, '245', 'a')[0], sub(rec, '245', 'b')[0]]
+                    .filter(Boolean).join(' ').replace(/\s*[\/:]\s*$/, '').trim();
+                const autores = [...sub(rec, '100', 'a'), ...sub(rec, '110', 'a'), ...sub(rec, '710', 'a')]
+                    .map(a => a.replace(/[.,]\s*$/, '').trim()).filter(Boolean);
+                const anio = ((sub(rec, '260', 'c')[0] || sub(rec, '264', 'c')[0] || '')
+                    .match(/(19|20)\d{2}/) || [])[0] || 's. f.';
+                return {
+                    titulo: titulo || '(sin título)',
+                    autores: autores.length ? autores : ['Naciones Unidas'],
+                    anio, doi: '', fuente: 'ONU · Biblioteca Digital', volumen: '', numero: '',
+                    paginas: '', citas: 0, idioma: '',
+                    resumen: sub(rec, '520', 'a')[0] || '',
+                    link: recid ? `https://digitallibrary.un.org/record/${recid.trim()}` : '',
+                    fuentesAPI: ['ONU/UNDL']
+                };
+            }).filter(o => o.titulo !== '(sin título)' || o.link);
+        } catch (e) { return []; }
+    },
 
     urlScholar(query, f = {}) {
         const p = new URLSearchParams({ q: query, hl: 'es' });
@@ -1141,12 +1201,24 @@ const Antecedentes = {
                 }).catch(e => ({ obras: [], info: `OMS · IRIS falló (${e.message})` })));
         }
         if (usarONU && this._nInput('antNumONU', 10) > 0) {
-            tareas.push(
-                this._fetchJSONConRescate(this.urlUNDL(q, f)).then(d => {
-                    const obras = this._extraerUNDL(d).map(x => this.normUNDL(x))
-                        .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde);
-                    return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.)` };
-                }).catch(e => ({ obras: [], info: `ONU · Biblioteca Digital falló (${e.message})` })));
+            const filtroAnio = o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde;
+            tareas.push((async () => {
+                // 1º intento: recjson (rápido cuando funciona).
+                try {
+                    const d = await this._fetchJSONConRescate(this.urlUNDL(q, f), { timeout: 15000 });
+                    const obras = this._extraerUNDL(d).map(x => this.normUNDL(x)).filter(filtroAnio);
+                    if (obras.length) return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.)` };
+                } catch (e) { /* siguiente formato */ }
+                // 2º intento: MARCXML (of=xm), el formato cacheado de Invenio.
+                try {
+                    const xml = await this._fetchTextoConRescate(this.urlUNDLxm(q, f),
+                        t => typeof t === 'string' && t.includes('<record'), { timeout: 20000 });
+                    const obras = this._parseMARCXML(xml).filter(filtroAnio);
+                    return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.${obras.length ? ', vía MARCXML' : ''})` };
+                } catch (e2) {
+                    return { obras: [], info: `ONU · Biblioteca Digital falló (${e2.message})` };
+                }
+            })());
         }
         if (usarAbiertas) tareas.push(
             this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias — ${r.detalle || ''}` }))
