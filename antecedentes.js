@@ -189,13 +189,8 @@ const Antecedentes = {
         const candidatas = [
             ['Semantic Scholar', () => this._fetchJSON(this.urlSemantic(query, f)).then(d => (d.data || []).map(x => this.normSemantic(x)))],
             ['OpenAlex', () => this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x)))],
-            ['Crossref', () => this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x)))],
-            ['OMS', () => this._fetchJSONConRescate(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
-                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))],
-            ['ONU', () => this._fetchJSONConRescate(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
-                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))]
-        ].filter(([nom]) => !((nom === 'OMS' && this._nInput('antNumOMS', 1) === 0)
-                           || (nom === 'ONU' && this._nInput('antNumONU', 1) === 0)));
+            ['Crossref', () => this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x)))]
+        ];
         const nombresFuentes = candidatas.map(c => c[0]);
         const tareas = candidatas.map(c => c[1]());
         const res = await Promise.allSettled(tareas);
@@ -519,6 +514,12 @@ const Antecedentes = {
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAlicia" checked> Buscar en ALICIA (tesis y producción científica peruana — CONCYTEC)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarOMS" checked> Buscar en OMS (IRIS — guías e informes oficiales de salud; API oficial con proxy de rescate)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
+                <input type="checkbox" id="antUsarONU" checked> Buscar en ONU (Biblioteca Digital — documentos oficiales de Naciones Unidas)
               </label><br>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
@@ -1066,6 +1067,8 @@ const Antecedentes = {
         const usarPubmed = (opciones.usarPubmed ?? leer('antUsarPubmed')) && typeof PubMedDirecto !== 'undefined';
         const usarScielo = (opciones.usarScielo ?? leer('antUsarScielo')) && typeof ScieloDirecto !== 'undefined';
         const usarAlicia = (opciones.usarAlicia ?? leer('antUsarAlicia')) && typeof AliciaDirecto !== 'undefined';
+        const usarOMS = (opciones.usarOMS ?? leer('antUsarOMS'));
+        const usarONU = (opciones.usarONU ?? leer('antUsarONU'));
 
         const tareas = [];
         if (usarScopus) {
@@ -1107,6 +1110,22 @@ const Antecedentes = {
                     obras: r.obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] })),
                     info: `Scholar (${r.paginas} pág.${r.captchaEn ? `, bloqueó en ${r.captchaEn}` : ''})`
                 })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` })));
+        }
+        if (usarOMS && this._nInput('antNumOMS', 15) > 0) {
+            tareas.push(
+                this._fetchJSONConRescate(this.urlIRIS(q, f)).then(d => {
+                    const obras = this._extraerIRIS(d).map(x => this.normIRIS(x))
+                        .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde);
+                    return { obras, info: `OMS · IRIS (${obras.length} result.)` };
+                }).catch(e => ({ obras: [], info: `OMS · IRIS falló (${e.message})` })));
+        }
+        if (usarONU && this._nInput('antNumONU', 10) > 0) {
+            tareas.push(
+                this._fetchJSONConRescate(this.urlUNDL(q, f)).then(d => {
+                    const obras = this._extraerUNDL(d).map(x => this.normUNDL(x))
+                        .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde);
+                    return { obras, info: `ONU · Biblioteca Digital (${obras.length} result.)` };
+                }).catch(e => ({ obras: [], info: `ONU · Biblioteca Digital falló (${e.message})` })));
         }
         if (usarAbiertas) tareas.push(
             this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias — ${r.detalle || ''}` }))
