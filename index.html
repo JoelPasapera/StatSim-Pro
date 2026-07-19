@@ -90,7 +90,7 @@
             <div class="container">
                 <div class="section-header">
                     <h2 class="section-title">Generador de Base de Datos</h2>
-                    <p class="section-subtitle">Simula datos estadísticos controlados para tu investigación</p>
+                    <p class="section-subtitle">Crea bases de datos sintéticas y reproducibles para practicar sin arriesgar datos reales: define el tamaño muestral, fija una semilla para regenerar exactamente el mismo conjunto, elige las propiedades estadísticas de tus variables y expórtalas — o pásalas directo al Analizador con un clic</p>
                 </div>
 
                 <!-- Configuración General -->
@@ -565,7 +565,7 @@
             <div class="container">
                 <div class="section-header">
                     <h2 class="section-title">Analizador Estadístico</h2>
-                    <p class="section-subtitle">Análisis de normalidad y correlación al estilo SPSS</p>
+                    <p class="section-subtitle">El flujo estadístico completo de una tesis: descriptivos, normalidad y correlación con protocolo automático (Pearson o Spearman según tus datos), regresión simple y múltiple con comparación de modelos por AIC, comparación de grupos (t, U de Mann-Whitney, ANOVA, Kruskal-Wallis) con ANCOVA y MANOVA opcionales, modelos de ecuaciones estructurales (SEM) con sintaxis de lavaan — y un capítulo Word en formato APA donde cada resultado explica no solo qué significa, sino por qué la estadística funciona así</p>
                 </div>
 
                 <!-- Cargar Datos -->
@@ -861,28 +861,45 @@
         </section>
 
         <!-- Sección Ayuda -->
-        <section id="ayuda" class="section">
+        <section id="ayuda" class="section" style="min-height:auto;">
             <div class="container">
                 <div class="section-header">
                     <h2 class="section-title">Ayuda y Documentación</h2>
-                    <p class="section-subtitle">Guía de uso de StatSim Pro</p>
+                    <p class="section-subtitle">Qué hace cada sección y cómo encajan en el flujo de una tesis</p>
                 </div>
 
                 <div class="help-grid">
                     <div class="help-card">
-                        <h3>Simulador de Datos</h3>
-                        <p>Genera bases de datos estadísticos controlados siguiendo parámetros de media y desviación
-                            estándar.</p>
+                        <h3>🧭 El flujo completo de una tesis</h3>
+                        <p>StatSim Pro acompaña las dos mitades del trabajo: la teórica (Buscador → matriz de fuentes → Redactor del marco teórico) y la empírica (Simulador o tus propios datos → Analizador → capítulo de resultados en Word). Cada pieza alimenta a la siguiente.</p>
                     </div>
                     <div class="help-card">
-                        <h3>Análisis Estadístico</h3>
-                        <p>Realiza pruebas de normalidad y correlación automáticamente siguiendo las reglas estadísticas
-                            apropiadas.</p>
+                        <h3>🔎 Buscador de antecedentes</h3>
+                        <p>Busca a la vez en Google Académico, Scopus, PubMed, SciELO, ALICIA, OpenAlex, Crossref y los repositorios oficiales de la OMS y la ONU. La búsqueda intensiva expande tu consulta con variantes generadas por IA; luego cribas con criterios de inclusión/exclusión y relevancia (1–5) y obtienes una matriz con referencias APA y enlaces.</p>
                     </div>
                     <div class="help-card">
-                        <h3>Exportación</h3>
-                        <p>Descarga tus datos en formato CSV y resultados en formato de texto para usar en tu
-                            investigación.</p>
+                        <h3>✍️ Redactor del marco teórico</h3>
+                        <p>A partir de tu matriz redacta el Capítulo I (planteamiento y justificación, con un vacío coherente con tu pregunta correlacional) y el Capítulo II (antecedentes con orden internacional → nacional, bases y modelos teóricos con delimitación conceptual anclada a tus instrumentos). Solo cita fuentes reales de tu matriz y descarga en Word (.docx).</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>🎲 Simulador de datos</h3>
+                        <p>Genera bases sintéticas reproducibles (tamaño muestral, semilla y propiedades de cada variable) para practicar todo el flujo sin exponer datos reales — y envíalas al Analizador con un clic.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>📊 Análisis estadístico</h3>
+                        <p>Protocolo automático de descriptivos, normalidad y correlación (elige Pearson o Spearman según tus datos y te explica por qué); regresión simple y múltiple con comparación de modelos por AIC; comparación de grupos (t, U, ANOVA, Kruskal-Wallis) con ANCOVA y MANOVA opcionales mediante preguntas guiadas; y SEM con sintaxis de lavaan, motor de decisión previo, diagrama de rutas y comparación de modelos.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>💡 Pedagogía de los porqués</h3>
+                        <p>Cada resultado responde qué es, cómo se interpreta y por qué la estadística funciona así (por qué Spearman usa rangos, por qué el ANOVA compara varianzas, por qué Holm supera a Bonferroni…). El objetivo: que el documento enseñe, no solo reporte.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>📄 Exportación Word APA</h3>
+                        <p>Capítulo de resultados con tablas y figuras numeradas al estilo APA, y marco teórico en .docx cuyas referencias incluyen solo lo realmente citado. Los datos también se exportan en Excel/CSV.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>🔒 Privacidad y funcionamiento</h3>
+                        <p>Todo corre en tu navegador: tus datos no se suben a ningún servidor propio. Solo salen las consultas a las bases académicas y, si usas las funciones de IA (variantes, criba, redactor), a la API de Groq con tus claves.</p>
                     </div>
                 </div>
             </div>
@@ -890,7 +907,7 @@
     </main>
 
     <!-- Sección Contacto -->
-    <section id="contacto" class="section">
+    <section id="contacto" class="section" style="min-height:auto; padding-bottom:3rem;">
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Contacto y Redes Sociales</h2>
