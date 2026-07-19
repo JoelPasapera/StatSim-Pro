@@ -904,8 +904,6 @@
                 </div>
             </div>
         </section>
-    </main>
-
     <!-- Sección Contacto -->
     <style>
         /* ---- Rediseño de la sección Contacto ---- */
@@ -917,8 +915,9 @@
         }
         #contacto .perfil-foto {
             width: 148px; height: 148px; border-radius: 50%; object-fit: cover;
-            border: 4px solid #fff; box-shadow: 0 6px 20px rgba(20, 40, 90, 0.18);
-            margin-bottom: 1rem;
+            border: 4px solid #fff;
+            box-shadow: 0 0 0 3px #2E5BBA, 0 0 0 6px rgba(46,91,186,0.18), 0 8px 22px rgba(20, 40, 90, 0.2);
+            margin-bottom: 1.1rem;
         }
         #contacto .perfil-fallback {
             width: 148px; height: 148px; border-radius: 50%; margin: 0 auto 1rem;
@@ -951,7 +950,27 @@
             transform: translateY(-2px); box-shadow: 0 8px 18px rgba(20, 40, 90, 0.12);
             border-color: #2E5BBA;
         }
-        #contacto .contact-card .icon { width: 21px; height: 21px; color: #2E5BBA; }
+        #contacto .contact-card .icon {
+            width: 21px; height: 21px; color: #2E5BBA;
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+        #contacto .contact-card:hover .icon { transform: scale(1.18); }
+        /* Cada chip toma el color de su marca al pasar el ratón */
+        #contacto .contact-card[href*="facebook"]:hover { border-color:#1877F2; box-shadow:0 8px 18px rgba(24,119,242,0.28); }
+        #contacto .contact-card[href*="facebook"]:hover .icon,
+        #contacto .contact-card[href*="facebook"]:hover h3 { color:#1877F2; }
+        #contacto .contact-card[href*="instagram"]:hover { border-color:#E4405F; box-shadow:0 8px 18px rgba(228,64,95,0.28); }
+        #contacto .contact-card[href*="instagram"]:hover .icon,
+        #contacto .contact-card[href*="instagram"]:hover h3 { color:#E4405F; }
+        #contacto .contact-card[href*="youtube"]:hover { border-color:#FF0000; box-shadow:0 8px 18px rgba(255,0,0,0.22); }
+        #contacto .contact-card[href*="youtube"]:hover .icon,
+        #contacto .contact-card[href*="youtube"]:hover h3 { color:#FF0000; }
+        #contacto .contact-card[href*="github"]:hover { border-color:#24292e; box-shadow:0 8px 18px rgba(36,41,46,0.25); }
+        #contacto .contact-card[href*="github"]:hover .icon,
+        #contacto .contact-card[href*="github"]:hover h3 { color:#24292e; }
+        #contacto .contact-card[href*="tiktok"]:hover { border-color:#FE2C55; box-shadow:0 8px 18px rgba(254,44,85,0.26); }
+        #contacto .contact-card[href*="tiktok"]:hover .icon,
+        #contacto .contact-card[href*="tiktok"]:hover h3 { color:#FE2C55; }
         #contacto .contact-card h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
         #contacto .contact-card p { display: none; }
     </style>
@@ -1006,6 +1025,10 @@
             </div>
         </div>
     </section>
+
+    </main>
+
+
 
     <!-- Footer -->
     <footer class="footer">
