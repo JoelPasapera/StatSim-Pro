@@ -116,6 +116,29 @@
                     #simulador details.sim-avanzadas { margin-top:0.4rem; }
                     #simulador details.sim-avanzadas > summary { cursor:pointer; font-weight:600; color:#2E5BBA; padding:0.3rem 0; list-style-position:inside; }
                     #simulador details.sim-avanzadas[open] > summary { margin-bottom:0.4rem; }
+                    /* Identidad por paso: acento lateral y cabecera con vida */
+                    #simulador .card { border-left:4px solid transparent; transition: box-shadow .2s ease; }
+                    #simulador .card:has(#pasoDisena), #simulador .card:has(.card-title:not([id])) { border-left-color:#2E5BBA22; }
+                    #simulador .card:has([id="pasoDisena"]) { border-left-color:#2E5BBA; }
+                    #simulador .card:has([id="pasoRelaciona"]) { border-left-color:#7C4DFF; }
+                    #simulador .card:hover { box-shadow:0 8px 24px rgba(20,40,90,0.08); }
+                    #simulador tbody tr { transition: background .12s ease; }
+                    #simulador tbody tr:hover { background: rgba(46,91,186,0.045); }
+                    /* Banda de logros tras generar */
+                    #simulador .sim-logros {
+                        margin:1.2rem 0 0.9rem; padding:1rem 1.2rem; border-radius:1rem;
+                        border:1px solid #cfe0ff; background:linear-gradient(160deg, rgba(46,91,186,0.08), rgba(124,77,255,0.04));
+                        box-shadow:0 8px 24px rgba(46,91,186,0.10);
+                    }
+                    #simulador .sim-logros h4 { margin:0 0 0.5rem; font-size:1.02rem; }
+                    #simulador .sim-kpis { display:flex; flex-wrap:wrap; gap:0.55rem; }
+                    #simulador .sim-kpi {
+                        display:inline-flex; align-items:center; gap:0.5rem; padding:0.4rem 0.85rem;
+                        border-radius:999px; background:#fff; border:1px solid var(--color-border,#e0e0e0);
+                        font-size:0.88rem; font-weight:600;
+                    }
+                    #simulador .sim-kpi svg { display:block; }
+                    #simulador .sim-kpi .ok { color:#1e9e5a; } #simulador .sim-kpi .casi { color:#c98a00; }
                 </style>
 
                 <nav class="sim-stepper" aria-label="Pasos del simulador">
@@ -1207,7 +1230,7 @@
                 }
             }
             const destino = document.getElementById('pasoDisena');
-            if (destino) destino.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (destino && destino.scrollIntoView) destino.scrollIntoView({ behavior: 'smooth', block: 'start' });
             if (typeof mostrarToast === 'function') mostrarToast('Preset aplicado: revisa y ajusta lo que quieras ✨', 'success');
         } catch (e) { console.warn('Preset:', e); }
     }
@@ -1215,10 +1238,67 @@
     (function () {
         const btnG = document.getElementById('btnGenerar');
         const btnA = document.getElementById('btnAnalizarDatos');
+        // Pearson muestral simple para la banda de logros.
+        const pearson = (xs, ys) => {
+            const n = Math.min(xs.length, ys.length);
+            if (n < 3) return NaN;
+            let sx=0, sy=0; for (let i=0;i<n;i++){ sx+=xs[i]; sy+=ys[i]; }
+            const mx=sx/n, my=sy/n;
+            let sxy=0, sxx=0, syy=0;
+            for (let i=0;i<n;i++){ const a=xs[i]-mx, b=ys[i]-my; sxy+=a*b; sxx+=a*a; syy+=b*b; }
+            return sxy/Math.sqrt(sxx*syy);
+        };
+        // Mini-histograma SVG (sparkline) de una variable numérica.
+        const sparkline = vals => {
+            const B=12, min=Math.min(...vals), max=Math.max(...vals), rango=(max-min)||1;
+            const bins=new Array(B).fill(0);
+            vals.forEach(v=>{ bins[Math.min(B-1, Math.floor((v-min)/rango*B))]++; });
+            const top=Math.max(...bins)||1, w=5, h=22;
+            const barras=bins.map((b,i)=>`<rect x="${i*w}" y="${h-(b/top)*h}" width="${w-1}" height="${(b/top)*h}" rx="1" fill="#2E5BBA" opacity="0.85"/>`).join('');
+            return `<svg width="${B*w}" height="${h}" viewBox="0 0 ${B*w} ${h}" aria-hidden="true">${barras}</svg>`;
+        };
+        const construirBanda = () => {
+            const datos = window.datosGenerados || [];
+            if (!datos.length) return;
+            const cols = Object.keys(datos[0]);
+            const numericas = cols.filter(c => datos.every(d => Number.isFinite(+d[c]))).slice(0, 8);
+            let kpis = `<span class="sim-kpi">👥 N = ${datos.length}</span>
+                        <span class="sim-kpi">🧮 ${cols.length} variables</span>`;
+            // Correlaciones objetivo vs logradas (lee las filas del paso ②).
+            document.querySelectorAll('#bodyCorrelaciones tr').forEach(f => {
+                const sels = f.querySelectorAll('select');
+                const rObj = parseFloat((f.querySelector('input[type="number"]')||{}).value);
+                if (sels.length < 2 || !Number.isFinite(rObj)) return;
+                const a = sels[0].value, b = sels[1].value;
+                const ca = cols.find(c => c === a || c.includes(a)), cb = cols.find(c => c === b || c.includes(b));
+                if (!ca || !cb) return;
+                const r = pearson(datos.map(d=>+d[ca]), datos.map(d=>+d[cb]));
+                if (!Number.isFinite(r)) return;
+                const cerca = Math.abs(r - rObj) <= 0.05;
+                kpis += `<span class="sim-kpi">🎯 r objetivo ${rObj.toFixed(2)} → lograda <b class="${cerca?'ok':'casi'}">&nbsp;${r.toFixed(2)} ${cerca?'✓':''}</b></span>`;
+            });
+            const sparks = numericas.map(c => `<span class="sim-kpi" title="Distribución de ${c}">${c} ${sparkline(datos.map(d=>+d[c]))}</span>`).join('');
+            let banda = document.getElementById('simBandaLogros');
+            if (!banda) {
+                banda = document.createElement('div');
+                banda.id = 'simBandaLogros';
+                banda.className = 'sim-logros';
+                const tituloVP = [...document.querySelectorAll('#simulador .card-title')].find(h => /Vista Previa/i.test(h.textContent));
+                const cardVP = tituloVP && tituloVP.closest('.card');
+                if (cardVP && cardVP.parentElement) cardVP.parentElement.insertBefore(banda, cardVP);
+                else return;
+            }
+            banda.innerHTML = `<h4>✨ Base generada — así quedó tu estudio</h4>
+                <div class="sim-kpis">${kpis}</div>
+                ${sparks ? `<div class="sim-kpis" style="margin-top:0.5rem;">${sparks}</div>` : ''}`;
+            if (banda.scrollIntoView) banda.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
         if (btnG && btnA) btnG.addEventListener('click', () => {
             let tics = 0;
             const t = setInterval(() => {
-                if (window.datosGenerados && window.datosGenerados.length) { btnA.disabled = false; clearInterval(t); }
+                if (window.datosGenerados && window.datosGenerados.length) {
+                    btnA.disabled = false; clearInterval(t); construirBanda();
+                }
                 if (++tics > 40) clearInterval(t);
             }, 250);
         });
