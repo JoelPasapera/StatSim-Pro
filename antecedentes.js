@@ -267,7 +267,7 @@ const Antecedentes = {
             fuente: 'OMS · IRIS', volumen: '', numero: '', paginas: '',
             citas: 0, idioma: uno('dc.language.iso') || '',
             resumen: uno('dc.description.abstract'),
-            url: uri || (o.uuid ? `https://iris.who.int/items/${o.uuid}` : ''),
+            link: uri || (o.uuid ? `https://iris.who.int/items/${o.uuid}` : ''),
             fuentesAPI: ['OMS/IRIS']
         };
     },
@@ -308,7 +308,7 @@ const Antecedentes = {
             titulo, autores: autores.length ? autores : ['Naciones Unidas'],
             anio, doi: '', fuente: 'ONU · Biblioteca Digital', volumen: '', numero: '', paginas: '',
             citas: 0, idioma: '', resumen,
-            url: o.recid ? `https://digitallibrary.un.org/record/${o.recid}` : '',
+            link: o.recid ? `https://digitallibrary.un.org/record/${o.recid}` : '',
             fuentesAPI: ['ONU/UNDL']
         };
     },
@@ -387,9 +387,15 @@ const Antecedentes = {
     _esInicial(tok) {
         return /^([A-ZÁÉÍÓÚÑ]\.?){1,3}$/.test(tok.replace(/\./g, '.'));
     },
+    // ¿Autor corporativo? (organismos, ministerios, universidades…). En APA 7ª
+    // se escriben con su nombre completo, SIN invertir ni reducir a iniciales.
+    _esCorporativo(n) {
+        return /\(|organi[sz]ation|organizaci[oó]n|nations|naciones|unicef|unesco|world health|pan american|panamericana|ministerio|ministry|fondo|\bfund\b|programme|programa|instituto|institute|universidad|university|agencia|agency|centro|centre|center|comit[eé]|committee|asociaci[oó]n|association|banco|\bbank\b|secretar[ií]a|department|departamento|oficina|office/i.test(n);
+    },
     _autorAPA(nombre) {
         const n = String(nombre || '').trim();
         if (!n) return '';
+        if (this._esCorporativo(n)) return n.replace(/\s+/g, ' ');
         if (n.includes(',')) {
             // Ya viene "Apellido, Iniciales": normalizar puntos de las iniciales.
             const [ape, resto] = [n.split(',')[0].trim(), n.split(',').slice(1).join(',').trim()];
@@ -433,12 +439,27 @@ const Antecedentes = {
         return `${a.slice(0, 19).join(', ')}, ... ${a[a.length - 1]}`;
     },
     citaAPA(o) {
-        let c = `${this._autoresAPA(o.autores)} (${o.anio}). ${o.titulo}.`;
+        // APA 7ª: el bloque de autores cierra con punto. Las personas ya lo
+        // traen en la inicial (García, J.), pero los corporativos no — se añade
+        // solo cuando falta, sin duplicarlo jamás.
+        let aut = this._autoresAPA(o.autores);
+        if (aut && !aut.endsWith('.')) aut += '.';
+        let c = `${aut} (${o.anio}). ${o.titulo}.`;
         if (o.fuente) {
-            c += ` <i>${o.fuente}</i>`;
-            if (o.volumen) c += `, <i>${o.volumen}</i>${o.numero ? `(${o.numero})` : ''}`;
-            if (o.paginas) c += `, ${o.paginas}`;
-            c += '.';
+            // Informes de organismos (OMS/ONU): en APA 7ª la editorial es el
+            // propio organismo, no una "revista" — y va en redonda.
+            const esInstitucional = /^(OMS · IRIS|ONU · Biblioteca Digital)$/.test(o.fuente);
+            if (esInstitucional) {
+                const editorial = (o.autores && o.autores[0] && this._esCorporativo(o.autores[0]))
+                    ? o.autores[0]
+                    : (o.fuente.startsWith('OMS') ? 'Organización Mundial de la Salud' : 'Naciones Unidas');
+                c += ` ${editorial}.`;
+            } else {
+                c += ` <i>${o.fuente}</i>`;
+                if (o.volumen) c += `, <i>${o.volumen}</i>${o.numero ? `(${o.numero})` : ''}`;
+                if (o.paginas) c += `, ${o.paginas}`;
+                c += '.';
+            }
         }
         // APA 7: cerrar con el DOI; si no hay DOI, con la URL de acceso disponible.
         if (o.doi) c += ` ${o.doi}`;
