@@ -25,12 +25,14 @@ const RedactorTeorico = {
             <div id="redFuentesInfo" class="help-text" style="margin:0 0 0.8rem;"></div>
 
             <div style="margin:0 0 1rem; padding:0.7rem 0.9rem; border:1px dashed var(--color-border, #ccc); border-radius:0.5rem;">
-              <label class="label" for="redArchivo" style="display:block; margin:0 0 0.4rem;">📂 ¿Ya tienes una matriz exportada? Cárgala y redacta sin repetir el proceso</label>
+              <label class="label" style="display:block; margin:0 0 0.5rem;">📂 Matriz de fuentes para redactar</label>
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
-                <input type="file" id="redArchivo" accept=".xlsx,.csv" style="font-size:0.85em;">
+                <button id="redUsarGenerada" class="btn btn-primary" style="padding:0.4rem 1rem;">📊 Usar la matriz generada</button>
+                <button id="redSubirArchivo" class="btn btn-outline" style="padding:0.4rem 1rem;">📁 Subir archivo (.xlsx / .csv)</button>
+                <input type="file" id="redArchivo" accept=".xlsx,.csv" style="display:none;">
                 <button id="redQuitarImport" class="btn btn-outline" style="padding:0.25rem 0.7rem; display:none;">✕ Quitar matriz importada</button>
               </div>
-              <p class="help-text" style="margin:0.4rem 0 0;">Acepta los tres formatos que exporta la app: Excel (.xlsx), CSV español (;) y CSV internacional (,). Se usan todas las filas del archivo.</p>
+              <p class="help-text" style="margin:0.4rem 0 0;"><b>Usar la matriz generada</b>: redacta con lo que tengas ahora en el Buscador (respetando el filtro de relevancia). <b>Subir archivo</b>: usa una matriz exportada antes — Excel (.xlsx), CSV español (;) o CSV internacional (,) — sin repetir la búsqueda.</p>
               <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
             </div>
 
@@ -74,6 +76,19 @@ const RedactorTeorico = {
         });
         const btnQuitar = document.getElementById('redQuitarImport');
         if (btnQuitar) btnQuitar.addEventListener('click', () => this._quitarImportadas());
+        const bSubir = document.getElementById('redSubirArchivo');
+        if (bSubir) bSubir.addEventListener('click', () => {
+            const f = document.getElementById('redArchivo');
+            if (f) f.click();
+        });
+        const bGen = document.getElementById('redUsarGenerada');
+        if (bGen) bGen.addEventListener('click', () => {
+            const q2 = document.getElementById('redQuitarImport');
+            if (q2 && q2.style.display !== 'none') q2.click();
+            else this.actualizarInfoFuentes();
+            const info = document.getElementById('redImportInfo');
+            if (info) info.textContent = '📊 Redactando con la matriz generada en el Buscador (con su filtro de relevancia).';
+        });
         const btnTodo = document.getElementById('redRedactarTodo');
         if (btnTodo) btnTodo.addEventListener('click', () => this._onRedactarTodo());
         const btnWord = document.getElementById('redDescargarWord');
@@ -399,14 +414,14 @@ const RedactorTeorico = {
 
     // ---- Identificar variables con IA (editables por el usuario) ----
     async _onIdentificarVariables() {
-        const problema = (document.getElementById('antProblema') || {}).value || '';
+        const problema = (document.getElementById('antQuery') || {}).value || '';
         const caja = document.getElementById('redVariables');
         const estado = document.getElementById('redEstado');
         const btn = document.getElementById('redIdentificar');
 
         if (problema.trim().length < 15) {
             if (estado) estado.textContent = '⚠️ Escribe primero el problema de investigación (arriba, en «Búsqueda intensiva»).';
-            const p = document.getElementById('antProblema'); if (p) p.focus();
+            const p = document.getElementById('antQuery'); if (p) p.focus();
             return;
         }
         if (caja && caja.value.trim().length > 5) {
@@ -560,7 +575,7 @@ const RedactorTeorico = {
         const btn = document.getElementById('redRedactarTodo');
         const btnWord = document.getElementById('redDescargarWord');
         const res = document.getElementById('redResultado');
-        const problema = (document.getElementById('antProblema') || {}).value || '';
+        const problema = (document.getElementById('antQuery') || {}).value || '';
         const variablesTexto = (document.getElementById('redVariables') || {}).value || '';
         const variables = this._leerVariables();
 
@@ -821,7 +836,7 @@ const RedactorTeorico = {
         const estado = document.getElementById('redEstado');
         const btn = document.getElementById('redProbar');
         const res = document.getElementById('redResultado');
-        const problema = (document.getElementById('antProblema') || {}).value || '';
+        const problema = (document.getElementById('antQuery') || {}).value || '';
         const variablesTexto = (document.getElementById('redVariables') || {}).value || '';
 
         this.actualizarInfoFuentes();
