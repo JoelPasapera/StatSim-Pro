@@ -907,11 +907,68 @@
     </main>
 
     <!-- Sección Contacto -->
+    <style>
+        /* ---- Rediseño de la sección Contacto ---- */
+        #contacto .perfil-card {
+            max-width: 760px; margin: 0 auto 2rem; padding: 2.2rem 2rem 1.8rem;
+            background: linear-gradient(160deg, rgba(46,91,186,0.07), rgba(46,91,186,0.015) 55%, transparent);
+            border: 1px solid var(--color-border, #e5e5e5); border-radius: 1.2rem;
+            box-shadow: 0 10px 30px rgba(20, 40, 90, 0.08); text-align: center;
+        }
+        #contacto .perfil-foto {
+            width: 148px; height: 148px; border-radius: 50%; object-fit: cover;
+            border: 4px solid #fff; box-shadow: 0 6px 20px rgba(20, 40, 90, 0.18);
+            margin-bottom: 1rem;
+        }
+        #contacto .perfil-fallback {
+            width: 148px; height: 148px; border-radius: 50%; margin: 0 auto 1rem;
+            display: none; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2E5BBA, #6a8fd8);
+            color: #fff; font-size: 3rem; font-weight: 700; letter-spacing: 1px;
+            border: 4px solid #fff; box-shadow: 0 6px 20px rgba(20, 40, 90, 0.18);
+        }
+        #contacto .perfil-nombre { margin: 0 0 0.2rem; font-size: 1.7rem; }
+        #contacto .perfil-tag {
+            margin: 0 0 0.9rem; color: #2E5BBA; font-weight: 600; font-size: 0.98rem;
+            letter-spacing: 0.02em;
+        }
+        #contacto .perfil-bio {
+            margin: 0 auto; max-width: 620px; color: var(--color-text-soft, #555);
+            line-height: 1.65; font-size: 0.98rem;
+        }
+        #contacto .contact-grid {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 0.7rem; max-width: 760px; margin: 0 auto;
+        }
+        #contacto .contact-card {
+            display: inline-flex; align-items: center; gap: 0.55rem;
+            padding: 0.55rem 1.15rem; border-radius: 999px;
+            border: 1px solid var(--color-border, #e0e0e0); background: #fff;
+            text-decoration: none; color: inherit;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        #contacto .contact-card:hover {
+            transform: translateY(-2px); box-shadow: 0 8px 18px rgba(20, 40, 90, 0.12);
+            border-color: #2E5BBA;
+        }
+        #contacto .contact-card .icon { width: 21px; height: 21px; color: #2E5BBA; }
+        #contacto .contact-card h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+        #contacto .contact-card p { display: none; }
+    </style>
     <section id="contacto" class="section" style="min-height:auto; padding-bottom:3rem;">
         <div class="container">
             <div class="section-header">
                 <h2 class="section-title">Contacto y Redes Sociales</h2>
-                <p class="section-subtitle">Conéctate conmigo y sigue mi trabajo</p>
+                <p class="section-subtitle">La persona detrás de StatSim Pro</p>
+            </div>
+
+            <div class="perfil-card">
+                <img src="Joel.png" alt="Joel Pasapera" class="perfil-foto"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                <div class="perfil-fallback">JP</div>
+                <h3 class="perfil-nombre">Joel Pasapera</h3>
+                <p class="perfil-tag">Psicología · Estadística · Divulgación — creador de StatSim Pro</p>
+                <p class="perfil-bio">StatSim Pro nació como la herramienta para mi propia tesis en psicología y creció hasta convertirse en lo que tienes delante: un laboratorio completo donde la estadística no solo se calcula — se entiende. Lo construyo con un estándar doble: rigor publicable y pedagogía exhaustiva, porque una tesis se defiende mejor cuando puedes explicar el porqué de cada número. Si esta herramienta te ahorra noches de lucha con el SPSS o te enseña algo que ningún manual te explicó, ya cumplió su misión.</p>
             </div>
 
             <div class="contact-grid">
