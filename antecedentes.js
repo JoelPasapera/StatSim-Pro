@@ -190,9 +190,9 @@ const Antecedentes = {
             ['Semantic Scholar', () => this._fetchJSON(this.urlSemantic(query, f)).then(d => (d.data || []).map(x => this.normSemantic(x)))],
             ['OpenAlex', () => this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x)))],
             ['Crossref', () => this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x)))],
-            ['OMS', () => this._fetchJSON(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
+            ['OMS', () => this._fetchJSONConRescate(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
                 .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))],
-            ['ONU', () => this._fetchJSON(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
+            ['ONU', () => this._fetchJSONConRescate(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
                 .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))]
         ].filter(([nom]) => !((nom === 'OMS' && this._nInput('antNumOMS', 1) === 0)
                            || (nom === 'ONU' && this._nInput('antNumONU', 1) === 0)));
@@ -219,6 +219,36 @@ const Antecedentes = {
         const el = document.getElementById(id);
         const n = el ? parseInt(el.value, 10) : NaN;
         return Number.isFinite(n) && n >= 0 ? n : porDefecto;
+    },
+
+    // ------------------------------------------------------------------
+    // DIRECTO PRIMERO, PROXY DE RESCATE: los endpoints de la OMS (IRIS) y la
+    // ONU (Biblioteca Digital) son oficiales y públicos, pero eso no implica
+    // que sus servidores envíen cabeceras CORS: sin ellas, el NAVEGADOR bloquea
+    // la lectura aunque el endpoint responda bien. Estrategia óptima:
+    //   1) intentar la petición directa (si hay CORS: rápida y sin límites);
+    //   2) si el navegador la bloquea, rescatar vía ProxiesCORS.carrera
+    //      (paralela, con salud y cuarentena — el módulo del proyecto);
+    //   3) cachear por URL en la sesión: la búsqueda intensiva repite
+    //      consultas entre variantes y así no gastamos peticiones de más.
+    // ------------------------------------------------------------------
+    _cacheJSON: new Map(),
+    async _fetchJSONConRescate(url) {
+        if (this._cacheJSON.has(url)) return this._cacheJSON.get(url);
+        let dato;
+        try {
+            dato = await this._fetchJSON(url); // 1) directo
+        } catch (e) {
+            if (typeof ProxiesCORS === 'undefined') throw e;
+            // 2) rescate: la carrera valida que el cuerpo sea JSON parseable.
+            const r = await ProxiesCORS.carrera(url, txt => {
+                try { const j = JSON.parse(txt); return j ? [j] : null; }
+                catch (_) { return null; }
+            }, { anchura: 3, timeout: 12000 });
+            dato = r.obras[0];
+        }
+        this._cacheJSON.set(url, dato); // 3) caché de sesión
+        return dato;
     },
 
     urlIRIS(query, f = {}) {
