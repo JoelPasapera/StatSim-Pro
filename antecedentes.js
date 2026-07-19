@@ -186,29 +186,44 @@ const Antecedentes = {
     },
 
     async buscarMulti(query, f = {}) {
-        const tareas = [
-            this._fetchJSON(this.urlSemantic(query, f)).then(d => (d.data || []).map(x => this.normSemantic(x))),
-            this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x))),
-            this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x))),
-            this._fetchJSON(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
-                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde)),
-            this._fetchJSON(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
-                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))
-        ];
+        const candidatas = [
+            ['Semantic Scholar', () => this._fetchJSON(this.urlSemantic(query, f)).then(d => (d.data || []).map(x => this.normSemantic(x)))],
+            ['OpenAlex', () => this._fetchJSON(this.urlOpenAlex(query, f)).then(d => (d.results || []).map(x => this.normOpenAlex(x)))],
+            ['Crossref', () => this._fetchJSON(this.urlCrossref(query, f)).then(d => ((d.message && d.message.items) || []).map(x => this.normCrossref(x)))],
+            ['OMS', () => this._fetchJSON(this.urlIRIS(query, f)).then(d => this._extraerIRIS(d).map(x => this.normIRIS(x))
+                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))],
+            ['ONU', () => this._fetchJSON(this.urlUNDL(query, f)).then(d => this._extraerUNDL(d).map(x => this.normUNDL(x))
+                .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde))]
+        ].filter(([nom]) => !((nom === 'OMS' && this._nInput('antNumOMS', 1) === 0)
+                           || (nom === 'ONU' && this._nInput('antNumONU', 1) === 0)));
+        const nombresFuentes = candidatas.map(c => c[0]);
+        const tareas = candidatas.map(c => c[1]());
         const res = await Promise.allSettled(tareas);
         const listas = res.filter(r => r.status === 'fulfilled').map(r => r.value);
         const caidas = res.filter(r => r.status === 'rejected').length;
+        // Desglose por fuente: hace visible qué respondió y qué falló (p. ej. CORS).
+        const detalle = res.map((r, i) => r.status === 'fulfilled'
+            ? `${nombresFuentes[i]}: ${r.value.length}`
+            : `${nombresFuentes[i]}: ⚠️`).join(' · ');
+        res.forEach((r, i) => { if (r.status === 'rejected') console.warn(`[Buscador] ${nombresFuentes[i]} falló:`, r.reason); });
         if (!listas.length) throw new Error('ninguna fuente respondió');
-        return { obras: this.fusionar(listas, query, f.idioma), fuentesOK: listas.length, caidas };
+        return { obras: this.fusionar(listas, query, f.idioma), fuentesOK: listas.length, caidas, detalle };
     },
 
     // ---- OMS · IRIS (repositorio institucional, DSpace 7 REST) ----
     // Guías, informes técnicos y publicaciones oficiales de la OMS — citables
     // como (Organización Mundial de la Salud, año). Endpoint estándar DSpace 7:
     // /server/api/discover/search/objects?query=&page=&size=  (JSON HAL).
+    // Lee la cantidad de una cajita numérica (0 permitido = fuente desactivada).
+    _nInput(id, porDefecto) {
+        const el = document.getElementById(id);
+        const n = el ? parseInt(el.value, 10) : NaN;
+        return Number.isFinite(n) && n >= 0 ? n : porDefecto;
+    },
+
     urlIRIS(query, f = {}) {
         const p = new URLSearchParams({ query: String(query).trim(), page: '0',
-            size: String(this.CONFIG.POR_FUENTE), dsoType: 'item', sort: 'score,DESC' });
+            size: String(this._nInput('antNumOMS', this.CONFIG.POR_FUENTE)), dsoType: 'item', sort: 'score,DESC' });
         return `https://iris.who.int/server/api/discover/search/objects?${p.toString()}`;
     },
     normIRIS(o) {
@@ -246,7 +261,7 @@ const Antecedentes = {
     urlUNDL(query, f = {}) {
         const p = new URLSearchParams({ p: String(query).trim(), of: 'recjson',
             ot: 'recid,title,authors,abstract,creation_date,imprint,publication_info',
-            rg: String(this.CONFIG.POR_FUENTE) });
+            rg: String(this._nInput('antNumONU', this.CONFIG.POR_FUENTE)) });
         return `https://digitallibrary.un.org/search?${p.toString()}`;
     },
     normUNDL(o) {
@@ -433,9 +448,15 @@ const Antecedentes = {
                 <div class="form-group"><label class="label">Priorizar idioma</label>
                   <select id="antIdioma" class="input"><option value="">Indistinto</option>
                   <option value="es" selected>Español</option><option value="en">Inglés</option></select></div>
+                <div class="form-group"><label class="label">Resultados (OMS)</label>
+                  <input type="number" id="antNumOMS" class="input" value="15" min="0" max="50" step="1"
+                    title="Informes y guías del repositorio IRIS de la OMS. 0 = no consultar."></div>
                 <div class="form-group"><label class="label">Resultados (Scholar)</label>
                   <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
                   <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
+                <div class="form-group"><label class="label">Resultados (ONU)</label>
+                  <input type="number" id="antNumONU" class="input" value="10" min="0" max="25" step="1"
+                    title="Biblioteca Digital de la ONU (su API responde lento: cifras moderadas). 0 = no consultar."></div>
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
                   <select id="antCantidadScopus" class="input"><option value="25">25</option>
                   <option value="50">50</option><option value="100" selected>100</option>
@@ -1058,7 +1079,7 @@ const Antecedentes = {
                 })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` })));
         }
         if (usarAbiertas) tareas.push(
-            this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias` }))
+            this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias — ${r.detalle || ''}` }))
                 .catch(e => ({ obras: [], info: `fuentes complementarias fallaron` })));
 
         const res = await Promise.all(tareas);
