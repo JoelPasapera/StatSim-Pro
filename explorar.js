@@ -111,14 +111,41 @@ const Explorar = {
                 } catch (e) { err = 'red/CORS bloqueó la conexión con GDELT'; }
                 if (intento === 0) await new Promise(x => setTimeout(x, err.includes('ritmo') ? 5000 : 2500));
             }
-            // Rescate por proxy (si la app cargó ProxiesCORS).
+            // Rescate por proxy — FIRMA REAL del arsenal: carrera(objetivo,
+            // validar, opciones), donde validar(texto) devuelve array | null y
+            // el retorno es { obras, proxy } (mismo patrón que alicia-directo).
             if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
                 try {
-                    const texto = await ProxiesCORS.carrera(url, { validador: t => { JSON.parse(t); return true; } });
-                    return { data: JSON.parse(texto), err: null };
-                } catch (e) { err += ' · proxies tampoco lo lograron'; }
+                    const { obras } = await ProxiesCORS.carrera(url,
+                        txt => { try { const d = JSON.parse(txt); return (d && (d.timeline || d.articles)) ? [d] : null; } catch (e) { return null; } },
+                        { anchura: 3, timeout: 15000, oleadas: 2 });
+                    return { data: obras[0], err: null };
+                } catch (e) { err += ' · proxies: ' + String(e.message || 'sin respuesta').slice(0, 60); }
             }
             return { data: null, err };
+        };
+        // PLAN C — Google News RSS por proxy: si GDELT no responde por ningún
+        // camino, se estima con una muestra de Google Noticias (máx ~100 items).
+        const planC = async () => {
+            if (typeof ProxiesCORS === 'undefined' || !ProxiesCORS.carrera) return null;
+            const claves = this._queryNoticias(tema).replace(/"/g, '');
+            const rss = 'https://news.google.com/rss/search?q=' + encodeURIComponent(claves) + '&hl=es-419&gl=PE&ceid=PE:es';
+            try {
+                const { obras } = await ProxiesCORS.carrera(rss,
+                    txt => {
+                        const items = [...String(txt).matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => m[1]);
+                        if (!items.length) return null;
+                        return [items.map(it => ({
+                            t: ((it.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1] || '').trim(),
+                            u: ((it.match(/<link\s*\/?>([\s\S]*?)<|<link>([\s\S]*?)<\/link>/) || []).slice(1).find(Boolean) || '').trim(),
+                            d: ((it.match(/<source[^>]*>([\s\S]*?)<\/source>/) || [])[1] || 'Google News').trim()
+                        }))];
+                    },
+                    { anchura: 3, timeout: 15000, oleadas: 2 });
+                const items = obras[0];
+                return { n: items.length, titulares: items.slice(0, 3), aprox: true,
+                    urlFuentes: 'https://news.google.com/search?q=' + encodeURIComponent(claves) + '&hl=es-419' };
+            } catch (e) { return null; }
         };
         let n = -1, titulares = [], motivo = '';
         const r1 = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
@@ -126,10 +153,16 @@ const Explorar = {
             const serie = r1.data.timeline[0] && r1.data.timeline[0].data || [];
             n = serie.reduce((s, p) => s + (parseInt(p.value, 10) || 0), 0);
         } else motivo = r1.err || 'respuesta sin datos';
-        await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía entre las 2 llamadas
-        const r2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
-        if (r2.data && r2.data.articles) titulares = r2.data.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
-        return { n, titulares, motivo, urlFuentes };
+        let aprox = false, urlF = urlFuentes;
+        if (n < 0) {
+            const c = await planC();
+            if (c) { n = c.n; titulares = c.titulares; aprox = true; urlF = c.urlFuentes; motivo = ''; }
+        } else {
+            await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía entre las 2 llamadas
+            const r2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
+            if (r2.data && r2.data.articles) titulares = r2.data.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
+        }
+        return { n, titulares, motivo, urlFuentes: urlF, aprox };
     },
     async _academicosOpenAlex(tema) {
         const desde = new Date().getFullYear() - this.ANIOS_ACADEMICOS;
@@ -164,7 +197,7 @@ const Explorar = {
             const not = await this._noticiasGDELT(s, soloEsp);
             const acad = await this._academicosOpenAlex(s);
             filas.push({ tema: s, noticias: not.n, titulares: not.titulares, academicos: acad,
-                motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes,
+                motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes, aprox: !!not.aprox,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
             await new Promise(r => setTimeout(r, 1500)); // GDELT exige ritmo pausado entre temas
         }
@@ -289,7 +322,7 @@ const Explorar = {
               <td style="font-size:1.2em;">${f.icono}</td>
               <td><strong>${esc(f.tema)}</strong></td>
               <td>${f.noticias >= 0
-                ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="Ver la cobertura completa en GDELT (todas las fuentes de este conteo)">${f.noticias.toLocaleString('es')} 📰</a>`
+                ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>`
                 : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
               <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
               <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
