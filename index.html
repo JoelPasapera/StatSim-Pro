@@ -94,31 +94,41 @@
     <main class="main">
         <!-- Sección Hero -->
         <!-- Portada de bienvenida (independiente de las secciones) -->
-        <div id="heroPortada" class="hero hero-portada">
-            <svg class="hero-red" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-                <g stroke="#aebbdb" stroke-opacity="0.08" fill="none">
-                    <path d="M80 220L210 90L390 160L560 60L730 190M210 90L330 250L390 160M560 60L620 240L390 160M330 250L620 240"/>
-                </g>
-                <g fill="#e6b93f">
-                    <circle class="pulso" cx="210" cy="90" r="3"/>
-                    <circle cx="390" cy="160" r="2.4" fill="#aebbdb" fill-opacity="0.35"/>
-                    <circle class="pulso2" cx="620" cy="240" r="3"/>
-                    <circle cx="560" cy="60" r="2" fill="#aebbdb" fill-opacity="0.3"/>
-                    <circle cx="80" cy="220" r="2" fill="#aebbdb" fill-opacity="0.3"/>
-                </g>
-            </svg>
-            <p class="hero-eyebrow">Investigación Inteligente</p>
-            <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
-            <p class="hero-lema">De una idea difusa a una investigación defendible.</p>
-            <p class="hero-verbos"><b>Explora</b> <span aria-hidden="true">·</span> <b>Simula</b> <span aria-hidden="true">·</span> <b>Analiza</b> <span aria-hidden="true">·</span> <b>Descubre</b></p>
-            <a href="#explorador" class="btn btn-primary btn-lg hero-cta">🔭 Comenzar por el Explorador</a>
+        <!-- Portada de bienvenida a pantalla completa -->
+        <div id="heroPortada" class="hero-portada">
+            <div class="hero">
+                <video class="hero-video" autoplay muted loop playsinline preload="metadata"
+                       onerror="this.style.display='none'">
+                    <source src="portada.mp4" type="video/mp4">
+                </video>
+                <div class="hero-velo"></div>
+                <svg class="hero-red" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                    <g stroke="#aebbdb" stroke-opacity="0.08" fill="none">
+                        <path d="M80 220L210 90L390 160L560 60L730 190M210 90L330 250L390 160M560 60L620 240L390 160M330 250L620 240"/>
+                    </g>
+                    <g fill="#e6b93f">
+                        <circle class="pulso" cx="210" cy="90" r="3"/>
+                        <circle cx="390" cy="160" r="2.4" fill="#aebbdb" fill-opacity="0.35"/>
+                        <circle class="pulso2" cx="620" cy="240" r="3"/>
+                    </g>
+                </svg>
+                <p class="hero-eyebrow">Investigación Inteligente</p>
+                <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
+                <p class="hero-lema">De una idea difusa a una investigación defendible.</p>
+                <p class="hero-verbos"><b>Explora</b> <span aria-hidden="true">·</span> <b>Simula</b> <span aria-hidden="true">·</span> <b>Analiza</b> <span aria-hidden="true">·</span> <b>Descubre</b></p>
+                <a href="#explorador" class="btn btn-primary btn-lg hero-cta">🔭 Comenzar por el Explorador</a>
+            </div>
         </div>
+        <div class="nodo-linterna" aria-hidden="true"></div>
         <script>
         (function(){var h=document.getElementById("heroPortada");if(!h)return;
-        function ocultar(){h.classList.add("oculto");}
+        function ocultar(){h.classList.add("oculto");var v=h.querySelector(".hero-video");if(v&&v.pause)v.pause();}
         document.querySelectorAll(".nav-link").forEach(function(l){l.addEventListener("click",ocultar);});
         var cta=h.querySelector(".hero-cta");if(cta)cta.addEventListener("click",function(ev){ev.preventDefault();ocultar();
         var ls=document.querySelectorAll(".nav-link");for(var i=0;i<ls.length;i++){if(ls[i].getAttribute("href")==="#explorador"){ls[i].click();break;}}});
+        var lin=document.querySelector(".nodo-linterna"),pend=false,mx=0,my=0;
+        if(lin){window.addEventListener("pointermove",function(e){mx=e.clientX;my=e.clientY;
+        if(!pend){pend=true;requestAnimationFrame(function(){lin.style.transform="translate3d("+mx+"px,"+my+"px,0)";pend=false;});}},{passive:true});}
         })();
         </script>
         
