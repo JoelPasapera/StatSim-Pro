@@ -78,14 +78,14 @@ body::before {
         radial-gradient(46rem 30rem at -12% 32%, rgba(76, 125, 255, 0.075), transparent 55%),
         radial-gradient(40rem 28rem at 55% 118%, rgba(46, 91, 186, 0.06), transparent 55%);
 }
-body::after { /* red de nodos: textura científica estática, casi subliminal */
+body::after { /* red de nodos: textura científica en todas las secciones */
     content: '';
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    opacity: 0.5;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.05' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480M520 340L440 470'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.075'%3E%3Ccircle cx='60' cy='90' r='2.2'/%3E%3Ccircle cx='200' cy='40' r='1.7'/%3E%3Ccircle cx='340' cy='120' r='2.4'/%3E%3Ccircle cx='470' cy='70' r='1.5'/%3E%3Ccircle cx='160' cy='210' r='1.8'/%3E%3Ccircle cx='120' cy='260' r='2.1'/%3E%3Ccircle cx='300' cy='250' r='1.6'/%3E%3Ccircle cx='390' cy='300' r='2.3'/%3E%3Ccircle cx='520' cy='340' r='1.6'/%3E%3Ccircle cx='90' cy='430' r='1.8'/%3E%3Ccircle cx='260' cy='480' r='2.2'/%3E%3Ccircle cx='440' cy='470' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
+    opacity: 0.9;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.07' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480M520 340L440 470'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.11'%3E%3Ccircle cx='60' cy='90' r='2.2'/%3E%3Ccircle cx='200' cy='40' r='1.7'/%3E%3Ccircle cx='340' cy='120' r='2.4'/%3E%3Ccircle cx='470' cy='70' r='1.5'/%3E%3Ccircle cx='160' cy='210' r='1.8'/%3E%3Ccircle cx='120' cy='260' r='2.1'/%3E%3Ccircle cx='300' cy='250' r='1.6'/%3E%3Ccircle cx='390' cy='300' r='2.3'/%3E%3Ccircle cx='520' cy='340' r='1.6'/%3E%3Ccircle cx='90' cy='430' r='1.8'/%3E%3Ccircle cx='260' cy='480' r='2.2'/%3E%3Ccircle cx='440' cy='470' r='1.7'/%3E%3C/g%3E%3C/svg%3E");
 }
 ::selection { background: var(--accent-soft); color: var(--color-primary); }
 
@@ -636,11 +636,16 @@ body #contacto .contact-card[href*="github"]:hover h3 { color: #e7ecf6; }
     padding-right: clamp(16px, 2.5%, 48px);
 }
 .hero-portada .hero {
-    min-height: calc(100svh - 132px); /* pantalla completa menos header */
+    position: relative;
+    min-height: calc(100vh - 132px);   /* fallback universal */
+    min-height: calc(100svh - 132px);  /* pantalla completa menos header */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
+}
+@media (max-width: 768px) { /* header apilado: más alto */
+    .hero-portada .hero { min-height: calc(100vh - 210px); min-height: calc(100svh - 210px); }
 }
 .hero-portada.oculto { display: none; }
 /* Mientras la portada está activa, el resto espera su turno. */
@@ -680,19 +685,42 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
         display: block;
         position: fixed;
         top: 0; left: 0;
-        width: 460px; height: 460px;
-        margin: -230px 0 0 -230px;
+        width: 720px; height: 720px;
+        margin: -360px 0 0 -360px;
         z-index: 0;
         pointer-events: none;
         opacity: 0;
-        transition: opacity 0.4s ease;
+        transition: opacity 0.45s ease, transform 0.16s cubic-bezier(.2, .7, .3, 1);
+        background-color: transparent;
+        background-blend-mode: screen;
         background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23c8d4ef' stroke-opacity='0.16' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480M520 340L440 470'/%3E%3C/g%3E%3Cg fill='%23e6b93f' fill-opacity='0.28'%3E%3Ccircle cx='60' cy='90' r='2.4'/%3E%3Ccircle cx='200' cy='40' r='1.8'/%3E%3Ccircle cx='340' cy='120' r='2.6'/%3E%3Ccircle cx='470' cy='70' r='1.6'/%3E%3Ccircle cx='160' cy='210' r='2'/%3E%3Ccircle cx='120' cy='260' r='2.2'/%3E%3Ccircle cx='300' cy='250' r='1.7'/%3E%3Ccircle cx='390' cy='300' r='2.5'/%3E%3Ccircle cx='520' cy='340' r='1.7'/%3E%3Ccircle cx='90' cy='430' r='2'/%3E%3Ccircle cx='260' cy='480' r='2.4'/%3E%3Ccircle cx='440' cy='470' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
-        -webkit-mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.9), transparent 72%);
-        mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.9), transparent 72%);
+        -webkit-mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.95), transparent 70%);
+        mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.95), transparent 70%);
         will-change: transform;
+    }
+    .nodo-linterna::before { /* halo de iluminación que delata el área activa */
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, rgba(230, 185, 63, 0.075), rgba(76, 125, 255, 0.045) 40%, transparent 68%);
     }
     body:hover .nodo-linterna { opacity: 1; }
 }
+/* Nodos que LATEN en zonas fijas de todas las secciones (vida tenue
+   permanente: 4 puntos diminutos animando solo opacity — costo ínfimo). */
+.red-viva { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.red-viva i {
+    position: absolute;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(230, 185, 63, 0.85), rgba(230, 185, 63, 0) 70%);
+    animation: nodoPulso 6s ease-in-out infinite;
+}
+.red-viva i:nth-child(1) { top: 16%; left: 11%; }
+.red-viva i:nth-child(2) { top: 34%; right: 8%; animation-delay: 1.6s; animation-duration: 7.5s; }
+.red-viva i:nth-child(3) { bottom: 22%; left: 20%; animation-delay: 3.1s; background: radial-gradient(circle, rgba(140, 170, 255, 0.8), rgba(140, 170, 255, 0) 70%); }
+.red-viva i:nth-child(4) { bottom: 12%; right: 16%; animation-delay: 4.4s; animation-duration: 8.5s; }
+@media (prefers-reduced-motion: reduce) { .red-viva { display: none; } }
 .hero-cta {
     margin-top: 1.8rem;
     display: inline-flex;
