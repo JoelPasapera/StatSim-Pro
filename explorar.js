@@ -32,8 +32,8 @@ const Explorar = {
               </div>
               <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center;">
                 <button id="expBuscar" class="btn btn-primary" style="padding:0.45rem 1.1rem;">🔭 Explorar brechas</button>
-                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Cuántos subtemas propone la IA y se miden (más = más variedad, más espera: ~4 s por subtema)">
-                  N° de subtemas <input type="number" id="expNum" class="input input-sm" min="3" max="12" value="8" style="width:64px;">
+                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Cuántos subtemas se miden (~4-5 s cada uno). Con 1, se mide TU tema tal cual, sin expansión de la IA. Con 3 o más, el semáforo compara los subtemas entre sí (terciles); con 1-2 usa reglas absolutas.">
+                  N° de subtemas <input type="number" id="expNum" class="input input-sm" min="1" max="15" value="8" style="width:64px;">
                 </label>
                 <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;">
                   <input type="checkbox" id="expEspanol" checked style="width:auto; margin:0;"> Solo noticias en español
@@ -149,9 +149,14 @@ const Explorar = {
         if (tema.length < 4) { if (estado) estado.textContent = '⚠️ Escribe un área o tema semilla (o toca un chip).'; return; }
         const soloEsp = !!(document.getElementById('expEspanol') || {}).checked;
         const t0 = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Explorando…';
-        const nSub = Math.max(3, Math.min(12, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
-        if (estado) estado.textContent = `🧠 Proponiendo ${nSub} subtemas del área…`;
-        const subtemas = await this._subtemas(tema, nSub);
+        const nSub = Math.max(1, Math.min(15, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
+        let subtemas;
+        if (nSub === 1) {
+            subtemas = [tema]; // medir el tema del usuario tal cual, sin expansión
+        } else {
+            if (estado) estado.textContent = `🧠 Proponiendo ${nSub} subtemas del área…`;
+            subtemas = await this._subtemas(tema, nSub);
+        }
         const filas = [];
         for (let i = 0; i < subtemas.length; i++) {
             const s = subtemas[i];
@@ -165,11 +170,19 @@ const Explorar = {
         }
         // Semáforo por terciles del índice (solo filas con datos completos)
         const validas = filas.filter(f => f.indice >= 0).sort((a, b) => b.indice - a.indice);
-        validas.forEach((f, i) => {
-            const tercio = validas.length ? i / validas.length : 1;
-            f.icono = (tercio < 1 / 3 && f.noticias >= this.MIN_NOTICIAS_LATENTE) ? '🔥'
-                : (tercio >= 2 / 3 ? '📚' : '📊');
-        });
+        if (validas.length >= 3) {
+            validas.forEach((f, i) => {
+                const tercio = i / validas.length;
+                f.icono = (tercio < 1 / 3 && f.noticias >= this.MIN_NOTICIAS_LATENTE) ? '🔥'
+                    : (tercio >= 2 / 3 ? '📚' : '📊');
+            });
+        } else {
+            // Pocos subtemas: sin terciles posibles → reglas absolutas honestas.
+            validas.forEach(f => {
+                f.icono = (f.indice >= 1 && f.noticias >= this.MIN_NOTICIAS_LATENTE) ? '🔥'
+                    : (f.indice < 0.05 ? '📚' : '📊');
+            });
+        }
         filas.filter(f => f.indice < 0).forEach(f => { f.icono = '❓'; });
         this._resultados = [...validas, ...filas.filter(f => f.indice < 0)];
         this._pintar();
@@ -178,7 +191,7 @@ const Explorar = {
         const causa = motivos.length ? motivos.sort((a, b) =>
             motivos.filter(m => m === b).length - motivos.filter(m => m === a).length)[0] : '';
         if (estado) estado.textContent = nOK
-            ? `✓ ${nOK} subtema(s) medidos. Ordenados por índice de brecha (🔥 = candidatos a problemática latente).`
+            ? `✓ ${nOK} subtema(s) medidos. Ordenados por índice de brecha (🔥 = candidatos a problemática latente${nOK < 3 ? '; con menos de 3, el semáforo usa reglas absolutas, no comparación entre subtemas' : ''}).`
               + (motivos.length ? ` ${motivos.length} con ⚠️ (causa principal: ${causa}); pasa el ratón por el ⚠️ para ver cada motivo.` : '')
             : `❌ Las noticias no pudieron medirse — causa principal: ${causa || 'fuente sin respuesta'}. Reintenta en ~1 minuto (GDELT libera el límite solo).`;
         btn.disabled = false; btn.textContent = t0;
