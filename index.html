@@ -5,6 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StatSim Pro - Simulador y Analizador Estadístico</title>
+    <!-- Tipografías -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0b0f19">
+    <!-- Styles -->
     <link rel="stylesheet" href="styles.css">
     <style>
         .chart-grid {
@@ -86,6 +92,26 @@
 
     <!-- Main Container -->
     <main class="main">
+        <!-- Sección Hero -->
+        <div class="hero">
+            <svg class="hero-red" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <g stroke="#aebbdb" stroke-opacity="0.08" fill="none">
+                    <path d="M80 220L210 90L390 160L560 60L730 190M210 90L330 250L390 160M560 60L620 240L390 160M330 250L620 240"/>
+                </g>
+                <g fill="#e6b93f">
+                    <circle class="pulso" cx="210" cy="90" r="3"/>
+                    <circle cx="390" cy="160" r="2.4" fill="#aebbdb" fill-opacity="0.35"/>
+                    <circle class="pulso2" cx="620" cy="240" r="3"/>
+                    <circle cx="560" cy="60" r="2" fill="#aebbdb" fill-opacity="0.3"/>
+                    <circle cx="80" cy="220" r="2" fill="#aebbdb" fill-opacity="0.3"/>
+                </g>
+            </svg>
+            <p class="hero-eyebrow">Investigación Inteligente</p>
+            <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
+            <p class="hero-lema">De una idea difusa a una investigación defendible.</p>
+            <p class="hero-verbos"><b>Explora</b> <span aria-hidden="true">·</span> <b>Simula</b> <span aria-hidden="true">·</span> <b>Analiza</b> <span aria-hidden="true">·</span> <b>Descubre</b></p>
+        </div>
+        
         <!-- Sección Explorador -->
         <section id="explorador" class="section">
             <div class="container">
