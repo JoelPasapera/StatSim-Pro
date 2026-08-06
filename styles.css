@@ -632,21 +632,36 @@ body #contacto .contact-card[href*="github"]:hover h3 { color: #e7ecf6; }
    existe, su onerror lo oculta y quedan las auroras del tema. */
 .hero-portada {
     margin: 0 0 var(--spacing-2xl);
-    padding-left: clamp(16px, 2.5%, 48px);
-    padding-right: clamp(16px, 2.5%, 48px);
+    padding: 0; /* full-bleed: el hero toca los bordes del viewport */
 }
 .hero-portada .hero {
     position: relative;
-    min-height: calc(100vh - 132px);   /* fallback universal */
-    min-height: calc(100svh - 132px);  /* pantalla completa menos header */
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent; /* el video ES el fondo; sin tarjeta */
+    /* Se desliza bajo el header para que el nav flote SOBRE el video: */
+    margin-top: -76px;
+    padding-top: 96px;
+    min-height: 100vh;   /* fallback universal */
+    min-height: 100svh;  /* viewport completo real */
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
 }
 @media (max-width: 768px) { /* header apilado: más alto */
-    .hero-portada .hero { min-height: calc(100vh - 210px); min-height: calc(100svh - 210px); }
+    .hero-portada .hero { margin-top: -152px; padding-top: 172px; }
 }
+/* Mientras la portada está activa, el header se vuelve cristal puro
+   (flota sobre el video, sin fondo ni filo): aspecto premium. */
+body:has(.hero-portada:not(.oculto)) .header {
+    background: transparent;
+    border-bottom-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+body:has(.hero-portada:not(.oculto)) .header::after { opacity: 0; }
 .hero-portada.oculto { display: none; }
 /* Mientras la portada está activa, el resto espera su turno. */
 main > .hero-portada:not(.oculto) ~ .section { display: none !important; }
@@ -669,10 +684,11 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     z-index: 1;
     pointer-events: none;
     background:
-        radial-gradient(60% 55% at 50% 45%, rgba(11, 15, 25, 0.15), rgba(11, 15, 25, 0.78) 78%),
-        linear-gradient(180deg, rgba(11, 15, 25, 0.55), rgba(11, 15, 25, 0.35) 40%, rgba(11, 15, 25, 0.82));
+        radial-gradient(62% 58% at 50% 44%, rgba(11, 15, 25, 0.12), rgba(11, 15, 25, 0.7) 80%),
+        linear-gradient(180deg, rgba(11, 15, 25, 0.62) 0%, rgba(11, 15, 25, 0.3) 34%, rgba(11, 15, 25, 0.55) 72%, var(--color-bg) 99%);
 }
-.hero-portada .hero > :not(.hero-video):not(.hero-velo) { position: relative; z-index: 2; }
+.hero-portada .hero > :not(.hero-video):not(.hero-velo):not(.hero-red) { position: relative; z-index: 2; }
+.hero-portada .hero-red { position: absolute; inset: 0; z-index: 1; } /* decorativo: JAMÁS en flujo */
 @media (prefers-reduced-motion: reduce) { .hero-video { display: none; } }
 
 /* Linterna de nodos: la red se INTENSIFICA alrededor del cursor. Es un
