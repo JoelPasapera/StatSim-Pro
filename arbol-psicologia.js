@@ -22,7 +22,16 @@ const ArbolPsicologia = {
             'Obsesiones y control': ['pensamientos intrusivos','perfeccionismo clínico','acumulación compulsiva','rituales de comprobación','tricotilomanía','rumiación y control'],
             'Sueño': ['insomnio universitario','higiene del sueño juvenil','pesadillas y ansiedad','uso del celular nocturno','somnolencia diurna escolar','cronotipo y rendimiento'],
             'Psicoterapia y ayuda': ['abandono de la terapia','alianza terapéutica','terapia en línea eficacia percibida','barreras para pedir ayuda','autoayuda con aplicaciones','preferencias de tratamiento'],
-            'Emociones difíciles': ['vergüenza y evitación','culpa y reparación','ira al conducir','frustración y pantallas','celos entre amigos','soledad no deseada juvenil','apatía y desmotivación','sensibilidad al rechazo']
+            'Emociones difíciles': ['vergüenza y evitación','culpa y reparación','ira al conducir','frustración y pantallas','celos entre amigos','soledad no deseada juvenil','apatía y desmotivación','sensibilidad al rechazo'],
+            'Psicosis y espectro grave': ['primer episodio psicótico','pródromos en jóvenes','alucinaciones y angustia','adherencia en esquizofrenia','familia y psicosis','recuperación funcional','psicosis y consumo de cannabis','voces y afrontamiento'],
+            'Bipolaridad y regulación del ánimo': ['detección temprana de bipolaridad','manía y decisiones de riesgo','eutimia y rutinas','ciclado y sueño','bipolaridad en universitarios','creatividad y ánimo elevado','estacionalidad del ánimo'],
+            'Personalidad': ['rasgos límite en jóvenes','perfeccionismo desadaptativo','narcisismo y redes sociales','dependencia emocional','evitación experiencial','rigidez y cambio vital','impulsividad rasgo','personalidad y estilo de apego adulto'],
+            'Infantojuvenil clínica': ['ansiedad por separación','mutismo selectivo','rabietas intensas y crianza','terrores nocturnos','ansiedad escolar y ausentismo','tics y estrés infantil','duelo en la infancia','somatización en niños'],
+            'Disociación y despersonalización': ['despersonalización en jóvenes','desrealización y pantallas','disociación tras trauma','lagunas de memoria y estrés','ensoñación excesiva'],
+            'Diagnóstico y evaluación': ['autodiagnóstico por redes sociales','sobrediagnóstico percibido','etiquetas diagnósticas e identidad','cribado en atención primaria','evaluación en línea validez','diagnóstico tardío en adultas'],
+            'Tratamiento farmacológico vivido': ['actitudes hacia antidepresivos','adherencia a psicofármacos','efectos secundarios y abandono','automedicación ansiolítica','retirada de antidepresivos','ansiolíticos en universitarios'],
+            'Crisis y emergencias': ['primeros auxilios psicológicos','salud mental tras desastres','líneas de ayuda uso y confianza','crisis en urgencias hospitalarias','contención familiar en crisis','después del intento suicida'],
+            'Estigma y búsqueda de ayuda': ['autoestigma y terapia','hablar de salud mental en familia','salud mental masculina y silencio','revelación del diagnóstico','estigma en el trabajo','campañas antiestigma eficacia percibida']
         },
         'Educativa': {
             'Aprendizaje y rendimiento': ['procrastinación académica','motivación escolar','hábitos de estudio y rendimiento','autoeficacia académica','metas de logro estudiantil','autorregulación del aprendizaje','mentalidad de crecimiento','aprendizaje autodirigido'],
