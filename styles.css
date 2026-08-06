@@ -626,6 +626,18 @@ body #contacto .contact-card[href*="github"]:hover h3 { color: #e7ecf6; }
    HERO — portada del Explorador. El "wow" sin video: tipografía display,
    red de nodos con pulso tenue (solo opacity, 2 nodos) y verbos de marca.
    ======================================== */
+/* Portada independiente: visible al entrar, se retira al navegar. */
+.hero-portada {
+    max-width: 1100px;
+    margin: 0 auto var(--spacing-2xl);
+    padding-left: clamp(16px, 2.5%, 48px);
+    padding-right: clamp(16px, 2.5%, 48px);
+}
+.hero-portada.oculto { display: none; }
+.hero-cta {
+    margin-top: 1.8rem;
+    display: inline-flex;
+}
 .hero {
     position: relative;
     text-align: center;
