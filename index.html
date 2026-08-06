@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#0b0f19">
     <!-- Styles -->
-    <link rel="stylesheet" href="styles.css?v=5">
+    <link rel="stylesheet" href="styles.css?v=6">
     <style>
         .chart-grid {
             display: grid;
@@ -120,16 +120,22 @@
             </div>
         </div>
         <div class="nodo-linterna" aria-hidden="true"></div>
+        <div class="red-viva" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <script>
         (function(){var h=document.getElementById("heroPortada");if(!h)return;
-        function ocultar(){h.classList.add("oculto");var v=h.querySelector(".hero-video");if(v&&v.pause)v.pause();}
-        document.querySelectorAll(".nav-link").forEach(function(l){l.addEventListener("click",ocultar);});
-        var cta=h.querySelector(".hero-cta");if(cta)cta.addEventListener("click",function(ev){ev.preventDefault();ocultar();
-        var ls=document.querySelectorAll(".nav-link");for(var i=0;i<ls.length;i++){if(ls[i].getAttribute("href")==="#explorador"){ls[i].click();break;}}});
-        var lin=document.querySelector(".nodo-linterna"),pend=false,mx=0,my=0;
-        if(lin){window.addEventListener("pointermove",function(e){mx=e.clientX;my=e.clientY;
-        if(!pend){pend=true;requestAnimationFrame(function(){lin.style.transform="translate3d("+mx+"px,"+my+"px,0)";pend=false;});}},{passive:true});}
-        })();
+        function ocultar() {
+            h.classList.add("oculto");
+            var vd = h.querySelector(".hero-video");
+            if (vd) {
+                if (vd.pause) vd.pause();
+                vd.removeAttribute("src");
+                vd.querySelectorAll("source").forEach(function(s) {
+                    s.remove();
+                });
+                if (vd.load) vd.load();
+                vd.remove();
+            }
+        }
         </script>
         
         <!-- Sección Explorador -->
