@@ -93,7 +93,8 @@
     <!-- Main Container -->
     <main class="main">
         <!-- Sección Hero -->
-        <div class="hero">
+        <!-- Portada de bienvenida (independiente de las secciones) -->
+        <div id="heroPortada" class="hero hero-portada">
             <svg class="hero-red" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
                 <g stroke="#aebbdb" stroke-opacity="0.08" fill="none">
                     <path d="M80 220L210 90L390 160L560 60L730 190M210 90L330 250L390 160M560 60L620 240L390 160M330 250L620 240"/>
@@ -110,7 +111,16 @@
             <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
             <p class="hero-lema">De una idea difusa a una investigación defendible.</p>
             <p class="hero-verbos"><b>Explora</b> <span aria-hidden="true">·</span> <b>Simula</b> <span aria-hidden="true">·</span> <b>Analiza</b> <span aria-hidden="true">·</span> <b>Descubre</b></p>
+            <a href="#explorador" class="btn btn-primary btn-lg hero-cta">🔭 Comenzar por el Explorador</a>
         </div>
+        <script>
+        (function(){var h=document.getElementById("heroPortada");if(!h)return;
+        function ocultar(){h.classList.add("oculto");}
+        document.querySelectorAll(".nav-link").forEach(function(l){l.addEventListener("click",ocultar);});
+        var cta=h.querySelector(".hero-cta");if(cta)cta.addEventListener("click",function(ev){ev.preventDefault();ocultar();
+        var ls=document.querySelectorAll(".nav-link");for(var i=0;i<ls.length;i++){if(ls[i].getAttribute("href")==="#explorador"){ls[i].click();break;}}});
+        })();
+        </script>
         
         <!-- Sección Explorador -->
         <section id="explorador" class="section">
