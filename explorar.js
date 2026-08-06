@@ -14,41 +14,14 @@ const Explorar = {
     _resultados: [],
     montar() {
         if (document.getElementById('expBuscar')) return; // ya montado
-        // MODO PREFERIDO: la pestaña y la sección viven ESTÁTICAS en el index
-        // (aparición instantánea, como las demás secciones); aquí solo se
-        // rellena el contenido en #seccionExplorar. Si el index aún no las
-        // tuviera, se inyectan como respaldo (con navegación propia).
-        const nav = document.querySelector('.nav');
-        let navInyectado = false;
-        if (nav && !nav.querySelector('a[href="#explorador"]')) {
-            const a = document.createElement('a');
-            a.href = '#explorador'; a.className = 'nav-link'; a.textContent = 'Explorador';
-            nav.insertBefore(a, nav.firstElementChild); // primer paso de la investigación
-            navInyectado = true;
-        }
-        let secc = document.getElementById('explorador');
-        let slot = document.getElementById('seccionExplorar');
-        let seccInyectada = false;
-        if (!secc) {
-            const main = document.querySelector('main') || document.body;
-            secc = document.createElement('section');
-            secc.id = 'explorador'; secc.className = 'section';
-            secc.innerHTML = `
-              <div class="container">
-                <div class="section-header">
-                  <h2 class="section-title">Explorador de Problemáticas</h2>
-                  <p class="section-subtitle">Cruza lo que suena en las noticias del mundo (últimos 3 meses) con lo que ya está estudiado en la academia (últimos ${this.ANIOS_ACADEMICOS} años): donde hay mucho ruido mediático y pocos antecedentes recientes, hay una posible problemática latente para investigar</p>
-                </div>
-                <div id="seccionExplorar"></div>
-              </div>`;
-            main.appendChild(secc);
-            seccInyectada = true;
-        }
-        if (!slot) slot = document.getElementById('seccionExplorar');
-        if (!slot) { // sección estática sin slot: crearlo dentro de su container
-            slot = document.createElement('div');
-            slot.id = 'seccionExplorar';
-            (secc.querySelector('.container') || secc).appendChild(slot);
+        // La pestaña y la sección viven ESTÁTICAS en el index.html (aparición
+        // instantánea y navegación por app.js, igual que las demás secciones).
+        // Este módulo SOLO rellena el contenido dentro de #seccionExplorar;
+        // NUNCA inyecta pestañas ni secciones (así es imposible duplicarlas).
+        const slot = document.getElementById('seccionExplorar');
+        if (!slot) {
+            console.warn('Explorador: falta <div id="seccionExplorar"> en el index (dentro de <section id="explorador">).');
+            return;
         }
         slot.innerHTML = `
             <div class="card">
@@ -83,18 +56,6 @@ const Explorar = {
             cont.appendChild(b);
         });
         document.getElementById('expBuscar').addEventListener('click', () => this._onExplorar());
-        // Navegación propia SOLO si la pestaña/sección fueron inyectadas por
-        // este módulo (si son estáticas, el router de app.js ya las gobierna).
-        if (navInyectado || seccInyectada) document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', (e) => {
-            const esta = l.getAttribute('href') === '#explorador';
-            if (esta) {
-                e.preventDefault();
-                document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'explorador'));
-                document.querySelectorAll('.nav-link').forEach(x => x.classList.toggle('active', x === l));
-            } else if (document.getElementById('explorador').classList.contains('active')) {
-                document.getElementById('explorador').classList.remove('active');
-            }
-        }));
     },
     // ---- Subtemas candidatos con IA (Groq), con fallback sin IA ----
     async _subtemas(tema) {
