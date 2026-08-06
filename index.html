@@ -122,20 +122,49 @@
         <div class="nodo-linterna" aria-hidden="true"></div>
         <div class="red-viva" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <script>
-        (function(){var h=document.getElementById("heroPortada");if(!h)return;
-        function ocultar() {
-            h.classList.add("oculto");
-            var vd = h.querySelector(".hero-video");
-            if (vd) {
-                if (vd.pause) vd.pause();
-                vd.removeAttribute("src");
-                vd.querySelectorAll("source").forEach(function(s) {
-                    s.remove();
-                });
-                if (vd.load) vd.load();
-                vd.remove();
+        (function(){
+            var h = document.getElementById("heroPortada");
+            if (!h) return;
+            function ocultar() {
+                h.classList.add("oculto");
+                var vd = h.querySelector(".hero-video");
+                if (vd) {
+                    if (vd.pause) vd.pause();
+                    vd.removeAttribute("src");
+                    vd.querySelectorAll("source").forEach(function(s) { s.remove(); });
+                    if (vd.load) vd.load();
+                    vd.remove();
+                }
             }
-        }
+            // Navegar a cualquier sección retira la portada
+            document.querySelectorAll(".nav-link").forEach(function(l) {
+                l.addEventListener("click", ocultar);
+            });
+            // Botón "Comenzar": retira la portada y abre el Explorador
+            var cta = h.querySelector(".hero-cta");
+            if (cta) cta.addEventListener("click", function(ev) {
+                ev.preventDefault();
+                ocultar();
+                var ls = document.querySelectorAll(".nav-link");
+                for (var i = 0; i < ls.length; i++) {
+                    if (ls[i].getAttribute("href") === "#explorador") { ls[i].click(); break; }
+                }
+            });
+            // Linterna de nodos: sigue al cursor solo con transform (GPU)
+            var lin = document.querySelector(".nodo-linterna"), pend = false, mx = 0, my = 0;
+            if (lin) {
+                window.addEventListener("pointermove", function(e) {
+                    mx = e.clientX; my = e.clientY;
+                    if (!pend) {
+                        pend = true;
+                        requestAnimationFrame(function() {
+                            lin.style.transform = "translate3d(" + mx + "px," + my + "px,0)";
+                            pend = false;
+                        });
+                    }
+                }, { passive: true });
+            }
+        })();
         </script>
         
         <!-- Sección Explorador -->
