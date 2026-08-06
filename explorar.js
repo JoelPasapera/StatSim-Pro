@@ -87,25 +87,46 @@ const Explorar = {
     async _noticiasGDELT(tema, soloEsp) {
         const q = this._queryNoticias(tema) + (soloEsp ? ' sourcelang:spanish' : '');
         const base = 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(q);
-        // GDELT limita el ritmo: 1 petición a la vez, con un reintento tras
-        // pausa si responde con error (su bloqueo devuelve texto, no JSON).
+        // URL "humana" de GDELT con TODAS las fuentes del conteo (transparencia:
+        // el número de la tabla enlaza aquí para que verifiques la cobertura).
+        const urlFuentes = `${base}&mode=artlist&maxrecords=75&timespan=3m&format=html&sort=datedesc`;
+        // Petición robusta con DIAGNÓSTICO: si la respuesta no es JSON, se lee
+        // el texto para clasificar la causa (límite de ritmo, bloqueo, red) y,
+        // si el arsenal de proxies de la app está disponible, se intenta el
+        // RESCATE por proxy (igual que las rutas OMS/ONU del Buscador).
         const pedir = async (url) => {
+            let err = 'sin respuesta';
             for (let intento = 0; intento < 2; intento++) {
-                try { const r = await fetch(url); return await r.json(); }
-                catch (e) { if (intento === 0) await new Promise(x => setTimeout(x, 2500)); }
+                try {
+                    const r = await fetch(url);
+                    const texto = await r.text();
+                    try { return { data: JSON.parse(texto), err: null }; }
+                    catch (e) {
+                        err = /rate|wait|limit|quota/i.test(texto) ? 'GDELT limitó el ritmo'
+                            : 'GDELT: ' + texto.replace(/<[^>]+>/g, ' ').trim().slice(0, 90);
+                    }
+                } catch (e) { err = 'red/CORS bloqueó la conexión con GDELT'; }
+                if (intento === 0) await new Promise(x => setTimeout(x, err.includes('ritmo') ? 5000 : 2500));
             }
-            return null;
+            // Rescate por proxy (si la app cargó ProxiesCORS).
+            if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
+                try {
+                    const texto = await ProxiesCORS.carrera(url, { validador: t => { JSON.parse(t); return true; } });
+                    return { data: JSON.parse(texto), err: null };
+                } catch (e) { err += ' · proxies tampoco lo lograron'; }
+            }
+            return { data: null, err };
         };
-        let n = -1, titulares = [];
-        const d = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
-        if (d && d.timeline) {
-            const serie = d.timeline[0] && d.timeline[0].data || [];
+        let n = -1, titulares = [], motivo = '';
+        const r1 = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
+        if (r1.data && r1.data.timeline) {
+            const serie = r1.data.timeline[0] && r1.data.timeline[0].data || [];
             n = serie.reduce((s, p) => s + (parseInt(p.value, 10) || 0), 0);
-        }
+        } else motivo = r1.err || 'respuesta sin datos';
         await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía entre las 2 llamadas
-        const d2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
-        if (d2 && d2.articles) titulares = d2.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
-        return { n, titulares };
+        const r2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
+        if (r2.data && r2.data.articles) titulares = r2.data.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
+        return { n, titulares, motivo, urlFuentes };
     },
     async _academicosOpenAlex(tema) {
         const desde = new Date().getFullYear() - this.ANIOS_ACADEMICOS;
@@ -134,6 +155,7 @@ const Explorar = {
             const not = await this._noticiasGDELT(s, soloEsp);
             const acad = await this._academicosOpenAlex(s);
             filas.push({ tema: s, noticias: not.n, titulares: not.titulares, academicos: acad,
+                motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
             await new Promise(r => setTimeout(r, 1500)); // GDELT exige ritmo pausado entre temas
         }
@@ -148,9 +170,13 @@ const Explorar = {
         this._resultados = [...validas, ...filas.filter(f => f.indice < 0)];
         this._pintar();
         const nOK = validas.length;
+        const motivos = filas.filter(f => f.motivo).map(f => f.motivo);
+        const causa = motivos.length ? motivos.sort((a, b) =>
+            motivos.filter(m => m === b).length - motivos.filter(m => m === a).length)[0] : '';
         if (estado) estado.textContent = nOK
-            ? `✓ ${nOK} subtema(s) medidos. Ordenados por índice de brecha (🔥 = candidatos a problemática latente). Los ❓ no pudieron medirse (fuente sin respuesta).`
-            : '❌ Las fuentes no respondieron. Reintenta en unos segundos.';
+            ? `✓ ${nOK} subtema(s) medidos. Ordenados por índice de brecha (🔥 = candidatos a problemática latente).`
+              + (motivos.length ? ` ${motivos.length} con ⚠️ (causa principal: ${causa}); pasa el ratón por el ⚠️ para ver cada motivo.` : '')
+            : `❌ Las noticias no pudieron medirse — causa principal: ${causa || 'fuente sin respuesta'}. Reintenta en ~1 minuto (GDELT libera el límite solo).`;
         btn.disabled = false; btn.textContent = t0;
         this._pintarNube();
     },
@@ -245,7 +271,9 @@ const Explorar = {
             return `<tr>
               <td style="font-size:1.2em;">${f.icono}</td>
               <td><strong>${esc(f.tema)}</strong></td>
-              <td>${f.noticias >= 0 ? f.noticias.toLocaleString('es') : '—'}</td>
+              <td>${f.noticias >= 0
+                ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="Ver la cobertura completa en GDELT (todas las fuentes de este conteo)">${f.noticias.toLocaleString('es')} 📰</a>`
+                : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
               <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
               <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
               <td style="max-width:320px;">${tits}</td>
