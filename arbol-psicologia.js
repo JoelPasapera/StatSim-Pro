@@ -55,7 +55,14 @@ const ArbolPsicologia = {
             'Ambiente y conducta': ['ecoansiedad juvenil','conducta proambiental','apego al lugar','percepción del cambio climático','consumo responsable'],
             'Pareja y relaciones': ['aplicaciones de citas','celos y redes sociales','ruptura y bienestar','comunicación en pareja joven','infidelidad percepción juvenil','convivencia prematrimonial'],
             'Comunicación y persuasión': ['teorías conspirativas adhesión','polarización afectiva','alfabetización mediática','rumores en crisis','publicidad emocional'],
-            'Voluntariado y ayuda': ['conducta prosocial juvenil','donación de sangre motivos','ayuda al extraño','altruismo y anonimato','fatiga por compasión','solidaridad en desastres','microdonaciones digitales','cooperación vecinal']
+            'Voluntariado y ayuda': ['conducta prosocial juvenil','donación de sangre motivos','ayuda al extraño','altruismo y anonimato','fatiga por compasión','solidaridad en desastres','microdonaciones digitales','cooperación vecinal'],
+            'Identidad y grupos': ['identidad nacional juvenil','pertenencia a tribus urbanas','identidad regional y orgullo','hinchadas y pertenencia','identidad generacional','doble identidad rural-urbana','grupos en línea e identidad','símbolos y cohesión grupal'],
+            'Normas y conformidad': ['conformidad en redes sociales','presión normativa y consumo','normas de propina','filas y respeto de turnos','desobediencia civil percepción','normas de género en el hogar','silencio ante lo indebido','honestidad y contexto'],
+            'Conducta colectiva y protesta': ['motivaciones para protestar','eficacia colectiva percibida','emociones en movilizaciones','activismo digital','desgaste del activista','protesta y estigmatización','arte y protesta social','participación tras la protesta'],
+            'Vivienda y ciudad': ['hacinamiento y convivencia','espacios públicos y encuentro','ruido urbano y estrés','transporte público y bienestar','gentrificación percibida','vivienda alquilada y arraigo','vecindarios y confianza','ciudades caminables y ánimo'],
+            'Género y roles': ['corresponsabilidad doméstica','techo de cristal percibido','paternidad activa','estereotipos de género en juguetes','mujeres en ciencia barreras','micromachismos cotidianos','roles de género en publicidad','carga mental femenina'],
+            'Relaciones intergrupales': ['contacto intergrupal y prejuicio','amistades interculturales','equipos deportivos y integración','humor y fronteras grupales','narrativas del nosotros-ellos','cooperación entre barrios rivales','memoria histórica y reconciliación'],
+            'Confianza institucional': ['confianza en la prensa','confianza en la ciencia','desafección política juvenil','corrupción percibida y apatía','confianza en jueces','participación electoral joven','instituciones y esperanza social']
         },
         'Desarrollo y familia': {
             'Primera infancia': ['apego infantil','uso de pantallas en niños','juego y desarrollo','regulación emocional temprana','lenguaje y crianza','sueño infantil'],
@@ -74,7 +81,14 @@ const ArbolPsicologia = {
             'Cognición y tecnología': ['memoria y buscadores web','descarga cognitiva en inteligencia artificial','lectura digital versus papel','videojuegos y atención','mapas mentales y GPS'],
             'Lenguaje y comunicación': ['desarrollo del lenguaje y pantallas','tartamudez y ansiedad social','afasia y familia','comunicación aumentativa'],
             'Creatividad y pensamiento': ['creatividad y aburrimiento','pensamiento crítico universitario','insight y resolución de problemas','creatividad e inteligencia artificial'],
-            'Música y cognición': ['música y concentración','entrenamiento musical y memoria','música y regulación emocional','preferencias musicales y personalidad','música en el ejercicio','canto coral y bienestar','música y sueño','bandas sonoras y emoción']
+            'Música y cognición': ['música y concentración','entrenamiento musical y memoria','música y regulación emocional','preferencias musicales y personalidad','música en el ejercicio','canto coral y bienestar','música y sueño','bandas sonoras y emoción'],
+            'Memoria y olvido': ['falsos recuerdos','memoria autobiográfica y redes sociales','olvido intencional','memoria de contraseñas','efecto de la fotografía en el recuerdo','memoria y emoción','testigos y sugestión','repaso espaciado eficacia'],
+            'Percepción y atención sostenida': ['ceguera por desatención','atención sostenida en clases largas','fatiga atencional digital','percepción del tiempo en espera','ruido y concentración','ilusiones perceptivas cotidianas','atención plena y errores','señales de tránsito y percepción'],
+            'Emoción y cerebro': ['regulación emocional y corteza prefrontal','estrés crónico y memoria','miedo condicionado cotidiano','asco moral','interocepción y ansiedad','risa y vínculo social','llanto y alivio emocional','emoción y toma de riesgos'],
+            'Sueño y cognición': ['privación de sueño y atención','siesta y consolidación de memoria','soñar y resolución de problemas','deuda de sueño universitaria','cronotipo y horarios escolares','sueño y aprendizaje motor','microsueños al conducir','sueño irregular y ánimo'],
+            'Neurociencia social': ['empatía y dolor ajeno','sincronía en conversaciones','contagio emocional en grupos','mirada y confianza','cerebro adolescente y recompensa social','exclusión social y dolor','imitación y aprendizaje social','oxitocina y cooperación percibida'],
+            'Cognición numérica y tiempo': ['sentido numérico infantil','estimación de cantidades','procrastinación y percepción temporal','planificación del tiempo estudiantil','números grandes y decisiones','ansiedad y percepción del reloj'],
+            'Neuropsicología del deporte': ['conmoción cerebral en deporte juvenil','cabeceos en fútbol formativo','tiempo de reacción y entrenamiento','fatiga mental y precisión','doble tarea en atletas','retorno al juego tras conmoción']
         },
         'Salud y comportamiento': {
             'Conductas de salud': ['adherencia al tratamiento','actividad física y bienestar','calidad del sueño universitario','sedentarismo juvenil','alimentación emocional','autocuidado en jóvenes'],
