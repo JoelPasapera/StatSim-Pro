@@ -13,24 +13,45 @@ const Explorar = {
     MIN_NOTICIAS_LATENTE: 20, // sin un mínimo de ruido real no hay "latencia"
     _resultados: [],
     montar() {
-        if (document.getElementById('explorar')) return;
-        const main = document.querySelector('main') || document.body;
+        if (document.getElementById('expBuscar')) return; // ya montado
+        // MODO PREFERIDO: la pestaña y la sección viven ESTÁTICAS en el index
+        // (aparición instantánea, como las demás secciones); aquí solo se
+        // rellena el contenido en #seccionExplorar. Si el index aún no las
+        // tuviera, se inyectan como respaldo (con navegación propia).
         const nav = document.querySelector('.nav');
-        // Pestaña en el nav (antes de Ayuda si existe)
+        let navInyectado = false;
         if (nav && !nav.querySelector('a[href="#explorar"]')) {
             const a = document.createElement('a');
             a.href = '#explorar'; a.className = 'nav-link'; a.textContent = 'Explorar';
             const ayuda = nav.querySelector('a[href="#ayuda"]');
             nav.insertBefore(a, ayuda || null);
+            navInyectado = true;
         }
-        const secc = document.createElement('section');
-        secc.id = 'explorar'; secc.className = 'section';
-        secc.innerHTML = `
-          <div class="container">
-            <div class="section-header">
-              <h2 class="section-title">Explorar problemáticas latentes</h2>
-              <p class="section-subtitle">Cruza lo que suena en las noticias del mundo (últimos 3 meses) con lo que ya está estudiado en la academia (últimos ${this.ANIOS_ACADEMICOS} años): donde hay mucho ruido mediático y pocos antecedentes recientes, hay una posible problemática latente para investigar</p>
-            </div>
+        let secc = document.getElementById('explorar');
+        let slot = document.getElementById('seccionExplorar');
+        let seccInyectada = false;
+        if (!secc) {
+            const main = document.querySelector('main') || document.body;
+            secc = document.createElement('section');
+            secc.id = 'explorar'; secc.className = 'section';
+            secc.innerHTML = `
+              <div class="container">
+                <div class="section-header">
+                  <h2 class="section-title">Explorar problemáticas latentes</h2>
+                  <p class="section-subtitle">Cruza lo que suena en las noticias del mundo (últimos 3 meses) con lo que ya está estudiado en la academia (últimos ${this.ANIOS_ACADEMICOS} años): donde hay mucho ruido mediático y pocos antecedentes recientes, hay una posible problemática latente para investigar</p>
+                </div>
+                <div id="seccionExplorar"></div>
+              </div>`;
+            main.appendChild(secc);
+            seccInyectada = true;
+        }
+        if (!slot) slot = document.getElementById('seccionExplorar');
+        if (!slot) { // sección estática sin slot: crearlo dentro de su container
+            slot = document.createElement('div');
+            slot.id = 'seccionExplorar';
+            (secc.querySelector('.container') || secc).appendChild(slot);
+        }
+        slot.innerHTML = `
             <div class="card">
               <div class="form-group">
                 <label class="label" for="expTema">Área o tema semilla</label>
@@ -51,9 +72,7 @@ const Explorar = {
                 </tr></thead><tbody id="expBody"></tbody></table>
                 <p class="help-text" style="margin-top:0.5rem;">🔥 latente (mucho ruido, poca academia) · 📊 equilibrado · 📚 saturado. El índice compara <em>entre sí</em> los subtemas explorados; verifica cada hallazgo antes de decidir tu tema.</p>
               </div>
-            </div>
-          </div>`;
-        main.appendChild(secc);
+            </div>`;
         // Chips de áreas de arranque
         const chips = ['salud mental adolescente', 'redes sociales y bienestar', 'estrés laboral', 'violencia de pareja', 'migración y salud mental', 'adicciones comportamentales'];
         const cont = document.getElementById('expChips');
@@ -65,8 +84,9 @@ const Explorar = {
             cont.appendChild(b);
         });
         document.getElementById('expBuscar').addEventListener('click', () => this._onExplorar());
-        // Navegación: mostrar/ocultar la sección (compatible con el router de la app)
-        document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', (e) => {
+        // Navegación propia SOLO si la pestaña/sección fueron inyectadas por
+        // este módulo (si son estáticas, el router de app.js ya las gobierna).
+        if (navInyectado || seccInyectada) document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', (e) => {
             const esta = l.getAttribute('href') === '#explorar';
             if (esta) {
                 e.preventDefault();
