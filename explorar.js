@@ -20,24 +20,23 @@ const Explorar = {
         // tuviera, se inyectan como respaldo (con navegación propia).
         const nav = document.querySelector('.nav');
         let navInyectado = false;
-        if (nav && !nav.querySelector('a[href="#explorar"]')) {
+        if (nav && !nav.querySelector('a[href="#explorador"]')) {
             const a = document.createElement('a');
-            a.href = '#explorar'; a.className = 'nav-link'; a.textContent = 'Explorar';
-            const ayuda = nav.querySelector('a[href="#ayuda"]');
-            nav.insertBefore(a, ayuda || null);
+            a.href = '#explorador'; a.className = 'nav-link'; a.textContent = 'Explorador';
+            nav.insertBefore(a, nav.firstElementChild); // primer paso de la investigación
             navInyectado = true;
         }
-        let secc = document.getElementById('explorar');
+        let secc = document.getElementById('explorador');
         let slot = document.getElementById('seccionExplorar');
         let seccInyectada = false;
         if (!secc) {
             const main = document.querySelector('main') || document.body;
             secc = document.createElement('section');
-            secc.id = 'explorar'; secc.className = 'section';
+            secc.id = 'explorador'; secc.className = 'section';
             secc.innerHTML = `
               <div class="container">
                 <div class="section-header">
-                  <h2 class="section-title">Explorar problemáticas latentes</h2>
+                  <h2 class="section-title">Explorador de Problemáticas</h2>
                   <p class="section-subtitle">Cruza lo que suena en las noticias del mundo (últimos 3 meses) con lo que ya está estudiado en la academia (últimos ${this.ANIOS_ACADEMICOS} años): donde hay mucho ruido mediático y pocos antecedentes recientes, hay una posible problemática latente para investigar</p>
                 </div>
                 <div id="seccionExplorar"></div>
@@ -87,13 +86,13 @@ const Explorar = {
         // Navegación propia SOLO si la pestaña/sección fueron inyectadas por
         // este módulo (si son estáticas, el router de app.js ya las gobierna).
         if (navInyectado || seccInyectada) document.querySelectorAll('.nav-link').forEach(l => l.addEventListener('click', (e) => {
-            const esta = l.getAttribute('href') === '#explorar';
+            const esta = l.getAttribute('href') === '#explorador';
             if (esta) {
                 e.preventDefault();
-                document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'explorar'));
+                document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === 'explorador'));
                 document.querySelectorAll('.nav-link').forEach(x => x.classList.toggle('active', x === l));
-            } else if (document.getElementById('explorar').classList.contains('active')) {
-                document.getElementById('explorar').classList.remove('active');
+            } else if (document.getElementById('explorador').classList.contains('active')) {
+                document.getElementById('explorador').classList.remove('active');
             }
         }));
     },
@@ -114,21 +113,37 @@ const Explorar = {
         }
     },
     // ---- Fuentes de datos ----
+    // Consulta de noticias: frase exacta solo si el subtema es corto; si es
+    // largo, palabras clave sin stopwords (la frase exacta de 4+ palabras casi
+    // nunca aparece literal en prensa y daba 0 falsos).
+    _queryNoticias(tema) {
+        const stop = new Set(['de','del','la','el','los','las','en','y','o','u','a','al','con','por','para','un','una','sobre','entre','su','sus','e']);
+        const palabras = String(tema).toLowerCase().split(/\s+/).filter(Boolean);
+        if (palabras.length <= 3) return `"${tema}"`;
+        const claves = palabras.filter(p => !stop.has(p)).slice(0, 3);
+        return claves.length > 1 ? claves.join(' ') : `"${claves[0] || tema}"`;
+    },
     async _noticiasGDELT(tema, soloEsp) {
-        const q = `"${tema}"` + (soloEsp ? ' sourcelang:spanish' : '');
+        const q = this._queryNoticias(tema) + (soloEsp ? ' sourcelang:spanish' : '');
         const base = 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(q);
-        let n = 0, titulares = [];
-        try {
-            const r = await fetch(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
-            const d = await r.json();
-            const serie = d && d.timeline && d.timeline[0] && d.timeline[0].data || [];
+        // GDELT limita el ritmo: 1 petición a la vez, con un reintento tras
+        // pausa si responde con error (su bloqueo devuelve texto, no JSON).
+        const pedir = async (url) => {
+            for (let intento = 0; intento < 2; intento++) {
+                try { const r = await fetch(url); return await r.json(); }
+                catch (e) { if (intento === 0) await new Promise(x => setTimeout(x, 2500)); }
+            }
+            return null;
+        };
+        let n = -1, titulares = [];
+        const d = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
+        if (d && d.timeline) {
+            const serie = d.timeline[0] && d.timeline[0].data || [];
             n = serie.reduce((s, p) => s + (parseInt(p.value, 10) || 0), 0);
-        } catch (e) { n = -1; } // -1 = fuente no respondió
-        try {
-            const r2 = await fetch(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
-            const d2 = await r2.json();
-            titulares = (d2.articles || []).slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
-        } catch (e) { /* sin titulares */ }
+        }
+        await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía entre las 2 llamadas
+        const d2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
+        if (d2 && d2.articles) titulares = d2.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
         return { n, titulares };
     },
     async _academicosOpenAlex(tema) {
@@ -155,10 +170,11 @@ const Explorar = {
         for (let i = 0; i < subtemas.length; i++) {
             const s = subtemas[i];
             if (estado) estado.textContent = `🔎 ${i + 1}/${subtemas.length}: midiendo «${s}» en noticias y academia…`;
-            const [not, acad] = await Promise.all([this._noticiasGDELT(s, soloEsp), this._academicosOpenAlex(s)]);
+            const not = await this._noticiasGDELT(s, soloEsp);
+            const acad = await this._academicosOpenAlex(s);
             filas.push({ tema: s, noticias: not.n, titulares: not.titulares, academicos: acad,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
-            await new Promise(r => setTimeout(r, 350)); // cortesía con las APIs
+            await new Promise(r => setTimeout(r, 1500)); // GDELT exige ritmo pausado entre temas
         }
         // Semáforo por terciles del índice (solo filas con datos completos)
         const validas = filas.filter(f => f.indice >= 0).sort((a, b) => b.indice - a.indice);
