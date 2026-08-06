@@ -30,8 +30,11 @@ const Explorar = {
                 <input type="text" id="expTema" class="input" placeholder="Ej: salud mental en adolescentes, tecnoestrés laboral, apuestas en línea…">
                 <div style="display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.5rem;" id="expChips"></div>
               </div>
-              <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
+              <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center;">
                 <button id="expBuscar" class="btn btn-primary" style="padding:0.45rem 1.1rem;">🔭 Explorar brechas</button>
+                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Cuántos subtemas propone la IA y se miden (más = más variedad, más espera: ~4 s por subtema)">
+                  N° de subtemas <input type="number" id="expNum" class="input input-sm" min="3" max="12" value="8" style="width:64px;">
+                </label>
                 <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;">
                   <input type="checkbox" id="expEspanol" checked style="width:auto; margin:0;"> Solo noticias en español
                 </label>
@@ -58,15 +61,15 @@ const Explorar = {
         document.getElementById('expBuscar').addEventListener('click', () => this._onExplorar());
     },
     // ---- Subtemas candidatos con IA (Groq), con fallback sin IA ----
-    async _subtemas(tema) {
+    async _subtemas(tema, n = 8) {
         try {
             if (typeof IAAsistente === 'undefined' || !IAAsistente.disponible()) throw new Error('sin IA');
             const texto = await IAAsistente.chatConReintento([
                 { role: 'system', content: 'Eres un investigador en psicología que detecta subtemas emergentes. Respondes SOLO JSON válido.' },
-                { role: 'user', content: `A partir del área «${tema}», propone 8 subtemas de investigación en psicología, concretos y actuales (2-6 palabras cada uno, en español, aptos como consulta de búsqueda). Responde SOLO: {"subtemas":["...","..."]}` }
+                { role: 'user', content: `A partir del área «${tema}», propone EXACTAMENTE ${n} subtemas de investigación en psicología, concretos y actuales (2-6 palabras cada uno, en español, aptos como consulta de búsqueda). Responde SOLO: {"subtemas":["...","..."]}` }
             ], { temperature: 0.7, max_tokens: 1200, response_format: { type: 'json_object' } });
             const d = JSON.parse(texto.replace(/```json|```/g, '').trim());
-            const lista = (d.subtemas || []).map(s => String(s).trim()).filter(s => s.length > 2).slice(0, 12);
+            const lista = (d.subtemas || []).map(s => String(s).trim()).filter(s => s.length > 2).slice(0, n);
             if (lista.length >= 3) return lista;
             throw new Error('pocos');
         } catch (e) {
@@ -146,8 +149,9 @@ const Explorar = {
         if (tema.length < 4) { if (estado) estado.textContent = '⚠️ Escribe un área o tema semilla (o toca un chip).'; return; }
         const soloEsp = !!(document.getElementById('expEspanol') || {}).checked;
         const t0 = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Explorando…';
-        if (estado) estado.textContent = '🧠 Proponiendo subtemas del área…';
-        const subtemas = await this._subtemas(tema);
+        const nSub = Math.max(3, Math.min(12, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
+        if (estado) estado.textContent = `🧠 Proponiendo ${nSub} subtemas del área…`;
+        const subtemas = await this._subtemas(tema, nSub);
         const filas = [];
         for (let i = 0; i < subtemas.length; i++) {
             const s = subtemas[i];
