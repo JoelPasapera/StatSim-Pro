@@ -5,25 +5,23 @@
 // citar las fuentes reales, con citas cortas ya construidas por la app, y las
 // citas textuales solo pueden salir de los resúmenes.
 //
+// REDACCIÓN: vía Worker de GEMINI (proveedor dedicado del redactor), con el
+// contrato de SÍNTESIS CIENTÍFICA (por ejes temáticos, no autor por autor).
+//
 // IMPORTANTE (honestidad académica): el resultado es un BORRADOR de trabajo.
 // El investigador debe verificar cada cita contra la fuente original, corregir
 // y reescribir con su propia voz antes de usarlo en la tesis.
 // ========================================
-
 const RedactorTeorico = {
-
     _textos: {}, // secciones redactadas: { clave: { titulo, texto, fuentesUsadas } }
-
     montar() {
         const cont = document.getElementById('antRedactor');
         if (!cont) return; // el buscador aún no está montado
-
         cont.innerHTML = `
           <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
             <h3 style="margin:0 0 0.3rem; font-size:1.05rem;">📝 Redacción del marco teórico (borrador asistido)</h3>
             <p class="help-text" style="margin:0 0 0.6rem;">La IA redacta un borrador sustentado <strong>únicamente en las fuentes de tu matriz</strong> (respetando el filtro de relevancia). Es un punto de partida: <strong>verifica cada cita contra la fuente original</strong>, corrige y reescribe con tu voz antes de usarlo.</p>
             <div id="redFuentesInfo" class="help-text" style="margin:0 0 0.8rem;"></div>
-
             <div style="margin:0 0 1rem; padding:0.7rem 0.9rem; border:1px dashed var(--color-border, #ccc); border-radius:0.5rem;">
               <label class="label" style="display:block; margin:0 0 0.5rem;">📂 Matriz de fuentes para redactar</label>
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap;">
@@ -35,7 +33,6 @@ const RedactorTeorico = {
               <p class="help-text" style="margin:0.4rem 0 0;"><b>Usar la matriz generada</b>: redacta con lo que tengas ahora en el Buscador (respetando el filtro de relevancia). <b>Subir archivo</b>: usa una matriz exportada antes — Excel (.xlsx), CSV español (;) o CSV internacional (,) — sin repetir la búsqueda.</p>
               <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
             </div>
-
             <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:0.2rem;">
               <button id="redRedactarTodo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">📄 Redactar marco teórico completo</button>
               <button id="redProbar" class="btn btn-outline" style="padding:0.4rem 1rem;">✍️ Probar solo una sección</button>
@@ -46,7 +43,6 @@ const RedactorTeorico = {
             <div id="redEstado" class="help-text" style="margin-top:0.5rem;"></div>
             <div id="redResultado" style="display:none; margin-top:0.8rem; padding:1rem; border:1px solid var(--color-border, #ddd); border-radius:0.5rem; background:#fafafa; white-space:pre-wrap; font-family:'Times New Roman', serif; font-size:0.95rem; line-height:1.6; max-height:28rem; overflow:auto;"></div>
           </div>`;
-
         // Variables de estudio: se montan ARRIBA, entre «Problema de investigación»
         // y «Criterios» (flujo natural: problema → variables → criterios). Si el
         // slot no existiera (versión vieja del buscador), caen dentro del redactor.
@@ -63,7 +59,6 @@ const RedactorTeorico = {
               placeholder="Una variable por línea, con el formato:  Nombre — definición conceptual breve.&#10;Pulsa «Identificar variables» para que la IA las proponga a partir del problema de investigación; luego edítalas a tu criterio."></textarea>
             <p class="help-text" style="margin:0.4rem 0 0;">La IA propone; tú confirmas. Estas variables guiarán los criterios y todas las secciones del marco teórico.</p>`;
         if (slotVars === cont) cont.insertBefore(bloqueVars, cont.firstChild); else slotVars.appendChild(bloqueVars);
-
         const btnVar = document.getElementById('redIdentificar');
         if (btnVar) btnVar.addEventListener('click', () => this._onIdentificarVariables());
         const btnProbar = document.getElementById('redProbar');
@@ -95,16 +90,13 @@ const RedactorTeorico = {
         if (btnWord) btnWord.addEventListener('click', () => this._onDescargarWord());
         const btnCopiar = document.getElementById('redCopiar');
         if (btnCopiar) btnCopiar.addEventListener('click', () => this._onCopiar());
-
         this.actualizarInfoFuentes();
     },
-
     // ============================================================
     // IMPORTAR una matriz exportada (Excel .xlsx · CSV ; · CSV ,)
     // ============================================================
     _fuentesImportadas: null,
     _nombreImportado: '',
-
     async _onArchivo(file) {
         const info = document.getElementById('redImportInfo');
         try {
@@ -134,10 +126,6 @@ const RedactorTeorico = {
             this.actualizarInfoFuentes();
         }
     },
-
-    // Completa en segundo plano los resúmenes faltantes de la matriz importada,
-    // consultando por DOI la misma cascada del buscador (OpenAlex → Crossref →
-    // Semantic Scholar → Europe PMC → Scopus). No bloquea; informa el avance.
     // Reconstruye la cita corta APA a partir de la lista de autores reales.
     _citaDesdeAutores(autores, anio) {
         const aps = (autores || []).map(a => this._apellido(a)).filter(Boolean);
@@ -147,7 +135,8 @@ const RedactorTeorico = {
         if (aps.length === 2) return `(${aps[0]} y ${aps[1]}, ${y})`;
         return `(${aps[0]} et al., ${y})`;
     },
-
+    // Completa en segundo plano los resúmenes faltantes de la matriz importada,
+    // consultando por DOI la misma cascada del buscador. No bloquea; informa.
     async _completarResumenes() {
         if (!this._fuentesImportadas || typeof Antecedentes === 'undefined' || !Antecedentes._recuperarDatos) return;
         const pendientes = this._fuentesImportadas.filter(f =>
@@ -187,7 +176,6 @@ const RedactorTeorico = {
         if (info) info.textContent = `${base} ✓ Completado por DOI: ${logrados} campo(s) reparado(s) (resúmenes y/o autores) en ${pendientes.length} fuentes.`;
         this.actualizarInfoFuentes();
     },
-
     _quitarImportadas() {
         this._fuentesImportadas = null;
         this._nombreImportado = '';
@@ -197,17 +185,14 @@ const RedactorTeorico = {
         if (info) info.textContent = 'Matriz importada retirada: la redacción vuelve a usar la matriz de la sesión actual.';
         this.actualizarInfoFuentes();
     },
-
     // Parser CSV con comillas ("" escapadas), saltos dentro de campos, BOM y la
     // pista "sep=;" de Excel. Autodetecta el separador (; español / , internacional).
     _parsearCSV(texto) {
         let t = String(texto || '').replace(/^\ufeff/, '');
-        // Pista de Excel-ES en la primera línea: "sep=;"
         const mSep = t.match(/^sep=(.)\r?\n/i);
         let sep = null;
         if (mSep) { sep = mSep[1]; t = t.slice(mSep[0].length); }
         if (!sep) {
-            // Autodetección sobre la primera línea (fuera de comillas).
             const primera = t.split(/\r?\n/, 1)[0] || '';
             let pc = 0, py = 0, dentro = false;
             for (const ch of primera) {
@@ -217,14 +202,13 @@ const RedactorTeorico = {
             }
             sep = pc >= py ? ';' : ',';
         }
-        // Máquina de estados: campos, comillas y saltos de línea dentro de comillas.
         const filas = [];
         let fila = [], campo = '', dentro = false;
         for (let i = 0; i < t.length; i++) {
             const ch = t[i];
             if (dentro) {
                 if (ch === '"') {
-                    if (t[i + 1] === '"') { campo += '"'; i++; } // comilla escapada
+                    if (t[i + 1] === '"') { campo += '"'; i++; }
                     else dentro = false;
                 } else campo += ch;
             } else if (ch === '"') {
@@ -243,7 +227,6 @@ const RedactorTeorico = {
         if (filas.length < 2) throw new Error('El CSV no tiene datos (solo encabezado o vacío).');
         return { cols: filas[0].map(c => String(c).trim()), filas: filas.slice(1) };
     },
-
     // Lee la primera hoja de un .xlsx (requiere ExcelJS, ya cargado en la app).
     async _parsearXLSX(buffer) {
         if (typeof ExcelJS === 'undefined') throw new Error('La librería de Excel no está cargada. Recarga la página.');
@@ -265,16 +248,12 @@ const RedactorTeorico = {
         if (!cols.length || !filas.length) throw new Error('El Excel no tiene datos.');
         return { cols, filas };
     },
-
     // Convierte filas crudas en fuentes {cita, ref, titulo, anio, resumen}.
-    // Localiza las columnas por NOMBRE (tolerante a mayúsculas/tildes), así
-    // funciona con 13 o 14 columnas (con o sin Relevancia).
     _filasAFuentes(cols, filas) {
         const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
         const idx = {};
         cols.forEach((c, i) => { idx[norm(c)] = i; });
         const col = (...nombres) => { for (const n of nombres) { if (idx[n] != null) return idx[n]; } return -1; };
-
         const iTitulo = col('titulo');
         const iAnio = col('ano', 'año');
         const iRef = col('referencia (apa)', 'referencia apa', 'referencia');
@@ -288,15 +267,11 @@ const RedactorTeorico = {
             throw new Error('El archivo no parece una matriz exportada por la app (faltan las columnas «Título» y «Referencia (APA)»).');
         }
         const limpiar = s => String(s == null ? '' : s).replace(/<[^>]+>/g, '').trim();
-
         return filas.map(f => {
             const titulo = limpiar(f[iTitulo]);
             const ref = limpiar(f[iRef]);
             if (!titulo && !ref) return null;
             const anio = limpiar(iAnio >= 0 ? f[iAnio] : '') || (ref.match(/\((\d{4})[a-z]?\)/) || [])[1] || '';
-            // El "resumen": la columna Resultados guarda el resumen del artículo al
-            // exportar; si viniera vacía (matriz editada a mano), se compone con
-            // Objetivos/Muestra/Conclusiones.
             let resumen = limpiar(iResultados >= 0 ? f[iResultados] : '');
             if (!resumen) {
                 const partes = [];
@@ -305,11 +280,8 @@ const RedactorTeorico = {
                 if (iConclusiones >= 0 && limpiar(f[iConclusiones])) partes.push('Conclusiones: ' + limpiar(f[iConclusiones]));
                 resumen = partes.join(' ');
             }
-            // DOI (si la columna Link/DOI trae uno): permite completar resúmenes faltantes.
             const linkCrudo = limpiar(iLink >= 0 ? f[iLink] : '');
             const doi = /doi\.org\//.test(linkCrudo) || /^10\./.test(linkCrudo) ? linkCrudo : '';
-            // Cita: PREFERIR la columna «Autor» (dato estructurado y limpio) y, si
-            // falta, derivarla de la referencia (texto desde el inicio hasta el año).
             const autoresCol = limpiar(iAutor >= 0 ? f[iAutor] : '')
                 .split(/;\s*/).map(s => s.trim()).filter(Boolean);
             let cita, autoresPendientes;
@@ -318,31 +290,23 @@ const RedactorTeorico = {
                 autoresPendientes = false;
             } else {
                 cita = this._citaDesdeRef(ref, anio);
-                // Cita por título o «s. a.»: los autores venían rotos/ausentes en la
-                // referencia; se marcan para repararlos por DOI en segundo plano.
                 autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
             }
             return { cita, ref, titulo, anio, resumen, doi, _autoresPendientes: autoresPendientes };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
     },
-
-    // Deriva la cita corta (Apellido, año) desde la referencia APA completa:
-    // "García, J., López, M. & Ruiz, P. (2023). ..." → (García et al., 2023).
+    // Deriva la cita corta (Apellido, año) desde la referencia APA completa.
     _citaDesdeRef(ref, anioFallback) {
         const r = String(ref || '');
         const anio = (r.match(/\((\d{4}[a-z]?|s\.\s*f\.)\)/) || [])[1] || anioFallback || 's. f.';
         const preAnio = r.split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[0] || '';
-        // Autores "Apellido, X." (iniciales con punto), tolerando compuestos.
         const M = 'A-ZÀ-ÖØ-ÞĀ-Ž', m_ = 'a-zà-öø-ÿā-ž';
         const m = [...preAnio.matchAll(new RegExp(`([${M}][${M}${m_}'’-]+(?:\\s+[${M}][${M}${m_}'’-]+)*)\\s*,\\s*(?:[${M}]\\.\\s*)+`, 'g'))];
-        // Descartar "apellidos" que en realidad son iniciales sueltas (letra + punto):
-        // evita citas inválidas tipo "(E. B., 2026)" cuando la referencia vino rota.
         const apellidos = m.map(x => x[1].trim()).filter(a => a && !new RegExp(`^([${M}]\\.?\\s*)+$`).test(a));
         if (!apellidos.length) {
             const palabras = preAnio.trim().split(/\s+/).filter(Boolean);
             const soloIniciales = palabras.length && palabras.every(p => new RegExp(`^([${M}${m_}]\\.?,?)+$`).test(p));
             if (!palabras.length || soloIniciales) {
-                // Sin autor recuperable: APA permite citar por el título abreviado.
                 const t = String(ref).split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[1] || '';
                 const tit = t.replace(/^\)\.?\s*/, '').split(/\s+/).slice(0, 3).join(' ').replace(/[.,;:]+$/, '');
                 return tit ? `("${tit}", ${anio})` : `(s. a., ${anio})`;
@@ -353,7 +317,6 @@ const RedactorTeorico = {
         if (apellidos.length === 2) return `(${apellidos[0]} y ${apellidos[1]}, ${anio})`;
         return `(${apellidos[0]} et al., ${anio})`;
     },
-
     // ---- Fuentes: las importadas (si hay) o las de la matriz de la sesión ----
     _fuentes() {
         if (this._fuentesImportadas && this._fuentesImportadas.length) return this._fuentesImportadas;
@@ -367,14 +330,9 @@ const RedactorTeorico = {
             resumen: o.resumen || o.abstract || ''
         }));
     },
-
-    // Cita corta APA a partir de los autores: (Apellido, año) · (A y B, año) ·
-    // (A et al., año). La construye la app para que el modelo NO la invente.
     _apellido(nombre) {
         const n = String(nombre || '').trim();
         if (!n) return '';
-        // Reutiliza la heurística APA del buscador (detecta iniciales tipo
-        // "Batbayar E." para no tomar la inicial como apellido).
         if (typeof Antecedentes !== 'undefined' && Antecedentes._autorAPA) {
             return Antecedentes._autorAPA(n).split(',')[0].trim();
         }
@@ -386,7 +344,6 @@ const RedactorTeorico = {
         const autores = (o.autores || []).map(a => this._apellido(a)).filter(Boolean);
         const anio = o.anio || 's. f.';
         if (!autores.length) {
-            // Sin autores: usar las primeras palabras del título (regla APA de recurso).
             const t = String(o.titulo || 'Anónimo').split(/\s+/).slice(0, 3).join(' ');
             return `("${t}", ${anio})`;
         }
@@ -394,7 +351,6 @@ const RedactorTeorico = {
         if (autores.length === 2) return `(${autores[0]} y ${autores[1]}, ${anio})`;
         return `(${autores[0]} et al., ${anio})`;
     },
-
     actualizarInfoFuentes() {
         const info = document.getElementById('redFuentesInfo');
         if (!info) return;
@@ -411,14 +367,12 @@ const RedactorTeorico = {
             ? `📚 Fuentes disponibles para la redacción: ${n}${filtro}.`
             : '📚 Aún no hay fuentes: busca y marca artículos, o carga una matriz exportada (arriba).';
     },
-
     // ---- Identificar variables con IA (editables por el usuario) ----
     async _onIdentificarVariables() {
         const problema = (document.getElementById('antQuery') || {}).value || '';
         const caja = document.getElementById('redVariables');
         const estado = document.getElementById('redEstado');
         const btn = document.getElementById('redIdentificar');
-
         if (problema.trim().length < 15) {
             if (estado) estado.textContent = '⚠️ Escribe primero el problema de investigación (arriba, en «Búsqueda intensiva»).';
             const p = document.getElementById('antQuery'); if (p) p.focus();
@@ -427,7 +381,6 @@ const RedactorTeorico = {
         if (caja && caja.value.trim().length > 5) {
             if (!confirm('Ya tienes variables escritas. ¿Reemplazarlas por una nueva propuesta de la IA?')) return;
         }
-
         const t = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Identificando…'; }
         if (estado) estado.textContent = 'La IA está identificando las variables de estudio…';
@@ -446,18 +399,19 @@ const RedactorTeorico = {
             if (btn) { btn.disabled = false; btn.textContent = t; }
         }
     },
-
     // ============================================================
-    // DOCUMENTO COMPLETO (Sesión B+C): plan, orquestación y Word APA
+    // DOCUMENTO COMPLETO: plan, orquestación y Word APA
     // ============================================================
     _documento: null, // { secciones: [{titulo, texto}], fuentes, citadas }
-    _ENFRIAMIENTO_MS: 62000, // TPM: 1 lote/clave/minuto (0 en tests)
-
+    // Enfriamiento entre lotes del mismo canal. Con Gemini el cuello suele ser
+    // el límite de peticiones/minuto del tier gratuito (no los tokens): 15 s por
+    // canal es prudente. Si vieras errores de cuota (429), súbelo; el failover
+    // del Worker entre claves también amortigua los picos. (0 en tests.)
+    _ENFRIAMIENTO_MS: 15000,
     _normTexto(s) {
         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     },
-
-    // Variables desde el textarea: [{nombre, definicion}]
+    // Variables desde el textarea: [{nombre, definicion, instrumento}]
     _leerVariables() {
         const t = (document.getElementById('redVariables') || {}).value || '';
         return t.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
@@ -468,9 +422,9 @@ const RedactorTeorico = {
             return { nombre: (nombre || '').trim(), definicion, instrumento };
         }).filter(v => v.nombre);
     },
-
-    // Plan de secciones (dinámico según las variables). 'partes' divide una
-    // sección larga en varias llamadas con fuentes distintas (más exhaustivo).
+    // Plan de secciones (dinámico según las variables). partes:'auto' = la
+    // sección se divide en ceil(fuentes/MAX) partes: reparto EQUITATIVO del
+    // corpus completo con cada llamada dentro de su zona de calidad.
     _construirPlanSecciones(variables) {
         const plan = [];
         plan.push({ titulo: 'Planteamiento del problema', capitulo: 'I', afinidad: '', partes: 1,
@@ -486,19 +440,24 @@ const RedactorTeorico = {
         plan.push({ titulo: 'Justificación', capitulo: 'I', afinidad: '', partes: 1,
             instrucciones: 'Redacta la justificación del estudio en sus formas pertinentes (teórica, práctica, '
                 + 'metodológica y/o social), cada argumento sustentado con citas de las fuentes.' });
-
         plan.push({ titulo: 'Estado de la cuestión', capitulo: 'II', afinidad: '', partes: 1,
             instrucciones: 'Sintetiza qué se sabe actualmente sobre el tema, ORGANIZADO POR CONCEPTOS (no '
                 + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos.' });
-        plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 4,
-            instrucciones: 'Presenta los estudios previos UNO POR UNO en párrafos: para cada estudio citado '
-                + 'indica autores y año (cita narrativa), objetivo, muestra/contexto, y hallazgos principales. '
-                + 'Cubre TODOS los estudios de la lista de fuentes proporcionada.' });
+        plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 'auto',
+            instrucciones: 'Redacta los antecedentes como una SÍNTESIS POR EJES TEMÁTICOS, no como un desfile '
+                + 'de estudios. Agrupa las fuentes según lo que sus hallazgos evidencian (relaciones halladas, '
+                + 'resultados divergentes, poblaciones o niveles de análisis, aproximaciones metodológicas) y '
+                + 'desarrolla cada eje integrando VARIOS estudios por párrafo, con sus citas agrupadas. Haz que '
+                + 'los estudios DIALOGUEN: convergencias, divergencias y qué sugiere cada contraste. Los datos '
+                + 'de muestra, contexto o diseño solo se mencionan cuando son el argumento (p. ej., para explicar '
+                + 'una discrepancia entre estudios). Cubre TODAS las fuentes de la lista, repartidas dentro de '
+                + 'los ejes, y cierra cada eje con lo que el conjunto de la evidencia permite concluir.' });
         for (const v of variables) {
             plan.push({ titulo: `Bases teóricas: ${v.nombre}`, capitulo: 'II', afinidad: v.nombre + ' ' + v.definicion, partes: 1,
                 instrucciones: `Desarrolla con profundidad la variable «${v.nombre}»: definiciones de distintos `
-                    + `autores (cada una con su cita), evolución del concepto y componentes o dimensiones. `
-                    + `DELIMITACIÓN CONCEPTUAL OBLIGATORIA: si en las fuentes coexisten aproximaciones u `
+                    + `autores (cada una con su cita), evolución del concepto y componentes o dimensiones — `
+                    + `contrastando las definiciones entre sí (en qué coinciden y en qué difieren), no como un `
+                    + `listado. DELIMITACIÓN CONCEPTUAL OBLIGATORIA: si en las fuentes coexisten aproximaciones u `
                     + `operacionalizaciones rivales del constructo, preséntalas Y declara explícitamente cuál `
                     + `adopta esta investigación, justificando la elección`
                     + (v.instrumento ? ` por su correspondencia con el instrumento previsto («${v.instrumento}»)` : ` por su correspondencia con el instrumento de medición que la operacionalizará`)
@@ -513,32 +472,27 @@ const RedactorTeorico = {
                     + (v.instrumento ? ` (el instrumento previsto, «${v.instrumento}», operacionaliza esa perspectiva)` : ` (anclando la elección al instrumento de medición previsto)`)
                     + `.` });
         }
-                plan.push({ titulo: 'Definición conceptual de las variables', capitulo: 'II', afinidad: variables.map(v => v.nombre).join(' '), partes: 1,
-            instrucciones: 'Para CADA variable de estudio, presenta su definición conceptual formal con la cita  La definición final de cada variable debe corresponder EXACTAMENTE al modelo o aproximación adoptado en las bases teóricas (coherencia de delimitación conceptual).'
-                + 'del autor correspondiente (una definición principal y, si las fuentes lo permiten, una alternativa).' });
+        plan.push({ titulo: 'Definición conceptual de las variables', capitulo: 'II', afinidad: variables.map(v => v.nombre).join(' '), partes: 1,
+            instrucciones: 'Para CADA variable de estudio, presenta su definición conceptual formal con la cita '
+                + 'del autor correspondiente (una definición principal y, si las fuentes lo permiten, una alternativa). '
+                + 'La definición final de cada variable debe corresponder EXACTAMENTE al modelo o aproximación '
+                + 'adoptado en las bases teóricas (coherencia de delimitación conceptual).' });
         return plan;
     },
-
-    // Selección de fuentes por afinidad simple (palabras clave en título+resumen),
-    // con relleno rotatorio para repartir las fuentes entre secciones/partes.
-    // ¿Es una fuente de la OMS/organismo internacional de salud? (IRIS o autoría institucional)
+    // ¿Fuente de la OMS/organismo internacional de salud?
     _esOMS(f) {
         if (!f) return false;
         if (/OMS|IRIS/i.test(String(f.fuente || ''))) return true;
         if ((f.fuentesAPI || []).some(x => /OMS|IRIS|WHO/i.test(String(x)))) return true;
         return (f.autores || []).some(a => /Organizaci[oó]n Mundial de la Salud|World Health Organization|Organizaci[oó]n Panamericana|Pan American Health/i.test(String(a)));
     },
-
-    // ¿Es una fuente de la ONU (no sanitaria)? Biblioteca Digital o autoría institucional.
+    // ¿Fuente de la ONU (no sanitaria)?
     _esONU(f) {
-        if (!f || this._esOMS(f)) return false; // la OMS tiene su propia prioridad
-        if (/ONU|UNDL|Biblioteca Digital/i.test(String(f.fuente || ''))) return true;
-        if ((f.fuentesAPI || []).some(x => /ONU|UNDL/i.test(String(x)))) return true;
+        if (!f || this._esOMS(f)) return false;
+        if (/ONU|UNDL|ReliefWeb|Biblioteca Digital/i.test(String(f.fuente || ''))) return true;
+        if ((f.fuentesAPI || []).some(x => /ONU|UNDL|ReliefWeb/i.test(String(x)))) return true;
         return (f.autores || []).some(a => /Naciones Unidas|United Nations|UNICEF|UNESCO|PNUD|UNDP|CEPAL/i.test(String(a)));
     },
-
-    // Antepone las fuentes internacionales al subconjunto de una tarea, en el
-    // orden convencional: OMS/OPS primero, después ONU. Mantiene el tamaño n.
     _priorizarOMS(fsel, fuentes, maxOMS, n, maxONU = Math.ceil(maxOMS / 2)) {
         const oms = fuentes.filter(f => this._esOMS(f)).slice(0, maxOMS);
         const onu = fuentes.filter(f => this._esONU(f)).slice(0, maxONU);
@@ -547,7 +501,6 @@ const RedactorTeorico = {
         const resto = fsel.filter(f => !cabeza.includes(f));
         return { fsel: [...cabeza, ...resto].slice(0, Math.max(n, cabeza.length)), oms: oms.length, onu: onu.length };
     },
-
     _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0) {
         if (fuentes.length <= n) return fuentes.slice();
         const claves = this._normTexto(afinidad).split(/\W+/).filter(w => w.length > 3);
@@ -559,7 +512,6 @@ const RedactorTeorico = {
         const conAfinidad = puntuadas.filter(p => p.score > 0).sort((a, b) => b.score - a.score || a.i - b.i);
         const sel = conAfinidad.slice(0, n).map(p => p.f);
         if (sel.length < n) {
-            // Relleno rotatorio (reparte el resto de fuentes entre secciones).
             const usadas = new Set(sel);
             for (let k = 0; sel.length < n && k < fuentes.length; k++) {
                 const f = fuentes[(offset + k) % fuentes.length];
@@ -568,7 +520,6 @@ const RedactorTeorico = {
         }
         return sel;
     },
-
     // ---- Redactar el documento COMPLETO (todas las secciones, en paralelo) ----
     async _onRedactarTodo() {
         const estado = document.getElementById('redEstado');
@@ -578,31 +529,36 @@ const RedactorTeorico = {
         const problema = (document.getElementById('antQuery') || {}).value || '';
         const variablesTexto = (document.getElementById('redVariables') || {}).value || '';
         const variables = this._leerVariables();
-
         this.actualizarInfoFuentes();
         const fuentes = this._fuentes();
         if (problema.trim().length < 15) { if (estado) estado.textContent = '⚠️ Falta el problema de investigación (arriba).'; return; }
         if (!variables.length) { if (estado) estado.textContent = '⚠️ Identifica (o escribe) primero las variables de estudio.'; return; }
         if (!fuentes.length) { if (estado) estado.textContent = '⚠️ No hay fuentes: usa la matriz o importa una exportada.'; return; }
         if (typeof IAAsistente === 'undefined') { if (estado) estado.textContent = '❌ El asistente de IA no está cargado.'; return; }
-
-        // Plan → tareas (las secciones con 'partes' se dividen con fuentes distintas).
+        // Techo por llamada: lo define el asistente (configurable en un lugar).
+        const MAX = (IAAsistente.MAX_FUENTES_SECCION && IAAsistente.MAX_FUENTES_SECCION > 0)
+            ? IAAsistente.MAX_FUENTES_SECCION : 32;
+        // Plan → tareas. partes:'auto' = ceil(fuentes/MAX): reparto equitativo
+        // de TODO el corpus, cada parte con fuentes distintas (ventana rotatoria).
         const plan = this._construirPlanSecciones(variables);
         const tareas = [];
         let off = 0;
         for (const sec of plan) {
-            const porParte = Math.min(32, Math.max(8, Math.ceil(fuentes.length / sec.partes)));
-            for (let p = 0; p < sec.partes; p++) {
+            const nPartes = sec.partes === 'auto'
+                ? Math.max(1, Math.ceil(fuentes.length / MAX))
+                : sec.partes;
+            const porParte = Math.min(MAX, Math.max(Math.min(8, fuentes.length), Math.ceil(fuentes.length / nPartes)));
+            for (let p = 0; p < nPartes; p++) {
                 let fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off);
-                off += porParte; // desplaza una ventana completa: cada parte trae fuentes distintas
+                off += porParte; // ventana completa: cada parte trae fuentes distintas
                 let notaOMS = '';
                 if (sec.titulo === 'Antecedentes' && p === 0) {
                     const pr = this._priorizarOMS(fsel, fuentes, 8, porParte);
                     fsel = pr.fsel;
                     if (pr.oms || pr.onu) notaOMS = ' CONVENCIÓN DE ORDEN OBLIGATORIA: abre la sección con los antecedentes'
                         + ' internacionales de organismos oficiales — son las primeras fuentes de tu lista, en este'
-                        + ' orden: primero OMS/OPS, después ONU y sus agencias — y solo entonces continúa con los'
-                        + ' demás estudios (internacional → nacional → local).';
+                        + ' orden: primero OMS/OPS, después ONU y sus agencias — integrándolos también por ejes, y'
+                        + ' solo entonces continúa con los demás estudios (internacional → nacional → local).';
                 } else if (sec.titulo === 'Planteamiento del problema') {
                     const pr = this._priorizarOMS(fsel, fuentes, 4, porParte);
                     fsel = pr.fsel;
@@ -612,31 +568,30 @@ const RedactorTeorico = {
                 }
                 tareas.push({
                     seccion: sec.titulo,
-                    titulo: sec.partes > 1 ? `${sec.titulo} (parte ${p + 1} de ${sec.partes})` : sec.titulo,
-                    instrucciones: sec.instrucciones + notaOMS + (sec.partes > 1
-                        ? ` Esta es la PARTE ${p + 1} de ${sec.partes}: cubre únicamente las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales.` : ''),
+                    titulo: nPartes > 1 ? `${sec.titulo} (parte ${p + 1} de ${nPartes})` : sec.titulo,
+                    instrucciones: sec.instrucciones + notaOMS + (nPartes > 1
+                        ? ` Esta es la PARTE ${p + 1} de ${nPartes}: construye los ejes únicamente con las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales de la sección.` : ''),
                     fuentes: fsel
                 });
             }
         }
-
         const t = btn ? btn.textContent : '';
         if (btn) btn.disabled = true;
         if (btnWord) btnWord.style.display = 'none';
         if (res) { res.style.display = 'none'; res.textContent = ''; }
         const _t0 = performance.now();
-
-        const canales = Math.min(await (IAAsistente.numClaves ? IAAsistente.numClaves() : 7), tareas.length);
+        // Canales: los del Worker del REDACTOR (Gemini), con fallback al de Groq.
+        const canales = Math.min(await (IAAsistente.numClavesRedactor ? IAAsistente.numClavesRedactor()
+            : (IAAsistente.numClaves ? IAAsistente.numClaves() : 3)), tareas.length);
         let completadas = 0, conError = 0;
         const resultados = new Array(tareas.length).fill(null);
         const prog = () => {
             const tandas = Math.ceil((tareas.length - completadas) / canales);
             if (estado) estado.textContent = `📄 Redactando… ${completadas}/${tareas.length} secciones `
-                + `(${canales} claves en paralelo)${tandas > 0 ? ` · quedan ~${tandas} min` : ''}`;
+                + `(${canales} claves en paralelo)${tandas > 0 ? ` · quedan ~${tandas} tanda(s)` : ''}`;
             if (btn) btn.textContent = `⏳ ${completadas}/${tareas.length}…`;
         };
         prog();
-
         let siguiente = 0;
         const trabajador = async (canal) => {
             let ultimo = 0;
@@ -662,9 +617,7 @@ const RedactorTeorico = {
             }
         };
         await Promise.all(Array.from({ length: canales }, (_, c) => trabajador(c)));
-
-        // SEGUNDA PASADA: reintentar las tareas que fallaron (p. ej. por cuota),
-        // tras el enfriamiento, repartidas de nuevo entre los canales.
+        // SEGUNDA PASADA: reintentar las tareas que fallaron.
         const fallidas = [];
         resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto)) fallidas.push(i); });
         if (fallidas.length) {
@@ -687,7 +640,6 @@ const RedactorTeorico = {
             };
             await Promise.all(Array.from({ length: Math.min(canales, fallidas.length) }, (_, c) => reint(c)));
         }
-
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
         for (const sec of plan) {
@@ -697,7 +649,6 @@ const RedactorTeorico = {
         const textoCompleto = secciones.map(s => s.texto).join('\n\n');
         const citadas = this._fuentesCitadas(textoCompleto, fuentes);
         this._documento = { secciones, fuentes, citadas, problema };
-
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoCompleto.split(/\s+/).filter(Boolean).length;
         if (res) {
@@ -713,7 +664,7 @@ const RedactorTeorico = {
             }).join('\n\n\n');
         }
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
-                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y la Biblioteca Digital de la ONU) e importa la matriz actualizada.')
+                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.')
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
             + (conError ? ` (${conError} parte(s) con error)` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
@@ -722,7 +673,6 @@ const RedactorTeorico = {
         if (btnCop) btnCop.style.display = '';
         if (btn) { btn.disabled = false; btn.textContent = t; }
     },
-
     // Copia al portapapeles el documento mostrado (con fallback clásico).
     async _onCopiar() {
         const res = document.getElementById('redResultado');
@@ -753,24 +703,20 @@ const RedactorTeorico = {
             setTimeout(() => { btn.textContent = t; }, 2000);
         }
     },
-
-    // Limpieza ligera del texto del modelo (markdown residual).
     _limpiarTexto(t) {
         return String(t || '')
-            .replace(/^#+\s*/gm, '')       // ### títulos
-            .replace(/\*\*(.+?)\*\*/g, '$1') // **negritas**
-            .replace(/[\u00A0\u2007\u2009\u202F\u2060]/g, ' ') // espacios "raros" (n = 377) → normal
+            .replace(/^#+\s*/gm, '')
+            .replace(/\*\*(.+?)\*\*/g, '$1')
+            .replace(/[\u00A0\u2007\u2009\u202F\u2060]/g, ' ')
             .trim();
     },
-
-    // Fuentes realmente citadas en el texto (parentética o narrativa).
     _fuentesCitadas(texto, fuentes) {
         const t = String(texto || '');
         const usadas = fuentes.filter(f => {
-            const inner = String(f.cita || '').replace(/^\(|\)$/g, ''); // "García et al., 2023"
+            const inner = String(f.cita || '').replace(/^\(|\)$/g, '');
             if (!inner) return false;
             if (t.includes(inner)) return true;
-            const m = inner.match(/^(.*),\s*([^,]+)$/); // autores, año
+            const m = inner.match(/^(.*),\s*([^,]+)$/);
             if (m) {
                 const narrativa = `${m[1]} (${m[2]})`;
                 if (t.includes(narrativa)) return true;
@@ -779,9 +725,8 @@ const RedactorTeorico = {
             }
             return false;
         });
-        return usadas.length ? usadas : fuentes.slice(); // si no detecta, incluir todas
+        return usadas.length ? usadas : fuentes.slice();
     },
-
     // ---- Word .docx en formato APA ----
     _htmlAPA(doc) {
         const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -796,7 +741,6 @@ const RedactorTeorico = {
             }
             return enc + `<h1 style="text-align:center; font-size:12pt; margin:24pt 0 12pt;">${esc(s.titulo)}</h1>\n${parrafos(s.texto)}`;
         }).join('\n');
-        // Referencias: solo las citadas, orden alfabético, sangría francesa.
         const refs = doc.citadas.slice().sort((a, b) => String(a.ref).localeCompare(String(b.ref), 'es'))
             .map(f => `<p style="margin:0 0 0pt; margin-left:0.5in; text-indent:-0.5in;">${String(f.ref)
                 .replace(/&/g, '&amp;').replace(/<(?!\/?i>)/g, '&lt;')}</p>`).join('\n');
@@ -812,7 +756,6 @@ const RedactorTeorico = {
         ${refs}
         </body></html>`;
     },
-
     _onDescargarWord() {
         if (!this._documento) return;
         const html = this._htmlAPA(this._documento);
@@ -830,7 +773,6 @@ const RedactorTeorico = {
         a.click();
         setTimeout(() => URL.revokeObjectURL(a.href), 5000);
     },
-
     // ---- Probar el motor: redactar el Planteamiento del problema ----
     async _onProbarSeccion() {
         const estado = document.getElementById('redEstado');
@@ -838,10 +780,8 @@ const RedactorTeorico = {
         const res = document.getElementById('redResultado');
         const problema = (document.getElementById('antQuery') || {}).value || '';
         const variablesTexto = (document.getElementById('redVariables') || {}).value || '';
-
         this.actualizarInfoFuentes();
         const fuentes = this._fuentes();
-
         if (problema.trim().length < 15) {
             if (estado) estado.textContent = '⚠️ Falta el problema de investigación (arriba).';
             return;
@@ -854,10 +794,10 @@ const RedactorTeorico = {
             if (estado) estado.textContent = '⚠️ No hay fuentes en la matriz: busca y marca artículos primero.';
             return;
         }
-
         const t = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; btn.textContent = '⏳ Redactando…'; }
-        if (estado) estado.textContent = `✍️ Redactando con ${Math.min(fuentes.length, 20)} fuentes (modelo potente)… puede tardar ~1 minuto.`;
+        const MAXp = (typeof IAAsistente !== 'undefined' && IAAsistente.MAX_FUENTES_SECCION) || 32;
+        if (estado) estado.textContent = `✍️ Redactando con ${Math.min(fuentes.length, MAXp)} fuentes… puede tardar ~1 minuto.`;
         const _t0 = performance.now();
         try {
             if (typeof IAAsistente === 'undefined') throw new Error('El asistente de IA no está cargado.');
@@ -885,7 +825,6 @@ const RedactorTeorico = {
         }
     }
 };
-
 if (typeof window !== 'undefined') {
     window.RedactorTeorico = RedactorTeorico;
     if (document.readyState === 'loading') {
