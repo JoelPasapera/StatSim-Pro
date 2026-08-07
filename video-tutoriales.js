@@ -10,11 +10,11 @@ const VideoTutoriales = {
     // https://www.youtube.com/watch?v=XXXX · https://youtu.be/XXXX ·
     // shorts o embed). Deja '' en las secciones que aún no tengan video.
     VIDEOS: {
-        explorador: '',
-        simulador: '',
-        analizador: '',
-        buscador: '',
-        ayuda: ''
+        explorador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
+        simulador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
+        analizador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
+        buscador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
+        ayuda: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z'
         // (contacto no lleva tutorial)
     },
     // Extrae el ID de cualquier formato de URL de YouTube.
