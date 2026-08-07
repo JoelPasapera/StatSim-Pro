@@ -833,3 +833,7 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
    texto tinta garantizado sobre cualquier fondo claro generado por JS. */
 #seccionAntecedentes :is(div, p, span, li)[style*="background"] { color: #2a3140; }
 #seccionAntecedentes :is(div, p, span, li)[style*="background"] :is(b, strong, a, em, span, li) { color: #131a26; }
+
+.hero-lema-sub { display:block; margin-top:0.6rem; font-size:0.82em; color:var(--color-text-secondary); max-width:38rem; margin-left:auto; margin-right:auto; }
+.hero-chips { display:flex; justify-content:center; flex-wrap:wrap; gap:0.5rem; margin-top:1.4rem; }
+.hero-chips span { font-size:0.8rem; color:var(--color-secondary); border:1px solid var(--border-soft); border-radius:999px; padding:0.3rem 0.85rem; background:rgba(19,28,46,0.55); }
