@@ -535,13 +535,21 @@ code {
    Sobrescribe con `body` los <style> inline del index sin tocarlo.
    ======================================== */
 body .chart-container {
-    background: #fdfdfc;
+    background: linear-gradient(180deg, var(--surface-2), var(--surface) 22%);
     border-radius: var(--radius-md);
     padding: 20px;
     border: 1px solid var(--border-soft);
-    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03);
+    box-shadow: var(--edge-light);
 }
-body .chart-title { color: #26303f; }
+body .chart-title { color: var(--color-primary); }
+/* Los SVG de d3 dibujan ejes y textos oscuros: el filtro los adapta al tema
+   SOLO en pantalla (es CSS puro: la exportación a Word serializa el SVG
+   original y sale en claro, correcto para el documento). */
+#analizador :is(.chart-wrapper, #graficoDispersion, #qqVariable1, #qqVariable2, #cajaGrupos) > svg,
+:is(#resultadosDispersion, #resultadosRegresion, #resultadosComparacion, #cgSlot, #resultadosCorrelacion) svg[width] {
+    filter: invert(0.93) hue-rotate(180deg) saturate(1.15);
+    border-radius: 6px;
+}
 #prismaLienzo, #metaLienzo, #redResultado { color-scheme: light; }
 #redResultado { background: #fbfaf7 !important; color: #1f2430 !important; border-color: var(--border-soft) !important; }
 #metaResultado { background: var(--color-bg-tertiary) !important; color: var(--color-text) !important; border-color: var(--border-soft) !important; }
@@ -792,44 +800,6 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .hero-verbos b { color: #f3d787; font-weight: 600; }
 .hero-verbos span[aria-hidden] { color: rgba(230, 185, 63, 0.55); }
 
-/* ========================================
-   MODO PAPEL para RESULTADOS del Analizador y avisos del Buscador.
-   Los módulos JS pintan estos bloques con fondos claros inline: aquí se
-   garantiza SIEMPRE texto tinta sobre esos fondos (fix del texto invisible).
-   ======================================== */
-#marcoMetodologicoContainer, #resultadosDimensiones, #resultadosSociodemografica,
-#resultadosNiveles, #resultadosHallazgosSocio, #resultadosDescriptivas,
-#resultadosFiabilidad, #pruebasNormalidadContainer, #resultadosCorrelacion,
-#resultadosRegresion, #resultadosDispersion, #resultadosDecision,
-#resultadosReporteAPA, #resultadosDiscusion, #resultadosComparacion,
-#resultadosChiCuadrado, #resultadosContainer, #cgSlot, #editorEtiquetas {
-    color-scheme: light;
-}
-#marcoMetodologicoContainer .card, #resultadosDimensiones .card, #resultadosSociodemografica .card,
-#resultadosNiveles .card, #resultadosHallazgosSocio .card, #resultadosDescriptivas .card,
-#resultadosFiabilidad .card, #pruebasNormalidadContainer .card, #resultadosCorrelacion .card,
-#resultadosRegresion .card, #resultadosDispersion .card, #resultadosDecision .card,
-#resultadosReporteAPA .card, #resultadosDiscusion .card, #resultadosComparacion .card,
-#resultadosChiCuadrado .card, #resultadosContainer .card, #cgSlot .card, #editorEtiquetas .card {
-    background: #fbfaf7;
-    border-color: rgba(30, 40, 60, 0.12);
-    color: #1f2430;
-}
-#resultadosCorrelacion .card :is(h1,h2,h3,h4,label,th,strong,.card-title,.result-title),
-#marcoMetodologicoContainer .card :is(h1,h2,h3,h4,label,th,strong,.card-title,.result-title),
-#cgSlot .card :is(h1,h2,h3,h4,label,th,strong,.card-title,.result-title) { color: #131a26; }
-:is(#marcoMetodologicoContainer, #resultadosDimensiones, #resultadosSociodemografica, #resultadosNiveles,
-#resultadosHallazgosSocio, #resultadosDescriptivas, #resultadosFiabilidad, #pruebasNormalidadContainer,
-#resultadosCorrelacion, #resultadosRegresion, #resultadosDispersion, #resultadosDecision,
-#resultadosReporteAPA, #resultadosDiscusion, #resultadosComparacion, #resultadosChiCuadrado,
-#resultadosContainer, #cgSlot, #editorEtiquetas) .card :is(p, td, li, span, div, .help-text, label, small, em) {
-    color: #2a3140;
-}
-:is(#marcoMetodologicoContainer, #resultadosCorrelacion, #resultadosComparacion, #resultadosRegresion, #cgSlot) .card .table thead,
-:is(#marcoMetodologicoContainer, #resultadosCorrelacion, #resultadosComparacion, #resultadosRegresion, #cgSlot) .card .table th {
-    background: #eef1f7; color: #2a3140; position: static;
-}
-:is(#resultadosCorrelacion, #resultadosComparacion, #resultadosRegresion, #cgSlot) .card .table td { border-color: rgba(30, 40, 60, 0.1); }
 /* Avisos con fondo claro inline en el Buscador (p. ej. la nota de Scopus):
    texto tinta garantizado sobre cualquier fondo claro generado por JS. */
 #seccionAntecedentes :is(div, p, span, li)[style*="background"] { color: #2a3140; }
@@ -975,3 +945,36 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .rec-word i:nth-child(7) { width: 88%; }
 .rec-cta-zona { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
 .rec-nota { font-size: 0.82rem; color: var(--color-text-tertiary); }
+
+/* ============================================================
+   ANALIZADOR EN TEMA COMPLETO — los módulos (Comparación de grupos,
+   SEM, Renombrar variables, resultados) generan bloques con fondos
+   claros inline: aquí se re-visten al sistema nocturno. El !important
+   es necesario y legítimo: debe ganar a style="background:#fff…".
+   ============================================================ */
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: #f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: #e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:#e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(255"] {
+    background: var(--surface-2) !important;
+    color: var(--color-text) !important;
+    border-color: var(--border-soft) !important;
+}
+#analizador [style*="background: #f"] :is(strong, b, h3, h4, label),
+#analizador [style*="background:#f"] :is(strong, b, h3, h4, label),
+#analizador [style*="background: #e"] :is(strong, b, h3, h4, label),
+#analizador [style*="background:#e"] :is(strong, b, h3, h4, label) { color: var(--color-primary) !important; }
+/* Textos con color oscuro inline (ilegibles en dark) → claros */
+#analizador :is(p, span, td, li, label, div)[style*="color: #1"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#1"],
+#analizador :is(p, span, td, li, label, div)[style*="color: #2"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#2"],
+#analizador :is(p, span, td, li, label, div)[style*="color: #3"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#3"],
+#analizador :is(p, span, td, li, label, div)[style*="color: black"] { color: var(--color-text) !important; }
+/* Los gráficos quedan fuera de la caza (su filtro ya los gobierna). */
+#analizador :is(.chart-wrapper, .chart-container)[style],
+#analizador :is(.chart-wrapper, .chart-container) [style] { background: revert-layer; }
