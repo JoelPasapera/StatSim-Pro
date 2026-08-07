@@ -119,52 +119,80 @@
                 <a href="#explorador" class="btn btn-primary btn-lg hero-cta">Comenzar mi investigación →</a>
                 <p class="hero-chips"><span>🔭 Explora problemáticas</span><span>🔎 Busca antecedentes</span><span>🎲 Genera bases de datos</span><span>📊 Analiza y exporta en Word APA 7</span></p>
             </div>
+
+            <!-- El Recorrido: descubre el producto scrolleando -->
+            <div id="recorrido" class="recorrido" aria-label="Qué puedes hacer con StatSim Pro">
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">01 · Explora</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Descubre qué investigar</h3>
+                    <p class="rec-texto rec-anim rec-d2">Cruza las noticias del mundo con la producción académica y encuentra problemáticas latentes: mucho ruido mediático, pocos antecedentes. Ahí vive tu tesis.</p>
+                    <svg class="rec-visual rec-anim rec-d3" viewBox="0 0 560 150" aria-hidden="true">
+                        <g stroke="#e6b93f" stroke-opacity="0.5" fill="none"><path d="M40 110L160 45L300 95L430 30L520 80M160 45L240 120L300 95M430 30L370 115"/></g>
+                        <g><circle cx="40" cy="110" r="4" fill="#8caaff"/><circle cx="160" cy="45" r="5" fill="#e6b93f"/><circle cx="300" cy="95" r="4" fill="#8caaff"/><circle cx="430" cy="30" r="6" fill="#e6b93f"/><circle cx="240" cy="120" r="3.5" fill="#aebbdb"/><circle cx="370" cy="115" r="3.5" fill="#aebbdb"/><circle cx="520" cy="80" r="4" fill="#8caaff"/></g>
+                    </svg>
+                </section>
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">02 · Busca</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Todos tus antecedentes, un solo lugar</h3>
+                    <p class="rec-texto rec-anim rec-d2">Búsqueda simultánea con variantes generadas por IA, criba con criterios de inclusión y relevancia, y una matriz con referencias APA lista para el marco teórico.</p>
+                    <div class="rec-chips rec-anim rec-d3">
+                        <span><b>Google Académico</b></span><span><b>Scopus</b></span><span><b>PubMed</b></span><span><b>SciELO</b></span><span><b>ALICIA</b></span><span><b>OpenAlex</b></span><span><b>Crossref</b></span><span><b>OMS · IRIS</b></span><span><b>ONU</b></span>
+                    </div>
+                </section>
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">03 · Simula y analiza</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Datos que se entienden</h3>
+                    <p class="rec-texto rec-anim rec-d2">Genera bases sintéticas reproducibles o carga las tuyas: descriptivos, normalidad, correlación con protocolo automático, regresión, comparación de grupos y SEM — cada resultado explica su porqué.</p>
+                    <svg class="rec-visual rec-anim rec-d3" viewBox="0 0 560 150" aria-hidden="true">
+                        <path d="M20 140 C 160 140, 200 20, 280 20 S 400 140, 540 140" fill="none" stroke="#8caaff" stroke-width="2.5" stroke-opacity="0.85"/>
+                        <path d="M20 140 C 160 140, 200 20, 280 20 S 400 140, 540 140 L 540 148 L 20 148 Z" fill="#8caaff" fill-opacity="0.08"/>
+                        <line x1="280" y1="20" x2="280" y2="148" stroke="#e6b93f" stroke-width="1.5" stroke-dasharray="4 4"/>
+                    </svg>
+                </section>
+                <section class="rec-cap rec-final">
+                    <p class="rec-num rec-anim">04 · Defiende</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Capítulos en Word APA 7</h3>
+                    <p class="rec-texto rec-anim rec-d2">Marco teórico y resultados con tablas y figuras numeradas, exportados en .docx — gratis y 100 % en tu navegador: tus datos nunca salen de tu equipo.</p>
+                    <div class="rec-word rec-anim rec-d3" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="rec-cta-zona rec-anim rec-d3" style="margin-top:2rem;">
+                        <a href="#explorador" class="btn btn-primary btn-lg rec-cta">Comenzar mi investigación →</a>
+                        <p class="rec-nota">Sin registro · Sin instalación</p>
+                    </div>
+                </section>
+            </div>
+            
         </div>
         <div class="nodo-linterna" aria-hidden="true"></div>
         <div class="red-viva" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
         <script>
         (function(){
-            var h = document.getElementById("heroPortada");
-            if (!h) return;
+            var h = document.getElementById("heroPortada"), r = document.getElementById("recorrido");
             function ocultar() {
-                h.classList.add("oculto");
-                var vd = h.querySelector(".hero-video");
-                if (vd) {
-                    if (vd.pause) vd.pause();
-                    vd.removeAttribute("src");
-                    vd.querySelectorAll("source").forEach(function(s) { s.remove(); });
-                    if (vd.load) vd.load();
-                    vd.remove();
-                }
+                if (h) { h.classList.add("oculto");
+                    var vd = h.querySelector(".hero-video");
+                    if (vd) { if (vd.pause) vd.pause(); vd.removeAttribute("src");
+                        vd.querySelectorAll("source").forEach(function(s){ s.remove(); });
+                        if (vd.load) vd.load(); vd.remove(); } }
+                if (r) r.classList.add("oculto");
             }
-            // Navegar a cualquier sección retira la portada
-            document.querySelectorAll(".nav-link").forEach(function(l) {
-                l.addEventListener("click", ocultar);
-            });
-            // Botón "Comenzar": retira la portada y abre el Explorador
-            var cta = h.querySelector(".hero-cta");
-            if (cta) cta.addEventListener("click", function(ev) {
-                ev.preventDefault();
-                ocultar();
+            function irExplorador(ev) { ev.preventDefault(); ocultar();
                 var ls = document.querySelectorAll(".nav-link");
                 for (var i = 0; i < ls.length; i++) {
-                    if (ls[i].getAttribute("href") === "#explorador") { ls[i].click(); break; }
-                }
-            });
-            // Linterna de nodos: sigue al cursor solo con transform (GPU)
-            var lin = document.querySelector(".nodo-linterna"), pend = false, mx = 0, my = 0;
-            if (lin) {
-                window.addEventListener("pointermove", function(e) {
-                    mx = e.clientX; my = e.clientY;
-                    if (!pend) {
-                        pend = true;
-                        requestAnimationFrame(function() {
-                            lin.style.transform = "translate3d(" + mx + "px," + my + "px,0)";
-                            pend = false;
-                        });
-                    }
-                }, { passive: true });
+                    if (ls[i].getAttribute("href") === "#explorador") { ls[i].click(); break; } } }
+            document.querySelectorAll(".nav-link").forEach(function(l){ l.addEventListener("click", ocultar); });
+            document.querySelectorAll(".hero-cta, .rec-cta").forEach(function(b){ b.addEventListener("click", irExplorador); });
+            // Respaldo del Recorrido para navegadores sin scroll-driven animations:
+            var soporta = false;
+            try { soporta = !!(window.CSS && CSS.supports && CSS.supports("animation-timeline: view()")); } catch(e) {}
+            if (!soporta && r && window.IntersectionObserver) {
+                var io = new IntersectionObserver(function(es){ es.forEach(function(e){
+                    if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } }); }, { threshold: 0.25 });
+                r.querySelectorAll(".rec-anim").forEach(function(el){ io.observe(el); });
             }
+            var lin = document.querySelector(".nodo-linterna"), pend = false, mx = 0, my = 0;
+            if (lin) { window.addEventListener("pointermove", function(e){ mx = e.clientX; my = e.clientY;
+                if (!pend) { pend = true; requestAnimationFrame(function(){
+                    lin.style.transform = "translate3d(" + mx + "px," + my + "px,0)"; pend = false; }); } }, { passive: true }); }
         })();
         </script>
         
