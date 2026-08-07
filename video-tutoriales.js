@@ -10,11 +10,11 @@ const VideoTutoriales = {
     // https://www.youtube.com/watch?v=XXXX · https://youtu.be/XXXX ·
     // shorts o embed). Deja '' en las secciones que aún no tengan video.
     VIDEOS: {
-        explorador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
-        simulador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
-        analizador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
-        buscador: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z',
-        ayuda: 'https://youtu.be/NB43HVZTWzc?si=F66gtc-L45_-Qy7z'
+        explorador: '',
+        simulador: '',
+        analizador: '',
+        buscador: '',
+        ayuda: ''
         // (contacto no lleva tutorial)
     },
     // Extrae el ID de cualquier formato de URL de YouTube.
@@ -45,6 +45,21 @@ const VideoTutoriales = {
         // UNA sola delegación para todos los videos (clic y teclado).
         if (this._delegado) return;
         this._delegado = true;
+        // Al primer hover sobre cualquier façade: PRECONNECT a YouTube
+        // (DNS+TLS por adelantado → el reproductor arranca ~300-500 ms
+        // más rápido tras el clic). Se hace UNA sola vez.
+        const precalentar = () => {
+            if (this._precon) return;
+            this._precon = true;
+            ['https://www.youtube-nocookie.com', 'https://www.google.com'].forEach(h => {
+                const l = document.createElement('link');
+                l.rel = 'preconnect'; l.href = h; l.crossOrigin = '';
+                document.head.appendChild(l);
+            });
+        };
+        document.addEventListener('pointerover', (e) => {
+            if (e.target.closest('.yt-lite:not(.yt-activo)')) precalentar();
+        }, { passive: true });
         const activar = (el) => {
             const id = el.dataset.id;
             const marco = document.createElement('div');
