@@ -24,7 +24,8 @@
     --edge-light: inset 0 1px 0 rgba(255, 255, 255, 0.045);
     /* Texto */
     --color-text: #e7ecf6;
-    --color-text-secondary: #9aa7bd;
+    --color-text-secondary: #aab5c7;
+    --color-text-tertiary: #718096;
     --color-primary: #f2f5fb;      /* antes negro: ahora el "tinta" claro */
     --color-secondary: #c2cbdc;
     /* Marca */
@@ -856,19 +857,34 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     position: relative;
     overflow: hidden;
 }
-.rec-cap::before { /* red de fondo con parallax propio del capítulo */
+.rec-cap::before { /* red de fondo: vive en los LATERALES (el centro queda
+    limpio gracias a la máscara) y se funde con el scroll del capítulo */
     content: '';
     position: absolute;
     inset: -80px 0;
     z-index: 0;
     pointer-events: none;
     opacity: 0.55;
+    -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 16%, rgba(0,0,0,0.1) 38%, rgba(0,0,0,0.1) 62%, rgba(0,0,0,0.55) 84%, rgba(0,0,0,0.95) 100%);
+    mask-image: linear-gradient(90deg, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.55) 16%, rgba(0,0,0,0.1) 38%, rgba(0,0,0,0.1) 62%, rgba(0,0,0,0.55) 84%, rgba(0,0,0,0.95) 100%);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.06' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.09'%3E%3Ccircle cx='200' cy='40' r='1.8'/%3E%3Ccircle cx='340' cy='120' r='2.4'/%3E%3Ccircle cx='160' cy='210' r='1.9'/%3E%3Ccircle cx='390' cy='300' r='2.3'/%3E%3Ccircle cx='260' cy='480' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* La geometría del fondo narra la etapa (cada capítulo, su red):
+   01 dispersa (descubrir) · 02 convergente (encontrar) ·
+   03 malla organizándose (datos) · 04 estructurada (evidencia→documento) */
+.recorrido .rec-cap:nth-of-type(2)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.07' fill='none'%3E%3Cpath d='M40 60L280 300M120 480L280 300M520 90L280 300M500 470L280 300M60 260L280 300M480 250L280 300'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.1'%3E%3Ccircle cx='40' cy='60' r='2'/%3E%3Ccircle cx='120' cy='480' r='2'/%3E%3Ccircle cx='520' cy='90' r='2'/%3E%3Ccircle cx='500' cy='470' r='2'/%3E%3Ccircle cx='60' cy='260' r='1.8'/%3E%3Ccircle cx='480' cy='250' r='1.8'/%3E%3C/g%3E%3Ccircle cx='280' cy='300' r='4' fill='%23e6b93f' fill-opacity='0.28'/%3E%3C/svg%3E");
+}
+.recorrido .rec-cap:nth-of-type(3)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.065' fill='none'%3E%3Cpath d='M80 80H480M80 200H480M80 320H480M80 440H480M80 80V440M213 80V440M347 80V440M480 80V440'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.1'%3E%3Ccircle cx='213' cy='200' r='2.2'/%3E%3Ccircle cx='347' cy='320' r='2.2'/%3E%3Ccircle cx='80' cy='440' r='2'/%3E%3Ccircle cx='480' cy='80' r='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+.recorrido .rec-cap:nth-of-type(4)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.075' fill='none'%3E%3Cpath d='M60 460L180 340L300 380L420 220L500 260M60 460H500M180 340V460M300 380V460M420 220V460'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.11'%3E%3Ccircle cx='180' cy='340' r='2.2'/%3E%3Ccircle cx='300' cy='380' r='2.2'/%3E%3Ccircle cx='420' cy='220' r='2.6'/%3E%3C/g%3E%3Ccircle cx='420' cy='220' r='5' fill='none' stroke='%23e6b93f' stroke-opacity='0.3'/%3E%3C/svg%3E");
 }
 .rec-cap > * { position: relative; z-index: 1; }
 .rec-num {
     font-family: var(--font-display);
-    font-size: 0.85rem; font-weight: 600;
+    font-size: 0.8rem; font-weight: 700;
     letter-spacing: 0.4em; text-transform: uppercase;
     color: var(--color-accent);
     margin-bottom: 1rem;
@@ -884,8 +900,9 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .rec-texto {
     font-size: clamp(0.98rem, 1.9vw, 1.12rem);
     color: var(--color-text-secondary);
+    line-height: 1.6;
     max-width: 36rem;
-    margin-bottom: 2.2rem;
+    margin-bottom: 1.5rem; /* el visual es parte de la composición, no un anexo */
 }
 .rec-final { min-height: 78vh; min-height: 78svh; }
 /* --- Piezas animables --- */
@@ -906,7 +923,13 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     }
 }
 @keyframes recIn { to { opacity: 1; transform: translateY(0); } }
-@keyframes recParallax { from { transform: translateY(46px); } to { transform: translateY(-46px); } }
+/* Parallax + fundido: la red del capítulo nace, acompaña y se disuelve. */
+@keyframes recParallax {
+    from { transform: translateY(46px); opacity: 0; }
+    18% { opacity: 0.55; }
+    82% { opacity: 0.55; }
+    to { transform: translateY(-46px); opacity: 0; }
+}
 /* Respaldo universal: IntersectionObserver añade .visible */
 @supports not (animation-timeline: view()) {
     .rec-anim { transition: opacity 0.6s cubic-bezier(.22,.8,.3,1), transform 0.6s cubic-bezier(.22,.8,.3,1); }
@@ -951,4 +974,4 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .rec-word i:nth-child(6) { width: 84%; background: #e3caa2; }
 .rec-word i:nth-child(7) { width: 88%; }
 .rec-cta-zona { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
-.rec-nota { font-size: 0.82rem; color: var(--color-text-secondary); }
+.rec-nota { font-size: 0.82rem; color: var(--color-text-tertiary); }
