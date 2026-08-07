@@ -545,9 +545,11 @@ body .chart-title { color: var(--color-primary); }
 /* Los SVG de d3 dibujan ejes y textos oscuros: el filtro los adapta al tema
    SOLO en pantalla (es CSS puro: la exportación a Word serializa el SVG
    original y sale en claro, correcto para el documento). */
-#analizador :is(.chart-wrapper, #graficoDispersion, #qqVariable1, #qqVariable2, #cajaGrupos) > svg,
-:is(#resultadosDispersion, #resultadosRegresion, #resultadosComparacion, #cgSlot, #resultadosCorrelacion) svg[width] {
-    filter: invert(0.93) hue-rotate(180deg) saturate(1.15);
+/* Cobertura total: cualquier SVG de gráfico del Analizador (los iconos de
+   16/20 px quedan fuera). Inversión completa + brillo para que ejes y
+   etiquetas grises de d3 salgan CLARAMENTE legibles sobre el tema. */
+#analizador svg[width]:not([width="14"]):not([width="16"]):not([width="18"]):not([width="20"]):not([width="24"]) {
+    filter: invert(1) hue-rotate(180deg) brightness(1.32) contrast(1.12) saturate(1.25);
     border-radius: 6px;
 }
 #prismaLienzo, #metaLienzo, #redResultado { color-scheme: light; }
@@ -958,7 +960,16 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 #analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:white"],
 #analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: #e"],
 #analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:#e"],
-#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(255"] {
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(255"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: #f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: #e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:#e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(2"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="linear-gradient"][style*="#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="linear-gradient"][style*="#e"] {
     background: var(--surface-2) !important;
     color: var(--color-text) !important;
     border-color: var(--border-soft) !important;
