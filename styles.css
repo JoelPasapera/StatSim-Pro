@@ -834,6 +834,121 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 #seccionAntecedentes :is(div, p, span, li)[style*="background"] { color: #2a3140; }
 #seccionAntecedentes :is(div, p, span, li)[style*="background"] :is(b, strong, a, em, span, li) { color: #131a26; }
 
-.hero-lema-sub { display:block; margin-top:0.6rem; font-size:0.82em; color:var(--color-text-secondary); max-width:38rem; margin-left:auto; margin-right:auto; }
-.hero-chips { display:flex; justify-content:center; flex-wrap:wrap; gap:0.5rem; margin-top:1.4rem; }
-.hero-chips span { font-size:0.8rem; color:var(--color-secondary); border:1px solid var(--border-soft); border-radius:999px; padding:0.3rem 0.85rem; background:rgba(19,28,46,0.55); }
+/* ============================================================
+   EL RECORRIDO — storytelling conducido por el scroll.
+   Motor: CSS scroll-driven animations (animation-timeline: view())
+   ejecutadas por el compositor GPU: cero JS por frame, cero video.
+   Respaldo: sin soporte, IntersectionObserver añade .visible y las
+   mismas piezas entran con transition (idéntica estética).
+   Se retira junto a la portada al navegar (clase .oculto).
+   ============================================================ */
+.recorrido { position: relative; }
+.recorrido.oculto { display: none; }
+.rec-cap {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 4.5rem clamp(16px, 5%, 64px);
+    position: relative;
+    overflow: hidden;
+}
+.rec-cap::before { /* red de fondo con parallax propio del capítulo */
+    content: '';
+    position: absolute;
+    inset: -80px 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.55;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.06' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.09'%3E%3Ccircle cx='200' cy='40' r='1.8'/%3E%3Ccircle cx='340' cy='120' r='2.4'/%3E%3Ccircle cx='160' cy='210' r='1.9'/%3E%3Ccircle cx='390' cy='300' r='2.3'/%3E%3Ccircle cx='260' cy='480' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+}
+.rec-cap > * { position: relative; z-index: 1; }
+.rec-num {
+    font-family: var(--font-display);
+    font-size: 0.85rem; font-weight: 600;
+    letter-spacing: 0.4em; text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 1rem;
+}
+.rec-titulo {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4.5vw, 2.9rem);
+    font-weight: 550; letter-spacing: -0.02em; line-height: 1.12;
+    color: var(--color-primary);
+    margin-bottom: 1rem;
+    max-width: 22ch;
+}
+.rec-texto {
+    font-size: clamp(0.98rem, 1.9vw, 1.12rem);
+    color: var(--color-text-secondary);
+    max-width: 36rem;
+    margin-bottom: 2.2rem;
+}
+.rec-final { min-height: 78vh; min-height: 78svh; }
+/* --- Piezas animables --- */
+.rec-anim { opacity: 0; transform: translateY(26px); }
+/* Motor moderno: el scroll conduce la animación (GPU, sin JS) */
+@supports (animation-timeline: view()) {
+    .rec-anim {
+        animation: recIn 1ms linear both; /* duración irrelevante: manda el scroll */
+        animation-timeline: view();
+        animation-range: entry 12% cover 38%;
+    }
+    .rec-anim.rec-d2 { animation-range: entry 18% cover 46%; }
+    .rec-anim.rec-d3 { animation-range: entry 24% cover 54%; }
+    .rec-cap::before {
+        animation: recParallax 1ms linear both;
+        animation-timeline: view();
+        animation-range: cover 0% cover 100%;
+    }
+}
+@keyframes recIn { to { opacity: 1; transform: translateY(0); } }
+@keyframes recParallax { from { transform: translateY(46px); } to { transform: translateY(-46px); } }
+/* Respaldo universal: IntersectionObserver añade .visible */
+@supports not (animation-timeline: view()) {
+    .rec-anim { transition: opacity 0.6s cubic-bezier(.22,.8,.3,1), transform 0.6s cubic-bezier(.22,.8,.3,1); }
+    .rec-anim.rec-d2 { transition-delay: 0.12s; }
+    .rec-anim.rec-d3 { transition-delay: 0.24s; }
+    .rec-anim.visible { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .rec-anim { opacity: 1 !important; transform: none !important; animation: none !important; transition: none !important; }
+    .rec-cap::before { animation: none !important; }
+}
+/* --- Visuales de los capítulos (SVG/CSS puros, sin imágenes) --- */
+.rec-visual { width: min(560px, 92%); }
+.rec-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; max-width: 34rem; }
+.rec-chips span {
+    font-size: 0.82rem; font-weight: 500;
+    color: var(--color-secondary);
+    border: 1px solid var(--border-soft);
+    background: rgba(19, 28, 46, 0.6);
+    border-radius: 999px;
+    padding: 0.34rem 0.9rem;
+    box-shadow: var(--edge-light);
+}
+.rec-chips b { color: #f3d787; font-weight: 600; }
+.rec-word { /* mockup ligero de página Word APA */
+    width: min(340px, 86%);
+    background: #fbfaf7;
+    border-radius: 8px;
+    padding: 1.5rem 1.6rem;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    text-align: left;
+    color-scheme: light;
+}
+.rec-word i {
+    display: block; height: 7px; border-radius: 4px;
+    background: #d8d4c8; margin-bottom: 8px;
+}
+.rec-word i:nth-child(1) { width: 55%; height: 10px; background: #b9b29e; margin: 0 auto 14px; }
+.rec-word i:nth-child(3) { width: 92%; }
+.rec-word i:nth-child(4) { width: 97%; }
+.rec-word i:nth-child(5) { width: 60%; margin-bottom: 14px; }
+.rec-word i:nth-child(6) { width: 84%; background: #e3caa2; }
+.rec-word i:nth-child(7) { width: 88%; }
+.rec-cta-zona { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.rec-nota { font-size: 0.82rem; color: var(--color-text-secondary); }
