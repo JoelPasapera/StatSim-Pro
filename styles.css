@@ -989,3 +989,62 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 /* Los gráficos quedan fuera de la caza (su filtro ya los gobierna). */
 #analizador :is(.chart-wrapper, .chart-container)[style],
 #analizador :is(.chart-wrapper, .chart-container) [style] { background: revert-layer; }
+
+/* ============================================================
+   VIDEO-TUTORIALES (façade de YouTube): miniatura ligera + play;
+   el iframe real solo existe tras el clic. Peso en reposo ≈ 1 img lazy.
+   ============================================================ */
+.yt-lite {
+    position: relative;
+    width: min(680px, 100%);
+    aspect-ratio: 16 / 9;
+    margin: 1.4rem auto 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--edge-light), 0 14px 40px rgba(2, 6, 16, 0.45);
+    background: var(--surface);
+}
+.yt-lite img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: brightness(0.78) saturate(0.95);
+    transition: filter var(--transition-base), transform var(--transition-slow);
+}
+.yt-lite:hover img { filter: brightness(0.92) saturate(1.05); transform: scale(1.025); }
+.yt-play {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 64px; height: 64px;
+    margin: -32px 0 0 -32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    color: #221803;
+    background: linear-gradient(135deg, #f2cc66, var(--color-accent) 60%, #c99a2e);
+    box-shadow: 0 6px 24px rgba(230, 185, 63, 0.4);
+    transition: transform var(--transition-fast);
+}
+.yt-play svg { margin-left: 3px; }
+.yt-lite:hover .yt-play, .yt-lite:focus-visible .yt-play { transform: scale(1.1); }
+.yt-lite:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.yt-cinta {
+    position: absolute;
+    left: 0.9rem; bottom: 0.8rem;
+    font-family: var(--font-display);
+    font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #f3d787;
+    background: rgba(11, 15, 25, 0.72);
+    border: 1px solid rgba(230, 185, 63, 0.28);
+    border-radius: 999px;
+    padding: 0.3rem 0.8rem;
+    backdrop-filter: blur(6px);
+}
+.yt-lite.yt-activo { cursor: default; }
+.yt-lite iframe {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: 0;
+}
