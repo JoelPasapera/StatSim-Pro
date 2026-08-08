@@ -31,6 +31,7 @@ const PanoramaMundial = {
               <label style="font-size:0.9em; display:flex; align-items:center; gap:0.4rem;">Indicador
                 <select id="panIndicador" class="input input-sm" style="width:auto; max-width:100%;">
                   <option value="suicidio">Mortalidad por suicidio (OMS · por 100 mil · edad estandarizada)</option>
+                  <option value="depresion" id="panOpDepresion">Prevalencia de depresión (OMS · % de la población)</option>
                   <option disabled id="panSepGBD">— F2 · requieren dataset GBD (IHME) —</option>
                   <option value="prevalencia" disabled data-gbd>Prevalencia de trastornos mentales</option>
                   <option value="incidencia" disabled data-gbd>Incidencia de trastornos mentales</option>
@@ -43,7 +44,7 @@ const PanoramaMundial = {
             <div id="panMapa" style="overflow:auto;"></div>
             <div id="panLeyenda" class="help-text" style="margin-top:0.4rem;"></div>
             <div id="panPanel" style="display:none; margin-top:0.8rem; border:1px solid var(--color-border,#2a3b52); border-radius:0.7rem; padding:0.9rem 1rem;"></div>
-            <p class="help-text" style="margin-top:0.6rem;">Fuente del indicador: OMS, Observatorio Mundial de la Salud (GHO), tasas de suicidio estandarizadas por edad, ambos sexos, último año disponible por país. Los países en gris no reportan dato.</p>
+            <p class="help-text" style="margin-top:0.6rem;">Fuentes: OMS, Observatorio Mundial de la Salud (GHO) — mortalidad por suicidio (edad estandarizada, ambos sexos) y prevalencia de depresión (Global Health Estimates), último año disponible por país. Los países en gris no reportan dato.</p>
           </div>`;
         slot.appendChild(card);
         document.getElementById('panAbrir').addEventListener('click', () => this._abrir());
@@ -84,6 +85,7 @@ const PanoramaMundial = {
             for (const [iso3, v] of Object.entries(iso)) this._num2info[v.n] = { iso3, es: v.es };
             this._paises = window.topojson.feature(mundo, mundo.objects.countries).features;
             await this._cargarSuicidio();
+            await this._cargarDepresion(); // 2º indicador OMS (misma tubería)
             await this._cargarGBD(); // F2: se desbloquea solo si el dataset existe
             this._render();
             const sel = document.getElementById('panIndicador');
@@ -147,6 +149,8 @@ const PanoramaMundial = {
     },
     // Datos del indicador activo, siempre como { numISO: {val, anio} }.
     _datosActivos() {
+        if (this._indicador === 'depresion' && this._datosDep)
+            return { datos: this._datosDep, unidad: '% de la población', fuente: 'OMS · Global Health Estimates' };
         if (this._indicador === 'suicidio' || !this._gbd) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
         const ind = this._gbd.indicadores[this._indicador];
         if (!ind) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
@@ -158,6 +162,59 @@ const PanoramaMundial = {
             porNum[this._iso[iso3].n] = { val: +val, anio: a, iso3 };
         }
         return { datos: porNum, unidad: ind.unidad || '', fuente: (this._gbd.meta && this._gbd.meta.fuente) || 'IHME GBD' };
+    },
+    // ---- Cargador GHO genérico: pide un endpoint OData de la OMS (fetch
+    // directo → rescate por ProxiesCORS) y devuelve el JSON. Reutilizado por
+    // suicidio, depresión y cualquier indicador OMS futuro. ----
+    async _pedirGHO(url) {
+        try { const r = await fetch(url); return await r.json(); }
+        catch (e) {
+            if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
+                const { obras } = await ProxiesCORS.carrera(url,
+                    t => { try { const d = JSON.parse(t); return d && d.value ? [d] : null; } catch (x) { return null; } },
+                    { anchura: 3, timeout: 15000, oleadas: 2 });
+                return obras[0];
+            }
+            throw e;
+        }
+    },
+    // Reduce las filas OData de la OMS al año más reciente por país → {numISO:{val,anio,iso3}}.
+    _reducirGHO(filas) {
+        const mejor = {};
+        for (const f of (filas || [])) {
+            const iso3 = f.SpatialDim, anio = +f.TimeDim, val = +f.NumericValue;
+            if (!this._iso[iso3] || !isFinite(val)) continue;
+            if (!mejor[iso3] || anio > mejor[iso3].anio) mejor[iso3] = { anio, val };
+        }
+        const porNum = {};
+        for (const [iso3, m] of Object.entries(mejor)) porNum[this._iso[iso3].n] = { ...m, iso3 };
+        return porNum;
+    },
+    // ---- Indicador OMS 2: prevalencia de depresión (% de la población).
+    // El CÓDIGO del indicador se AUTO-DESCUBRE consultando el catálogo
+    // oficial con su nombre exacto (verificado en who.int): así jamás se
+    // hardcodea un código sin confirmar, y sobrevive a renombres de la OMS.
+    DEPRESION_NOMBRE: 'Depression, population-based prevalence, estimate (%)',
+    _datosDep: null,
+    async _cargarDepresion() {
+        const op = document.getElementById('panOpDepresion');
+        try {
+            const cat = await this._pedirGHO('https://ghoapi.azureedge.net/api/Indicator?$filter=' +
+                encodeURIComponent(`contains(IndicatorName,'population-based prevalence')`) + '&$select=IndicatorCode,IndicatorName');
+            const fila = (cat.value || []).find(x => x.IndicatorName === this.DEPRESION_NOMBRE)
+                || (cat.value || []).find(x => /depress/i.test(x.IndicatorName || ''));
+            if (!fila || !fila.IndicatorCode) throw new Error('indicador no hallado en el catálogo GHO');
+            this._codigoDep = fila.IndicatorCode;
+            const d = await this._pedirGHO(`https://ghoapi.azureedge.net/api/${fila.IndicatorCode}?$select=SpatialDim,TimeDim,NumericValue,Dim1`);
+            // Sexo total si el indicador viene desagregado; si no trae Dim1, todo vale.
+            const filas = (d.value || []).filter(f => !f.Dim1 || /BTSX/.test(String(f.Dim1)));
+            const porNum = this._reducirGHO(filas.length ? filas : d.value);
+            if (Object.keys(porNum).length < 20) throw new Error('datos insuficientes');
+            this._datosDep = porNum;
+        } catch (e) {
+            // Degradación honesta: la opción se apaga con el motivo visible.
+            if (op) { op.disabled = true; op.title = 'No disponible ahora: ' + (e.message || 'sin respuesta de la OMS'); }
+        }
     },
     // ---- Indicador OMS: suicidio por 100 mil (edad estandarizada, BTSX) ----
     async _cargarSuicidio() {
@@ -233,8 +290,10 @@ const PanoramaMundial = {
         const esc = x => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
         const chips = (lista, cap, act) => lista.map(v =>
             `<button type="button" class="pan-chip${v === act ? ' act' : ''}" data-cap="${cap}" data-v="${esc(v)}">${esc(v)}</button>`).join('');
+        const dep = this._datosDep && this._datosDep[s.num];
         let html = `<p style="margin:0 0 0.5rem;"><strong style="font-size:1.05em;">📍 ${esc(s.pais)}</strong>`
-            + (dato ? ` <span class="help-text" style="display:inline;">· suicidio: ${dato.val.toFixed(1)} por 100 mil (${dato.anio}, OMS)</span>` : ' <span class="help-text" style="display:inline;">· sin dato del indicador</span>') + '</p>'
+            + (dato ? ` <span class="help-text" style="display:inline;">· suicidio: ${dato.val.toFixed(1)} por 100 mil (${dato.anio}, OMS)</span>` : ' <span class="help-text" style="display:inline;">· sin dato del indicador</span>')
+            + (dep ? ` <span class="help-text" style="display:inline;">· depresión: ${dep.val.toFixed(1)} % (${dep.anio}, OMS)</span>` : '') + '</p>'
             + `<p style="margin:0 0 0.25rem; font-size:0.88em;"><strong>🧠 Problema</strong></p><div>${chips(this.PROBLEMAS, 'problema', s.problema)}</div>`;
         if (s.problema) html += `<p style="margin:0.6rem 0 0.25rem; font-size:0.88em;"><strong>👥 Población</strong></p><div>${chips(this.POBLACIONES, 'poblacion', s.poblacion)}</div>`;
         if (s.problema && s.poblacion) html += `<div style="margin-top:0.8rem;"><button type="button" class="btn btn-primary" data-cap="ir" style="padding:0.45rem 1.1rem;">🔭 Explorar «${esc(s.problema)} en ${esc(s.poblacion)} · ${esc(s.pais)}»</button>
