@@ -170,23 +170,17 @@ const PanoramaMundial = {
     // directo → rescate por ProxiesCORS) y devuelve el JSON. Reutilizado por
     // suicidio, depresión y cualquier indicador OMS futuro. ----
     async _pedirGHO(url) {
-        const espera = ms => new Promise(r => setTimeout(r, ms));
-        // Hasta 3 intentos directos (el primer hit a la API a veces aborta
-        // en redes lentas; el segundo suele entrar con la conexión caliente).
-        for (let i = 0; i < 3; i++) {
-            try { const r = await fetch(url); return await r.json(); }
-            catch (e) { if (i < 2) await espera(700 * (i + 1)); }
-        }
+        // ghoapi NO envía cabeceras CORS (verificado en consola: bloquea todo
+        // fetch directo desde github.io). Un único intento directo rápido por
+        // cortesía (localhost/futuros milagros) y de cabeza a los proxies.
+        try { const r = await fetch(url); return await r.json(); } catch (e) { }
         if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
-            try {
-                const { obras } = await ProxiesCORS.carrera(url,
-                    t => { try { const d = JSON.parse(t); return d && d.value ? [d] : null; } catch (x) { return null; } },
-                    { anchura: 3, timeout: 15000, oleadas: 2 });
-                return obras[0];
-            } catch (e) { /* último cartucho abajo */ }
+            const { obras } = await ProxiesCORS.carrera(url,
+                t => { try { const d = JSON.parse(t); return d && d.value ? [d] : null; } catch (x) { return null; } },
+                { anchura: 3, timeout: 15000, oleadas: 2 });
+            return obras[0];
         }
-        const r = await fetch(url); // último intento directo: si falla, propaga
-        return await r.json();
+        throw new Error('sin CORS y sin proxies disponibles');
     },
     // Reduce las filas OData de la OMS al AÑO MÁS RECIENTE por país.
     // La OMS publica varias EDICIONES de estimación para un mismo país-año
@@ -237,12 +231,18 @@ const PanoramaMundial = {
     },
     // ---- Indicador OMS: suicidio por 100 mil (edad estandarizada, BTSX) ----
     async _cargarSuicidio() {
-        // Solo años recientes: el histórico completo pesa megabytes y ahoga
-        // proxies y redes lentas; para "último año por país" basta 2016+.
-        const url = 'https://ghoapi.azureedge.net/api/SDGSUICIDE?$filter=' +
-            encodeURIComponent("Dim1 eq 'SEX_BTSX' and TimeDim ge 2016") + '&$select=SpatialDim,TimeDim,NumericValue';
-        const d = await this._pedirGHO(url);
-        this._datos = this._reducirGHO(d.value);
+        // Raciones por AÑO exacto: cada petición baja de megabytes a ~100 KB,
+        // tamaño que los proxies gratuitos digieren siempre. Se empieza por la
+        // edición más reciente y solo se pide la anterior si faltan países.
+        const filas = [];
+        for (const anio of [2021, 2019]) {
+            const url = 'https://ghoapi.azureedge.net/api/SDGSUICIDE?$filter=' +
+                encodeURIComponent(`Dim1 eq 'SEX_BTSX' and TimeDim eq ${anio}`) + '&$select=SpatialDim,TimeDim,NumericValue';
+            try { const d = await this._pedirGHO(url); filas.push(...(d.value || [])); } catch (e) { }
+            if (Object.keys(this._reducirGHO(filas)).length >= 150) break;
+        }
+        this._datos = this._reducirGHO(filas);
+        if (!Object.keys(this._datos).length) throw new Error('OMS sin respuesta');
     },
     _estado() {
         const est = document.getElementById('panEstado');
