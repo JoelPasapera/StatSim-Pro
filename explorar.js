@@ -190,15 +190,23 @@ const Explorar = {
             if (estado) estado.textContent = `🧠 Proponiendo ${nSub} subtemas del área…`;
             subtemas = await this._subtemas(tema, nSub);
         }
-        const filas = [];
+        // RENDER PROGRESIVO: la tabla nace completa en estado "midiendo" y
+        // cada fila se llena en cuanto su medición termina (los botones de
+        // esa fila se activan al instante, sin esperar al resto del lote).
+        this._resultados = subtemas.map(s => ({ tema: s, pendiente: true, icono: '⏳',
+            noticias: -1, academicos: -1, indice: -1, titulares: [], motivo: '', urlFuentes: '', aprox: false }));
+        this._pintar();
+        const filas = this._resultados;
         for (let i = 0; i < subtemas.length; i++) {
             const s = subtemas[i];
-            if (estado) estado.textContent = `🔎 ${i + 1}/${subtemas.length}: midiendo «${s}» en noticias y academia…`;
+            if (estado) estado.textContent = `🔎 ${i + 1}/${subtemas.length}: midiendo «${s}»… (cada fila aparece al completarse; el orden y el semáforo definitivos llegan al final)`;
             const not = await this._noticiasGDELT(s, soloEsp);
             const acad = await this._academicosOpenAlex(s);
-            filas.push({ tema: s, noticias: not.n, titulares: not.titulares, academicos: acad,
+            Object.assign(filas[i], { pendiente: false, icono: '·',
+                noticias: not.n, titulares: not.titulares, academicos: acad,
                 motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes, aprox: !!not.aprox,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
+            this._actualizarFila(i);
             await new Promise(r => setTimeout(r, 1500)); // GDELT exige ritmo pausado entre temas
         }
         // Semáforo por terciles del índice (solo filas con datos completos)
@@ -218,7 +226,7 @@ const Explorar = {
         }
         filas.filter(f => f.indice < 0).forEach(f => { f.icono = '❓'; });
         this._resultados = [...validas, ...filas.filter(f => f.indice < 0)];
-        this._pintar();
+        this._pintar(); // repintado final: orden por brecha + semáforo definitivo
         const nOK = validas.length;
         const motivos = filas.filter(f => f.motivo).map(f => f.motivo);
         const causa = motivos.length ? motivos.sort((a, b) =>
@@ -309,37 +317,65 @@ const Explorar = {
         tr.after(det);
         btn.disabled = false; btn.textContent = t0;
     },
-    _pintar() {
-        const cont = document.getElementById('expTablaCont');
-        const body = document.getElementById('expBody');
-        if (!cont || !body) return;
+    _filaHTML(f, i) {
         const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        body.innerHTML = this._resultados.map((f, i) => {
-            const tits = f.titulares.map(t =>
-                `<div style="font-size:0.82em; margin:0.15rem 0;"><a href="${esc(t.u)}" target="_blank" rel="noopener">${esc(t.t).slice(0, 90)}</a> <span style="color:#888;">(${esc(t.d)})</span></div>`).join('')
-                || '<span style="color:#888; font-size:0.85em;">—</span>';
-            return `<tr>
-              <td style="font-size:1.2em;">${f.icono}</td>
+        if (f.pendiente) {
+            return `<tr data-idx="${i}" class="exp-midiendo">
+              <td style="font-size:1.2em;">⏳</td>
               <td><strong>${esc(f.tema)}</strong></td>
-              <td>${f.noticias >= 0
-                ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>`
-                : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
-              <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
-              <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
-              <td style="max-width:320px;">${tits}</td>
-              <td style="white-space:nowrap;"><button type="button" class="btn btn-secondary exp-formular" data-i="${i}" style="padding:0.25rem 0.7rem; font-size:0.85em;" title="La IA formula este subtema como problema de investigación (propuesta orientativa)">🧠 Formular</button>
-              <button type="button" class="btn btn-outline exp-enviar" data-i="${i}" style="padding:0.25rem 0.7rem; font-size:0.85em;" title="Llevar este subtema al Buscador de antecedentes">→ Al Buscador</button></td>
+              <td><span style="opacity:0.55;">midiendo…</span></td>
+              <td><span style="opacity:0.55;">…</span></td>
+              <td>—</td>
+              <td style="max-width:320px;"><span style="color:#888; font-size:0.85em;">—</span></td>
+              <td style="white-space:nowrap;"><button type="button" class="btn btn-secondary" disabled style="padding:0.25rem 0.7rem; font-size:0.85em; opacity:0.4;">🧠 Formular</button>
+              <button type="button" class="btn btn-outline" disabled style="padding:0.25rem 0.7rem; font-size:0.85em; opacity:0.4;">→ Al Buscador</button></td>
             </tr>`;
-        }).join('');
-        body.querySelectorAll('.exp-formular').forEach(b => b.addEventListener('click', () => this._onFormular(parseInt(b.dataset.i, 10), b)));
-        body.querySelectorAll('.exp-enviar').forEach(b => b.addEventListener('click', () => {
-            const f = this._resultados[parseInt(b.dataset.i, 10)];
+        }
+        const tits = f.titulares.map(t =>
+            `<div style="font-size:0.82em; margin:0.15rem 0;"><a href="${esc(t.u)}" target="_blank" rel="noopener">${esc(t.t).slice(0, 90)}</a> <span style="color:#888;">(${esc(t.d)})</span></div>`).join('')
+            || '<span style="color:#888; font-size:0.85em;">—</span>';
+        return `<tr data-idx="${i}">
+          <td style="font-size:1.2em;">${f.icono}</td>
+          <td><strong>${esc(f.tema)}</strong></td>
+          <td>${f.noticias >= 0
+            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>`
+            : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
+          <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
+          <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
+          <td style="max-width:320px;">${tits}</td>
+          <td style="white-space:nowrap;"><button type="button" class="btn btn-secondary exp-formular" data-i="${i}" style="padding:0.25rem 0.7rem; font-size:0.85em;" title="La IA formula este subtema como problema de investigación (propuesta orientativa)">🧠 Formular</button>
+          <button type="button" class="btn btn-outline exp-enviar" data-i="${i}" style="padding:0.25rem 0.7rem; font-size:0.85em;" title="Llevar este subtema al Buscador de antecedentes">→ Al Buscador</button></td>
+        </tr>`;
+    },
+    _wireFila(tr) {
+        const b1 = tr.querySelector('.exp-formular');
+        if (b1) b1.addEventListener('click', () => this._onFormular(parseInt(b1.dataset.i, 10), b1));
+        const b2 = tr.querySelector('.exp-enviar');
+        if (b2) b2.addEventListener('click', () => {
+            const f = this._resultados[parseInt(b2.dataset.i, 10)];
             const caja = document.getElementById('antQuery');
             if (caja) { caja.value = f.tema; }
             const link = document.querySelector('.nav-link[href="#buscador"]');
             if (link) link.click();
             if (caja) caja.focus();
-        }));
+        });
+    },
+    // Reemplaza SOLO la fila i (render progresivo sin tocar el resto).
+    _actualizarFila(i) {
+        const vieja = document.querySelector(`#expBody tr[data-idx="${i}"]`);
+        if (!vieja) return;
+        const t = document.createElement('tbody');
+        t.innerHTML = this._filaHTML(this._resultados[i], i);
+        const nueva = t.firstElementChild;
+        vieja.replaceWith(nueva);
+        this._wireFila(nueva);
+    },
+    _pintar() {
+        const cont = document.getElementById('expTablaCont');
+        const body = document.getElementById('expBody');
+        if (!cont || !body) return;
+        body.innerHTML = this._resultados.map((f, i) => this._filaHTML(f, i)).join('');
+        body.querySelectorAll('tr').forEach(tr => this._wireFila(tr));
         cont.style.display = '';
     }
 };
