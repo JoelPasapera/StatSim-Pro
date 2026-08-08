@@ -98,19 +98,75 @@ const PanoramaMundial = {
     // solas. Esquema: { meta:{fuente,anio}, indicadores:{ prevalencia:{nombre,
     // unidad,datos:{ISO3:valor}}, ... } }. Sin archivo → siguen deshabilitadas
     // (nunca se pintan datos inventados). ----
+    // Los datos GBD NO se vendorizan (la licencia del IHME prohíbe
+    // redistribuirlos): se cargan EN VIVO desde Our World in Data, que los
+    // publica con acceso abierto. Cada usuario los recibe de la fuente.
+    OWID: {
+        prevalencia: { slug: 'share-with-mental-and-substance-disorders', unidad: '% de la población' },
+        dalys: { slug: 'mental-and-substance-use-as-share-of-disease', unidad: '% de la carga total de enfermedad' }
+    },
+    _parseCSV(texto) {
+        const lineas = texto.trim().split(/\r?\n/);
+        if (lineas.length < 2) return null;
+        const cab = lineas[0].split(',').map(s => s.trim().toLowerCase());
+        const iCode = cab.findIndex(c => c === 'code');
+        const iYear = cab.findIndex(c => c === 'year');
+        if (iCode < 0 || iYear < 0) return null;
+        const iVal = cab.length - 1; // la métrica es la última columna
+        const mejor = {}; let anioMax = 0;
+        for (let i = 1; i < lineas.length; i++) {
+            const c = lineas[i].split(',');
+            const iso3 = (c[iCode] || '').trim(), anio = +c[iYear], val = +c[iVal];
+            if (!/^[A-Z]{3}$/.test(iso3) || !isFinite(val)) continue; // solo países (fuera regiones OWID)
+            if (!mejor[iso3] || anio > mejor[iso3].anio) mejor[iso3] = { anio, val };
+            if (anio > anioMax) anioMax = anio;
+        }
+        return Object.keys(mejor).length > 30 ? { datos: mejor, anio: anioMax } : null;
+    },
     async _cargarGBD() {
+        // 1º: dataset local (si algún día existe, manda).
         try {
             const r = await fetch('gbd-datos.json');
-            if (!r.ok) return;
-            const g = await r.json();
-            if (!g || !g.indicadores) return;
-            this._gbd = g;
-            const sep = document.getElementById('panSepGBD');
-            if (sep) sep.textContent = `— ${(g.meta && g.meta.fuente) || 'IHME GBD'} —`;
-            document.querySelectorAll('#panIndicador option[data-gbd]').forEach(o => {
-                if (g.indicadores[o.value]) o.disabled = false;
-            });
-        } catch (e) { /* sin dataset: F2 permanece dormida */ }
+            if (r.ok) {
+                const g = await r.json();
+                if (g && g.indicadores) { this._gbd = g; this._activarGBD(); return; }
+            }
+        } catch (e) { /* seguimos a OWID */ }
+        // 2º: carga en vivo desde Our World in Data (con rescate por proxies).
+        const est = document.getElementById('panEstado');
+        const ind = {};
+        let anioRef = 0;
+        for (const [clave, cfg] of Object.entries(this.OWID)) {
+            const url = `https://ourworldindata.org/grapher/${cfg.slug}.csv?v=1&csvType=full&useColumnShortNames=true`;
+            let texto = null;
+            try { const r = await fetch(url); if (r.ok) texto = await r.text(); } catch (e) { /* proxy */ }
+            if (!texto && typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
+                try {
+                    const { obras } = await ProxiesCORS.carrera(url,
+                        t => (t && t.slice(0, 200).toLowerCase().includes('code') ? [t] : null),
+                        { anchura: 3, timeout: 20000, oleadas: 2 });
+                    texto = obras[0];
+                } catch (e) { /* sin rescate */ }
+            }
+            const p = texto ? this._parseCSV(texto) : null;
+            if (p) {
+                const datos = {}; for (const [k, m] of Object.entries(p.datos)) datos[k] = m.val;
+                ind[clave] = { nombre: clave, unidad: cfg.unidad, datos, _anios: p.datos };
+                if (p.anio > anioRef) anioRef = p.anio;
+            }
+        }
+        if (Object.keys(ind).length) {
+            this._gbd = { meta: { fuente: `IHME GBD · vía Our World in Data`, anio: anioRef, envivo: true }, indicadores: ind };
+            this._activarGBD();
+        } else if (est) est.textContent += ' · (GBD en vivo no disponible ahora: prevalencia/DALYs quedan bloqueados)';
+    },
+    _activarGBD() {
+        const g = this._gbd;
+        const sep = document.getElementById('panSepGBD');
+        if (sep) sep.textContent = `— ${(g.meta && g.meta.fuente) || 'IHME GBD'} —`;
+        document.querySelectorAll('#panIndicador option[data-gbd]').forEach(o => {
+            if (g.indicadores[o.value]) o.disabled = false;
+        });
     },
     // Datos del indicador activo, siempre como { numISO: {val, anio} }.
     _datosActivos() {
@@ -120,7 +176,9 @@ const PanoramaMundial = {
         const porNum = {};
         const anio = (this._gbd.meta && this._gbd.meta.anio) || '';
         for (const [iso3, val] of Object.entries(ind.datos || {})) {
-            if (this._iso[iso3] && isFinite(+val)) porNum[this._iso[iso3].n] = { val: +val, anio, iso3 };
+            if (!this._iso[iso3] || !isFinite(+val)) continue;
+            const a = (ind._anios && ind._anios[iso3]) ? ind._anios[iso3].anio : anio;
+            porNum[this._iso[iso3].n] = { val: +val, anio: a, iso3 };
         }
         return { datos: porNum, unidad: ind.unidad || '', fuente: (this._gbd.meta && this._gbd.meta.fuente) || 'IHME GBD' };
     },
