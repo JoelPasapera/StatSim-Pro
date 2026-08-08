@@ -92,7 +92,16 @@ const PanoramaMundial = {
             await this._cargarGBD(); // F2: se desbloquea solo si el dataset existe
             this._render();
             const sel = document.getElementById('panIndicador');
-            if (sel) sel.addEventListener('change', () => { this._indicador = sel.value; this._render(); });
+            if (sel) sel.addEventListener('change', async () => {
+                this._indicador = sel.value;
+                if (this._indicador === 'depresion' && !this._datosDep) {
+                    const est2 = document.getElementById('panEstado');
+                    if (est2) est2.textContent = '⏳ Cargando depresión (OMS)…';
+                    try { await this._cargarDepresion(); } catch (e) { }
+                }
+                this._render(); this._estado();
+                if (this._sel && this._sel.num) this._panel();
+            });
             this._estado();
         } catch (e) {
             if (est) est.textContent = '❌ ' + (e.message || 'No se pudo cargar el panorama.');
@@ -152,8 +161,8 @@ const PanoramaMundial = {
     },
     // Datos del indicador activo, siempre como { numISO: {val, anio} }.
     _datosActivos() {
-        if (this._indicador === 'depresion' && this._datosDep)
-            return { datos: this._datosDep, unidad: '% de la población', fuente: 'OMS · Global Health Estimates' };
+        if (this._indicador === 'depresion')
+            return { datos: this._datosDep || {}, unidad: '% de la población', fuente: 'OMS · Global Health Estimates' };
         if (this._indicador === 'suicidio' || !this._gbd) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
         const ind = this._gbd.indicadores[this._indicador];
         if (!ind) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
@@ -214,8 +223,9 @@ const PanoramaMundial = {
         try {
             const cat = await this._pedirGHO('https://ghoapi.azureedge.net/api/Indicator?$filter=' +
                 encodeURIComponent(`contains(IndicatorName,'population-based prevalence')`) + '&$select=IndicatorCode,IndicatorName');
-            const fila = (cat.value || []).find(x => x.IndicatorName === this.DEPRESION_NOMBRE)
-                || (cat.value || []).find(x => /depress/i.test(x.IndicatorName || ''));
+            const norm = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim();
+            const fila = (cat.value || []).find(x => norm(x.IndicatorName) === norm(this.DEPRESION_NOMBRE))
+                || (cat.value || []).find(x => /depress/i.test(x.IndicatorName || '') && /population-based prevalence/i.test(x.IndicatorName || ''));
             if (!fila || !fila.IndicatorCode) throw new Error('indicador no hallado en el catálogo GHO');
             this._codigoDep = fila.IndicatorCode;
             const d = await this._pedirGHO(`https://ghoapi.azureedge.net/api/${fila.IndicatorCode}?$select=SpatialDim,TimeDim,NumericValue,Dim1`);
@@ -259,8 +269,11 @@ const PanoramaMundial = {
                 this._render(); this._estado();
                 if (this._sel && this._sel.num) this._panel();
             }, { once: true });
+        } else if (this._indicador === 'depresion' && !this._datosDep) {
+            est.textContent = '⚠️ La depresión no cargó (proxies saturados): mapa sin colorear. Vuelve a intentarlo eligiendo de nuevo la opción.';
         } else {
-            est.textContent = `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
+            const n = Object.keys(this._datosActivos().datos).length;
+            est.textContent = `✓ ${n} países con dato. Toca un país para explorarlo.`;
         }
     },
     _render() {
