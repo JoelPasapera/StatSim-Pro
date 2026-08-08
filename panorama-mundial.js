@@ -62,9 +62,9 @@ const PanoramaMundial = {
         return new Promise((res, rej) => {
             if (window.topojson) return res();
             const s = document.createElement('script');
-            s.src = 'topojson-client.min.js';
+            s.src = 'topo-lite.js';
             s.onload = () => res();
-            s.onerror = () => rej(new Error('No se pudo cargar topojson-client.min.js (¿está en la raíz del sitio?)'));
+            s.onerror = () => rej(new Error('No se pudo cargar topo-lite.js (¿está en la raíz del sitio?)'));
             document.head.appendChild(s);
         });
     },
