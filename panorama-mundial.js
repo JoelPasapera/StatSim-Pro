@@ -87,16 +87,13 @@ const PanoramaMundial = {
             // Los indicadores OMS pueden fallar (red, proxies): el mapa se
             // pinta SIEMPRE — con datos si llegan, en gris con aviso si no.
             this._datos = {};
-            let errOMS = null;
-            try { await this._cargarSuicidio(); } catch (e) { errOMS = e; }
+            try { await this._cargarSuicidio(); this._omsCaida = false; } catch (e) { this._omsCaida = true; }
             try { await this._cargarDepresion(); } catch (e) { /* la opción se apaga sola */ }
             await this._cargarGBD(); // F2: se desbloquea solo si el dataset existe
             this._render();
             const sel = document.getElementById('panIndicador');
             if (sel) sel.addEventListener('change', () => { this._indicador = sel.value; this._render(); });
-            if (est) est.textContent = errOMS
-                ? '⚠️ La OMS no respondió ahora (directo y proxies): mapa sin colorear. El drill por país sigue disponible; reintenta en unos minutos recargando.'
-                : `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
+            this._estado();
         } catch (e) {
             if (est) est.textContent = '❌ ' + (e.message || 'No se pudo cargar el panorama.');
         }
@@ -173,16 +170,23 @@ const PanoramaMundial = {
     // directo → rescate por ProxiesCORS) y devuelve el JSON. Reutilizado por
     // suicidio, depresión y cualquier indicador OMS futuro. ----
     async _pedirGHO(url) {
-        try { const r = await fetch(url); return await r.json(); }
-        catch (e) {
-            if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
+        const espera = ms => new Promise(r => setTimeout(r, ms));
+        // Hasta 3 intentos directos (el primer hit a la API a veces aborta
+        // en redes lentas; el segundo suele entrar con la conexión caliente).
+        for (let i = 0; i < 3; i++) {
+            try { const r = await fetch(url); return await r.json(); }
+            catch (e) { if (i < 2) await espera(700 * (i + 1)); }
+        }
+        if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
+            try {
                 const { obras } = await ProxiesCORS.carrera(url,
                     t => { try { const d = JSON.parse(t); return d && d.value ? [d] : null; } catch (x) { return null; } },
                     { anchura: 3, timeout: 15000, oleadas: 2 });
                 return obras[0];
-            }
-            throw e;
+            } catch (e) { /* último cartucho abajo */ }
         }
+        const r = await fetch(url); // último intento directo: si falla, propaga
+        return await r.json();
     },
     // Reduce las filas OData de la OMS al AÑO MÁS RECIENTE por país.
     // La OMS publica varias EDICIONES de estimación para un mismo país-año
@@ -233,21 +237,31 @@ const PanoramaMundial = {
     },
     // ---- Indicador OMS: suicidio por 100 mil (edad estandarizada, BTSX) ----
     async _cargarSuicidio() {
-        const url = 'https://ghoapi.azureedge.net/api/SDGSUICIDE?$filter=Dim1%20eq%20%27SEX_BTSX%27&$select=SpatialDim,TimeDim,NumericValue';
-        const pedir = async () => {
-            try { const r = await fetch(url); return await r.json(); }
-            catch (e) {
-                if (typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
-                    const { obras } = await ProxiesCORS.carrera(url,
-                        t => { try { const d = JSON.parse(t); return d && d.value ? [d] : null; } catch (x) { return null; } },
-                        { anchura: 3, timeout: 15000, oleadas: 2 });
-                    return obras[0];
-                }
-                throw e;
-            }
-        };
-        const d = await pedir();
+        // Solo años recientes: el histórico completo pesa megabytes y ahoga
+        // proxies y redes lentas; para "último año por país" basta 2016+.
+        const url = 'https://ghoapi.azureedge.net/api/SDGSUICIDE?$filter=' +
+            encodeURIComponent("Dim1 eq 'SEX_BTSX' and TimeDim ge 2016") + '&$select=SpatialDim,TimeDim,NumericValue';
+        const d = await this._pedirGHO(url);
         this._datos = this._reducirGHO(d.value);
+    },
+    _estado() {
+        const est = document.getElementById('panEstado');
+        if (!est) return;
+        if (this._omsCaida) {
+            est.innerHTML = '⚠️ Sin conexión con la OMS: mapa sin colorear (el drill por país sigue vivo). '
+                + '<button type="button" id="panReintentar" class="pan-chip" style="margin-left:0.3rem;">🔄 Reintentar</button>';
+            const b = document.getElementById('panReintentar');
+            if (b) b.addEventListener('click', async () => {
+                b.disabled = true; b.textContent = '⏳ Conectando…';
+                try { await this._cargarSuicidio(); this._omsCaida = false; } catch (e) { }
+                const op = document.getElementById('panOpDepresion');
+                if (!this._datosDep && op) { op.disabled = false; op.title = ''; try { await this._cargarDepresion(); } catch (e) { } }
+                this._render(); this._estado();
+                if (this._sel && this._sel.num) this._panel();
+            }, { once: true });
+        } else {
+            est.textContent = `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
+        }
     },
     _render() {
         const cont = document.getElementById('panMapa');
@@ -300,7 +314,9 @@ const PanoramaMundial = {
             `<button type="button" class="pan-chip${v === act ? ' act' : ''}" data-cap="${cap}" data-v="${esc(v)}">${esc(v)}</button>`).join('');
         const dep = this._datosDep && this._datosDep[s.num];
         let html = `<p style="margin:0 0 0.5rem;"><strong style="font-size:1.05em;">📍 ${esc(s.pais)}</strong>`
-            + (dato ? ` <span class="help-text" style="display:inline;">· suicidio: ${dato.val.toFixed(1)} por 100 mil (${dato.anio}, OMS)</span>` : ' <span class="help-text" style="display:inline;">· sin dato del indicador</span>')
+            + (dato ? ` <span class="help-text" style="display:inline;">· suicidio: ${dato.val.toFixed(1)} por 100 mil (${dato.anio}, OMS)</span>`
+                : this._omsCaida ? ' <span class="help-text" style="display:inline;">· suicidio: sin conexión con la OMS (usa 🔄 Reintentar)</span>'
+                : ' <span class="help-text" style="display:inline;">· sin dato de suicidio</span>')
             + (dep ? ` <span class="help-text" style="display:inline;">· depresión: ${dep.val.toFixed(1)} % (${dep.anio}, OMS)</span>` : '') + '</p>'
             + `<p style="margin:0 0 0.25rem; font-size:0.88em;"><strong>🧠 Problema</strong></p><div>${chips(this.PROBLEMAS, 'problema', s.problema)}</div>`;
         if (s.problema) html += `<p style="margin:0.6rem 0 0.25rem; font-size:0.88em;"><strong>👥 Población</strong></p><div>${chips(this.POBLACIONES, 'poblacion', s.poblacion)}</div>`;
