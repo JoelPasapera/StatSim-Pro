@@ -44,7 +44,7 @@ const PanoramaMundial = {
             <div id="panMapa" style="overflow:auto;"></div>
             <div id="panLeyenda" class="help-text" style="margin-top:0.4rem;"></div>
             <div id="panPanel" style="display:none; margin-top:0.8rem; border:1px solid var(--color-border,#2a3b52); border-radius:0.7rem; padding:0.9rem 1rem;"></div>
-            <p class="help-text" style="margin-top:0.6rem;">Fuentes: OMS, Observatorio Mundial de la Salud (GHO) — mortalidad por suicidio (edad estandarizada, ambos sexos) y prevalencia de depresión (Global Health Estimates), último año disponible por país. Los países en gris no reportan dato.</p>
+            <p class="help-text" style="margin-top:0.6rem;">Fuentes: OMS, Observatorio Mundial de la Salud (GHO) — mortalidad por suicidio (edad estandarizada, ambos sexos) y prevalencia de depresión (Global Health Estimates). Por país se toma el último año disponible; cuando la OMS publica varias estimaciones para ese año, se muestra su mediana. Los países en gris no reportan dato.</p>
           </div>`;
         slot.appendChild(card);
         document.getElementById('panAbrir').addEventListener('click', () => this._abrir());
@@ -84,13 +84,19 @@ const PanoramaMundial = {
             this._num2info = {};
             for (const [iso3, v] of Object.entries(iso)) this._num2info[v.n] = { iso3, es: v.es };
             this._paises = window.topojson.feature(mundo, mundo.objects.countries).features;
-            await this._cargarSuicidio();
-            await this._cargarDepresion(); // 2º indicador OMS (misma tubería)
+            // Los indicadores OMS pueden fallar (red, proxies): el mapa se
+            // pinta SIEMPRE — con datos si llegan, en gris con aviso si no.
+            this._datos = {};
+            let errOMS = null;
+            try { await this._cargarSuicidio(); } catch (e) { errOMS = e; }
+            try { await this._cargarDepresion(); } catch (e) { /* la opción se apaga sola */ }
             await this._cargarGBD(); // F2: se desbloquea solo si el dataset existe
             this._render();
             const sel = document.getElementById('panIndicador');
             if (sel) sel.addEventListener('change', () => { this._indicador = sel.value; this._render(); });
-            if (est) est.textContent = `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
+            if (est) est.textContent = errOMS
+                ? '⚠️ La OMS no respondió ahora (directo y proxies): mapa sin colorear. El drill por país sigue disponible; reintenta en unos minutos recargando.'
+                : `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
         } catch (e) {
             if (est) est.textContent = '❌ ' + (e.message || 'No se pudo cargar el panorama.');
         }
@@ -178,16 +184,25 @@ const PanoramaMundial = {
             throw e;
         }
     },
-    // Reduce las filas OData de la OMS al año más reciente por país → {numISO:{val,anio,iso3}}.
+    // Reduce las filas OData de la OMS al AÑO MÁS RECIENTE por país.
+    // La OMS publica varias EDICIONES de estimación para un mismo país-año
+    // (verificado en la API: Perú 2021 aparece con 6 valores distintos):
+    // se toma la MEDIANA de esas estimaciones — determinista y defendible,
+    // en lugar de un valor al azar según el orden de las filas.
     _reducirGHO(filas) {
-        const mejor = {};
+        const porPais = {};
         for (const f of (filas || [])) {
             const iso3 = f.SpatialDim, anio = +f.TimeDim, val = +f.NumericValue;
             if (!this._iso[iso3] || !isFinite(val)) continue;
-            if (!mejor[iso3] || anio > mejor[iso3].anio) mejor[iso3] = { anio, val };
+            const p = porPais[iso3];
+            if (!p || anio > p.anio) porPais[iso3] = { anio, vals: [val] };
+            else if (anio === p.anio) p.vals.push(val);
         }
+        const mediana = a => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1;
+            return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
         const porNum = {};
-        for (const [iso3, m] of Object.entries(mejor)) porNum[this._iso[iso3].n] = { ...m, iso3 };
+        for (const [iso3, p] of Object.entries(porPais))
+            porNum[this._iso[iso3].n] = { anio: p.anio, val: mediana(p.vals), n: p.vals.length, iso3 };
         return porNum;
     },
     // ---- Indicador OMS 2: prevalencia de depresión (% de la población).
@@ -232,14 +247,7 @@ const PanoramaMundial = {
             }
         };
         const d = await pedir();
-        const mejor = {}; // por país: el año más reciente
-        for (const f of (d.value || [])) {
-            const iso3 = f.SpatialDim, anio = +f.TimeDim, val = +f.NumericValue;
-            if (!this._iso[iso3] || !isFinite(val)) continue;
-            if (!mejor[iso3] || anio > mejor[iso3].anio) mejor[iso3] = { anio, val };
-        }
-        this._datos = {};
-        for (const [iso3, m] of Object.entries(mejor)) this._datos[this._iso[iso3].n] = { ...m, iso3 };
+        this._datos = this._reducirGHO(d.value);
     },
     _render() {
         const cont = document.getElementById('panMapa');
