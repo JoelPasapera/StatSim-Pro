@@ -154,10 +154,12 @@ const Explorar = {
             } catch (e) { return null; }
         };
         let n = -1, titulares = [], motivo = '', nRef = -1, urlRef = '';
+        let serieVals = null;
         const r1 = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
         if (r1.data && r1.data.timeline) {
             const serie = r1.data.timeline[0] && r1.data.timeline[0].data || [];
-            n = serie.reduce((s, p) => s + (parseInt(p.value, 10) || 0), 0);
+            serieVals = serie.map(p => parseInt(p.value, 10) || 0);
+            n = serieVals.reduce((s, x) => s + x, 0);
         } else motivo = r1.err || 'respuesta sin datos';
         let aprox = false, urlF = urlFuentes;
         if (n < 0) {
@@ -187,7 +189,7 @@ const Explorar = {
             const r2 = await pedir(`${fuenteTit}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
             if (r2.data && r2.data.articles) titulares = r2.data.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
         }
-        return { n, titulares, motivo, urlFuentes: urlF, aprox, nRef, urlRef };
+        return { n, titulares, motivo, urlFuentes: urlF, aprox, nRef, urlRef, serie: serieVals };
     },
     async _academicosOpenAlex(tema) {
         const desde = new Date().getFullYear() - this.ANIOS_ACADEMICOS;
@@ -198,6 +200,30 @@ const Explorar = {
             const d = await r.json();
             return (d.meta && typeof d.meta.count === 'number') ? d.meta.count : -1;
         } catch (e) { return -1; }
+    },
+    // ---- Tendencia temporal: primer tercio vs último tercio del trimestre ----
+    // 📈 al alza (≥+25 %), 📉 a la baja (≤−25 %), ➡️ estable. Umbral de ruido:
+    // sin un mínimo de actividad, no se declara tendencia (evita olas de 2 noticias).
+    _tendencia(serie) {
+        if (!serie || serie.length < 9) return null;
+        const k = Math.floor(serie.length / 3);
+        const media = a => a.reduce((s, x) => s + x, 0) / a.length;
+        const ini = media(serie.slice(0, k)), fin = media(serie.slice(-k));
+        if (ini + fin < 0.15) return null; // actividad ínfima: sin veredicto
+        const pct = ini > 0 ? Math.round(((fin - ini) / ini) * 100) : (fin > 0 ? 999 : 0);
+        const icono = (fin >= ini * 1.25) ? '📈' : (fin <= ini * 0.75 ? '📉' : '➡️');
+        return { icono, pct, ini: ini.toFixed(1), fin: fin.toFixed(1) };
+    },
+    // Sparkline SVG inline (muestreada a ≤30 puntos: ligera incluso ×50 filas).
+    _sparkSVG(serie) {
+        if (!serie || serie.length < 6) return '';
+        const paso = Math.ceil(serie.length / 30);
+        const pts = [];
+        for (let i = 0; i < serie.length; i += paso) pts.push(serie[i]);
+        if ((serie.length - 1) % paso !== 0) pts.push(serie[serie.length - 1]);
+        const max = Math.max(...pts, 1), W = 92, H = 22;
+        const linea = pts.map((v, i) => `${(i / (pts.length - 1) * W).toFixed(1)},${(H - 2 - (v / max) * (H - 4)).toFixed(1)}`).join(' ');
+        return `<svg class="exp-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true" style="display:block; margin-top:0.25rem; opacity:0.85;"><polyline points="${linea}" fill="none" stroke="#8caaff" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
     },
     // ---- Orquestación ----
     async _onExplorar() {
@@ -229,7 +255,7 @@ const Explorar = {
             const not = await this._noticiasGDELT(s, soloEsp, conRef);
             const acad = await this._academicosOpenAlex(s);
             Object.assign(filas[i], { pendiente: false, icono: '·',
-                noticias: not.n, titulares: not.titulares, academicos: acad, nRef: not.nRef, urlRef: not.urlRef,
+                noticias: not.n, titulares: not.titulares, academicos: acad, nRef: not.nRef, urlRef: not.urlRef, serie: not.serie, tend: this._tendencia(not.serie),
                 motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes, aprox: !!not.aprox,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
             this._actualizarFila(i);
@@ -364,7 +390,7 @@ const Explorar = {
           <td style="font-size:1.2em;">${f.icono}</td>
           <td><strong>${esc(f.tema)}</strong></td>
           <td>${f.noticias >= 0
-            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>${f.nRef > 0 ? ` · <a href="${esc(f.urlRef)}" target="_blank" rel="noopener" title="${f.nRef} noticia(s) en medios de referencia y organismos (BBC, Reuters, El País, DW… ONU, UNICEF, OMS/OPS). Clic: ver esa cobertura." style="text-decoration:none;">🏛️${f.nRef.toLocaleString('es')}</a>` : ''}`
+            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>${f.tend ? ` <span title="Tendencia del trimestre: promedio diario ${f.tend.ini} → ${f.tend.fin} (${f.tend.pct > 0 ? '+' : ''}${f.tend.pct} %). Comparación del primer tercio vs el último.">${f.tend.icono}</span>` : ''}${f.nRef > 0 ? ` · <a href="${esc(f.urlRef)}" target="_blank" rel="noopener" title="${f.nRef} noticia(s) en medios de referencia y organismos (BBC, Reuters, El País, DW… ONU, UNICEF, OMS/OPS). Clic: ver esa cobertura." style="text-decoration:none;">🏛️${f.nRef.toLocaleString('es')}</a>` : ''}${this._sparkSVG(f.serie)}`
             : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
           <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
           <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
