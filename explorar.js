@@ -10,6 +10,9 @@
 // ========================================
 const Explorar = {
     ANIOS_ACADEMICOS: 5,
+    // Medios internacionales de prestigio + organismos (ONU, UNICEF, OMS/OPS):
+    // GDELT permite filtrar la medición a estos dominios con domainis:.
+    DOMINIOS_REF: ['bbc.com','reuters.com','apnews.com','nytimes.com','theguardian.com','elpais.com','dw.com','france24.com','aljazeera.com','cnn.com','news.un.org','un.org','unicef.org','who.int','paho.org','reliefweb.int'],
     MIN_NOTICIAS_LATENTE: 20, // sin un mínimo de ruido real no hay "latencia"
     _resultados: [],
     montar() {
@@ -32,11 +35,14 @@ const Explorar = {
               </div>
               <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:center;">
                 <button id="expBuscar" class="btn btn-primary" style="padding:0.45rem 1.1rem;">🔭 Explorar brechas</button>
-                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Cuántos subtemas se miden (~4-5 s cada uno). Con 1, se mide TU tema tal cual, sin expansión de la IA. Con 3 o más, el semáforo compara los subtemas entre sí (terciles); con 1-2 usa reglas absolutas.">
-                  N° de subtemas <input type="number" id="expNum" class="input input-sm" min="1" max="15" value="8" style="width:64px;">
+                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Cuántos subtemas se miden (~4-5 s cada uno, y cada fila aparece al completarse). Con 1, se mide TU tema tal cual, sin expansión de la IA. Con 3 o más, el semáforo compara entre sí (terciles).">
+                  N° de subtemas <input type="number" id="expNum" class="input input-sm" min="1" max="50" value="8" style="width:64px;">
                 </label>
                 <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;">
                   <input type="checkbox" id="expEspanol" checked style="width:auto; margin:0;"> Solo noticias en español
+                </label>
+                <label style="font-size:0.9em; display:flex; align-items:center; gap:0.35rem;" title="Mide también cuántas noticias del subtema aparecen en prensa internacional de referencia y organismos (BBC, Reuters, El País, DW… y ONU, UNICEF, OMS/OPS, ReliefWeb). Esta medición es global (sin filtro de idioma).">
+                  <input type="checkbox" id="expRef" checked style="width:auto; margin:0;"> 🏛️ Medir en medios de referencia (ONU·OMS·prensa)
                 </label>
               </div>
               <div id="expEstado" class="help-text" style="margin-top:0.6rem;"></div>
@@ -67,7 +73,7 @@ const Explorar = {
             const texto = await IAAsistente.chatConReintento([
                 { role: 'system', content: 'Eres un investigador en psicología que detecta subtemas emergentes. Respondes SOLO JSON válido.' },
                 { role: 'user', content: `A partir del área «${tema}», propone EXACTAMENTE ${n} subtemas de investigación en psicología, concretos y actuales (2-6 palabras cada uno, en español, aptos como consulta de búsqueda). Responde SOLO: {"subtemas":["...","..."]}` }
-            ], { temperature: 0.7, max_tokens: 1200, response_format: { type: 'json_object' } });
+            ], { temperature: 0.7, max_tokens: Math.max(1200, n * 90), response_format: { type: 'json_object' } });
             const d = JSON.parse(texto.replace(/```json|```/g, '').trim());
             const lista = (d.subtemas || []).map(s => String(s).trim()).filter(s => s.length > 2).slice(0, n);
             if (lista.length >= 3) return lista;
@@ -87,7 +93,7 @@ const Explorar = {
         const claves = palabras.filter(p => !stop.has(p)).slice(0, 3);
         return claves.length > 1 ? claves.join(' ') : `"${claves[0] || tema}"`;
     },
-    async _noticiasGDELT(tema, soloEsp) {
+    async _noticiasGDELT(tema, soloEsp, conRef) {
         const q = this._queryNoticias(tema) + (soloEsp ? ' sourcelang:spanish' : '');
         const base = 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(q);
         // URL "humana" de GDELT con TODAS las fuentes del conteo (transparencia:
@@ -147,7 +153,7 @@ const Explorar = {
                     urlFuentes: 'https://news.google.com/search?q=' + encodeURIComponent(claves) + '&hl=es-419' };
             } catch (e) { return null; }
         };
-        let n = -1, titulares = [], motivo = '';
+        let n = -1, titulares = [], motivo = '', nRef = -1, urlRef = '';
         const r1 = await pedir(`${base}&mode=timelinevolraw&timespan=3m&format=json`);
         if (r1.data && r1.data.timeline) {
             const serie = r1.data.timeline[0] && r1.data.timeline[0].data || [];
@@ -158,11 +164,30 @@ const Explorar = {
             const c = await planC();
             if (c) { n = c.n; titulares = c.titulares; aprox = true; urlF = c.urlFuentes; motivo = ''; }
         } else {
-            await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía entre las 2 llamadas
-            const r2 = await pedir(`${base}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
+            // Medición en MEDIOS DE REFERENCIA (global, sin filtro de idioma):
+            // ¿cuánto suena este subtema en la prensa y organismos que un
+            // jurado respeta? (BBC, Reuters, ONU, UNICEF, OMS…)
+            if (conRef) {
+                await new Promise(x => setTimeout(x, 900));
+                const qRef = this._queryNoticias(tema) + ' (' + this.DOMINIOS_REF.map(d => 'domainis:' + d).join(' OR ') + ')';
+                const baseRef = 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(qRef);
+                urlRef = `${baseRef}&mode=artlist&maxrecords=75&timespan=3m&format=html&sort=datedesc`;
+                const rr = await pedir(`${baseRef}&mode=timelinevolraw&timespan=3m&format=json`);
+                if (rr.data && rr.data.timeline) {
+                    const sr = rr.data.timeline[0] && rr.data.timeline[0].data || [];
+                    nRef = sr.reduce((s, p) => s + (parseInt(p.value, 10) || 0), 0);
+                }
+            }
+            await new Promise(x => setTimeout(x, 900)); // ritmo de cortesía
+            // Titulares de muestra: si hay cobertura de referencia, se
+            // muestran ESOS titulares (más confiables); si no, los generales.
+            const fuenteTit = (nRef > 0)
+                ? 'https://api.gdeltproject.org/api/v2/doc/doc?query=' + encodeURIComponent(this._queryNoticias(tema) + ' (' + this.DOMINIOS_REF.map(d => 'domainis:' + d).join(' OR ') + ')')
+                : base;
+            const r2 = await pedir(`${fuenteTit}&mode=artlist&maxrecords=3&timespan=3m&format=json&sort=datedesc`);
             if (r2.data && r2.data.articles) titulares = r2.data.articles.slice(0, 3).map(a => ({ t: a.title || '', u: a.url || '', d: a.domain || '' }));
         }
-        return { n, titulares, motivo, urlFuentes: urlF, aprox };
+        return { n, titulares, motivo, urlFuentes: urlF, aprox, nRef, urlRef };
     },
     async _academicosOpenAlex(tema) {
         const desde = new Date().getFullYear() - this.ANIOS_ACADEMICOS;
@@ -181,8 +206,9 @@ const Explorar = {
         const btn = document.getElementById('expBuscar');
         if (tema.length < 4) { if (estado) estado.textContent = '⚠️ Escribe un área o tema semilla (o toca un chip).'; return; }
         const soloEsp = !!(document.getElementById('expEspanol') || {}).checked;
+        const conRef = !!(document.getElementById('expRef') || {}).checked;
         const t0 = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Explorando…';
-        const nSub = Math.max(1, Math.min(15, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
+        const nSub = Math.max(1, Math.min(50, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
         let subtemas;
         if (nSub === 1) {
             subtemas = [tema]; // medir el tema del usuario tal cual, sin expansión
@@ -194,16 +220,16 @@ const Explorar = {
         // cada fila se llena en cuanto su medición termina (los botones de
         // esa fila se activan al instante, sin esperar al resto del lote).
         this._resultados = subtemas.map(s => ({ tema: s, pendiente: true, icono: '⏳',
-            noticias: -1, academicos: -1, indice: -1, titulares: [], motivo: '', urlFuentes: '', aprox: false }));
+            noticias: -1, academicos: -1, indice: -1, titulares: [], motivo: '', urlFuentes: '', aprox: false, nRef: -1, urlRef: '' }));
         this._pintar();
         const filas = this._resultados;
         for (let i = 0; i < subtemas.length; i++) {
             const s = subtemas[i];
             if (estado) estado.textContent = `🔎 ${i + 1}/${subtemas.length}: midiendo «${s}»… (cada fila aparece al completarse; el orden y el semáforo definitivos llegan al final)`;
-            const not = await this._noticiasGDELT(s, soloEsp);
+            const not = await this._noticiasGDELT(s, soloEsp, conRef);
             const acad = await this._academicosOpenAlex(s);
             Object.assign(filas[i], { pendiente: false, icono: '·',
-                noticias: not.n, titulares: not.titulares, academicos: acad,
+                noticias: not.n, titulares: not.titulares, academicos: acad, nRef: not.nRef, urlRef: not.urlRef,
                 motivo: not.motivo || (acad < 0 ? 'OpenAlex no respondió' : ''), urlFuentes: not.urlFuentes, aprox: !!not.aprox,
                 indice: (not.n >= 0 && acad >= 0) ? not.n / (acad + 1) : -1 });
             this._actualizarFila(i);
@@ -338,7 +364,7 @@ const Explorar = {
           <td style="font-size:1.2em;">${f.icono}</td>
           <td><strong>${esc(f.tema)}</strong></td>
           <td>${f.noticias >= 0
-            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>`
+            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>${f.nRef > 0 ? ` · <a href="${esc(f.urlRef)}" target="_blank" rel="noopener" title="${f.nRef} noticia(s) en medios de referencia y organismos (BBC, Reuters, El País, DW… ONU, UNICEF, OMS/OPS). Clic: ver esa cobertura." style="text-decoration:none;">🏛️${f.nRef.toLocaleString('es')}</a>` : ''}`
             : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
           <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
           <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>
