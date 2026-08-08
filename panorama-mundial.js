@@ -12,7 +12,7 @@
 const PanoramaMundial = {
     PROBLEMAS: ['depresión', 'ansiedad', 'consumo de sustancias', 'suicidio y autolesión', 'trastorno bipolar', 'psicosis', 'trastornos alimentarios', 'TDAH', 'estrés postraumático', 'insomnio'],
     POBLACIONES: ['niños', 'adolescentes', 'universitarios', 'adultos', 'adultos mayores', 'mujeres', 'varones', 'gestantes'],
-    _datos: null, _iso: null, _num2info: null, _sel: {},
+    _datos: null, _iso: null, _num2info: null, _sel: {}, _gbd: null, _indicador: 'suicidio',
     montar() {
         const slot = document.getElementById('seccionExplorar');
         if (!slot || document.getElementById('panoramaMundial')) return;
@@ -31,11 +31,11 @@ const PanoramaMundial = {
               <label style="font-size:0.9em; display:flex; align-items:center; gap:0.4rem;">Indicador
                 <select id="panIndicador" class="input input-sm" style="width:auto; max-width:100%;">
                   <option value="suicidio">Mortalidad por suicidio (OMS · por 100 mil · edad estandarizada)</option>
-                  <option disabled>— F2 · requieren dataset GBD (IHME) —</option>
-                  <option disabled>Prevalencia por trastorno</option>
-                  <option disabled>Incidencia</option>
-                  <option disabled>Carga de enfermedad (DALYs)</option>
-                  <option disabled>Discapacidad (YLDs)</option>
+                  <option disabled id="panSepGBD">— F2 · requieren dataset GBD (IHME) —</option>
+                  <option value="prevalencia" disabled data-gbd>Prevalencia de trastornos mentales</option>
+                  <option value="incidencia" disabled data-gbd>Incidencia de trastornos mentales</option>
+                  <option value="dalys" disabled data-gbd>Carga de enfermedad (DALYs)</option>
+                  <option value="ylds" disabled data-gbd>Discapacidad (YLDs)</option>
                 </select>
               </label>
               <span id="panEstado" class="help-text" style="margin:0;"></span>
@@ -84,11 +84,45 @@ const PanoramaMundial = {
             for (const [iso3, v] of Object.entries(iso)) this._num2info[v.n] = { iso3, es: v.es };
             this._paises = window.topojson.feature(mundo, mundo.objects.countries).features;
             await this._cargarSuicidio();
+            await this._cargarGBD(); // F2: se desbloquea solo si el dataset existe
             this._render();
+            const sel = document.getElementById('panIndicador');
+            if (sel) sel.addEventListener('change', () => { this._indicador = sel.value; this._render(); });
             if (est) est.textContent = `✓ ${Object.keys(this._datos).length} países con dato. Toca un país para explorarlo.`;
         } catch (e) {
             if (est) est.textContent = '❌ ' + (e.message || 'No se pudo cargar el panorama.');
         }
+    },
+    // ---- F2 · dataset GBD (IHME) vendorizado: si gbd-datos.json está en la
+    // raíz, las opciones de prevalencia/incidencia/DALYs/YLDs se desbloquean
+    // solas. Esquema: { meta:{fuente,anio}, indicadores:{ prevalencia:{nombre,
+    // unidad,datos:{ISO3:valor}}, ... } }. Sin archivo → siguen deshabilitadas
+    // (nunca se pintan datos inventados). ----
+    async _cargarGBD() {
+        try {
+            const r = await fetch('gbd-datos.json');
+            if (!r.ok) return;
+            const g = await r.json();
+            if (!g || !g.indicadores) return;
+            this._gbd = g;
+            const sep = document.getElementById('panSepGBD');
+            if (sep) sep.textContent = `— ${(g.meta && g.meta.fuente) || 'IHME GBD'} —`;
+            document.querySelectorAll('#panIndicador option[data-gbd]').forEach(o => {
+                if (g.indicadores[o.value]) o.disabled = false;
+            });
+        } catch (e) { /* sin dataset: F2 permanece dormida */ }
+    },
+    // Datos del indicador activo, siempre como { numISO: {val, anio} }.
+    _datosActivos() {
+        if (this._indicador === 'suicidio' || !this._gbd) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
+        const ind = this._gbd.indicadores[this._indicador];
+        if (!ind) return { datos: this._datos, unidad: 'por 100 mil', fuente: 'OMS' };
+        const porNum = {};
+        const anio = (this._gbd.meta && this._gbd.meta.anio) || '';
+        for (const [iso3, val] of Object.entries(ind.datos || {})) {
+            if (this._iso[iso3] && isFinite(+val)) porNum[this._iso[iso3].n] = { val: +val, anio, iso3 };
+        }
+        return { datos: porNum, unidad: ind.unidad || '', fuente: (this._gbd.meta && this._gbd.meta.fuente) || 'IHME GBD' };
     },
     // ---- Indicador OMS: suicidio por 100 mil (edad estandarizada, BTSX) ----
     async _cargarSuicidio() {
@@ -121,21 +155,23 @@ const PanoramaMundial = {
         const W = 940, H = 470;
         const proy = d3.geoNaturalEarth1().fitExtent([[4, 4], [W - 4, H - 4]], { type: 'Sphere' });
         const path = d3.geoPath(proy);
-        const vals = Object.values(this._datos).map(x => x.val);
+        const act = this._datosActivos();
+        const datos = act.datos;
+        const vals = Object.values(datos).map(x => x.val);
         const max = Math.max(...vals, 1);
         const color = d3.scaleLinear().domain([0, max * 0.45, max]).range(['#1e3a5f', '#e6b93f', '#e05d44']).clamp(true);
         const trazos = this._paises.map(f => {
             const num = String(f.id).padStart(3, '0');
             const info = this._num2info[num];
-            const dato = this._datos[num];
+            const dato = datos[num];
             const nombre = info ? info.es : (f.properties.name || '');
             const fill = dato ? color(dato.val) : '#26314a';
-            const titulo = dato ? `${nombre} — ${dato.val.toFixed(1)} por 100 mil (${dato.anio})` : `${nombre} — sin dato`;
+            const titulo = dato ? `${nombre} — ${dato.val.toFixed(1)} ${act.unidad}${dato.anio ? ` (${dato.anio}` + ', ' + act.fuente + ')' : ''}` : `${nombre} — sin dato`;
             return `<path d="${path(f)}" data-num="${num}" fill="${fill}" stroke="#0b0f19" stroke-width="0.5" style="cursor:pointer;"><title>${titulo}</title></path>`;
         }).join('');
         cont.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px; display:block; margin:0 auto;" class="pan-svg" font-family="inherit">${trazos}</svg>`;
         document.getElementById('panLeyenda').innerHTML =
-            `Escala: <span style="color:#6f8fc9;">0</span> → <span style="color:#e6b93f;">${(max * 0.45).toFixed(0)}</span> → <span style="color:#e05d44;">${max.toFixed(0)}</span> muertes por 100 mil · gris = sin dato · pasa el ratón para ver cada país`;
+            `Escala: <span style="color:#6f8fc9;">0</span> → <span style="color:#e6b93f;">${(max * 0.45).toFixed(0)}</span> → <span style="color:#e05d44;">${max.toFixed(0)}</span> ${act.unidad} · fuente: ${act.fuente} · gris = sin dato · pasa el ratón para ver cada país`;
         if (!document.getElementById('panEstilos')) {
             const st = document.createElement('style');
             st.id = 'panEstilos';
