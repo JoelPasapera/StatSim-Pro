@@ -101,10 +101,7 @@ const PanoramaMundial = {
     // Los datos GBD NO se vendorizan (la licencia del IHME prohíbe
     // redistribuirlos): se cargan EN VIVO desde Our World in Data, que los
     // publica con acceso abierto. Cada usuario los recibe de la fuente.
-    OWID: {
-        prevalencia: { slug: 'share-with-mental-and-substance-disorders', unidad: '% de la población' },
-        dalys: { slug: 'mental-and-substance-use-as-share-of-disease', unidad: '% de la carga total de enfermedad' }
-    },
+
     _parseCSV(texto) {
         const lineas = texto.trim().split(/\r?\n/);
         if (lineas.length < 2) return null;
@@ -132,34 +129,14 @@ const PanoramaMundial = {
                 if (g && g.indicadores) { this._gbd = g; this._activarGBD(); return; }
             }
         } catch (e) { /* seguimos a OWID */ }
-        // 2º: carga en vivo desde Our World in Data (con rescate por proxies).
-        const est = document.getElementById('panEstado');
-        const ind = {};
-        let anioRef = 0;
-        for (const [clave, cfg] of Object.entries(this.OWID)) {
-            const url = `https://ourworldindata.org/grapher/${cfg.slug}.csv?v=1&csvType=full&useColumnShortNames=true`;
-            let texto = null;
-            try { const r = await fetch(url); if (r.ok) texto = await r.text(); } catch (e) { /* proxy */ }
-            if (!texto && typeof ProxiesCORS !== 'undefined' && ProxiesCORS.carrera) {
-                try {
-                    const { obras } = await ProxiesCORS.carrera(url,
-                        t => (t && t.slice(0, 200).toLowerCase().includes('code') ? [t] : null),
-                        { anchura: 3, timeout: 20000, oleadas: 2 });
-                    texto = obras[0];
-                } catch (e) { /* sin rescate */ }
-            }
-            const p = texto ? this._parseCSV(texto) : null;
-            if (p) {
-                const datos = {}; for (const [k, m] of Object.entries(p.datos)) datos[k] = m.val;
-                ind[clave] = { nombre: clave, unidad: cfg.unidad, datos, _anios: p.datos };
-                if (p.anio > anioRef) anioRef = p.anio;
-            }
-        }
-        if (Object.keys(ind).length) {
-            this._gbd = { meta: { fuente: `IHME GBD · vía Our World in Data`, anio: anioRef, envivo: true }, indicadores: ind };
-            this._activarGBD();
-        } else if (est) est.textContent += ' · (GBD en vivo no disponible ahora: prevalencia/DALYs quedan bloqueados)';
+        // Sin dataset local no hay más vías: el IHME (GBD 2023) publica bajo
+        // una licencia que prohíbe la redistribución, y Our World in Data
+        // desactivó la descarga abierta de estos datos. Antes de inventar
+        // cifras, las opciones quedan dormidas — con el motivo a la vista.
+        const sep = document.getElementById('panSepGBD');
+        if (sep) sep.textContent = '— F2 · licencia IHME: requiere tu dataset GBD (gbd-datos.json) —';
     },
+
     _activarGBD() {
         const g = this._gbd;
         const sep = document.getElementById('panSepGBD');
