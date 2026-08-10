@@ -247,7 +247,7 @@ body::after { /* red de nodos: textura científica en todas las secciones */
    FORMS
    ======================================== */
 .form-group { margin-bottom: var(--spacing-md); }
-.form-row { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: var(--spacing-lg); }
+.form-row { display: grid; grid-template-columns: 0.85fr 1.15fr; gap: var(--spacing-lg); }
 label {
     display: block; font-size: 0.875rem; font-weight: 500;
     color: var(--color-text); margin-bottom: var(--spacing-xs);
@@ -1056,7 +1056,7 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
    video-tutoriales.js; aquí solo se adapta a su columna.
    ============================================================ */
 .ana-hero {
-    max-width: 1180px;
+    max-width: 1240px;
     margin: 0 auto var(--spacing-2xl);
     display: grid;
     grid-template-columns: 1fr 1fr;
