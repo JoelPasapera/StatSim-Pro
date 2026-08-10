@@ -712,13 +712,29 @@
         <!-- Sección Analizador -->
         <section id="analizador" class="section">
             <div class="container">
-                <div class="section-header">
-                    <h2 class="section-title">Analizador Estadístico</h2>
-                    <p class="section-subtitle">El flujo estadístico completo de una tesis: descriptivos, normalidad y correlación con protocolo automático (Pearson o Spearman según tus datos), regresión simple y múltiple con comparación de modelos por AIC, comparación de grupos (t, U de Mann-Whitney, ANOVA, Kruskal-Wallis) con ANCOVA y MANOVA opcionales, modelos de ecuaciones estructurales (SEM) con sintaxis de lavaan — y un capítulo Word en formato APA donde cada resultado explica no solo qué significa, sino por qué la estadística funciona así</p>
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Analizador<span class="oro">Estadístico</span></h2>
+                        <p class="ana-parrafo">Carga tus datos — o usa los del Simulador — y deja que StatSim Pro determine los análisis que necesitas. Obtén resultados explicados en lenguaje claro y genera tu capítulo de resultados en Word con formato APA 7.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Carga tus datos</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Analiza con guía</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Word APA 7</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" id="anaCtaEmpezar" href="#analizador">Empezar análisis</a>
+                            <a class="btn btn-outline" id="anaCtaTutorial" href="#analizador">▶ Ver tutorial</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video" id="anaHeroVideo"></div>
                 </div>
 
                 <!-- Cargar Datos -->
-                <div class="card">
+                <div class="card" id="cardCargarDatos">
                     <h3 class="card-title">Cargar Datos</h3>
                     <div class="upload-area">
                         <div class="upload-options">
@@ -1270,6 +1286,37 @@
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
+
+    <!-- Hero Analizador: adopta la façade del tutorial en el slot derecho
+         y conecta los CTAs. No toca video-tutoriales.js. -->
+    <script>
+    (function(){
+        var slot = document.getElementById('anaHeroVideo');
+        if (!slot) return;
+        function adoptar() {
+            var v = document.querySelector('#analizador .yt-lite');
+            if (v && v.parentElement !== slot) { slot.appendChild(v); return true; }
+            return !!(v && v.parentElement === slot);
+        }
+        if (!adoptar()) {
+            var mo = new MutationObserver(function(){ if (adoptar()) mo.disconnect(); });
+            mo.observe(document.getElementById('analizador'), { childList: true, subtree: true });
+            setTimeout(function(){ mo.disconnect(); }, 15000);
+        }
+        var cd = document.getElementById('cardCargarDatos');
+        var b1 = document.getElementById('anaCtaEmpezar');
+        if (b1 && cd) b1.addEventListener('click', function(e){
+            e.preventDefault();
+            cd.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+        var b2 = document.getElementById('anaCtaTutorial');
+        if (b2) b2.addEventListener('click', function(e){
+            e.preventDefault();
+            var v = document.querySelector('#analizador .yt-lite');
+            if (v) v.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        });
+    })();
+    </script>
 </body>
 
 </html>
