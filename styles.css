@@ -247,7 +247,7 @@ body::after { /* red de nodos: textura científica en todas las secciones */
    FORMS
    ======================================== */
 .form-group { margin-bottom: var(--spacing-md); }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--spacing-lg); }
+.form-row { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: var(--spacing-lg); }
 label {
     display: block; font-size: 0.875rem; font-weight: 500;
     color: var(--color-text); margin-bottom: var(--spacing-xs);
@@ -1114,3 +1114,12 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     .ana-parrafo { margin-left: auto; margin-right: auto; }
     .ana-flujo, .ana-ctas { justify-content: center; }
 }
+
+
+/* Sección sin video-tutorial configurado: el hero colapsa a una columna
+   centrada y el botón de tutorial desaparece (cero JS: puro :has). */
+.ana-hero:has(.ana-hero-video:empty) { grid-template-columns: 1fr; text-align: center; }
+.ana-hero:has(.ana-hero-video:empty) .ana-parrafo { margin-left: auto; margin-right: auto; }
+.ana-hero:has(.ana-hero-video:empty) .ana-flujo,
+.ana-hero:has(.ana-hero-video:empty) .ana-ctas { justify-content: center; }
+.ana-hero:has(.ana-hero-video:empty) .ana-cta-tutorial { display: none; }
