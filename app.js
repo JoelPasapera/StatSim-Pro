@@ -424,6 +424,10 @@ function configurarAnalizador() {
 
     // Input file CSV
     document.getElementById('fileInput').addEventListener('change', cargarArchivoCSV);
+    // Editor de etiquetas: presente desde el arranque (vacío hasta que haya datos)
+    if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.mostrarVacio) {
+        EtiquetasVariables.mostrarVacio('editorEtiquetas');
+    }
 
     // Botón analizar (ejecutarAnalisis ya inicializa los gráficos al final)
     document.getElementById('btnAnalizar').addEventListener('click', ejecutarAnalisis);
@@ -503,7 +507,7 @@ function cargarDatosGenerados() {
                 generadorDatos.obtenerEtiquetas(),
                 generadorDatos.obtenerEstructuraEscalas()
             );
-            EtiquetasVariables.ocultarEditor('editorEtiquetas');
+            EtiquetasVariables.mostrarVacio('editorEtiquetas', '🧪 Datos del Simulador: las etiquetas ya vienen configuradas desde esa sección; este editor se usa con bases externas (CSV).');
         }
 
         mostrarDatosCargados(datos);
