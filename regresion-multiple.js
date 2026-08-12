@@ -704,17 +704,24 @@ const RegresionMultiple = {
         this._ultimaBivariada = { R, MM: MM.error ? null : MM, etX: etX || colX, etY: etY || colY };
 
         const c1 = R.coefs[1];
-        let html = `<div class="card" style="padding:1.25rem;">
-          <h3 style="margin:0 0 0.3rem;">📈 Regresión bivariada: ${R.etY} según ${etX || colX}</h3>
-          <p class="help-text" style="margin:0 0 0.6rem;">A diferencia de la correlación (simétrica), la regresión es <b>direccional</b>: estima cuánto cambia la variable dependiente por cada unidad de la independiente y permite predecir.</p>`;
-        html += `<h4 style="margin:0.4rem 0 0.2rem;">Modelo lineal (mínimos cuadrados)</h4>`
+        let html = `<div class="result-section">
+          <h3 class="section-title">Regresión Bivariada</h3>
+          <p class="result-subtitle">Modelo de <strong>${R.etY}</strong> según <strong>${etX || colX}</strong>. A diferencia de la correlación (simétrica), la regresión es <b>direccional</b>: estima cuánto cambia la variable dependiente por cada unidad de la independiente y permite predecir.</p>
+          <div class="result-box">`;
+        html += `<h5 style="margin-bottom: 0.5rem; font-weight: 600;">Modelo lineal (mínimos cuadrados)</h5>`
             + this._tab(this._tr(['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', `F(${R.glR}, ${R.glE})`, 'p modelo'], true)
                 + this._tr([this._fx(c1.b), this._fx(c1.se), this._fx(c1.t, 2), this._fp(c1.pValor),
                     `[${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}]`, this._fx(R.R2), this._fx(R.F, 2), this._fp(R.pF)]))
             + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${this._fx(R.coefs[0].b)} + ${this._fx(c1.b)}·x.</p>`
-            + this._pedagogiaBivariada(R, etX || colX);
-        if (!MM.error) html += this._htmlMejorModelo(MM);
-        if (img) html += `<p style="text-align:center;margin:0.6rem 0 0;"><img src="${img.url}" style="max-width:100%;border:1px solid #eee;border-radius:0.4rem;" alt="Modelo ajustado"></p>`;
+            + `</div>`
+            + `<div class="result-box interpretation-box interpretation-box--correlacion">
+                <h5 class="interpretation-title">
+                    <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
+                    Interpretación Estadística
+                </h5>
+                <div class="interpretation-text">` + this._pedagogiaBivariada(R, etX || colX) + `</div></div>`;
+        if (!MM.error) html += `<div class="result-box">` + this._htmlMejorModelo(MM) + `</div>`;
+        if (img) html += `<div class="result-box" style="display: flex; justify-content: center;"><img src="${img.url}" style="max-width:100%;border-radius:0.4rem;" alt="Modelo ajustado"></div>`;
         html += `</div>`;
         return { html };
     },
