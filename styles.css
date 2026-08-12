@@ -1123,3 +1123,30 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .ana-hero:has(.ana-hero-video:empty) .ana-flujo,
 .ana-hero:has(.ana-hero-video:empty) .ana-ctas { justify-content: center; }
 .ana-hero:has(.ana-hero-video:empty) .ana-cta-tutorial { display: none; }
+
+
+
+/* ============================================================
+   PANEL DE ANÁLISIS EN MODO ESCAPARATE — visible desde el primer
+   segundo para que el usuario vea qué ofrece la sección; los
+   controles duermen (atenuados, sin interacción) hasta que llegan
+   datos, momento en que app.js retira la clase.
+   ============================================================ */
+#seleccionContainer.esperando-datos > *:not(.card-title):not(.sel-aviso) {
+    opacity: 0.4;
+    pointer-events: none;
+    user-select: none;
+    filter: saturate(0.6);
+    transition: opacity var(--transition-base), filter var(--transition-base);
+}
+.sel-aviso {
+    display: block;
+    margin: 0 0 1rem;
+    padding: 0.6rem 0.9rem;
+    font-size: 0.875rem;
+    color: #f3d787;
+    background: rgba(230, 185, 63, 0.07);
+    border: 1px solid rgba(230, 185, 63, 0.3);
+    border-left: 4px solid var(--color-accent);
+    border-radius: var(--radius-md);
+}
