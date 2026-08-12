@@ -7,9 +7,7 @@
 // notas de tabla. Consume window.ultimoAnalisis (guardado por app.js) y
 // los módulos globales para recalcular tablas — cero duplicación de prosa.
 // ========================================
-
 const ExportadorWord = {
-
     _LOGO_SVG: `<svg width="150" height="150" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
             <polygon points="100,30 185,75 100,120 15,75" fill="#0f172a"/>
             <polygon points="100,42 168,75 100,108 32,75" fill="#1e293b"/>
@@ -20,10 +18,8 @@ const ExportadorWord = {
             <rect x="150" y="140" width="16" height="26" rx="3" fill="#f1c40f"/>
             <text x="100" y="190" text-anchor="middle" font-family="Times New Roman" font-size="20" font-weight="bold" fill="#0f172a">StatSim Pro</text>
         </svg>`,
-
     _n: 0, // contador de tablas
     _f: 0, // contador de figuras
-
     // Captura el SVG YA RENDERIZADO en la página con sus dimensiones (cero
     // re-cálculo: XMLSerializer no muta el DOM). null si no existe.
     _capturarSVG(idContenedor) {
@@ -35,7 +31,6 @@ const ExportadorWord = {
         const h = +svg.getAttribute('height') || 380;
         return { svg: new XMLSerializer().serializeToString(svg), w, h };
     },
-
     // Rasteriza un SVG a PNG base64 vía canvas a 2x (nitidez de impresión).
     // Word no renderiza SVG inline en HTML, pero sí <img> con data URI PNG.
     // Devuelve Promise<{url,w,h}|null>; ante cualquier fallo resuelve null
@@ -65,7 +60,6 @@ const ExportadorWord = {
             } catch (e) { resolve(null); }
         });
     },
-
     // Figura APA 7: "Figura N" en negrita, título en cursiva, gráfico vectorial
     // centrado y Nota opcional. Numeración independiente de las tablas.
     _figura(idContenedor, titulo, nota) {
@@ -77,7 +71,6 @@ const ExportadorWord = {
             <p style="margin:0;text-align:center;"><img src="${png.url}" width="${png.w}" height="${png.h}" style="max-width:100%;"></p>
             ${nota ? `<p style="margin:4pt 0 0;font-size:11pt;line-height:150%;"><i>Nota.</i> ${nota}</p>` : ''}`;
     },
-
     _tablaAPA(titulo, headers, filas, nota) {
         this._n += 1;
         const th = headers.map(h =>
@@ -92,27 +85,22 @@ const ExportadorWord = {
             </table>
             ${nota ? `<p style="margin:4pt 0 0;font-size:11pt;line-height:150%;"><i>Nota.</i> ${nota}</p>` : ''}`;
     },
-
     _p(texto) {
         return `<p style="margin:0 0 0;line-height:200%;text-align:justify;text-indent:0.5in;">${texto}</p>`;
     },
-
     _secciones: [],
-
     // Encabezado APA nivel 1 (centrado, negrita) con ancla para el índice.
     _h1(titulo) {
         const id = 'sec' + (this._secciones.length + 1);
         this._secciones.push({ id, t: titulo, nivel: 1 });
         return `<p style="margin:18pt 0 8pt;line-height:200%;text-align:center;"><a name="${id}"></a><b>${titulo}</b></p>`;
     },
-
     // Encabezado APA nivel 2 (izquierda, negrita) con ancla para el índice.
     _seccion(titulo) {
         const id = 'sec' + (this._secciones.length + 1);
         this._secciones.push({ id, t: titulo, nivel: 2 });
         return `<p style="margin:14pt 0 6pt;line-height:200%;"><a name="${id}"></a><b>${titulo}</b></p>`;
     },
-
     // Índice con hipervínculos internos (clic → salta a la sección).
     _indice() {
         const filas = this._secciones.map(s =>
@@ -121,7 +109,6 @@ const ExportadorWord = {
         return `<p style="margin:0 0 8pt;line-height:200%;text-align:center;"><b>Índice</b></p>${filas}
                 <br style="page-break-after:always;">`;
     },
-
     // Referencias en APA 7: orden alfabético y sangría francesa.
     _referencias() {
         const refs = [
@@ -133,7 +120,6 @@ const ExportadorWord = {
         return refs.map(r =>
             `<p style="margin:0 0 0;line-height:200%;text-indent:-0.5in;margin-left:0.5in;">${r}</p>`).join('');
     },
-
     // Portada de tesis (una sola hoja): logo, título, autor, lugar y año.
     _portada(ctx) {
         const anio = new Date().getFullYear();
@@ -148,7 +134,6 @@ const ExportadorWord = {
             <p style="margin:0;line-height:200%;font-size:12pt;">${anio}</p>
         </div><br style="page-break-after:always;">`;
     },
-
     // Resumen estructurado (una hoja): Introducción, Objetivo, Métodos,
     // Resultados y Conclusiones, en formato APA compacto.
     _resumen(ctx) {
@@ -164,12 +149,10 @@ const ExportadorWord = {
         const gl = Number.isFinite(resultado.gl) ? resultado.gl : n - 2;
         const ic = resultado.intervaloConfianza;
         const sig = resultado.pValor < 0.05;
-
         const intro = `El estudio de la relación entre ${et1} ${I._conj(et2)} ${et2} resulta relevante para la psicología, pues aporta evidencia empírica sobre la asociación entre constructos centrales del funcionamiento psicológico y orienta futuras intervenciones e investigaciones en la población de interés.`;
         const objetivo = marco ? marco.objetivoGeneral : `Determinar la relación entre ${et1} y ${et2}.`;
         const instr = (i1 && i2) ? ` Las variables se midieron mediante ${i1} (${et1}) y ${i2} (${et2}).` : ` Las variables se midieron mediante [INSTRUMENTO DE LA V1 (AUTOR, AÑO); confiabilidad α = __] y [INSTRUMENTO DE LA V2 (AUTOR, AÑO); α = __].`;
         const metodos = `Investigación de tipo básica, enfoque cuantitativo, diseño no experimental, alcance correlacional y corte transversal, con una muestra de ${n} participantes.${instr} El análisis comprendió pruebas de normalidad, el coeficiente de ${esSp ? 'Spearman' : 'Pearson'} y la corrección de Holm para los objetivos específicos.`;
-
         let resul = `${resultado.normalidad1.normal && resultado.normalidad2.normal ? 'Ambas variables cumplieron el supuesto de normalidad' : 'Al menos una variable se desvió de la normalidad'}, por lo que se aplicó ${esSp ? 'Spearman' : 'Pearson'}. Se obtuvo ${sim}(${gl}) = ${resultado.coeficiente.toFixed(3)}, ${fp(resultado.pValor)}${ic ? `, IC 95% [${ic.inferior.toFixed(2)}, ${ic.superior.toFixed(2)}]` : ''}, correlación ${resultado.interpretacion.fuerza} ${resultado.interpretacion.direccion}.`;
         if (criba && criba.seleccionados && criba.seleccionados.length) {
             const res = criba.seleccionados.map(s => { try { return A.calcularCorrelacion(s.columnaX, s.columnaY, tipoPrueba); } catch (e) { return null; } });
@@ -180,14 +163,12 @@ const ExportadorWord = {
         const concl = sig
             ? `Existe una relación estadísticamente significativa, de dirección ${resultado.interpretacion.direccion} y magnitud ${resultado.interpretacion.fuerza}, entre ${et1} ${I._conj(et2)} ${et2}; se rechaza la hipótesis nula.`
             : `No se halló evidencia de una relación estadísticamente significativa entre ${et1} ${I._conj(et2)} ${et2}; no se rechaza la hipótesis nula.`;
-
         const b = (t, x) => `<p style="margin:0 0 6pt;line-height:150%;text-align:justify;"><b>${t}.</b> ${x}</p>`;
         return `<p style="margin:0 0 10pt;line-height:200%;text-align:center;"><a name="resumen"></a><b>Resumen</b></p>`
             + b('Introducción', intro) + b('Objetivo', objetivo) + b('Métodos', metodos)
             + b('Resultados', resul) + b('Conclusiones', concl)
             + `<br style="page-break-after:always;">`;
     },
-
     // Matriz de consistencia como tabla APA (una fila, cinco columnas-lista,
     // alineación superior, 10pt para caber en página vertical).
     _matrizConsistenciaWord(m) {
@@ -210,7 +191,6 @@ const ExportadorWord = {
             </table>
             <p style="margin:4pt 0 0;font-size:10pt;line-height:140%;"><i>Nota.</i> Elaboración propia a partir del diseño metodológico del estudio.</p>`;
     },
-
     // Φ(z): función de distribución normal estándar (aprox. Abramowitz-Stegun).
     _phi(z) {
         const t = 1 / (1 + 0.2316419 * Math.abs(z));
@@ -232,7 +212,6 @@ const ExportadorWord = {
         const lambda = Math.abs(Math.atanh(r)) * Math.sqrt(n - 3);
         return this._phi(lambda - zc) + this._phi(-lambda - zc);
     },
-
     generarCapitulo(ctx) {
         this._n = 0;
         this._f = 0;
@@ -242,7 +221,6 @@ const ExportadorWord = {
         const datos = A.obtenerDatos() || [];
         const { var1, var2, et1, et2, resultado, criba, tipoPrueba, marco } = ctx;
         let h = '';
-
         // ---- Marco metodológico completo ----
         if (marco) {
             h += this._h1('Marco Metodológico');
@@ -271,7 +249,6 @@ const ExportadorWord = {
                 }
             }
         }
-
         // ---- Resultados ----
         h += this._h1('Resultados');
         // ---- Tabla sociodemográfica ----
@@ -296,8 +273,8 @@ const ExportadorWord = {
                 if (!orden.length) return;
                 const [c1, f1] = orden[0];
                 const pct = x => (x * 100 / datos.length).toFixed(1);
-                let s = `en cuanto a ${col.toLowerCase()}, predominó la categoría «${c1}» con ${f1} casos (${pct(f1)} %)`;
-                if (orden[1]) s += `, seguida de «${orden[1][0]}» (${orden[1][1]}; ${pct(orden[1][1])} %)`;
+                let s = `en cuanto a ${col.toLowerCase()}, predominó la categoría «${c1}» con ${f1} casos (${pct(f1)} %)`;
+                if (orden[1]) s += `, seguida de «${orden[1][0]}» (${orden[1][1]}; ${pct(orden[1][1])} %)`;
                 resumenSocio.push(s);
             });
             h += this._tablaAPA(`Distribución de frecuencias de las variables sociodemográficas (N = ${datos.length})`,
@@ -307,7 +284,6 @@ const ExportadorWord = {
                 h += this._p(`La tabla anterior describe el perfil de los ${datos.length} participantes del estudio. En una tesis, esta caracterización permite al lector juzgar a quiénes representan los resultados. En síntesis: ${resumenSocio.join('; ')}. Las frecuencias (f) indican el número de casos por categoría y los porcentajes su proporción sobre el total, de modo que categorías con porcentajes altos dominan la composición de la muestra y conviene tenerlas presentes al generalizar los hallazgos.`);
             }
         }
-
         // ---- Niveles ----
         if (typeof calcularNivelesDeValores === 'function') {
             [[var1, et1], [var2, et2]].forEach(([col, et]) => {
@@ -320,7 +296,6 @@ const ExportadorWord = {
                 h += this._p(`La tabla precedente clasifica a los ${r.n} participantes en tres niveles (bajo, medio y alto) de ${et} según terciles empíricos, es decir, cortes que dividen a la propia muestra en tres grupos de tamaño similar. La lectura es directa: la columna f indica cuántos participantes caen en cada nivel y el porcentaje su peso relativo; el nivel con mayor frecuencia describe la tendencia predominante de la muestra en esta variable.`);
             });
         }
-
         // ---- Descriptivos ----
         const d1 = resultado.descriptivas1, d2 = resultado.descriptivas2;
         if (d1 && d2) {
@@ -338,7 +313,6 @@ const ExportadorWord = {
             const de1 = d1.desviacion ?? d1.desviacionEstandar, de2 = d2.desviacion ?? d2.desviacionEstandar;
             h += this._p(`La tabla de estadísticos descriptivos resume el comportamiento de ambas variables en los ${resultado.n} participantes. ${et1} presentó una media de ${fmt(d1.media)} con una desviación estándar de ${fmt(de1)}, lo que indica que los puntajes típicos se ubicaron alrededor de ese promedio con una dispersión de ±${fmt(de1)} puntos, dentro de un rango observado de ${fmt(d1.minimo ?? d1.min)} a ${fmt(d1.maximo ?? d1.max)}. Por su parte, ${et2} obtuvo una media de ${fmt(d2.media)} (DE = ${fmt(de2)}), con puntajes entre ${fmt(d2.minimo ?? d2.min)} y ${fmt(d2.maximo ?? d2.max)}. La asimetría informa hacia dónde se estira la cola de la distribución (valores positivos: cola derecha; negativos: cola izquierda; cercanos a cero: simetría) y la curtosis compara su apuntamiento con el de la curva normal (positiva: más concentrada en el centro y con colas más pesadas; negativa: más plana). Con asimetrías de ${fmt(d1.asimetria)} y ${fmt(d2.asimetria)} y curtosis de ${fmt(d1.curtosis)} y ${fmt(d2.curtosis)}, ambas variables ${Math.abs(d1.asimetria) < 1 && Math.abs(d2.asimetria) < 1 ? 'se mantienen dentro de márgenes razonables de simetría' : 'muestran desviaciones de la simetría que conviene considerar'}, aspecto que se examina formalmente en la prueba de normalidad siguiente.`);
         }
-
         // ---- Normalidad ----
         const n1 = resultado.normalidad1, n2 = resultado.normalidad2;
         const fp = p => p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
@@ -360,7 +334,6 @@ const ExportadorWord = {
         h += this._figura('qqVariable2', `Gráfico Q-Q de ${et2}`, null);
         h += expQQ(et2, n2);
         h += this._p(`Una aclaración metodológica importante: la impresión visual del histograma puede no coincidir con la decisión de la prueba, y ello no constituye un error. Con muestras grandes (aquí n = ${resultado.n}), las pruebas de normalidad ganan mucha potencia y detectan desviaciones sutiles —especialmente en la curtosis y en las colas— que el ojo no aprecia. De hecho, una distribución apuntada (curtosis positiva) eleva las barras centrales muy cerca del pico de la curva y produce la falsa impresión de un ajuste excelente, mientras que la prueba la rechaza precisamente por ese exceso de concentración central; a la inversa, la irregularidad natural de las barras (ruido muestral) puede parecer «desalineación» sin que la forma global se aparte de la normal. Por ello, la decisión reportada se basa en el contraste formal (${n1.prueba}) y no en la apariencia del gráfico, y el gráfico Q-Q —más sensible a las colas— es la mejor herramienta visual para corroborarla.`);
-
         // ---- Correlación principal ----
         const esSp = I._esSpearman(resultado.tipoCorrelacion);
         const ic = resultado.intervaloConfianza;
@@ -377,12 +350,10 @@ const ExportadorWord = {
         {
             const rr = resultado.coeficiente, aR = Math.abs(rr);
             const fuerzaTxt = aR < .10 ? 'prácticamente nula' : aR < .30 ? 'débil' : aR < .50 ? 'moderada' : aR < .70 ? 'considerable' : 'fuerte';
-            h += this._p(`El diagrama de dispersión anterior es la representación visual más informativa de la relación estudiada y conviene leerlo con detenimiento. Cada punto corresponde a un participante: su posición horizontal indica su puntaje en ${et1} y la vertical su puntaje en ${et2}, de modo que la nube completa retrata simultáneamente a los ${resultado.n} casos. La recta trazada es la de mínimos cuadrados, la línea que mejor resume la tendencia conjunta, y la banda sombreada delimita el intervalo de confianza al 95 % de esa recta: cuanto más angosta, mayor precisión en la estimación de la tendencia.`);
+            h += this._p(`El diagrama de dispersión anterior es la representación visual más informativa de la relación estudiada y conviene leerlo con detenimiento. Cada punto corresponde a un participante: su posición horizontal indica su puntaje en ${et1} y la vertical su puntaje en ${et2}, de modo que la nube completa retrata simultáneamente a los ${resultado.n} casos. La recta trazada es la de mínimos cuadrados, la línea que mejor resume la tendencia conjunta, y la banda sombreada delimita el intervalo de confianza al 95 % de esa recta: cuanto más angosta, mayor precisión en la estimación de la tendencia.`);
             h += this._p(`En estos datos la nube ${rr >= 0 ? 'asciende de izquierda a derecha, patrón propio de una relación positiva: quienes puntúan alto en ' + et1 + ' tienden también a puntuar alto en ' + et2 : 'desciende de izquierda a derecha, patrón propio de una relación negativa: a mayores puntajes en ' + et1 + ' corresponden, en tendencia, menores puntajes en ' + et2}. La dispersión de los puntos alrededor de la recta expresa la fuerza del vínculo: con un coeficiente de ${rr.toFixed(3)}, la asociación observada es de magnitud ${fuerzaTxt}, ${aR < .30 ? 'por lo que los puntos se apartan bastante de la recta y el conocimiento de una variable permite anticipar solo débilmente la otra' : aR < .50 ? 'con puntos moderadamente próximos a la recta: existe un patrón claro aunque con variabilidad individual apreciable' : 'con puntos notablemente alineados a la recta, señal de un patrón consistente entre ambas variables'}. Conviene además inspeccionar visualmente la linealidad (que la relación no dibuje curvas) y la presencia de casos atípicos alejados de la nube, pues ambos aspectos condicionan la interpretación del coeficiente.`);
         }
-
         h += this._p('¿Por qué la normalidad decide el coeficiente? El coeficiente de Pearson se construye multiplicando desviaciones conjuntas, (xi − x̄)(yi − ȳ), y en esa multiplicación reside su vulnerabilidad: un solo participante extremo aporta un producto desproporcionado capaz de dominar la suma completa; adicionalmente, la validez de su p-valor se deriva bajo el supuesto de normalidad y su alcance se limita a relaciones lineales. El coeficiente de Spearman resuelve el problema con una operación elegante: sustituye cada valor por su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al conservar únicamente el orden, las distancias — el territorio donde habitan los atípicos y las deformidades distribucionales — dejan de existir para el cálculo: el valor más extremo de la muestra se convierte, sencillamente, en el último de la fila. Se trata de robustez por diseño, no de un remiendo.');
-
         // ---- Contraste de hipótesis y decisión estadística ----
         {
             const alfa = 0.05, bilat = (tipoPrueba || 'bilateral') === 'bilateral';
@@ -407,7 +378,6 @@ const ExportadorWord = {
                 'La potencia post-hoc se estimó mediante la aproximación de Fisher para el coeficiente observado y se reporta con carácter orientativo.');
             h += this._p(`Con un nivel de significancia α = .05 y un contraste ${bilat ? 'bilateral' : 'unilateral'}, el p-valor obtenido (${fp(pv)}) ${sig ? 'es menor que α, por lo que SE RECHAZA la hipótesis nula: existe evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2 : 'no es menor que α, por lo que NO SE RECHAZA la hipótesis nula: los datos no aportan evidencia estadísticamente significativa de relación entre ' + et1 + ' y ' + et2}. En términos prácticos, el p-valor expresa la probabilidad de observar un coeficiente al menos tan extremo como ${rr.toFixed(3)} si en la población la relación fuese nula. ${Number.isFinite(pot) ? 'La potencia estimada de ' + (pot >= 0.999 ? '> .999' : pot.toFixed(3).replace(/^0\./, '.')) + (pot >= 0.8 ? ' supera el umbral convencional de .80, lo que indica una capacidad adecuada del estudio para detectar un efecto de esta magnitud con el tamaño muestral disponible.' : ' se sitúa por debajo del umbral convencional de .80, de modo que un resultado no significativo debe interpretarse con cautela: la muestra podría ser insuficiente para detectar efectos de esta magnitud.') : ''} Debe recordarse que significancia estadística no equivale a relevancia práctica: la magnitud del efecto y su intervalo de confianza completan la valoración.`);
         }
-
         // ---- Regresión bivariada (solo si el investigador la ejecutó) ----
         if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaBivariada) {
             const BV = RegresionMultiple._ultimaBivariada, RMf = RegresionMultiple;
@@ -438,7 +408,6 @@ const ExportadorWord = {
                 h += this._p(`La figura anterior permite valorar visualmente el ajuste: la curva del modelo ${BV.MM ? BV.MM.ganador.nombre.toLowerCase() : 'lineal'} atraviesa la nube de puntos siguiendo su tendencia. ${BV.MM && BV.MM.ganador.nombre !== 'Lineal' ? 'La curvatura visible confirma que la relación no es estrictamente lineal, información que la correlación de Pearson por sí sola no revela.' : 'La tendencia esencialmente rectilínea respalda la lectura lineal de la relación.'}`);
             }
         }
-
         // ---- Matriz del flujo (3+ variables elegidas por el investigador) ----
         if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaMatrizFlujo) {
             const MX = RegresionMultiple._ultimaMatrizFlujo, RMf = RegresionMultiple;
@@ -451,7 +420,6 @@ const ExportadorWord = {
                 'Triángulo inferior. Pearson si ambas variables son normales; Spearman en caso contrario. * p < .05 tras la corrección de Holm.');
             h += this._p('¿Por qué la corrección de Holm y no la clásica de Bonferroni? Ambas garantizan exactamente el mismo control del error familiar — la probabilidad de proclamar al menos un falso hallazgo entre todas las comparaciones —, pero administran el presupuesto de error de manera distinta. Bonferroni lo reparte en partes iguales y exige a cada comparación el umbral α/m, un criterio derrochador. Holm lo gasta con inteligencia secuencial: ordena los p-valores de menor a mayor y exige α/m solo al primero, α/(m−1) al segundo, y así sucesivamente — cada hipótesis superada libera presupuesto para las siguientes. El resultado es un procedimiento uniformemente más potente que Bonferroni con idéntica protección y sin supuestos adicionales: protege igual de bien y descubre más.');
         }
-
         // ---- Regresión múltiple avanzada (si el investigador la ejecutó) ----
         if (typeof RegresionMultiple !== 'undefined' && RegresionMultiple._ultimaMultiple) {
             const RG = RegresionMultiple._ultimaMultiple, RMf = RegresionMultiple;
@@ -477,7 +445,7 @@ const ExportadorWord = {
                          [`2 (+ ${J.focal})`, RMf._fx(J.R2b2), RMf._fx(J.dR2), RMf._fx(J.Fcambio, 2), `(${J.gl[0]}, ${J.gl[1]})`, RMf._fp(J.pCambio)]],
                         'El bloque 1 introduce los controles; el bloque 2 añade el constructo de interés. El ΔR² cuantifica la varianza explicativa que este aporta por encima de lo ya explicado.');
                     h += this._p(J.pCambio < 0.05
-                        ? `El análisis jerárquico muestra que ${J.focal} incrementa significativamente la varianza explicada de ${RG.etY} en un ${(100 * J.dR2).toFixed(1)} % por encima de ${J.controles.join(' y ')} (F del cambio = ${RMf._fx(J.Fcambio, 2)}, p ${RMf._fp(J.pCambio)}), lo que respalda su aporte específico e independiente.`
+                        ? `El análisis jerárquico muestra que ${J.focal} incrementa significativamente la varianza explicada de ${RG.etY} en un ${(100 * J.dR2).toFixed(1)} % por encima de ${J.controles.join(' y ')} (F del cambio = ${RMf._fx(J.Fcambio, 2)}, p ${RMf._fp(J.pCambio)}), lo que respalda su aporte específico e independiente.`
                         : `El análisis jerárquico indica que, controlados ${J.controles.join(' y ')}, ${J.focal} no añade varianza explicativa significativa (ΔR² = ${RMf._fx(J.dR2)}, p ${RMf._fp(J.pCambio)}).`);
                 }
                 if (RG.idxInter >= 0) {
@@ -503,7 +471,6 @@ const ExportadorWord = {
             }
             (RG.avisos || []).forEach(a => { h += this._p(`Nota metodológica: ${a}`); });
         }
-
         // ---- SEM (si el investigador ajustó modelos) ----
         if (typeof SEM !== 'undefined' && SEM._ultimos && SEM._ultimos.length) {
             const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
@@ -535,7 +502,6 @@ const ExportadorWord = {
                     ? 'los índices se sitúan en la zona aceptable: el modelo constituye una aproximación razonable, aunque los residuos mayores merecen revisión antes de considerarlo definitivo.'
                     : 'los índices quedan por debajo de los umbrales convencionales: el modelo requiere reespecificación con fundamento teórico (revisar la pertenencia de indicadores, la dimensionalidad de los constructos o relaciones omitidas) antes de cualquier interpretación sustantiva.'}`);
         }
-
         // ---- Matriz de correlaciones ----
         if (typeof correlacionPearsonSimple === 'function' && typeof esAproxNormalSimple === 'function') {
             const colsMx = [[var1, et1], [var2, et2]];
@@ -565,7 +531,6 @@ const ExportadorWord = {
                 h += this._p(`La matriz de correlaciones ofrece una vista panorámica de todas las asociaciones bivariadas del estudio. Cada celda contiene el coeficiente entre la variable de su fila y la de su columna; la diagonal vale 1 porque toda variable correlaciona perfectamente consigo misma, y solo se presenta el triángulo inferior porque la matriz es simétrica (la correlación de A con B es idéntica a la de B con A). Coeficientes cercanos a ±1 revelan asociaciones intensas y valores próximos a 0, ausencia de relación lineal o monótona; el signo indica la dirección. Esta lectura conjunta permite identificar de un vistazo qué pares concentran las relaciones más sustantivas y anticipa los contrastes que se detallan a continuación.`);
             }
         }
-
         // ---- Objetivos específicos (criba + Holm) ----
         if (criba && criba.seleccionados && criba.seleccionados.length) {
             const res = criba.seleccionados.map(s => {
@@ -598,8 +563,6 @@ const ExportadorWord = {
             h += this._p(`Esta tabla desagrega el análisis en los pares que responden a los objetivos específicos. Para cada par se reporta el coeficiente (ρ de Spearman o r de Pearson, según la normalidad de las variables implicadas), su p-valor individual y el p corregido por el método de Holm, que protege frente al aumento de falsos positivos cuando se realizan varias comparaciones a la vez: al examinar múltiples pares, alguna correlación podría resultar «significativa» por puro azar, y la corrección eleva el listón de exigencia en consecuencia. La columna de decisión, por tanto, debe leerse sobre el p ajustado: solo los pares que lo mantienen por debajo de .05 sostienen una asociación estadísticamente significativa tras el control por multiplicidad.`);
             h += this._p(I.generarResumenCriba(criba));
         }
-
-
         // ---- Hallazgos según variables sociodemográficas ----
         if (typeof CribaSociodemografica !== 'undefined') {
             const hs = CribaSociodemografica.analizar(var1, var2, et1, et2);
@@ -615,7 +578,6 @@ const ExportadorWord = {
                 h += this._p(CribaSociodemografica.sintetizar(hs));
             }
         }
-
         // ---- Comparación entre grupos ----
         if (typeof ComparacionGrupos !== 'undefined') {
             const CG = ComparacionGrupos;
@@ -687,7 +649,6 @@ const ExportadorWord = {
                 });
             }
         }
-
         // ---- Análisis multivariado (si el investigador lo ejecutó en la app) ----
         if (typeof RegresionMultiple !== 'undefined') {
             const RM = RegresionMultiple;
@@ -732,18 +693,15 @@ const ExportadorWord = {
                 h += this._p('Precisión conceptual sobre la causalidad: establecer una relación causal exige tres condiciones — asociación estadística, precedencia temporal de la causa y descarte de explicaciones alternativas (no espuriedad). El presente análisis, al basarse en un diseño transversal, satisface la primera y aporta evidencia parcial sobre la tercera mediante el control estadístico de covariables; la precedencia temporal, en cambio, no puede establecerse con mediciones simultáneas. Por ello, los resultados deben interpretarse como asociaciones ajustadas, compatibles con una hipótesis causal pero no demostrativas de ella; su confirmación requeriría diseños longitudinales o experimentales.');
             }
         }
-
         // ---- Referencias APA ----
         h += this._h1('Referencias');
         h += this._referencias();
-
         // El índice se arma al final (ya registradas todas las secciones) y se
         // coloca al inicio, tras la portada.
         // Resumen en el índice (entrada manual, ancla 'resumen')
         this._secciones.unshift({ id: 'resumen', t: 'Resumen', nivel: 1 });
         return this._portada(ctx) + this._resumen(ctx) + this._indice() + h;
     },
-
     async descargar(ctx) {
         if (!ctx || !ctx.resultado) {
             mostrarToast('Primero ejecuta un análisis para poder exportar el capítulo', 'error');
@@ -757,7 +715,6 @@ const ExportadorWord = {
         });
         tareas.push(this._rasterizar(this._LOGO_SVG, 200, 200).then(p => ['__logo', p && { url: p.url, w: 150, h: 150 }]));
         this._png = Object.fromEntries((await Promise.all(tareas)).filter(([, p]) => p));
-
         const cuerpo = this.generarCapitulo(ctx);
         const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
             xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
@@ -769,23 +726,24 @@ const ExportadorWord = {
         // cae al formato .doc clásico (HTML-Word) para no dejar sin exportar.
         // Nota: el .docx generado abre en Microsoft Word (no en LibreOffice/GDocs,
         // que no soportan la técnica altChunk usada para la conversión).
-        let blob, nombre;
+        let blob, nombre, aviso;
         if (typeof htmlDocx !== 'undefined' && htmlDocx.asBlob) {
             blob = htmlDocx.asBlob('<!DOCTYPE html>' + doc);
             nombre = 'capitulo_resultados_APA.docx';
+            aviso = ['Capítulo exportado como .docx (Word APA 7)', 'success'];
         } else {
             blob = new Blob(['\ufeff' + doc], { type: 'application/msword' });
             nombre = 'capitulo_resultados_APA.doc';
+            aviso = ['Exportado en .doc antiguo: falta html-docx.min.js en la raíz del sitio — el .docx real requiere ese archivo', 'warning'];
         }
         const a = document.createElement('a');
         a.href = URL.createObjectURL(blob);
         a.download = nombre;
         a.click();
         URL.revokeObjectURL(a.href);
-        mostrarToast('Capítulo exportado en formato Word (APA 7)', 'success');
+        mostrarToast(aviso[0], aviso[1]);
     }
 };
-
 if (typeof window !== 'undefined') {
     window.ExportadorWord = ExportadorWord;
 }
