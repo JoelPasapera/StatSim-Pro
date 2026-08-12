@@ -584,11 +584,13 @@ function mostrarDatosCargados(datos) {
     );
 
     poblarSelectsVariables(datos);
-
     // Mostrar containers
     container.style.display = 'block';
     seleccionContainer.style.display = 'block';
-
+    // Panel de análisis: al llegar los datos despierta (deja el modo escaparate)
+    seleccionContainer.classList.remove('esperando-datos');
+    const selAviso = document.getElementById('selAviso');
+    if (selAviso) selAviso.style.display = 'none';
     // Scroll
     desplazarHacia(container);
 }
