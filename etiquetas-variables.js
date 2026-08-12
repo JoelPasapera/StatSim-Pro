@@ -56,14 +56,44 @@ const EtiquetasVariables = {
         puntajes: col => /^(total|dimension|general)_/i.test(col),
         todos: () => true
     },
+    // Estado VACÍO del editor: la sección queda siempre visible en la página.
+    // Sin datos muestra la explicación y un aviso; al cargar un CSV, mostrarEditor
+    // la reemplaza por la tabla de columnas renombrables.
+    mostrarVacio(idContenedor, nota) {
+        const cont = document.getElementById(idContenedor);
+        if (!cont) return;
+        const aviso = nota || '📂 Aún no hay datos: cuando cargues tu CSV, aquí aparecerán tus columnas <code>General_</code> y <code>Dimension_</code> listas para renombrar.';
+        cont.innerHTML = `
+            <div class="card">
+                <details>
+                    <summary style="cursor: pointer; font-weight: 700; padding: 0.25rem 0;">
+                        ✏️ Renombrar variables (etiquetas) — opcional
+                    </summary>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Aquí puedes ponerle un <strong>nombre legible</strong> a los puntajes de tu base,
+                        para que la pregunta, los objetivos, las hipótesis, los resultados y la discusión
+                        hablen en humano (Ej: <code>General_IE</code> → "Inteligencia emocional",
+                        <code>Dimension_Atencion</code> → "Atención sostenida"). Se listan solo las
+                        columnas de puntaje: <code>General_</code> es la <strong>escala general</strong>
+                        del test (una sola columna con el puntaje global — la fila "General" del
+                        Simulador), <code>Dimension_</code> es cada <strong>subescala</strong> con sus
+                        propios ítems, y <code>Total_</code> aparece en bases antiguas. Los ítems
+                        individuales (F1, PE3…) no se renombran y tus datos no cambian: solo los textos.
+                    </p>
+                    <p class="help-text" style="margin-top: 0.5rem;">${aviso}</p>
+                </details>
+            </div>
+        `;
+        cont.style.display = 'block';
+    },
     mostrarEditor(idContenedor, columnas, alAplicar) {
         const cont = document.getElementById(idContenedor);
         if (!cont) return;
         const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
         const columnasEditables = (columnas || []).filter(filtro);
-        // Sin columnas renombrables (p. ej. un CSV sin puntajes Total_): no se ofrece nada.
+        // Sin columnas renombrables: la sección permanece visible con su explicación.
         if (columnasEditables.length === 0) {
-            this.ocultarEditor(idContenedor);
+            this.mostrarVacio(idContenedor, '⚠️ Tu base no tiene columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>), así que no hay nada que renombrar.');
             return;
         }
         const filas = columnasEditables.map(col => `
@@ -83,11 +113,16 @@ const EtiquetasVariables = {
                         ✏️ Renombrar variables (etiquetas) — opcional
                     </summary>
                     <p class="help-text" style="margin-top: 0.5rem;">
-                        Asigna un nombre legible a cada <strong>puntaje de escala</strong> (Ej:
-                        <code>General_IE</code> → "Inteligencia emocional"). Los ítems individuales no se
-                        renombran. Las etiquetas se usarán en la pregunta, objetivos, hipótesis,
-                        resultados y discusión; los datos no se modifican. Deja vacío lo que no quieras
-                        renombrar.
+                        Aquí puedes ponerle un <strong>nombre legible</strong> a los puntajes de tu base,
+                        para que la pregunta, los objetivos, las hipótesis, los resultados y la discusión
+                        hablen en humano (Ej: <code>General_IE</code> → "Inteligencia emocional",
+                        <code>Dimension_Atencion</code> → "Atención sostenida"). Se listan solo las
+                        columnas de puntaje: <code>General_</code> es la <strong>escala general</strong>
+                        del test (una sola columna con el puntaje global — la fila "General" del
+                        Simulador), <code>Dimension_</code> es cada <strong>subescala</strong> con sus
+                        propios ítems, y <code>Total_</code> aparece en bases antiguas. Los ítems
+                        individuales (F1, PE3…) no se renombran y tus datos no cambian: solo los textos.
+                        Deja vacío lo que no quieras renombrar.
                     </p>
                     <div class="table-container">
                         <table class="table">
