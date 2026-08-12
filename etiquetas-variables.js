@@ -6,55 +6,45 @@
 // estructura de pruebas al generar; con datos importados por CSV simplemente
 // no hay etiquetas y todo cae al nombre de columna (comportamiento anterior).
 // ========================================
-
 const EtiquetasVariables = {
     _mapa: {},        // { nombreColumna: etiqueta }
     _estructura: [],  // [{ prueba, columnaGeneral, etiquetaGeneral, dimensiones: [{columna, etiqueta}] }]
-
     // Registra el diccionario de etiquetas y la estructura de pruebas.
     fijar(mapa, estructura) {
         this._version = (this._version || 0) + 1;
         this._mapa = mapa || {};
         this._estructura = estructura || [];
     },
-
     limpiar() {
         this._version = (this._version || 0) + 1;
         this._mapa = {};
         this._estructura = [];
     },
-
     // Etiqueta humana de una columna; si no existe, devuelve la columna tal cual.
     etiqueta(columna) {
         return this._mapa[columna] || columna;
     },
-
     // Texto para desplegables: "Etiqueta (columna)" cuando hay etiqueta.
     etiquetaConColumna(columna) {
         const et = this.etiqueta(columna);
         return et === columna ? columna : `${et} (${columna})`;
     },
-
     tieneEtiquetas() {
         return Object.keys(this._mapa).length > 0;
     },
-
     // Estructura de pruebas (para el análisis por dimensiones).
     estructura() {
         return this._estructura;
     },
-
     // Devuelve la prueba cuya escala general es esta columna (o null).
     pruebaConGeneral(columna) {
         return this._estructura.find(p => p.columnaGeneral === columna) || null;
     },
-
     // ----------------------------------------
     // EDITOR DE ETIQUETAS (solo para bases de datos EXTERNAS)
     // Con datos del simulador las etiquetas llegan solas y este editor no se
     // muestra; con un CSV externo permite renombrar las variables a mano.
     // ----------------------------------------
-
     // QUÉ COLUMNAS PUEDE RENOMBRAR EL USUARIO.
     // Cambia MODO_RENOMBRADO para ajustarlo al instante:
     //   'total' → solo puntajes de escala (prefijo Total_), NO ítems individuales
@@ -66,20 +56,16 @@ const EtiquetasVariables = {
         puntajes: col => /^(total|dimension|general)_/i.test(col),
         todos: () => true
     },
-
     mostrarEditor(idContenedor, columnas, alAplicar) {
         const cont = document.getElementById(idContenedor);
         if (!cont) return;
-
         const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
         const columnasEditables = (columnas || []).filter(filtro);
-
         // Sin columnas renombrables (p. ej. un CSV sin puntajes Total_): no se ofrece nada.
         if (columnasEditables.length === 0) {
             this.ocultarEditor(idContenedor);
             return;
         }
-
         const filas = columnasEditables.map(col => `
             <tr>
                 <td><code>${col}</code></td>
@@ -90,7 +76,6 @@ const EtiquetasVariables = {
                 </td>
             </tr>
         `).join('');
-
         cont.innerHTML = `
             <div class="card">
                 <details open>
@@ -117,7 +102,6 @@ const EtiquetasVariables = {
             </div>
         `;
         cont.style.display = 'block';
-
         const self = this;
         const btn = document.getElementById('btnAplicarEtiquetas');
         if (btn) {
@@ -133,7 +117,6 @@ const EtiquetasVariables = {
             });
         }
     },
-
     ocultarEditor(idContenedor) {
         const cont = document.getElementById(idContenedor);
         if (!cont) return;
@@ -141,7 +124,6 @@ const EtiquetasVariables = {
         cont.style.display = 'none';
     }
 };
-
 if (typeof window !== 'undefined') {
     window.EtiquetasVariables = EtiquetasVariables;
 }
