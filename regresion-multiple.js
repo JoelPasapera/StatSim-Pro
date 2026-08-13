@@ -543,9 +543,10 @@ const RegresionMultiple = {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
         const nums = (typeof obtenerColumnasNumericas === 'function' && datos.length) ? obtenerColumnasNumericas(datos) : [];
+        const et = c => (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(c) : c;
         const dep = document.getElementById('rmDep');
-        if (dep) dep.innerHTML = nums.map(c => `<option value="${c}">${c}</option>`).join('');
-        const caja = c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${c}</label>`;
+        if (dep) dep.innerHTML = nums.map(c => `<option value="${c}">${et(c)}</option>`).join('');
+        const caja = c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${et(c)}</label>`;
         ['rmMatVars', 'rmPred'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = nums.length ? nums.map(caja).join('') : '<span class="help-text">Sin variables numéricas.</span>';
