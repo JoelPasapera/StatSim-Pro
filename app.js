@@ -466,7 +466,13 @@ function cargarArchivoCSV(e) {
             // las anteriores y se ofrece el editor para renombrar variables.
             if (typeof EtiquetasVariables !== 'undefined') {
                 EtiquetasVariables.limpiar();
-                EtiquetasVariables.mostrarEditor('editorEtiquetas', obtenerColumnasNumericas(datos), function () {
+                // Columnas totalmente vacías: el editor avisará si alguna es de puntaje.
+                const _numericas = obtenerColumnasNumericas(datos);
+                EtiquetasVariables._columnasVacias = Object.keys(datos[0] || {}).filter(c =>
+                    c !== 'ID' && !_numericas.includes(c) &&
+                    datos.every(f => f[c] === '' || f[c] === null || f[c] === undefined || (typeof f[c] === 'number' && isNaN(f[c])))
+                );
+                EtiquetasVariables.mostrarEditor('editorEtiquetas', _numericas, function () {
                     poblarSelectsVariables(AnalizadorEstadistico.obtenerDatos());
                     // Si ya hay un análisis en pantalla y las dos variables siguen
                     // seleccionadas, se regenera solo con los nuevos nombres.
