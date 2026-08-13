@@ -343,8 +343,9 @@ const ComparacionGrupos = {
         const datos = A ? (A.obtenerDatos() || []) : [];
         const cats = (typeof obtenerColumnasCategoricas === 'function') ? obtenerColumnasCategoricas(8) : [];
         const nums = (typeof obtenerColumnasNumericas === 'function' && datos.length) ? obtenerColumnasNumericas(datos) : [];
-        selG.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join('');
-        selN.innerHTML = nums.map(c => `<option value="${c}">${c}</option>`).join('');
+        const et = c => (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(c) : c;
+        selG.innerHTML = cats.map(c => `<option value="${c}">${et(c)}</option>`).join('');
+        selN.innerHTML = nums.map(c => `<option value="${c}">${et(c)}</option>`).join('');
         const estado = document.getElementById('cgEstado');
         if (estado) estado.textContent = (!cats.length || !nums.length)
             ? 'Genera o carga una base de datos para habilitar la comparación.' : '';
@@ -355,12 +356,12 @@ const ComparacionGrupos = {
             if (cov) {
                 const val = cov.value;
                 cov.innerHTML = '<option value="">Sin covariable — comparar tal cual</option>'
-                    + numsAM.map(c => `<option value="${c}">${c}</option>`).join('');
+                    + numsAM.map(c => `<option value="${c}">${et(c)}</option>`).join('');
                 cov.value = val;
             }
             const dvs = document.getElementById('cgDVs');
             if (dvs) dvs.innerHTML = numsAM.length
-                ? numsAM.map(c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${c}</label>`).join('')
+                ? numsAM.map(c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${et(c)}</label>`).join('')
                 : '<span class="help-text">Carga datos para ver las variables.</span>';
         } catch (e) { /* opcional */ }
     },
