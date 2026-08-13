@@ -19,6 +19,7 @@ const EtiquetasVariables = {
         this._version = (this._version || 0) + 1;
         this._mapa = {};
         this._estructura = [];
+        this._columnasVacias = [];
     },
     // Etiqueta humana de una columna; si no existe, devuelve la columna tal cual.
     etiqueta(columna) {
@@ -92,10 +93,22 @@ const EtiquetasVariables = {
         if (!cont) return;
         const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
         const columnasEditables = (columnas || []).filter(filtro);
-        try { console.info('[Etiquetas] columnas recibidas:', columnas, '→ renombrables:', columnasEditables); } catch (e) {}
+        // Columnas que por NOMBRE son puntajes pero llegaron sin datos: no se
+        // pueden renombrar ni analizar, y casi siempre delatan un error de
+        // exportación del CSV. Se avisan con nombres concretos.
+        const vaciasPuntaje = (this._columnasVacias || []).filter(filtro);
+        this._columnasVacias = []; // no arrastrar a cargas posteriores
+        const avisoVacias = vaciasPuntaje.length
+            ? '<p class="help-text" style="color: #b45309; margin-top: 0.5rem;">⚠️ Sin datos (no se pueden renombrar ni analizar): ' + vaciasPuntaje.map(c => '<code>' + c + '</code>').join(', ') + '. Estas columnas están vacías en tu CSV — rellénalas o elimínalas antes de analizar.</p>'
+            : '';
+        try { console.info('[Etiquetas] columnas recibidas:', columnas, '→ renombrables:', columnasEditables, '· vacías (sin datos):', vaciasPuntaje); } catch (e) {}
         // Sin columnas renombrables: la sección permanece visible con su explicación.
         if (columnasEditables.length === 0) {
             const muestra = (columnas || []).slice(0, 10).map(c => '<code>' + c + '</code>').join(', ');
+            if (vaciasPuntaje.length) {
+                this.mostrarVacio(idContenedor, '⚠️ Encontré columnas de puntaje pero están VACÍAS (sin datos): ' + vaciasPuntaje.map(c => '<code>' + c + '</code>').join(', ') + '. Una columna sin valores no se puede renombrar ni analizar — rellénala en tu CSV (o elimínala) y vuelve a subirlo.');
+                return;
+            }
             this.mostrarVacio(idContenedor, '⚠️ No se encontraron columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>) en tu base. Columnas leídas: ' + (muestra || '(ninguna)') + (columnas && columnas.length > 10 ? '…' : '') + '. Si alguna debería aparecer aquí, revisa su nombre exacto.');
             return;
         }
@@ -133,6 +146,7 @@ const EtiquetasVariables = {
                             <tbody>${filas}</tbody>
                         </table>
                     </div>
+                    ${avisoVacias}
                     <button type="button" id="btnAplicarEtiquetas" class="btn btn-primary" style="margin-top: 0.5rem;">
                         Aplicar etiquetas
                     </button>
