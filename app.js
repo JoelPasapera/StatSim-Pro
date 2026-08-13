@@ -528,6 +528,7 @@ function poblarSelectsVariables(datos) {
     document.querySelectorAll('#varsExtraCont select, #regPredsCont select').forEach(s => {
         const val = s.value;
         s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
+        
         s.value = val;
     });
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
@@ -1908,6 +1909,16 @@ Fecha: ${new Date().toLocaleDateString()}
 // ========================================
 // UTILIDADES
 // ========================================
+// Etiqueta humana GLOBAL: la consumen la regresión, la comparación de grupos,
+// ANCOVA/MANOVA y la matriz de flujo para sus textos. Antes no existía y todos
+// los módulos caían silenciosamente al nombre técnico de la columna.
+function obtenerEtiqueta(columna) {
+    return (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiqueta(columna) : columna;
+}
+// Variante para selects: "Etiqueta (Columna_tecnica)".
+function obtenerEtiquetaOpcion(columna) {
+    return (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(columna) : columna;
+}
 // Etiqueta humana GLOBAL: la consumen la regresión, la comparación de grupos,
 // ANCOVA/MANOVA y la matriz de flujo para sus textos. Antes no existía y todos
 // los módulos caían silenciosamente al nombre técnico de la columna.
