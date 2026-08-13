@@ -1,30 +1,23 @@
 // ========================================
 // APP PRINCIPAL - COORDINADOR DE INTERFAZ
 // ========================================
-
 // ========================================
 // NAVEGACIÓN
 // ========================================
-
 document.addEventListener('DOMContentLoaded', function () {
     inicializarApp();
 });
-
 function inicializarApp() {
     configurarNavegacion();
     configurarGenerador();
     configurarAnalizador();
 }
-
 function configurarNavegacion() {
     const navLinks = document.querySelectorAll('.nav-link');
-
     navLinks.forEach(link => {
         link.addEventListener('click', function (e) {
             e.preventDefault();
-
             const targetId = this.getAttribute('href').substring(1);
-
             // Actualizar navegación activa
             navLinks.forEach(l => {
                 l.classList.remove('active');
@@ -32,7 +25,6 @@ function configurarNavegacion() {
             });
             this.classList.add('active');
             this.setAttribute('aria-current', 'page');
-
             // Mostrar sección correspondiente
             document.querySelectorAll('.section').forEach(section => {
                 section.classList.remove('active');
@@ -41,47 +33,38 @@ function configurarNavegacion() {
         });
     });
 }
-
 // ========================================
 // CONFIGURACIÓN DEL GENERADOR
 // ========================================
-
 function configurarGenerador() {
     // Botón agregar prueba
     document.getElementById('btnAgregarPrueba').addEventListener('click', agregarFilaPrueba);
-
     // Botón agregar sociodemográfico
     document.getElementById('btnAgregarSocio').addEventListener('click', agregarFilaSocio);
-
     // Botón generar base de datos
     document.getElementById('btnGenerar').addEventListener('click', generarBaseDatos);
-
     // Botón descargar CSV
     document.getElementById('btnDescargarCSV').addEventListener('click', descargarCSV);
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
     if (btnIntl) btnIntl.addEventListener('click', descargarCSVInternacional);
-
     // Botones importar/exportar pruebas
     document.getElementById('btnImportarPruebas').addEventListener('click', () => {
         document.getElementById('importPruebasInput').click();
     });
     document.getElementById('btnExportarPruebas').addEventListener('click', exportarConfigPruebas);
     document.getElementById('importPruebasInput').addEventListener('change', importarConfigPruebas);
-
     // Botones importar/exportar sociodemográficos
     document.getElementById('btnImportarSocio').addEventListener('click', () => {
         document.getElementById('importSocioInput').click();
     });
     document.getElementById('btnExportarSocio').addEventListener('click', exportarConfigSocio);
     document.getElementById('importSocioInput').addEventListener('change', importarConfigSocio);
-
     // Delegación de eventos para botones de eliminar
     document.getElementById('bodyPruebas').addEventListener('click', function (e) {
         if (e.target.closest('.btn-delete')) {
             eliminarFilaPrueba(e.target.closest('tr'));
         }
     });
-
     // Límites de Media/DE en vivo: recalcular al escribir en cualquier campo de
     // la prueba, y ajustar al rango permitido al salir de Media/DE.
     const tbodyPruebas = document.getElementById('bodyPruebas');
@@ -94,17 +77,14 @@ function configurarGenerador() {
     });
     tbodyPruebas.addEventListener('change', ajustarPruebaEnCambio);
     actualizarTodasLasPruebas(); // pase inicial sobre la fila de ejemplo
-
     // El límite inferior de DE (anti-escalera) depende de N: recalcular al cambiarlo.
     const inputN = document.getElementById('tamanoMuestra');
     if (inputN) inputN.addEventListener('input', actualizarTodasLasPruebas);
-
     document.getElementById('bodySocio').addEventListener('click', function (e) {
         if (e.target.closest('.btn-delete')) {
             eliminarFilaSocio(e.target.closest('tr'));
         }
     });
-
     // Sociodemográficos: los campos se desbloquean al escribir la Categoría
     const tbodySocio = document.getElementById('bodySocio');
     tbodySocio.addEventListener('input', function (e) {
@@ -112,7 +92,6 @@ function configurarGenerador() {
         if (fila) actualizarBloqueoSocio(fila);
     });
     actualizarTodosSocio();
-
     // Correlaciones objetivo
     const btnCorrelacion = document.getElementById('btnAgregarCorrelacion');
     if (btnCorrelacion) {
@@ -126,7 +105,6 @@ function configurarGenerador() {
             }
         });
     }
-
     // Diferencias por grupo
     const btnDiferencia = document.getElementById('btnAgregarDiferencia');
     if (btnDiferencia) {
@@ -141,7 +119,6 @@ function configurarGenerador() {
         });
     }
 }
-
 // Variables que pueden usarse como agrupación: sociodemográficas Binaria o
 // Categórica.
 function obtenerVariablesAgrupacion() {
@@ -156,7 +133,6 @@ function obtenerVariablesAgrupacion() {
     });
     return nombres;
 }
-
 function agregarFilaDiferencia() {
     const cuantitativas = obtenerVariablesCorrelacionables();
     const agrupaciones = obtenerVariablesAgrupacion();
@@ -164,11 +140,9 @@ function agregarFilaDiferencia() {
         mostrarToast('Necesitas al menos una variable cuantitativa y una de agrupación (Binaria o Categórica)', 'warning');
         return;
     }
-
     const tbody = document.getElementById('bodyDiferencias');
     const fila = document.createElement('tr');
     fila.className = 'fila-diferencia';
-
     const opcionesCuant = cuantitativas.map(n => `<option value="${n}">${n}</option>`).join('');
     const opcionesGrupo = agrupaciones.map(n => `<option value="${n}">${n}</option>`).join('');
     fila.innerHTML = `
@@ -185,7 +159,6 @@ function agregarFilaDiferencia() {
     `;
     tbody.appendChild(fila);
 }
-
 // Lista de variables que pueden correlacionarse: nombres de las escalas y de
 // las sociodemográficas continuas (Normal/Asimétrica).
 function obtenerVariablesCorrelacionables() {
@@ -205,18 +178,15 @@ function obtenerVariablesCorrelacionables() {
     });
     return nombres;
 }
-
 function agregarFilaCorrelacion() {
     const nombres = obtenerVariablesCorrelacionables();
     if (nombres.length < 2) {
         mostrarToast('Define al menos 2 variables cuantitativas (escalas o continuas) antes de añadir correlaciones', 'warning');
         return;
     }
-
     const tbody = document.getElementById('bodyCorrelaciones');
     const fila = document.createElement('tr');
     fila.className = 'fila-correlacion';
-
     const opciones = nombres.map(n => `<option value="${n}">${n}</option>`).join('');
     fila.innerHTML = `
         <td><select class="input input-sm" aria-label="Variable A"><option value="">Variable A...</option>${opciones}</select></td>
@@ -232,12 +202,9 @@ function agregarFilaCorrelacion() {
     `;
     tbody.appendChild(fila);
 }
-
-
 function agregarFilaPrueba() {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = tbody.querySelector('.fila-prueba').cloneNode(true);
-
     // Limpiar valores y estado de validación heredado del clon
     nuevaFila.querySelectorAll('input').forEach(input => {
         input.value = '';
@@ -246,77 +213,60 @@ function agregarFilaPrueba() {
     // Reset de límites dinámicos solo en Media/DE (los de ítems y α son fijos)
     const ioNueva = inputsPrueba(nuevaFila);
     [ioNueva.media, ioNueva.de].forEach(inp => { if (inp) { inp.removeAttribute('min'); inp.removeAttribute('max'); } });
-
     tbody.appendChild(nuevaFila);
     actualizarLimitesPrueba(nuevaFila);
     mostrarToast('Fila agregada', 'success');
 }
-
 function eliminarFilaPrueba(fila) {
     const tbody = document.getElementById('bodyPruebas');
     const filas = tbody.querySelectorAll('.fila-prueba');
-
     if (filas.length <= 1) {
         mostrarToast('Debe haber al menos una prueba', 'warning');
         return;
     }
-
     fila.remove();
     mostrarToast('Fila eliminada', 'success');
 }
-
-
 function agregarFilaSocio() {
     const tbody = document.getElementById('bodySocio');
     const nuevaFila = tbody.querySelector('.fila-socio').cloneNode(true);
-
     // Limpiar valores
     nuevaFila.querySelectorAll('input').forEach(input => {
         input.value = '';
     });
-
     tbody.appendChild(nuevaFila);
     actualizarBloqueoSocio(nuevaFila);
     mostrarToast('Variable agregada', 'success');
 }
-
 function eliminarFilaSocio(fila) {
     const tbody = document.getElementById('bodySocio');
     const filas = tbody.querySelectorAll('.fila-socio');
-
     if (filas.length <= 1) {
         mostrarToast('Debe haber al menos una variable sociodemográfica', 'warning');
         return;
     }
-
     fila.remove();
     mostrarToast('Variable eliminada', 'success');
 }
-
 function generarBaseDatos() {
     try {
         // Recolectar configuración
         generadorDatos.recolectarConfiguracion();
-
         // Validar
         const validacion = generadorDatos.validarConfiguracion();
-
         if (validacion.errores.length > 0) {
             mostrarToast('Error: ' + validacion.errores[0], 'error');
             return;
         }
-
         if (validacion.advertencias.length > 0) {
             console.warn('Advertencias:', validacion.advertencias);
             // Mostrar la primera advertencia de forma visible (la más relevante
             // suele ser la de factibilidad de la Media/DE frente al rango).
             mostrarToast('⚠ ' + validacion.advertencias[0], 'warning', 9000);
         }
-
         // Generar datos
         const boton = document.getElementById('btnGenerar');
         boton.disabled = true; // Evitar doble ejecución mientras se procesa
-
         setTimeout(() => {
             // try/catch dentro del setTimeout: los errores de la generación se
             // lanzan de forma asíncrona y el catch externo no los capturaría.
@@ -335,36 +285,29 @@ function generarBaseDatos() {
                 boton.disabled = false;
             }
         }, 300);
-
     } catch (error) {
         mostrarToast(error.message, 'error');
         console.error(error);
     }
 }
-
 function mostrarPreview(datos) {
     const container = document.getElementById('previewContainer');
     const config = generadorDatos.obtenerConfiguracion();
-
     // Actualizar estadísticas
     document.getElementById('statParticipantes').textContent = datos.length;
     document.getElementById('statVariables').textContent = Object.keys(datos[0]).length;
     document.getElementById('statPruebas').textContent = config.pruebas.length;
-
     // Crear tabla preview (solo primeras 10 filas)
     renderizarTablaDatos(
         document.getElementById('previewHead'),
         document.getElementById('previewBody'),
         datos
     );
-
     // Mostrar container
     container.style.display = 'block';
-
     // Scroll suave hacia el preview
     desplazarHacia(container);
 }
-
 function habilitarDescargaCSV() {
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
     if (typeof RegresionMultiple !== 'undefined') RegresionMultiple.actualizarSelects();
@@ -374,7 +317,7 @@ function habilitarDescargaCSV() {
         ['regDep', 'regInd'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
-                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+                + nums.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
         });
     } catch (e) { /* opcional */ }
     // Selects opcionales de la regresión bivariada (con opción en blanco).
@@ -383,7 +326,7 @@ function habilitarDescargaCSV() {
         ['regDep', 'regInd'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
-                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+                + nums.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
         });
     } catch (e) { /* opcional */ }
     const btn = document.getElementById('btnDescargarCSV');
@@ -391,7 +334,6 @@ function habilitarDescargaCSV() {
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
     if (btnIntl) btnIntl.disabled = false;
 }
-
 function descargarCSVInternacional() {
     try {
         generadorDatos.descargarCSV('base_datos_simulada.csv', ',');
@@ -399,7 +341,6 @@ function descargarCSVInternacional() {
         mostrarNotificacion('Error al descargar: ' + error.message, 'error');
     }
 }
-
 function descargarCSV() {
     try {
         generadorDatos.descargarCSV('base_datos_simulada.csv', ';');
@@ -408,30 +349,25 @@ function descargarCSV() {
         mostrarToast(error.message, 'error');
     }
 }
-
 function habilitarUsarGenerados() {
     const btn = document.getElementById('btnUsarGenerados');
     btn.disabled = false;
 }
-
 // ========================================
 // CONFIGURACIÓN DEL ANALIZADOR
 // ========================================
-
 function configurarAnalizador() {
     // Botón usar datos generados
     document.getElementById('btnUsarGenerados').addEventListener('click', cargarDatosGenerados);
-
     // Input file CSV
     document.getElementById('fileInput').addEventListener('change', cargarArchivoCSV);
-    // Editor de etiquetas: presente desde el arranque (vacío hasta que haya datos)
+    // Editor de etiquetas SIEMPRE visible: antes de cargar datos muestra su
+    // versión de espera para que la función sea descubrible.
     if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.mostrarVacio) {
         EtiquetasVariables.mostrarVacio('editorEtiquetas');
     }
-
     // Botón analizar (ejecutarAnalisis ya inicializa los gráficos al final)
     document.getElementById('btnAnalizar').addEventListener('click', ejecutarAnalisis);
-
     // Cambio de tipo de análisis: actualizar las etiquetas de los selectores
     const bAV = document.getElementById('btnAgregarVariable');
     if (bAV) bAV.addEventListener('click', agregarVariableExtra);
@@ -439,24 +375,20 @@ function configurarAnalizador() {
     if (bAP) bAP.addEventListener('click', agregarPredictorExtra);
     actualizarTituloRegresion();
     try { actualizarEtiquetasAnalisis(); } catch (e) {}
-
     document.querySelectorAll('input[name="tipoAnalisis"]').forEach(radio => {
         radio.addEventListener('change', actualizarEtiquetasAnalisis);
     });
-
     // Botón descargar resultados
     document.getElementById('btnDescargarResultados').addEventListener('click', descargarResultados);
     const btnWord = document.getElementById('btnExportarWord');
     if (btnWord) btnWord.addEventListener('click', () => ExportadorWord.descargar(window.ultimoAnalisis));
 }
-
 // Ajusta las etiquetas de los selectores según el tipo de análisis elegido.
 function actualizarEtiquetasAnalisis() {
     const seleccionado = document.querySelector('input[name="tipoAnalisis"]:checked');
     const tipo = seleccionado ? seleccionado.value : 'correlacion';
     const label1 = document.getElementById('labelVariable1');
     const label2 = document.getElementById('labelVariable2');
-
     if (tipo === 'comparacion') {
         if (label1) label1.textContent = 'Variable cuantitativa';
         if (label2) label2.textContent = 'Variable de agrupación';
@@ -477,7 +409,6 @@ function actualizarEtiquetasAnalisis() {
         hintTA.textContent = textos[tipo] || '';
     }
 }
-
 function cargarDatosGenerados() {
     try {
         // Verificar que AnalizadorEstadistico esté disponible
@@ -485,19 +416,16 @@ function cargarDatosGenerados() {
         //    mostrarToast('Error: El analizador estadístico no está cargado. Recarga la página.', 'error');
         //    return;
         //}
-
         const datos = generadorDatos.obtenerDatosGenerados();
         if (!datos || datos.length === 0) {
             mostrarToast('No hay datos generados. Genera una base de datos primero.', 'warning');
             return;
         }
-
         if (typeof window.AnalizadorEstadistico === 'undefined') {
             mostrarToast('Error: AnalizadorEstadistico indefinido', 'error');
             return;
         }
         window.AnalizadorEstadistico.cargarDatos(datos);
-
         // Registrar etiquetas humanas y estructura de pruebas (estilo SPSS):
         // la interfaz mostrará "Inteligencia Cognitiva" en vez de "Total_IC".
         // Con datos del simulador NO se ofrece el editor: las etiquetas son las
@@ -507,37 +435,33 @@ function cargarDatosGenerados() {
                 generadorDatos.obtenerEtiquetas(),
                 generadorDatos.obtenerEstructuraEscalas()
             );
-            EtiquetasVariables.mostrarVacio('editorEtiquetas', '🧪 Datos del Simulador: las etiquetas ya vienen configuradas desde esa sección; este editor se usa con bases externas (CSV).');
+            if (EtiquetasVariables.mostrarVacio) {
+                EtiquetasVariables.mostrarVacio('editorEtiquetas', '🧪 Datos del Simulador: las etiquetas ya vienen configuradas desde la sección Simulador, así que aquí no hay nada que renombrar. Este editor se activa al subir un CSV externo.');
+            } else {
+                EtiquetasVariables.ocultarEditor('editorEtiquetas');
+            }
         }
-
         mostrarDatosCargados(datos);
         mostrarToast('Datos cargados exitosamente', 'success');
-
         // Almacenar datos generados globalmente para los gráficos
         window.datosGenerados = datos;
     } catch (error) {
         mostrarToast(error.message, 'error');
     }
 }
-
 function cargarArchivoCSV(e) {
     const file = e.target.files[0];
-
     if (!file) return;
-
     if (!file.name.endsWith('.csv')) {
         mostrarToast('Por favor selecciona un archivo CSV', 'error');
         return;
     }
-
     const reader = new FileReader();
-
     reader.onload = function (event) {
         try {
             const csvText = event.target.result;
             AnalizadorEstadistico.cargarDesdeCSV(csvText);
             const datos = AnalizadorEstadistico.obtenerDatos();
-
             // Base de datos EXTERNA: no hay etiquetas del simulador. Se limpian
             // las anteriores y se ofrece el editor para renombrar variables.
             if (typeof EtiquetasVariables !== 'undefined') {
@@ -557,48 +481,36 @@ function cargarArchivoCSV(e) {
                     }
                 });
             }
-
             mostrarDatosCargados(datos);
             mostrarToast('Archivo CSV cargado exitosamente', 'success');
         } catch (error) {
             mostrarToast(error.message, 'error');
         }
     };
-
     reader.onerror = function () {
         mostrarToast('No se pudo leer el archivo', 'error');
     };
-
     reader.readAsText(file);
 }
-
 function mostrarDatosCargados(datos) {
     const container = document.getElementById('datosContainer');
     const seleccionContainer = document.getElementById('seleccionContainer');
-
     // Actualizar estadísticas
     document.getElementById('analisisN').textContent = datos.length;
     document.getElementById('analisisVars').textContent = Object.keys(datos[0]).length;
-
     // Crear tabla (primeras 10 filas)
     renderizarTablaDatos(
         document.getElementById('analisisHead'),
         document.getElementById('analisisBody'),
         datos
     );
-
     poblarSelectsVariables(datos);
     // Mostrar containers
     container.style.display = 'block';
     seleccionContainer.style.display = 'block';
-    // Panel de análisis: al llegar los datos despierta (deja el modo escaparate)
-    seleccionContainer.classList.remove('esperando-datos');
-    const selAviso = document.getElementById('selAviso');
-    if (selAviso) selAviso.style.display = 'none';
     // Scroll
     desplazarHacia(container);
 }
-
 // Columnas numéricas analizables del dataset (excluye el identificador).
 function obtenerColumnasNumericas(datos) {
     if (!datos || datos.length === 0) return [];
@@ -607,7 +519,6 @@ function obtenerColumnasNumericas(datos) {
         return typeof datos[0][col] === 'number' || !isNaN(parseFloat(datos[0][col]));
     });
 }
-
 // Puebla los selectores de variables del analizador. Reutilizable: se llama al
 // cargar datos y también al aplicar nuevas etiquetas (para refrescar los textos).
 function poblarSelectsVariables(datos) {
@@ -616,7 +527,7 @@ function poblarSelectsVariables(datos) {
     if (bAV) bAV.style.display = (window.__numsDisponibles.length >= 3) ? '' : 'none';
     document.querySelectorAll('#varsExtraCont select, #regPredsCont select').forEach(s => {
         const val = s.value;
-        s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${c}">${c}</option>`).join('');
+        s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
         s.value = val;
     });
     if (typeof ComparacionGrupos !== 'undefined') ComparacionGrupos.actualizarSelects();
@@ -627,18 +538,15 @@ function poblarSelectsVariables(datos) {
         ['regDep', 'regInd'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
-                + nums.map(c => `<option value="${c}">${c}</option>`).join('');
+                + nums.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
         });
     } catch (e) { /* opcional */ }
     const columnasNumericas = obtenerColumnasNumericas(datos);
-
     const select1 = document.getElementById('variable1');
     const select2 = document.getElementById('variable2');
     const valor1 = select1.value, valor2 = select2.value; // conservar selección
-
     select1.innerHTML = '<option value="">Seleccionar variable...</option>';
     select2.innerHTML = '<option value="">Seleccionar variable...</option>';
-
     columnasNumericas.forEach(col => {
         const nombre = col.trim();
         // Mostrar la etiqueta humana ("Inteligencia Cognitiva (Total_IC)");
@@ -646,23 +554,19 @@ function poblarSelectsVariables(datos) {
         const texto = (typeof EtiquetasVariables !== 'undefined')
             ? EtiquetasVariables.etiquetaConColumna(nombre)
             : nombre;
-
         const option1 = document.createElement('option');
         option1.value = nombre;
         option1.textContent = texto;
         select1.appendChild(option1);
-
         const option2 = document.createElement('option');
         option2.value = nombre;
         option2.textContent = texto;
         select2.appendChild(option2);
     });
-
     // Restaurar la selección previa si las columnas siguen existiendo
     if (valor1) select1.value = valor1;
     if (valor2) select2.value = valor2;
 }
-
 // Oculta y vacía todos los contenedores de resultados antes de cada análisis,
 // para que no se mezclen salidas de correlación y de comparación de grupos.
 function limpiarResultados() {
@@ -681,7 +585,6 @@ function limpiarResultados() {
         }
     });
 }
-
 function ejecutarAnalisis() {
     const boton = document.getElementById('btnAnalizar');
     const var1 = document.getElementById('variable1').value;
@@ -690,21 +593,17 @@ function ejecutarAnalisis() {
     const tipoAnalisis = tipoAnalisisSeleccionado ? tipoAnalisisSeleccionado.value : 'correlacion';
     const tipoPruebaSeleccionado = document.querySelector('input[name="tipoPrueba"]:checked');
     const tipoPrueba = tipoPruebaSeleccionado ? tipoPruebaSeleccionado.value : 'bilateral';
-
     if (!var1 || !var2) {
         mostrarToast('Por favor selecciona ambas variables', 'warning');
         return;
     }
-
     if (var1 === var2) {
         mostrarToast('Las variables deben ser diferentes', 'warning');
         return;
     }
-
     mostrarToast('Ejecutando análisis...', 'success');
     // Evitar doble ejecución mientras se procesa
     boton.disabled = true;
-
     setTimeout(() => {
         // El try/catch va DENTRO del setTimeout: los errores del cálculo (p. ej.
         // una variable constante) se lanzan aquí, de forma asíncrona, así que el
@@ -741,7 +640,6 @@ function ejecutarAnalisis() {
         }
     }, 300);
 }
-
 // Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
 // ---- Fusión multivariada: variables y predictores dinámicos ----
 function _selectExtra(placeholder, modo) {
@@ -772,7 +670,7 @@ function _selectExtra(placeholder, modo) {
     sel.className = 'input';
     sel.style.width = '100%';
     sel.innerHTML = '<option value="">Seleccionar variable…</option>'
-        + (window.__numsDisponibles || []).map(c => `<option value="${c}">${c}</option>`).join('');
+        + (window.__numsDisponibles || []).map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
     fila.appendChild(lab); fila.appendChild(btn);
     wrap.appendChild(fila); wrap.appendChild(sel);
     return wrap;
@@ -854,39 +752,32 @@ function ejecutarRegresionBivariadaOpcional() {
         container.style.display = 'block';
     }
 }
-
 // Análisis de correlación entre dos variables cuantitativas.
 // var1/var2 son NOMBRES DE COLUMNA (acceso a datos); et1/et2 son las etiquetas
 // humanas que se usan en todos los textos visibles.
 function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     const unidadAnalisis = document.getElementById('unidadAnalisis').value;
     const lugarContexto = document.getElementById('lugarContexto').value;
-
     const hayEtiquetas = (typeof EtiquetasVariables !== 'undefined');
     const et1 = hayEtiquetas ? EtiquetasVariables.etiqueta(var1) : var1;
     const et2 = hayEtiquetas ? EtiquetasVariables.etiqueta(var2) : var2;
-
     // Criba vectorizada de candidatos dimensión↔variable: selecciona los
     // objetivos específicos EN FUNCIÓN DE LOS DATOS (|r| ≥ umbral, top-k).
     // Se ejecuta antes del marco para que ambos cuenten la misma historia.
     const criba = (typeof AnalisisDimensiones !== 'undefined')
         ? AnalisisDimensiones.cribarObjetivos(var1, var2)
         : null;
-
     const marco = generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto, criba);
     const resultado = AnalizadorEstadistico.calcularCorrelacion(var1, var2, tipoPrueba);
-
     // Análisis de objetivos específicos como HTML, para incrustarlo DENTRO del
     // bloque del marco. El guard (&& generarContenido) evita romper el análisis
     // si el módulo cargado fuera una versión anterior.
     const analisisDimensiones = (typeof AnalisisDimensiones !== 'undefined' && AnalisisDimensiones.generarContenido)
         ? AnalisisDimensiones.generarContenido(var1, var2, tipoPrueba, unidadAnalisis, lugarContexto)
         : '';
-
     // Contexto del último análisis (lo consume el exportador a Word)
     const tituloTesis = (document.getElementById('tituloTesis') || { value: '' }).value.trim();
     window.ultimoAnalisis = { var1, var2, et1, et2, resultado, marco, criba, tipoPrueba, unidadAnalisis, lugarContexto, tituloTesis };
-
     mostrarMarcoMetodologico(marco, analisisDimensiones);
     if (typeof MatrizConsistencia !== 'undefined') {
         try { MatrizConsistencia.mostrar(window.ultimoAnalisis); }
@@ -910,10 +801,8 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     mostrarReporteAPA(et1, et2, resultado);
     mostrarDiscusion(et1, et2, resultado, unidadAnalisis, lugarContexto, marco);
     mostrarReferencias(et1, et2, resultado);
-
     inicializarGraficos();
 }
-
 // Construye el marco metodológico con la información más rica disponible:
 // con estructura del simulador usa las dimensiones reales (etiquetas) y las
 // variables sociodemográficas categóricas para los objetivos comparativos;
@@ -923,7 +812,6 @@ function fmtPApp(p) {
     if (!Number.isFinite(p)) return '—';
     return p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
 }
-
 function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto, criba) {
     // Instrumentos: si la estructura del simulador conoce la prueba a la que
     // pertenece cada variable, la redacción del tipo y diseño los nombra.
@@ -939,7 +827,6 @@ function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarCon
             ? AnalizadorEstadistico.obtenerMarcoInvestigacion()
             : null
     };
-
     // 1) LA CRIBA MANDA: si seleccionó pares, los objetivos específicos del
     //    marco salen de esa selección — CON o SIN etiquetas (es decir, también
     //    para bases externas con columnas Total_/Dimension_/General_).
@@ -950,7 +837,6 @@ function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarCon
                     criba.seleccionados, { unidadAnalisis, lugarContexto })
             }, opcionesComunes));
     }
-
     // 2) Sin criba pero con estructura del simulador: todas las dimensiones.
     if ((typeof EtiquetasVariables !== 'undefined') && EtiquetasVariables.tieneEtiquetas()) {
         const dimsDe = col => {
@@ -960,11 +846,9 @@ function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarCon
         return InterpretacionesEstadisticas.generarMarcoMetodologico(et1, et2, unidadAnalisis, lugarContexto,
             Object.assign({ dimensiones1: dimsDe(var1), dimensiones2: dimsDe(var2) }, opcionesComunes));
     }
-
     // 3) Mecanismo legado del analizador.
     return AnalizadorEstadistico.generarMarcoMetodologico(var1, var2, unidadAnalisis, lugarContexto);
 }
-
 // Columnas categóricas del dataset cargado (texto, sin contar ID), para los
 // objetivos comparativos del marco. Limitadas a un máximo razonable.
 function obtenerColumnasCategoricas(maximo) {
@@ -978,32 +862,26 @@ function obtenerColumnasCategoricas(maximo) {
         })
         .slice(0, maximo || 4);
 }
-
 // Comparación de una variable cuantitativa (var1) entre los grupos definidos
 // por una variable de agrupación (var2). Solo admite 2 grupos.
 function ejecutarComparacion(varCuantitativa, varAgrupacion) {
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
-
     // Pares (valor cuantitativo, grupo) con ambos presentes
     const pares = datos
         .map(fila => [parseFloat(fila[varCuantitativa]), fila[varAgrupacion]])
         .filter(([valor, grupo]) => isFinite(valor) && grupo !== undefined && grupo !== null && grupo !== '');
-
     const gruposDistintos = [...new Set(pares.map(par => String(par[1])))].sort((a, b) => {
         const na = parseFloat(a), nb = parseFloat(b);
         return (isFinite(na) && isFinite(nb)) ? na - nb : a.localeCompare(b);
     });
-
     if (gruposDistintos.length < 2) {
         throw new Error(`La variable de agrupación "${varAgrupacion}" no tiene al menos 2 grupos distintos.`);
     }
     if (gruposDistintos.length > 10) {
         throw new Error(`La variable de agrupación "${varAgrupacion}" tiene demasiados grupos (${gruposDistintos.length}). Elige una variable categórica (p. ej. Sexo, condición).`);
     }
-
     const grupos = gruposDistintos.map(valor => pares.filter(par => String(par[1]) === valor).map(par => par[0]));
     const etiquetas = gruposDistintos.map(valor => `${varAgrupacion} = ${valor}`);
-
     if (gruposDistintos.length === 2) {
         const resultado = AnalizadorEstadistico.compararGrupos(grupos[0], grupos[1], etiquetas[0], etiquetas[1]);
         mostrarComparacion(varCuantitativa, varAgrupacion, resultado);
@@ -1012,7 +890,6 @@ function ejecutarComparacion(varCuantitativa, varAgrupacion) {
         mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado);
     }
 }
-
 // Prueba de chi-cuadrado de independencia entre dos variables categóricas.
 function ejecutarChiCuadrado(var1, var2) {
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
@@ -1021,7 +898,6 @@ function ejecutarChiCuadrado(var1, var2) {
     const resultado = AnalizadorEstadistico.chiCuadradoIndependencia(valores1, valores2);
     mostrarChiCuadrado(var1, var2, resultado);
 }
-
 // Bandas de la V de Cramér (Cohen) para gl* = 1; sirve como guía general.
 function interpretarCramerV(v) {
     if (v < 0.1) return 'asociación nula o muy débil';
@@ -1029,34 +905,27 @@ function interpretarCramerV(v) {
     if (v < 0.5) return 'asociación moderada';
     return 'asociación fuerte';
 }
-
 function mostrarChiCuadrado(var1, var2, resultado) {
     const container = document.getElementById('resultadosChiCuadrado');
     if (!container) return;
-
     const significativa = resultado.decision === 'rechazar';
-
     // Tabla de contingencia (frecuencias observadas con totales)
     const encabezado = `<tr><th>${var1} \\ ${var2}</th>${resultado.categorias2.map(c => `<th>${c}</th>`).join('')}<th>Total</th></tr>`;
     const filas = resultado.observadas.map((fila, i) =>
         `<tr><td><strong>${resultado.categorias1[i]}</strong></td>${fila.map(o => `<td>${o}</td>`).join('')}<td><strong>${resultado.totalFila[i]}</strong></td></tr>`
     ).join('');
     const totalFinal = `<tr><td><strong>Total</strong></td>${resultado.totalColumna.map(t => `<td><strong>${t}</strong></td>`).join('')}<td><strong>${resultado.n}</strong></td></tr>`;
-
     const avisoEsperadas = resultado.esperadasBajas > 0
         ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">⚠️ ${resultado.esperadasBajas} casilla(s) tienen una frecuencia esperada menor que 5; la prueba de chi-cuadrado puede no ser fiable (considera la prueba exacta de Fisher).</p>`
         : '';
-
     const pTexto = resultado.pValor < 0.001 ? 'p < .001' : 'p = ' + resultado.pValor.toFixed(3).replace(/^0/, '');
     const interpretacion = significativa
         ? `Existe una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}). La V de Cramér (${resultado.cramerV.toFixed(3)}) indica una ${interpretarCramerV(resultado.cramerV)}. Las dos variables no son independientes.`
         : `No se halló una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}); las variables pueden considerarse independientes.`;
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Asociación de Variables Categóricas (Chi-cuadrado)</h3>
             <p class="result-subtitle">Prueba de independencia entre <strong>${var1}</strong> y <strong>${var2}</strong>. Evalúa si las dos variables categóricas están asociadas; la V de Cramér mide la fuerza de la asociación.</p>
-
             <div class="result-box" style="overflow-x: auto;">
                 <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Tabla de contingencia (frecuencias observadas)</h5>
                 <table class="result-table">
@@ -1066,7 +935,6 @@ function mostrarChiCuadrado(var1, var2, resultado) {
                 </table>
                 ${avisoEsperadas}
             </div>
-
             <div class="result-box">
                 <table class="result-table">
                     <tr><td>Chi-cuadrado de Pearson:</td><td><strong>χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(3)}</strong></td></tr>
@@ -1076,7 +944,6 @@ function mostrarChiCuadrado(var1, var2, resultado) {
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
             </div>
-
             <div class="result-box interpretation-box interpretation-box--hipotesis">
                 <h5 class="interpretation-title">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -1088,14 +955,12 @@ function mostrarChiCuadrado(var1, var2, resultado) {
     container.style.display = 'block';
     desplazarHacia(container);
 }
-
 function mostrarMarcoMetodologico(marco, analisisDimensionesHTML) {
     const container = document.getElementById('marcoMetodologicoContainer');
     if (!container) {
         console.warn('No existe elemento #marcoMetodologicoContainer en el HTML');
         return;
     }
-
     let html = `
         <div class="result-section">
             <h3 class="section-title">📋 Marco Metodológico</h3>
@@ -1127,7 +992,6 @@ function mostrarMarcoMetodologico(marco, analisisDimensionesHTML) {
                 <h4 class="result-subtitle">❌ Hipótesis Nula (H₀)</h4>
                 <p class="marco-text">${marco.hipotesis.hipotesisNula}</p>
             </div>
-
             ${marco.tipoYDiseno ? `
             <div class="result-box">
                 <h4 class="result-subtitle">🧭 Tipo y diseño de estudio</h4>
@@ -1135,19 +999,15 @@ function mostrarMarcoMetodologico(marco, analisisDimensionesHTML) {
             </div>` : ''}
         </div>
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
 }
-
-
 function mostrarPruebasNormalidad(var1, var2, resultado) {
     const container = document.getElementById('pruebasNormalidadContainer');
     if (!container) {
         console.warn('No existe elemento #pruebasNormalidadContainer en el HTML');
         return;
     }
-
     const html = `
         <div class="result-section">
             <h3 class="section-title">Pruebas de normalidad</h3>
@@ -1218,28 +1078,22 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
                 </p>
             </div>
         </div>
-
         <div class="card" style="padding:1rem 1.25rem; margin-top:1rem;">
             <h5 style="margin:0 0 0.4rem;">💡 Los porqués detrás de estos números</h5>
-            <p style="margin:0 0 0.4rem;"><b>¿Por qué media y desviación estándar?</b> La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la <i>distancia típica</i> de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.</p>
+            <p style="margin:0 0 0.4rem;"><b>¿Por qué media y desviación estándar?</b> La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la <i>distancia típica</i> de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.</p>
             <p style="margin:0;"><b>¿Por qué la normalidad decide el coeficiente?</b> Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el <i>orden</i>, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último de la fila». Robustez por diseño, no por parche.</p>
             <p style="margin:0;"><b>¿Por qué la normalidad decide el coeficiente?</b> Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el <i>orden</i>, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.</p>
         </div>
-
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
-
     // Dibujar los gráficos Q-Q con los valores de cada variable
     dibujarGraficosQQ(var1, var2, resultado);
 }
-
 // Dibuja un gráfico Q-Q por cada variable usando sus valores pareados.
 function dibujarGraficosQQ(var1, var2, resultado) {
     const pares = resultado.valoresPareados;
     if (!pares) return;
-
     // Panel visual de normalidad por variable: histograma con la curva normal
     // teórica superpuesta (¿la campana se ajusta a los datos?) y Q-Q plot
     // (¿los cuantiles siguen la diagonal?). Juntos justifican visualmente la
@@ -1260,20 +1114,16 @@ function dibujarGraficosQQ(var1, var2, resultado) {
             console.error(`Error en panel de normalidad de ${etiqueta}:`, error);
         }
     };
-
     dibujar('histVariable1', 'qqVariable1', pares.x, var1);
     dibujar('histVariable2', 'qqVariable2', pares.y, var2);
 }
-
 function mostrarCorrelacion(var1, var2, resultado) {
     const container = document.getElementById('resultadosCorrelacion');
     if (!container) return;
-
     const html = `
         <div class="result-section">
             <h3 class="section-title">Análisis de Correlación</h3>
             <p class="result-subtitle">El análisis de correlación permite medir la fuerza y dirección de la relación entre dos variables cuantitativas. Según Hernández, Fernández & Baptista (2010), el coeficiente de correlación de Pearson es adecuado cuando ambas variables siguen una distribución normal, mientras que el coeficiente de correlación de Spearman es preferible cuando al menos una variable no cumple con la normalidad. Es decir, la elección del coeficiente no es arbitraria, depende estrictamente del cumplimiento del supuesto de normalidad previamente validado. La interpretación del coeficiente varía desde -1 (correlación negativa perfecta) hasta +1 (correlación positiva perfecta), siendo 0 indicativo de ausencia de correlación.</p>
-
             <div class="result-box">
                 <table class="result-table">
                     <tr>
@@ -1334,17 +1184,13 @@ function mostrarCorrelacion(var1, var2, resultado) {
         
         <div id="anclaRegBiv"></div>
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
 }
-
 function mostrarDecision(var1, var2, resultado) {
     const container = document.getElementById('resultadosDecision');
     if (!container) return;
-
     const prueba = AnalizadorEstadistico.pruebaHipotesis(resultado);
-
     const html = `
         <div class="result-section">
             <h3 class="section-title">Prueba de Hipótesis</h3>
@@ -1379,7 +1225,6 @@ function mostrarDecision(var1, var2, resultado) {
                         <td><strong>${(resultado.poder * 100).toFixed(1)}%</strong> ${resultado.poder >= 0.8 ? '(adecuada, ≥ 80%)' : '(insuficiente, &lt; 80%)'}</td>
                     </tr>` : ''}
                 </table>
-
                 <div style="margin-top: 1rem; padding: 1rem; background-color: #f9f9f9; border-radius: 6px;">
                     <p style="margin: 0; font-size: 0.9rem; line-height: 1.6;">
                         ${prueba.conclusionH0}${resultado.poder != null && resultado.poder < 0.8 ? ' La potencia es inferior al 80% recomendado por Cohen; un resultado no significativo podría deberse a un tamaño muestral insuficiente (riesgo de error tipo II).' : ''}
@@ -1401,15 +1246,12 @@ function mostrarDecision(var1, var2, resultado) {
         </div>
         
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
 }
-
 function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, marco) {
     const container = document.getElementById('resultadosDiscusion');
     if (!container) return;
-
     // Reutilizar el marco ya construido (con dimensiones reales y objetivos
     // comparativos) para que la discusión y la tarjeta de marco digan LO MISMO.
     const discusion = marco
@@ -1418,7 +1260,6 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, 
             AnalizadorEstadistico.pruebaHipotesis(resultado),
             unidadAnalisis, lugarContexto, { marco })
         : AnalizadorEstadistico.generarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto);
-
     const html = `
         <div class="result-section">
             <h3 class="section-title">Discusión (Plantilla)</h3>
@@ -1427,26 +1268,21 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, 
             </div>
         </div>
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
 }
-
 // Muestra el alfa de Cronbach de las escalas cuyas dimensiones (ítems) haya
 // configurado el usuario. Es opcional: si no hay dimensiones, no se muestra.
 function mostrarFiabilidad(var1, var2) {
     const container = document.getElementById('resultadosFiabilidad');
     if (!container) return;
-
     const dim1 = document.getElementById('dimensionesVar1').value.trim();
     const dim2 = document.getElementById('dimensionesVar2').value.trim();
-
     if (!dim1 && !dim2) {
         container.style.display = 'none';
         container.innerHTML = '';
         return;
     }
-
     let bloques = '';
     try {
         if (dim1) {
@@ -1463,13 +1299,11 @@ function mostrarFiabilidad(var1, var2) {
         mostrarToast('Fiabilidad: ' + error.message, 'warning');
         return;
     }
-
     if (!bloques) {
         container.style.display = 'none';
         container.innerHTML = '';
         return;
     }
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Análisis de Fiabilidad (Alfa de Cronbach)</h3>
@@ -1478,18 +1312,14 @@ function mostrarFiabilidad(var1, var2) {
         </div>`;
     container.style.display = 'block';
 }
-
 function bloqueFiabilidad(variable, fiab) {
     if (!fiab || !fiab.escala) return '';
-
     const fila = (etiqueta, f) => f
         ? `<tr><td>${etiqueta}</td><td><strong>${f.alfa.toFixed(3)}</strong></td><td>${f.k}</td><td>${f.interpretacion}</td></tr>`
         : `<tr><td>${etiqueta}</td><td colspan="3">No disponible (se requieren ≥ 2 ítems)</td></tr>`;
-
     const filasDimensiones = fiab.dimensiones
         .map(d => fila(`Dimensión: ${d.nombre}`, d.fiabilidad))
         .join('');
-
     return `
         <div class="result-box" style="margin-bottom: 1rem;">
             <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Escala: ${variable}</h5>
@@ -1500,29 +1330,23 @@ function bloqueFiabilidad(variable, fiab) {
             </table>
         </div>`;
 }
-
 // Muestra el reporte de comparación de dos grupos.
 function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
     const container = document.getElementById('resultadosComparacion');
     if (!container) return;
-
     const d1 = resultado.descriptivas1;
     const d2 = resultado.descriptivas2;
     const prueba = resultado.prueba;
     const ef = resultado.tamanoEfecto;
     const significativa = resultado.decision === 'rechazar';
-
     const estadisticoTexto = resultado.parametrica
         ? `t(${prueba.gl.toFixed(2)}) = ${prueba.estadistico.toFixed(3)}`
         : `U = ${prueba.U.toFixed(1)}, z = ${prueba.z.toFixed(3)}`;
-
     const lineaApa = lineaApaComparacion(varCuantitativa, varAgrupacion, resultado);
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Comparación de Grupos</h3>
             <p class="result-subtitle">Comparación de <strong>${varCuantitativa}</strong> entre los grupos de <strong>${varAgrupacion}</strong>. La prueba se elige según los supuestos: t de Student o de Welch si ambos grupos son normales (según la prueba de Levene de igualdad de varianzas), o U de Mann-Whitney si alguno no es normal.</p>
-
             <div class="result-box">
                 <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Descriptivos por grupo</h5>
                 <table class="result-table">
@@ -1531,7 +1355,6 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
                     <tr><td>${resultado.etiqueta2}</td><td>${d2.n}</td><td>${d2.media.toFixed(2)}</td><td>${d2.desviacion.toFixed(2)}</td><td>${resultado.normalidad2.pValor.toFixed(3)} (${resultado.normalidad2.normal ? 'normal' : 'no normal'})</td></tr>
                 </table>
             </div>
-
             <div class="result-box">
                 <table class="result-table">
                     <tr><td>Levene (igualdad de varianzas):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${resultado.levene.estadistico.toFixed(3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)} (${resultado.levene.varianzasIguales ? 'varianzas iguales' : 'varianzas desiguales'})</td></tr>
@@ -1543,13 +1366,10 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
             </div>
-
             ${bloqueApaComparacionHTML(lineaApa)}
-
             <div class="result-box" style="display: flex; justify-content: center;">
                 <div id="cajaGrupos"></div>
             </div>
-
             <div class="result-box interpretation-box interpretation-box--hipotesis">
                 <h5 class="interpretation-title">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -1563,15 +1383,12 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
     conectarCopiaComparacion(lineaApa);
     desplazarHacia(container);
 }
-
 // Dibuja un diagrama de caja por grupo en el contenedor #cajaGrupos usando los
 // datos crudos de cada grupo expuestos en el resultado de la comparación.
 function dibujarCajaGrupos(resultado) {
     if (!document.getElementById('cajaGrupos') || !Array.isArray(resultado.gruposDatos)) return;
-
     // Etiquetas cortas para el eje (solo el valor del grupo, sin el prefijo)
     const etiquetas = resultado.etiquetas.map(e => e.split('=').pop().trim());
-
     try {
         new ScientificCharts('cajaGrupos', { width: 520, height: 360, primaryColor: '#2E5BBA' })
             .createBoxPlot(resultado.gruposDatos, etiquetas, {
@@ -1582,27 +1399,22 @@ function dibujarCajaGrupos(resultado) {
         console.error('Error al crear el diagrama de caja por grupo:', error);
     }
 }
-
 // Muestra el reporte de comparación de 3 o más grupos (ANOVA / Kruskal-Wallis).
 function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
     const container = document.getElementById('resultadosComparacion');
     if (!container) return;
-
     const prueba = resultado.prueba;
     const significativa = resultado.decision === 'rechazar';
     const k = resultado.etiquetas.length;
-
     const filasDesc = resultado.descriptivas.map((d, i) =>
         `<tr><td>${resultado.etiquetas[i]}</td><td>${d.n}</td><td>${d.media.toFixed(2)}</td><td>${d.desviacion.toFixed(2)}</td><td>${resultado.normalidades[i].pValor.toFixed(3)} (${resultado.normalidades[i].normal ? 'normal' : 'no normal'})</td></tr>`
     ).join('');
-
     const lineaPrueba = resultado.parametrica
         ? `F(${prueba.glEntre}, ${prueba.glDentro}) = ${prueba.F.toFixed(3)}`
         : `H(${prueba.gl}) = ${prueba.H.toFixed(3)}`;
     const efecto = resultado.parametrica
         ? `η² = ${prueba.etaCuadrado.toFixed(3)} (${(prueba.etaCuadrado * 100).toFixed(1)}% de varianza explicada)`
         : `ε² = ${prueba.epsilonCuadrado.toFixed(3)}`;
-
     let postHocHtml = '';
     if (resultado.postHoc) {
         const filas = resultado.postHoc.comparaciones.map(c =>
@@ -1617,19 +1429,15 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
                 </table>
             </div>`;
     }
-
     const pTexto = prueba.pValor < 0.001 ? 'p < .001' : 'p = ' + prueba.pValor.toFixed(3).replace(/^0/, '');
     const interpretacion = significativa
         ? `Existen diferencias estadísticamente significativas en ${varCuantitativa} entre al menos dos de los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). Las comparaciones por pares (Bonferroni) indican entre qué grupos se encuentran las diferencias.`
         : `No se hallaron diferencias estadísticamente significativas en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}).`;
-
     const lineaApa = lineaApaComparacion(varCuantitativa, varAgrupacion, resultado);
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Comparación de Grupos (${k} grupos)</h3>
             <p class="result-subtitle">Comparación de <strong>${varCuantitativa}</strong> entre los ${k} grupos de <strong>${varAgrupacion}</strong>. Se usa ANOVA de una vía si todos los grupos son normales, o Kruskal-Wallis si alguno no lo es. Si el resultado global es significativo, se muestran comparaciones por pares con corrección de Bonferroni.</p>
-
             <div class="result-box">
                 <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Descriptivos por grupo</h5>
                 <table class="result-table">
@@ -1637,7 +1445,6 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
                     ${filasDesc}
                 </table>
             </div>
-
             <div class="result-box">
                 <table class="result-table">
                     <tr><td>Levene (igualdad de varianzas):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${resultado.levene.estadistico.toFixed(3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)}</td></tr>
@@ -1648,15 +1455,11 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
             </div>
-
             ${postHocHtml}
-
             ${bloqueApaComparacionHTML(lineaApa)}
-
             <div class="result-box" style="display: flex; justify-content: center;">
                 <div id="cajaGrupos"></div>
             </div>
-
             <div class="result-box interpretation-box interpretation-box--hipotesis">
                 <h5 class="interpretation-title">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -1670,12 +1473,10 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
     conectarCopiaComparacion(lineaApa);
     desplazarHacia(container);
 }
-
 // Construye la frase en formato APA de una comparación de grupos.
 function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     const prueba = resultado.prueba;
     const pTexto = formatearPApa(prueba.pValor);
-
     if (prueba.prueba === 'U de Mann-Whitney') {
         return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la U de Mann-Whitney: U = ${prueba.U.toFixed(0)}, Z = ${prueba.z.toFixed(2)}, ${pTexto}.`;
     }
@@ -1692,7 +1493,6 @@ function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
         : (resultado.tamanoEfecto ? `, d de Cohen = ${formatearRApa(resultado.tamanoEfecto.d)}` : '');
     return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la ${prueba.prueba}: t(${prueba.gl.toFixed(decimalesGl)}) = ${prueba.estadistico.toFixed(2)}, ${pTexto}${d}.`;
 }
-
 // HTML de la caja APA (frase citable + botón de copiar) para la comparación.
 function bloqueApaComparacionHTML(linea) {
     return `
@@ -1701,7 +1501,6 @@ function bloqueApaComparacionHTML(linea) {
             <button type="button" id="btnCopiarComparacion" class="btn btn-outline">Copiar</button>
         </div>`;
 }
-
 // Conecta el botón de copiar de la comparación.
 function conectarCopiaComparacion(linea) {
     const btn = document.getElementById('btnCopiarComparacion');
@@ -1709,24 +1508,20 @@ function conectarCopiaComparacion(linea) {
         btn.addEventListener('click', () => copiarTexto(linea));
     }
 }
-
 // Interpretación en lenguaje natural de la comparación de grupos.
 // (delegado) La redacción vive en InterpretacionesEstadisticas.
 function interpretarComparacion(varCuantitativa, varAgrupacion, resultado) {
     return InterpretacionesEstadisticas.generarInterpretacionComparacion(varCuantitativa, varAgrupacion, resultado);
 }
-
 function mostrarDispersion(var1, var2, resultado) {
     const container = document.getElementById('resultadosDispersion');
     if (!container) return;
-
     const pares = resultado.valoresPareados;
     if (!pares || !Array.isArray(pares.x) || pares.x.length < 2) {
         container.style.display = 'none';
         container.innerHTML = '';
         return;
     }
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Diagrama de Dispersión</h3>
@@ -1736,7 +1531,6 @@ function mostrarDispersion(var1, var2, resultado) {
             </div>
         </div>`;
     container.style.display = 'block';
-
     // El gráfico se dibuja con la librería ScientificCharts (D3); si fallara,
     // no debe interrumpir el resto del reporte.
     try {
@@ -1768,11 +1562,9 @@ function mostrarDispersion(var1, var2, resultado) {
             'No se pudo generar el diagrama de dispersión.';
     }
 }
-
 function mostrarRegresion(var1, var2, resultado) {
     const container = document.getElementById('resultadosRegresion');
     if (!container) return;
-
     // Solo cuando hay regresión (se cumplió la normalidad → método paramétrico)
     const reg = resultado.regresion;
     if (!reg) {
@@ -1780,11 +1572,9 @@ function mostrarRegresion(var1, var2, resultado) {
         container.innerHTML = '';
         return;
     }
-
     const signo = reg.intercepto >= 0 ? '+' : '−';
     const ecuacion = `${var2} = ${reg.pendiente.toFixed(3)} · ${var1} ${signo} ${Math.abs(reg.intercepto).toFixed(3)}`;
     const sentido = reg.pendiente >= 0 ? 'aumenta' : 'disminuye';
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Regresión Lineal Simple</h3>
@@ -1804,18 +1594,15 @@ function mostrarRegresion(var1, var2, resultado) {
         </div>`;
     container.style.display = 'block';
 }
-
 // ========================================
 // TABLA SOCIODEMOGRÁFICA Y NIVELES (bajo/medio/alto)
 // ========================================
-
 // Cuantil con interpolación lineal (tipo 7 de R) sobre valores YA ordenados.
 function cuantilLineal(ordenados, p) {
     const h = (ordenados.length - 1) * p;
     const lo = Math.floor(h), hi = Math.ceil(h);
     return ordenados[lo] + (h - lo) * (ordenados[hi] - ordenados[lo]);
 }
-
 // Niveles por TERCILES EMPÍRICOS de la muestra (P33.3 y P66.7): bajo/medio/alto
 // con frecuencia y porcentaje. Devuelve null si hay menos de 3 valores válidos.
 function calcularNivelesDeValores(valores) {
@@ -1830,7 +1617,6 @@ function calcularNivelesDeValores(valores) {
     niveles.forEach(o => { o.pct = 100 * o.f / v.length; });
     return { niveles, n: v.length, c1, c2 };
 }
-
 // Tabla 1 de la tesis: frecuencias y porcentajes de las variables
 // sociodemográficas (categóricas) detectadas en la base.
 function mostrarTablaSociodemografica() {
@@ -1841,7 +1627,6 @@ function mostrarTablaSociodemografica() {
     if (datos.length === 0 || categoricas.length === 0) {
         container.style.display = 'none'; container.innerHTML = ''; return;
     }
-
     let filas = '';
     categoricas.forEach(col => {
         const conteo = new Map();
@@ -1856,7 +1641,6 @@ function mostrarTablaSociodemografica() {
                 `${i === 0 ? '' : '<tr>'}<td>${cat}</td><td>${f}</td><td>${(100 * f / total).toFixed(1)}%</td></tr>`
             ).join('');
     });
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">👥 Características Sociodemográficas de la Muestra</h3>
@@ -1873,14 +1657,12 @@ function mostrarTablaSociodemografica() {
         </div>`;
     container.style.display = 'block';
 }
-
 // Niveles descriptivos (bajo/medio/alto) de las dos variables analizadas.
 function mostrarNiveles(var1, var2, et1, et2) {
     const container = document.getElementById('resultadosNiveles');
     if (!container) return;
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
     if (datos.length === 0) { container.style.display = 'none'; return; }
-
     const bloque = (col, etiqueta) => {
         const r = calcularNivelesDeValores(datos.map(d => +d[col]));
         if (!r) return '';
@@ -1895,7 +1677,6 @@ function mostrarNiveles(var1, var2, et1, et2) {
                 </table></div>
             </div>`;
     };
-
     const b1 = bloque(var1, et1), b2 = bloque(var2, et2);
     if (!b1 && !b2) { container.style.display = 'none'; return; }
     container.innerHTML = `
@@ -1908,14 +1689,11 @@ function mostrarNiveles(var1, var2, et1, et2) {
         </div>`;
     container.style.display = 'block';
 }
-
 function mostrarDescriptivas(var1, var2, resultado) {
     const container = document.getElementById('resultadosDescriptivas');
     if (!container) return;
-
     const d1 = resultado.descriptivas1;
     const d2 = resultado.descriptivas2;
-
     // Fila de la tabla; `decimales` controla el formato de los valores numéricos.
     const fila = (etiqueta, v1, v2, decimales = 2) => `
         <tr>
@@ -1923,7 +1701,6 @@ function mostrarDescriptivas(var1, var2, resultado) {
             <td>${typeof v1 === 'number' ? v1.toFixed(decimales) : v1}</td>
             <td>${typeof v2 === 'number' ? v2.toFixed(decimales) : v2}</td>
         </tr>`;
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Estadísticos Descriptivos</h3>
@@ -1946,21 +1723,18 @@ function mostrarDescriptivas(var1, var2, resultado) {
         </div>`;
     container.style.display = 'block';
 }
-
 // Formatea un coeficiente al estilo APA: sin cero a la izquierda y 2 decimales.
 function formatearRApa(r) {
     if (typeof r !== 'number' || isNaN(r)) return '—';
     const signo = r < 0 ? '-' : '';
     return signo + Math.abs(r).toFixed(2).replace(/^0/, '');
 }
-
 // Formatea el p-valor al estilo APA (p < .001 para valores muy pequeños).
 function formatearPApa(p) {
     if (typeof p !== 'number' || isNaN(p)) return 'p = —';
     if (p < 0.001) return 'p < .001';
     return 'p = ' + p.toFixed(3).replace(/^0/, '');
 }
-
 // Construye la frase de resultados en formato APA 7.
 function construirLineaAPA(var1, var2, resultado) {
     const simbolo = resultado.tipoCorrelacion === 'Pearson' ? 'r' : 'rₛ';
@@ -1974,13 +1748,10 @@ function construirLineaAPA(var1, var2, resultado) {
         : `una correlación ${resultado.interpretacion.direccion} no significativa`;
     return `Se halló ${relacion} entre ${var1} y ${var2}, ${simbolo}(${resultado.gl}) = ${formatearRApa(resultado.coeficiente)}, ${formatearPApa(resultado.pValor)}${icTexto}; r² = ${formatearRApa(resultado.r2)}.`;
 }
-
 function mostrarReporteAPA(var1, var2, resultado) {
     const container = document.getElementById('resultadosReporteAPA');
     if (!container) return;
-
     const linea = construirLineaAPA(var1, var2, resultado);
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Reporte en formato APA</h3>
@@ -1991,13 +1762,11 @@ function mostrarReporteAPA(var1, var2, resultado) {
             </div>
         </div>`;
     container.style.display = 'block';
-
     const btn = document.getElementById('btnCopiarAPA');
     if (btn) {
         btn.addEventListener('click', () => copiarTexto(linea));
     }
 }
-
 // Copia un texto al portapapeles y avisa por toast.
 function copiarTexto(texto) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2008,24 +1777,20 @@ function copiarTexto(texto) {
         mostrarToast('El navegador no permite copiar automáticamente', 'warning');
     }
 }
-
 // Análisis por dimensiones: solo se ejecuta si el usuario configuró
 // dimensiones para AMBAS variables. Es opcional y no debe interrumpir el
 // análisis principal, por lo que cualquier error se reporta por toast.
 function mostrarDimensionesSiAplica(var1, var2, tipoPrueba) {
     const container = document.getElementById('resultadosDimensiones');
     if (!container) return;
-
     const dim1 = document.getElementById('dimensionesVar1').value.trim();
     const dim2 = document.getElementById('dimensionesVar2').value.trim();
-
     // Si no hay dimensiones para ambas variables, ocultar la sección
     if (!dim1 || !dim2) {
         container.style.display = 'none';
         container.innerHTML = '';
         return;
     }
-
     try {
         AnalizadorEstadistico.parsearDimensionesDesdeString(var1, dim1);
         AnalizadorEstadistico.parsearDimensionesDesdeString(var2, dim2);
@@ -2037,7 +1802,6 @@ function mostrarDimensionesSiAplica(var1, var2, tipoPrueba) {
         mostrarToast('Dimensiones: ' + error.message, 'warning');
     }
 }
-
 function mostrarTablaDimensiones(container, var1, var2, resultados) {
     const filas = resultados.map(r => `
                     <tr>
@@ -2048,7 +1812,6 @@ function mostrarTablaDimensiones(container, var1, var2, resultados) {
                         <td>${fmtPApp(r.pValor)}</td>
                         <td>${r.pValor < 0.05 ? 'Significativa (p < .05)' : 'No significativa (p ≥ .05)'}</td>
                     </tr>`).join('');
-
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Análisis por Dimensiones</h3>
@@ -2070,7 +1833,6 @@ function mostrarTablaDimensiones(container, var1, var2, resultados) {
     `;
     container.style.display = 'block';
 }
-
 function mostrarReferencias(var1, var2, resultado) {
     // ✅ DECLARA EL CONTENEDOR PRINCIPAL
     const container = document.getElementById('resultadosContainer');
@@ -2078,47 +1840,38 @@ function mostrarReferencias(var1, var2, resultado) {
         console.error("No se encontró el contenedor #resultadosContainer");
         return;
     }
-
     const html = `
         <div class="references-container">
             <h4 class="result-title">Referencias bibliográficas</h4>
             <div class="reference-card">
                 <p class="reference-text">1. Hernández-Sampieri, R., & Mendoza, C. (2023). Metodología de la investigación: las rutas cuantitativa, cualitativa y mixta. <a href="https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf" target="_blank">https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf</a></p>
             </div>
-
             <div class="reference-card">
                 <p class="reference-text">2. Hernández, D., Fernández, C., & Baptista, M. D. P. (2010). Metodologia de la investigacion 5ta Edicion Sampieri. <a href="https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf" target="_blank">https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf</a></p>
             </div>
-
             <div class="reference-card">
                 <p class="reference-text">3. Taherdoost, H. (2022). What are different research approaches? Comprehensive review of qualitative, quantitative, and mixed method research, their applications, types, and limitations. Journal of Management Science & Engineering Research, 5(1), 53-63. <a href="https://hal.science/hal-03741840/document" target="_blank">https://hal.science/hal-03741840/document</a></p>
             </div>
-
             <div class="reference-card">
                 <p class="reference-text">4. Cohen, J. (1988). Statistical power analysis for the behavioral sciences (2.ª ed.). Lawrence Erlbaum Associates.</p>
             </div>
-
             <div class="reference-card">
                 <p class="reference-text">5. Arias, J. L. (2021). Diseño y metodología de la investigación. Enfoques Consulting EIRL. <a href="https://repositorio.concytec.gob.pe/handle/20.500.12390/2260" target="_blank">https://repositorio.concytec.gob.pe/handle/20.500.12390/2260</a></p>
             </div>
-
             <div class="reference-card">
                 <p class="reference-text">6. Cvetković-Vega, A., Maguiña, J. L., Soto, A., Lama-Valdivia, J., & Correa, L. E. (2021). Estudios transversales. Revista de la Facultad de Medicina Humana, 21(1), 164-170. <a href="https://doi.org/10.25176/RFMH.v21i1.3069" target="_blank">https://doi.org/10.25176/RFMH.v21i1.3069</a></p>
             </div>
         </div>
     `;
-
     container.innerHTML = html;
     container.style.display = 'block';
 }
-
 function descargarResultados() {
     // Obtener el contenido de resultados (texto de cada contenedor, vacío si no existe)
     const textoContenedor = id => {
         const elem = document.getElementById(id);
         return elem ? elem.innerText.trim() : '';
     };
-
     // El contenedor de normalidad es 'pruebasNormalidadContainer' (no 'resultadosNormalidad').
     // Las secciones opcionales (descriptivos, APA, dimensiones) se filtran si están vacías.
     const secciones = [
@@ -2134,43 +1887,43 @@ function descargarResultados() {
         ['COMPARACIÓN DE GRUPOS', textoContenedor('resultadosComparacion')],
         ['ASOCIACIÓN (CHI-CUADRADO)', textoContenedor('resultadosChiCuadrado')]
     ].filter(([, texto]) => texto);
-
     // Evitar descargar un archivo vacío si aún no se ejecutó el análisis
     if (secciones.length === 0) {
         mostrarToast('Primero ejecuta un análisis para descargar resultados', 'warning');
         return;
     }
-
     const cuerpo = secciones
         .map(([titulo, texto], i) => `${i + 1}. ${titulo}\n${texto}`)
         .join('\n\n');
-
     const contenido = `RESULTADOS DEL ANÁLISIS ESTADÍSTICO
 ====================================
-
 ${cuerpo}
-
 ----
 Generado por StatSim Pro
 Fecha: ${new Date().toLocaleDateString()}
 `;
-
     descargarArchivo(contenido, 'resultados_analisis.txt', 'text/plain');
     mostrarToast('Resultados descargados', 'success');
 }
-
 // ========================================
 // UTILIDADES
 // ========================================
-
+// Etiqueta humana GLOBAL: la consumen la regresión, la comparación de grupos,
+// ANCOVA/MANOVA y la matriz de flujo para sus textos. Antes no existía y todos
+// los módulos caían silenciosamente al nombre técnico de la columna.
+function obtenerEtiqueta(columna) {
+    return (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiqueta(columna) : columna;
+}
+// Variante para selects: "Etiqueta (Columna_tecnica)".
+function obtenerEtiquetaOpcion(columna) {
+    return (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(columna) : columna;
+}
 // Renderiza encabezados y las primeras `maxFilas` filas de una base de datos
 // en una tabla (thead/tbody). Devuelve la lista de columnas.
 function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
     thead.innerHTML = '';
     tbody.innerHTML = '';
-
     const columnas = Object.keys(datos[0]);
-
     const filaEncabezados = document.createElement('tr');
     columnas.forEach(col => {
         const th = document.createElement('th');
@@ -2178,7 +1931,6 @@ function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
         filaEncabezados.appendChild(th);
     });
     thead.appendChild(filaEncabezados);
-
     const limite = Math.min(maxFilas, datos.length);
     for (let i = 0; i < limite; i++) {
         const fila = document.createElement('tr');
@@ -2190,25 +1942,20 @@ function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
         });
         tbody.appendChild(fila);
     }
-
     return columnas;
 }
-
 // Desplaza la vista hacia un elemento respetando la preferencia de movimiento
 // reducido del sistema (accesibilidad).
 function desplazarHacia(elemento) {
     const movimientoReducido = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     elemento.scrollIntoView({ behavior: movimientoReducido ? 'auto' : 'smooth', block: 'nearest' });
 }
-
 let temporizadorToast = null;
-
 function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
     const toast = document.getElementById('toast');
     toast.textContent = mensaje;
     toast.className = `toast ${tipo}`;
     toast.classList.add('show');
-
     // Cancelar el temporizador previo para que un toast nuevo no se oculte
     // antes de tiempo por el setTimeout de uno anterior.
     if (temporizadorToast) {
@@ -2219,24 +1966,19 @@ function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
         temporizadorToast = null;
     }, duracion);
 }
-
 // ========================================
 // IMPORTAR/EXPORTAR CONFIGURACIONES
 // ========================================
-
 // PRUEBAS APLICADAS
 function exportarConfigPruebas() {
     try {
         const filas = document.querySelectorAll('#bodyPruebas .fila-prueba');
-
         if (filas.length === 0) {
             mostrarToast('No hay pruebas para exportar', 'warning');
             return;
         }
-
         // Crear CSV con encabezados
         let csv = 'Prueba,Escala,Tipo,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
-
         filas.forEach(fila => {
             const inputs = fila.querySelectorAll('input');
             const selectTipo = fila.querySelector('[aria-label="Tipo de escala"]');
@@ -2251,43 +1993,35 @@ function exportarConfigPruebas() {
             const min = inputs[5].value || '';
             const max = inputs[6].value || '';
             const alfa = inputs[7] ? (inputs[7].value || '') : '';
-
             // Escapar valores con comas
             const esc = v => (v.includes(',') ? `"${v}"` : v);
             csv += `${esc(prueba)},${esc(escala)},${tipo},${numItems},${distribucion},${media},${de},${min},${max},${alfa}\n`;
         });
-
         // Descargar archivo
         descargarArchivo(csv, 'configuracion_pruebas.csv', 'text/csv');
         mostrarToast('Configuración de pruebas exportada exitosamente', 'success');
-
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
     }
 }
-
 function importarConfigPruebas(e) {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = function (event) {
         try {
             const csv = event.target.result;
             const lineas = csv.trim().split('\n');
-
             if (lineas.length < 2) {
                 mostrarToast('El archivo CSV está vacío o no tiene datos', 'error');
                 return;
             }
-
             // Verificar encabezados
             const encabezados = lineas[0].toLowerCase();
             if (!encabezados.includes('numitems')) {
                 mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa', 'error');
                 return;
             }
-
             // Compatibilidad de formatos:
             //  nuevo:      Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa
             //  intermedio: Nombre,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa
@@ -2295,19 +2029,15 @@ function importarConfigPruebas(e) {
             const tienePruebaEscala = encabezados.includes('escala');
             const tieneTipo = encabezados.includes('tipo');
             const tieneDistribucion = encabezados.includes('distribucion');
-
             // Limpiar tabla actual
             const tbody = document.getElementById('bodyPruebas');
             tbody.innerHTML = '';
-
             // Procesar cada línea (saltar encabezados)
             for (let i = 1; i < lineas.length; i++) {
                 const linea = lineas[i].trim();
                 if (!linea) continue;
-
                 const valores = parsearLineaCSV(linea);
                 if (valores.length < 4) continue;
-
                 if (tienePruebaEscala) {
                     const off = tieneTipo ? 1 : 0; // formato nuevo incluye columna Tipo
                     agregarFilaPruebaConDatos({
@@ -2349,30 +2079,23 @@ function importarConfigPruebas(e) {
                     });
                 }
             }
-
             mostrarToast(`Configuración importada: ${lineas.length - 1} pruebas`, 'success');
-
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
     };
-
     reader.onerror = function () {
         mostrarToast('No se pudo leer el archivo', 'error');
     };
-
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
-
 function agregarFilaPruebaConDatos(datos) {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = document.createElement('tr');
     nuevaFila.className = 'fila-prueba';
-
     const dist = datos.distribucion || 'normal';
     const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
-
     nuevaFila.innerHTML = `
         <td><input type="text" class="input input-sm" placeholder="Ej: WAIS-IV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre de la prueba" list="listaPruebas"></td>
         <td><input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo" maxlength="100" value="${datos.nombre}" aria-label="Nombre de la escala"></td>
@@ -2401,24 +2124,19 @@ function agregarFilaPruebaConDatos(datos) {
             </button>
         </td>
     `;
-
     tbody.appendChild(nuevaFila);
     actualizarLimitesPrueba(nuevaFila);
 }
-
 // SOCIODEMOGRÁFICOS
 function exportarConfigSocio() {
     try {
         const filas = document.querySelectorAll('#bodySocio .fila-socio');
-
         if (filas.length === 0) {
             mostrarToast('No hay variables sociodemográficas para exportar', 'warning');
             return;
         }
-
         // Crear CSV con encabezados
         let csv = 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales\n';
-
         filas.forEach(fila => {
             const inputs = fila.querySelectorAll('input');
             const select = fila.querySelector('select');
@@ -2429,58 +2147,46 @@ function exportarConfigSocio() {
             const min = inputs[3].value || '';
             const max = inputs[4].value || '';
             const decimales = inputs[5].value || '';
-
             // Escapar valores con comas
             const categoriaEscapada = categoria.includes(',') ? `"${categoria}"` : categoria;
             csv += `${categoriaEscapada},${distribucion},${promedio},${de},${min},${max},${decimales}\n`;
         });
-
         // Descargar archivo
         descargarArchivo(csv, 'configuracion_sociodemograficos.csv', 'text/csv');
         mostrarToast('Configuración de sociodemográficos exportada exitosamente', 'success');
-
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
     }
 }
-
 function importarConfigSocio(e) {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
     reader.onload = function (event) {
         try {
             const csv = event.target.result;
             const lineas = csv.trim().split('\n');
-
             if (lineas.length < 2) {
                 mostrarToast('El archivo CSV está vacío o no tiene datos', 'error');
                 return;
             }
-
             // Verificar encabezados
             const encabezados = lineas[0].toLowerCase();
             if (!encabezados.includes('categoria') || !encabezados.includes('promedio')) {
                 mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Categoria,Promedio,DE,Minimo,Maximo,Decimales', 'error');
                 return;
             }
-
             // Limpiar tabla actual
             const tbody = document.getElementById('bodySocio');
             tbody.innerHTML = '';
-
             // El formato nuevo incluye una columna "Distribucion" tras "Categoria";
             // se detecta por el encabezado para mantener compatibilidad con CSV viejos.
             const tieneDistribucion = encabezados.includes('distribucion');
-
             // Procesar cada línea (saltar encabezados)
             for (let i = 1; i < lineas.length; i++) {
                 const linea = lineas[i].trim();
                 if (!linea) continue;
-
                 const valores = parsearLineaCSV(linea);
-
                 if (valores.length >= 3) {
                     const desplazamiento = tieneDistribucion ? 1 : 0;
                     agregarFilaSocioConDatos({
@@ -2494,30 +2200,23 @@ function importarConfigSocio(e) {
                     });
                 }
             }
-
             mostrarToast(`Configuración importada: ${lineas.length - 1} variables`, 'success');
-
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
     };
-
     reader.onerror = function () {
         mostrarToast('No se pudo leer el archivo', 'error');
     };
-
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
-
 function agregarFilaSocioConDatos(datos) {
     const tbody = document.getElementById('bodySocio');
     const nuevaFila = document.createElement('tr');
     nuevaFila.className = 'fila-socio';
-
     const dist = datos.distribucion || 'normal';
     const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
-
     nuevaFila.innerHTML = `
         <td><input type="text" class="input input-sm" placeholder="Ej: Edad" value="${datos.categoria}" aria-label="Categoría"></td>
         <td>
@@ -2538,28 +2237,23 @@ function agregarFilaSocioConDatos(datos) {
             </button>
         </td>
     `;
-
     tbody.appendChild(nuevaFila);
     actualizarBloqueoSocio(nuevaFila);
 }
-
 // ========================================
 // CONFIGURACIÓN DE GRÁFICOS CIENTÍFICOS
 // ========================================
-
 function inicializarGraficos() {
     // Usar los datos realmente cargados en el analizador (sirve tanto para
     // datos generados como para un CSV subido); con respaldo al generador.
     const datos = (window.AnalizadorEstadistico && window.AnalizadorEstadistico.obtenerDatos())
         || window.datosGenerados
         || generadorDatos.obtenerDatosGenerados();
-
     // Verificar que existan los datos
     if (!datos || datos.length === 0) {
         console.warn('No hay datos para mostrar gráficos');
         return;
     }
-
     // Verificar que los contenedores existan
     const contenedores = [
         'distribucion-gaussiana',
@@ -2567,18 +2261,15 @@ function inicializarGraficos() {
         'diagrama-caja',
         'diagrama-violin'
     ];
-
     // Filtrar contenedores que existen en el DOM
     const contenedoresValidos = contenedores.filter(id => {
         const elem = document.getElementById(id);
         return elem !== null;
     });
-
     if (contenedoresValidos.length === 0) {
         console.warn('No se encontraron contenedores para gráficos');
         return;
     }
-
     try {
         // Limpiar contenedores previos
         contenedoresValidos.forEach(id => {
@@ -2587,14 +2278,12 @@ function inicializarGraficos() {
                 container.innerHTML = '';
             }
         });
-
         // Preparar datos para gráficos a partir de los datos cargados
         const datosParaGraficos = prepararDatosParaGraficos(datos);
         if (!datosParaGraficos) {
             console.warn('No hay columnas numéricas para graficar');
             return;
         }
-
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
             const chartGauss = new ScientificCharts('distribucion-gaussiana', {
@@ -2608,7 +2297,6 @@ function inicializarGraficos() {
                 yLabel: 'Densidad'
             });
         }
-
         // Crear matriz de correlación
         if (contenedoresValidos.includes('matriz-correlacion')) {
             const chartCorr = new ScientificCharts('matriz-correlacion', {
@@ -2621,7 +2309,6 @@ function inicializarGraficos() {
                 subtitle: datosParaGraficos.metodoCorrelacion
             });
         }
-
         // Crear diagrama de caja
         if (contenedoresValidos.includes('diagrama-caja')) {
             const chartBox = new ScientificCharts('diagrama-caja', {
@@ -2633,7 +2320,6 @@ function inicializarGraficos() {
                 title: 'Distribución de Puntajes por Prueba'
             });
         }
-
         // Crear diagrama de violín
         if (contenedoresValidos.includes('diagrama-violin')) {
             const chartViolin = new ScientificCharts('diagrama-violin', {
@@ -2645,45 +2331,36 @@ function inicializarGraficos() {
                 title: 'Densidad de Distribución por Prueba'
             });
         }
-
         // Mostrar la rejilla de gráficos (oculta por defecto con .chart-grid)
         const grid = document.getElementById('contenedorGraficos');
         if (grid) {
             grid.classList.add('show');
         }
-
     } catch (error) {
         console.error('Error al inicializar gráficos:', error);
     }
 }
-
 // Número máximo de columnas a graficar (legibilidad de matriz/diagramas)
 const MAX_COLUMNAS_GRAFICOS = 8;
-
 // Selecciona columnas numéricas significativas para los gráficos: prioriza los
 // puntajes totales (Total_*); si no hay al menos dos, usa el resto de columnas
 // numéricas. Excluye el identificador (ID) y limita la cantidad por legibilidad.
 function seleccionarColumnasGraficos(datos) {
     if (!datos || datos.length === 0) return [];
-
     const primera = datos[0];
     const numericas = Object.keys(primera).filter(key => {
         if (key === 'ID') return false;
         return typeof primera[key] === 'number' || !isNaN(parseFloat(primera[key]));
     });
-
-    const totales = numericas.filter(key => /^(Total|Dimension|General)_/i.test(key));
+    const totales = numericas.filter(key => /^(Total|Dimensi[oó]n|General)[_\-]/i.test(key));
     const base = totales.length >= 2 ? totales : numericas;
-
     return base.slice(0, MAX_COLUMNAS_GRAFICOS);
 }
-
 // Coeficiente de correlación de Pearson; devuelve 0 si alguna variable es
 // constante (varianza nula) o no hay pares suficientes.
 function correlacionPearsonSimple(a, b) {
     const n = Math.min(a.length, b.length);
     if (n < 2) return 0;
-
     let sumaX = 0, sumaY = 0;
     for (let i = 0; i < n; i++) {
         sumaX += a[i];
@@ -2691,7 +2368,6 @@ function correlacionPearsonSimple(a, b) {
     }
     const mediaX = sumaX / n;
     const mediaY = sumaY / n;
-
     let numerador = 0, varX = 0, varY = 0;
     for (let i = 0; i < n; i++) {
         const dx = a[i] - mediaX;
@@ -2700,11 +2376,9 @@ function correlacionPearsonSimple(a, b) {
         varX += dx * dx;
         varY += dy * dy;
     }
-
     if (varX === 0 || varY === 0) return 0;
     return numerador / Math.sqrt(varX * varY);
 }
-
 // Correlación de Spearman simple: Pearson sobre los RANGOS (con empates promediados).
 function correlacionSpearmanSimple(a, b) {
     const n = Math.min(a.length, b.length);
@@ -2724,7 +2398,6 @@ function correlacionSpearmanSimple(a, b) {
     };
     return correlacionPearsonSimple(rangos(a.slice(0, n)), rangos(b.slice(0, n)));
 }
-
 // Normalidad aproximada (asimetría y curtosis dentro de límites razonables).
 // Mismo espíritu que la evaluación del analizador: sirve para elegir el
 // coeficiente coherente (Pearson si ambas normales; Spearman si no).
@@ -2760,21 +2433,17 @@ function esAproxNormalSimple(v) {
     // Umbrales habituales de tolerancia (|asimetría| < 2 y |curtosis| < 7).
     return Math.abs(asimetria) < 2 && Math.abs(curtosis) < 7;
 }
-
 // Prepara los datos para los gráficos a partir de la base cargada/generada.
 // Devuelve null si no hay columnas numéricas que graficar.
 function prepararDatosParaGraficos(datos) {
     const columnas = seleccionarColumnasGraficos(datos);
     if (columnas.length === 0) return null;
-
     // Valores numéricos por columna (descartando no numéricos)
     const valoresPorColumna = columnas.map(col =>
         datos.map(fila => parseFloat(fila[col])).filter(valor => !isNaN(valor))
     );
-
     // Distribución gaussiana: valores de la primera columna seleccionada
     const distribucion = valoresPorColumna[0];
-
     // Matriz de correlaciones COHERENTE con el análisis: para cada par usa
     // Pearson si AMBAS columnas son aproximadamente normales, y Spearman si no
     // (la misma regla con la que el analizador elige la prueba).
@@ -2791,13 +2460,10 @@ function prepararDatosParaGraficos(datos) {
             return Math.round(r * 100) / 100;
         })
     );
-
-    const labels = columnas.slice();
-
+    const labels = columnas.map(c => obtenerEtiqueta(c));
     const metodoCorrelacion = metodosUsados.size === 1
         ? (metodosUsados.has('Pearson') ? 'Coeficiente: r de Pearson' : 'Coeficiente: ρ de Spearman')
         : 'Coeficiente por par: Pearson o Spearman según normalidad';
-
     return {
         metodoCorrelacion,
         distribucion,
@@ -2810,19 +2476,15 @@ function prepararDatosParaGraficos(datos) {
         labelsViolin: labels.slice(0, 2)
     };
 }
-
 // ========================================
 // UTILIDADES PARA CSV
 // ========================================
-
 function parsearLineaCSV(linea) {
     const resultado = [];
     let dentroComillas = false;
     let valorActual = '';
-
     for (let i = 0; i < linea.length; i++) {
         const char = linea[i];
-
         if (char === '"') {
             dentroComillas = !dentroComillas;
         } else if (char === ',' && !dentroComillas) {
@@ -2833,14 +2495,11 @@ function parsearLineaCSV(linea) {
         }
     }
     resultado.push(valorActual.trim());
-
     return resultado;
 }
-
 function descargarArchivo(contenido, nombreArchivo, tipoMime) {
     const blob = new Blob([contenido], { type: tipoMime + ';charset=utf-8;' });
     const link = document.createElement('a');
-
     if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
