@@ -81,7 +81,7 @@ const InterpretacionesEstadisticas = {
             const normNormal = norm1.normal ? norm1 : norm2;
 
             texto += `Los resultados fueron mixtos: ${varNoNormal} se desvió significativamente de la normalidad (${rep(varNoNormal, normNoNormal)}, p ≤ 0.05), mientras que ${varNormal} sí cumplió el supuesto (${rep(varNormal, normNormal)}, p > 0.05). `;
-            texto += `Dado que el coeficiente de Pearson exige normalidad en AMBAS variables, basta con que una la incumpla para que el procedimiento paramétrico deje de ser apropiado. `;
+            texto += `Dado que el coeficiente de Pearson exige normalidad en ambas variables, basta con que una la incumpla para que el procedimiento paramétrico deje de ser apropiado. `;
             texto += `Por ello se optó por el coeficiente de correlación de Spearman (ρ), que al operar sobre rangos es robusto frente a desviaciones de la normalidad y a valores extremos. `;
         }
 
@@ -221,7 +221,7 @@ const InterpretacionesEstadisticas = {
         } else {
             texto += `el p-valor no es inferior al nivel de significancia (${this._fmtP(pValor)}, frente a α = ${alpha}), por lo que NO SE RECHAZA H₀. `;
             texto += `Se concluye que no existe evidencia suficiente para afirmar que la correlación poblacional entre ${var1} y ${var2} sea distinta de cero. `;
-            texto += `Conviene subrayar que esta decisión NO equivale a "aceptar" H₀: la prueba no demuestra que la correlación sea exactamente nula, solo que los datos no permiten descartarlo. `;
+            texto += `Cabe precisar que esta decisión no equivale a la aceptación de H₀; la prueba no demuestra que la correlación sea exactamente nula, solo que los datos no permiten descartarlo. `;
 
             if (coefAbs < 0.1) {
                 texto += `De hecho, el coeficiente observado es prácticamente nulo, lo que sugiere ausencia de relación apreciable también en el plano descriptivo. `;
