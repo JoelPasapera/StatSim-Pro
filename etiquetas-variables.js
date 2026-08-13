@@ -53,7 +53,8 @@ const EtiquetasVariables = {
     MODO_RENOMBRADO: 'puntajes',
     _FILTROS_RENOMBRADO: {
         // Puntajes de escala: nuevos prefijos por tipo + Total_ (bases antiguas)
-        puntajes: col => /^(total|dimension|general)_/i.test(col),
+        // Blindado: acepta tilde (Dimensión), mayúsculas, espacios iniciales y _ o - como separador
+        puntajes: col => /^\s*(total|dimensi[oó]n|general)[_\-]/i.test(col),
         todos: () => true
     },
     // Estado VACÍO del editor: la sección queda siempre visible en la página.
@@ -91,9 +92,11 @@ const EtiquetasVariables = {
         if (!cont) return;
         const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
         const columnasEditables = (columnas || []).filter(filtro);
+        try { console.info('[Etiquetas] columnas recibidas:', columnas, '→ renombrables:', columnasEditables); } catch (e) {}
         // Sin columnas renombrables: la sección permanece visible con su explicación.
         if (columnasEditables.length === 0) {
-            this.mostrarVacio(idContenedor, '⚠️ Tu base no tiene columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>), así que no hay nada que renombrar.');
+            const muestra = (columnas || []).slice(0, 10).map(c => '<code>' + c + '</code>').join(', ');
+            this.mostrarVacio(idContenedor, '⚠️ No se encontraron columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>) en tu base. Columnas leídas: ' + (muestra || '(ninguna)') + (columnas && columnas.length > 10 ? '…' : '') + '. Si alguna debería aparecer aquí, revisa su nombre exacto.');
             return;
         }
         const filas = columnasEditables.map(col => `
