@@ -114,11 +114,15 @@ const Fiabilidad = {
             txt.split(';').forEach(bloque => {
                 const [nombre, lista] = bloque.split(':');
                 if (!nombre || !lista) return;
-                const items = lista.split(',').map(s => s.trim())
-                    .filter(it => it && numericas.includes(it) && !usados.has(it));
+                const pedidos = lista.split(',').map(s => s.trim()).filter(Boolean);
+                const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
+                const noEncontrados = pedidos.filter(it => !numericas.includes(it));
                 if (items.length >= 2) {
                     items.forEach(it => usados.add(it));
-                    grupos.push({ nombre: nombre.trim(), etiqueta: nombre.trim(), items, origen: 'manual' });
+                    grupos.push({
+                        nombre: nombre.trim(), etiqueta: nombre.trim(), items, origen: 'manual',
+                        avisosPrevios: noEncontrados.length ? [`Ítem(s) indicado(s) manualmente pero no encontrado(s) en la base: ${noEncontrados.join(', ')}.`] : []
+                    });
                 }
             });
         });
@@ -144,6 +148,22 @@ const Fiabilidad = {
             });
         }
 
+        // I1: escala TOTAL por prueba del Simulador (todas sus dimensiones)
+        const porPrueba = {};
+        grupos.filter(g => g.origen === 'simulador').forEach(g => {
+            const m = g.etiqueta.match(/\(([^)]+)\)$/);
+            if (m) (porPrueba[m[1]] = porPrueba[m[1]] || []).push(g);
+        });
+        Object.keys(porPrueba).forEach(prueba => {
+            const dims = porPrueba[prueba];
+            if (dims.length < 2) return;
+            grupos.push({
+                nombre: 'TOTAL_' + prueba,
+                etiqueta: `Escala total (${prueba})`,
+                items: dims.flatMap(d => d.items),
+                origen: 'simulador'
+            });
+        });
         // 3) Heurística de prefijos sobre lo restante
         const porPrefijo = {};
         numericas.forEach(c => {
@@ -167,11 +187,21 @@ const Fiabilidad = {
 
     // ---------- cálculo por grupo ----------
     analizarGrupo(datos, grupo) {
-        const avisos = [];
-        // Matriz de valores por ítem con eliminación de casos incompletos (listwise)
+        const avisos = (grupo.avisosPrevios || []).slice();
+        // C5: primero se excluyen los ítems inservibles (cobertura < 60 % de
+        // casos válidos); el listwise se aplica después sobre los restantes.
+        let itemsUtiles = grupo.items.slice();
+        const bajaCobertura = [];
+        itemsUtiles = itemsUtiles.filter(it => {
+            const validos = datos.reduce((s, f) => s + (Number.isFinite(parseFloat(f[it])) ? 1 : 0), 0);
+            if (validos / datos.length < 0.6) { bajaCobertura.push(it); return false; }
+            return true;
+        });
+        if (bajaCobertura.length) avisos.push(`Ítem(s) excluido(s) por cobertura insuficiente de datos (< 60 % de casos válidos): ${bajaCobertura.join(', ')}.`);
+        if (itemsUtiles.length < 2) return { error: 'Se requieren al menos 2 ítems con cobertura suficiente.', avisos };
         const filas = [];
         datos.forEach(f => {
-            const vals = grupo.items.map(it => parseFloat(f[it]));
+            const vals = itemsUtiles.map(it => parseFloat(f[it]));
             if (vals.every(Number.isFinite)) filas.push(vals);
         });
         const nExcluidos = datos.length - filas.length;
@@ -179,7 +209,7 @@ const Fiabilidad = {
         if (filas.length < 3) return { error: 'Se requieren al menos 3 casos completos.', avisos };
 
         // Columnas por ítem; se excluyen los constantes (varianza nula)
-        let items = grupo.items.slice();
+        let items = itemsUtiles.slice();
         let cols = items.map((_, j) => filas.map(fila => fila[j]));
         const constantes = [];
         for (let j = items.length - 1; j >= 0; j--) {
@@ -222,7 +252,25 @@ const Fiabilidad = {
         }
         const nPares = k * (k - 1) / 2;
         const rMedia = sumaR / nPares;
-        if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''}): posible(s) ítem(s) formulado(s) en sentido inverso sin recodificar.`);
+        // C2: candidatos a ítem inverso = correlación media negativa con el resto
+        const inversos = [];
+        for (let i = 0; i < k; i++) {
+            let s = 0;
+            for (let j = 0; j < k; j++) if (j !== i) s += R[i][j];
+            if (s / (k - 1) < -0.05) inversos.push(i);
+        }
+        let alfaRecod = null;
+        if (inversos.length && inversos.length < k) {
+            const colsR = cols.map((c, j) => {
+                if (!inversos.includes(j)) return c;
+                const mx = Math.max(...c), mn = Math.min(...c);
+                return c.map(x => mx + mn - x);
+            });
+            const totR = filas.map((_, i) => colsR.reduce((s, c) => s + c[i], 0));
+            const vT = this._varianza(totR);
+            if (vT > 0) alfaRecod = (k / (k - 1)) * (1 - colsR.reduce((s, c) => s + this._varianza(c), 0) / vT);
+        }
+        if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''}): posible(s) ítem(s) en sentido inverso sin recodificar${inversos.length ? ` (candidato(s): ${inversos.map(i => items[i]).join(', ')})` : ''}.${alfaRecod != null ? ` Si se recodifican, el alfa asciende a ${alfaRecod.toFixed(3)}; el alfa de la tabla está afectado por esta circunstancia.` : ''}`);
 
         // Alfa (bruto y estandarizado) y lambda 2 de Guttman
         const sumaVarItems = vars.reduce((s, v) => s + v, 0);
@@ -234,14 +282,20 @@ const Fiabilidad = {
         // IC 95 % del alfa (Feldt, 1965)
         const n = filas.length;
         let icAlfa = null;
-        if (alfa < 1 && n > 3) {
+        if (alfa < 0) {
+            avisos.push('El alfa resultó negativo: violación grave del supuesto de covariación positiva entre los ítems (revise posibles ítems inversos o la pertenencia de los ítems a un mismo constructo); no se reporta intervalo de confianza.');
+        }
+        if (alfa >= 0 && alfa < 1 && n > 3) {
             const fInf = this._qF(0.975, n - 1, (n - 1) * (k - 1));
             const fSup = this._qF(0.025, n - 1, (n - 1) * (k - 1));
             icAlfa = { inferior: 1 - (1 - alfa) * fInf, superior: 1 - (1 - alfa) * fSup };
         }
 
         // Omega total de McDonald: ejes principales iterados (1 factor) sobre R
-        const omega = this._omegaUnifactorial(R, k);
+        const om = this._omegaUnifactorial(R, k);
+        const omega = (om && om.ok) ? om.valor : null;
+        if (om && om.motivo) avisos.push(om.motivo);
+        const spearmanBrown = (k === 2) ? (2 * rMedia) / (1 + rMedia) : null;
 
         // Análisis de ítems: r ítem-total corregida y alfa sin el elemento
         const itemsInfo = items.map((it, j) => {
@@ -264,19 +318,23 @@ const Fiabilidad = {
                 debil: rDrop < 0.30
             };
         });
+        if (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)) {
+            avisos.push('Agrupación heurística de dudosa entidad como escala (alfa < .50 o correlación inter-ítem media < .10): verifique que estos ítems midan un constructo común antes de reportar estos coeficientes.');
+        }
         const debiles = itemsInfo.filter(x => x.debil).map(x => x.item);
         if (debiles.length) avisos.push(`Ítem(s) con correlación ítem-total corregida inferior a .30: ${debiles.join(', ')}; su aporte a la escala es reducido y conviene revisarlos.`);
 
         return {
             grupo: grupo.nombre, etiqueta: grupo.etiqueta, origen: grupo.origen,
-            k, n, alfa, alfaStd, icAlfa, omega, lambda2, rMedia, rMin, rMax,
+            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, spearmanBrown, lambda2, rMedia, rMin, rMax,
             items: itemsInfo, avisos,
+            dudosa: (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)),
             interpretacion: this.interpretar(alfa)
         };
     },
 
     _omegaUnifactorial(R, k) {
-        if (k < 3) return null; // con 2 ítems la solución no está identificada
+        if (k < 3) return { ok: false, motivo: null }; // k=2: se reporta Spearman-Brown
         // comunalidades iniciales: máxima |r| de cada fila
         let h2 = R.map((fila, i) => Math.max(...fila.map((r, j) => i === j ? 0 : Math.abs(r))));
         let cargas = null;
@@ -287,22 +345,30 @@ const Fiabilidad = {
             for (let p = 0; p < 100; p++) {
                 const w = Rr.map(fila => fila.reduce((s, r, j) => s + r * v[j], 0));
                 const norma = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
-                if (!(norma > 0)) return null;
+                if (!(norma > 0)) return { ok: false, motivo: 'El ω no se reporta: la solución factorial no es estimable con estos datos.' };
                 const vNuevo = w.map(x => x / norma);
                 lambda = norma;
                 v = vNuevo;
             }
-            if (!(lambda > 0)) return null;
-            const nuevas = v.map(x => Math.sqrt(lambda) * Math.abs(x));
+            if (!(lambda > 0)) return { ok: false, motivo: 'El ω no se reporta: la solución factorial no es estimable con estos datos.' };
+            // Signo global alineado (convención: suma positiva); el signo
+            // INDIVIDUAL de cada carga se conserva para detectar ítems inversos.
+            const signoGlobal = v.reduce((s, x) => s + x, 0) >= 0 ? 1 : -1;
+            const nuevas = v.map(x => Math.sqrt(lambda) * x * signoGlobal);
+            if (nuevas.some(l => l < -0.05)) {
+                return { ok: false, motivo: 'El ω no se reporta: existen cargas factoriales de signo mixto (posible ítem inverso sin recodificar); recodifique los ítems señalados y repita el análisis.' };
+            }
             const cambio = Math.max(...nuevas.map((c, i) => Math.abs(c * c - h2[i])));
             h2 = nuevas.map(c => Math.min(c * c, 0.999));
             cargas = nuevas;
             if (cambio < 1e-6) break;
         }
+        const heywood = cargas.some(l => l * l >= 0.999);
         const sumaCargas = cargas.reduce((s, l) => s + l, 0);
         const sumaUnicidades = cargas.reduce((s, l) => s + (1 - Math.min(l * l, 0.999)), 0);
         const om = (sumaCargas ** 2) / ((sumaCargas ** 2) + sumaUnicidades);
-        return (om > 0 && om <= 1) ? om : null;
+        if (!(om > 0 && om <= 1)) return { ok: false, motivo: 'El ω no se reporta: la solución factorial produjo un valor fuera de rango.' };
+        return { ok: true, valor: om, motivo: heywood ? 'La solución del ω presenta un caso Heywood (comunalidad en el límite); el valor debe tomarse como orientativo.' : null };
     },
 
     interpretar(alfa) {
@@ -399,21 +465,36 @@ const Fiabilidad = {
     // ---------- bloques para el Word ----------
     // Devuelve { tablas: [{titulo, headers, filas, nota}], parrafos: [texto] }
     paraWord() {
+        // C1: si los datos vigentes del analizador están disponibles, se
+        // recalcula sobre ellos; el Word nunca arrastra una base anterior.
+        try {
+            if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.obtenerDatos) {
+                const d = AnalizadorEstadistico.obtenerDatos();
+                if (d && d.length) this.analizarTodo(d);
+            }
+        } catch (e) { /* se conserva el último análisis */ }
         const res = this._ultimo;
         if (!res || !res.validos.length) return null;
         const fmt = x => Number.isFinite(x) ? x.toFixed(3).replace(/^0\./, '.') : '—';
         const tablas = [];
+        const parrafosExtra = [];
+        const reportables = res.validos.filter(r => !r.dudosa);
+        const excluidas = res.validos.filter(r => r.dudosa);
+        if (!reportables.length) return null;
+        if (excluidas.length) parrafosExtra.push(`Se excluyó del reporte ${excluidas.length === 1 ? 'una agrupación heurística' : excluidas.length + ' agrupaciones heurísticas'} de dudosa entidad como escala (${excluidas.map(r => r.etiqueta).join(', ')}), por presentar coeficientes alfa inferiores a .50 o correlaciones inter-ítem medias inferiores a .10.`);
         tablas.push({
             titulo: 'Fiabilidad y consistencia interna de las escalas',
             headers: ['Escala', 'k', 'n', 'α [IC 95 %]', 'α estandarizado', 'ω total', 'λ₂', 'r inter-ítem (M)'],
-            filas: res.validos.map(r => [
+            filas: reportables.map(r => [
                 r.etiqueta, r.k, r.n,
                 `${fmt(r.alfa)}${r.icAlfa ? ` [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]` : ''}`,
-                fmt(r.alfaStd), r.omega != null ? fmt(r.omega) : '—', fmt(r.lambda2), fmt(r.rMedia)
+                fmt(r.alfaStd),
+                r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? `SB = ${fmt(r.spearmanBrown)}` : '—'),
+                fmt(r.lambda2), fmt(r.rMedia)
             ]),
-            nota: 'α = alfa de Cronbach (IC 95 % según Feldt); ω = omega total de McDonald (solución unifactorial); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos.'
+            nota: 'α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); ω = omega total de McDonald (solución unifactorial; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta el coeficiente de Spearman-Brown, SB); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. Si se detectan ítems en sentido inverso, el α informado está afectado y la nota de la escala indica el α tras la recodificación.'
         });
-        res.validos.slice(0, 6).forEach(r => {
+        reportables.slice(0, 6).forEach(r => {
             tablas.push({
                 titulo: `Análisis de ítems de ${r.etiqueta}`,
                 headers: ['Ítem', 'M', 'DE', 'r ítem-total corregida', 'α si se elimina el ítem'],
@@ -424,8 +505,8 @@ const Fiabilidad = {
                 nota: r.avisos.length ? r.avisos.join(' ') : null
             });
         });
-        const parrafos = [this.redactarInterpretacion(res.validos)];
-        if (res.validos.length > 6) parrafos.push(`Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.`);
+        const parrafos = [this.redactarInterpretacion(reportables), ...parrafosExtra];
+        if (reportables.length > 6) parrafos.push(`Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.`);
         return { tablas, parrafos };
     }
 };
