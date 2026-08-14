@@ -315,6 +315,14 @@ const ExportadorWord = {
             const de1 = d1.desviacion ?? d1.desviacionEstandar, de2 = d2.desviacion ?? d2.desviacionEstandar;
             h += this._p(`La tabla de estadísticos descriptivos resume el comportamiento de ambas variables en los ${resultado.n} participantes. ${et1} presentó una media de ${fmt(d1.media)} con una desviación estándar de ${fmt(de1)}, lo que indica que los puntajes típicos se ubicaron alrededor de ese promedio con una dispersión de ±${fmt(de1)} puntos, dentro de un rango observado de ${fmt(d1.minimo ?? d1.min)} a ${fmt(d1.maximo ?? d1.max)}. Por su parte, ${et2} obtuvo una media de ${fmt(d2.media)} (DE = ${fmt(de2)}), con puntajes entre ${fmt(d2.minimo ?? d2.min)} y ${fmt(d2.maximo ?? d2.max)}. La asimetría indica la dirección en la que se prolonga la cola de la distribución (valores positivos: cola derecha; negativos: cola izquierda; cercanos a cero: simetría) y la curtosis compara su apuntamiento con el de la curva normal (positiva: más concentrada en el centro y con colas más pesadas; negativa: más plana). Con asimetrías de ${fmt(d1.asimetria)} y ${fmt(d2.asimetria)} y curtosis de ${fmt(d1.curtosis)} y ${fmt(d2.curtosis)}, ambas variables ${Math.abs(d1.asimetria) < 1 && Math.abs(d2.asimetria) < 1 ? 'se mantienen dentro de márgenes razonables de simetría' : 'muestran desviaciones de la simetría que conviene considerar'}, aspecto que se examina formalmente en la prueba de normalidad siguiente.`);
         }
+        // ---- Fiabilidad y consistencia interna ----
+        if (typeof Fiabilidad !== 'undefined' && Fiabilidad.paraWord) {
+            const FB = Fiabilidad.paraWord();
+            if (FB) {
+                FB.tablas.forEach(t => { h += this._tablaAPA(t.titulo, t.headers, t.filas, t.nota); });
+                FB.parrafos.forEach(p => { h += this._p(p); });
+            }
+        }
         // ---- Normalidad ----
         const n1 = resultado.normalidad1, n2 = resultado.normalidad2;
         const fp = p => p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
