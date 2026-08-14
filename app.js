@@ -799,7 +799,11 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
         console.warn('criba-sociodemografica.js NO está cargado: la sección de hallazgos sociodemográficos no se mostrará. Verifica que el archivo esté subido y que index.html lo incluya.');
     }
     mostrarDescriptivas(et1, et2, resultado);
-    mostrarFiabilidad(var1, var2); // Cronbach accede a las columnas de ítems: nombres técnicos
+    if (typeof Fiabilidad !== 'undefined' && Fiabilidad.mostrar) {
+        Fiabilidad.mostrar('resultadosFiabilidad', AnalizadorEstadistico.obtenerDatos() || []);
+    } else {
+        mostrarFiabilidad(var1, var2); // respaldo: mecanismo anterior, osa si falla lo otro, tipear a mano igual está como opcion :v
+    }
     mostrarPruebasNormalidad(et1, et2, resultado);
     mostrarCorrelacion(et1, et2, resultado);
     mostrarRegresion(et1, et2, resultado);
