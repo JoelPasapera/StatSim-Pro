@@ -319,7 +319,7 @@
     // ---------------- ejes ----------------
     function crearEje(orientacion) {
         return function (escala) {
-            let tamTick = 6, sep = 3, nTicks = null, formato = null, valoresTicks = null;
+            let tamTick = 6, tamOuter = 6, sep = 3, nTicks = null, formato = null, valoresTicks = null;
             function eje(seleccion) {
                 seleccion._cada(g => {
                     while (g.firstChild) g.removeChild(g.firstChild);
@@ -334,8 +334,8 @@
                     linea.setAttribute('stroke', '#64748b');
                     linea.setAttribute('fill', 'none');
                     linea.setAttribute('d', orientacion === 'bottom'
-                        ? `M${r0},${tamTick}V0H${r1}V${tamTick}`
-                        : `M${-tamTick},${r0}H0V${r1}H${-tamTick}`);
+                        ? `M${r0},${tamOuter}V0H${r1}V${tamOuter}`
+                        : `M${-tamOuter},${r0}H0V${r1}H${-tamOuter}`);
                     g.appendChild(linea);
                     ticks.forEach(t => {
                         const pos = escala(t);
@@ -365,7 +365,9 @@
             eje.ticks = n => (nTicks = n, eje);
             eje.tickValues = v => (valoresTicks = v, eje);
             eje.tickFormat = f => (formato = f, eje);
-            eje.tickSize = t => (tamTick = +t, eje);
+            eje.tickSize = t => (tamTick = tamOuter = +t, eje);
+            eje.tickSizeInner = t => (tamTick = +t, eje);
+            eje.tickSizeOuter = t => (tamOuter = +t, eje);
             eje.tickPadding = p => (sep = +p, eje);
             eje.scale = s => s === undefined ? escala : (escala = s, eje);
             return eje;
