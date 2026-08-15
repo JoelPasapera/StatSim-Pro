@@ -2453,10 +2453,17 @@ function esAproxNormalSimple(v) {
 function prepararDatosParaGraficos(datos) {
     const columnas = seleccionarColumnasGraficos(datos);
     if (columnas.length === 0) return null;
-    // Valores numéricos por columna (descartando no numéricos)
-    const valoresPorColumna = columnas.map(col =>
-        datos.map(fila => parseFloat(fila[col])).filter(valor => !isNaN(valor))
-    );
+    // Valores numéricos por columna, con los ID de participante ALINEADOS
+    // (mismo filtrado), para poder identificar outliers en los gráficos.
+    const valoresPorColumna = [];
+    const idsPorColumna = [];
+    columnas.forEach(col => {
+        const pares = datos
+            .map(f => [parseFloat(f[col]), f.ID != null ? f.ID : ''])
+            .filter(p => isFinite(p[0]));
+        valoresPorColumna.push(pares.map(p => p[0]));
+        idsPorColumna.push(pares.map(p => p[1]));
+    });
     // Distribución gaussiana: valores de la primera columna seleccionada
     const distribucion = valoresPorColumna[0];
     // Matriz de correlaciones COHERENTE con el análisis: para cada par usa
@@ -2485,6 +2492,8 @@ function prepararDatosParaGraficos(datos) {
         correlaciones,
         cajas: valoresPorColumna,
         labels,
+        normales: normalPorColumna,
+        ids: idsPorColumna,
         // El violín usa solo las dos primeras columnas: sus etiquetas deben
         // coincidir con esas dos series, no con todas las columnas.
         violin: valoresPorColumna.slice(0, 2),
