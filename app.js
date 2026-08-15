@@ -2335,19 +2335,22 @@ function inicializarGraficos() {
                 primaryColor: '#2E5BBA'
             });
             chartCorr.createCorrelationMatrix(datosParaGraficos.correlaciones, datosParaGraficos.labels, {
-                title: '', // se quitó esta vaina de titulo "Matriz de Correlaciones por Variable" para ponerlo dinamicamenteeee en 'graficas.js' :v
-                subtitle: datosParaGraficos.metodoCorrelacion
+                title: '',
+                subtitle: datosParaGraficos.metodoCorrelacion,
+                seriesPorVariable: datosParaGraficos.cajas,
+                normalesPorVariable: datosParaGraficos.normales
             });
         }
         // Crear diagrama de caja
         if (contenedoresValidos.includes('diagrama-caja')) {
             const chartBox = new ScientificCharts('diagrama-caja', {
-                width: 400,
-                height: 300,
+                width: 900,
+                height: 460,
                 primaryColor: '#2E5BBA'
             });
             chartBox.createBoxPlot(datosParaGraficos.cajas, datosParaGraficos.labels, {
-                title: 'Distribución de Puntajes por Prueba'
+                title: '',
+                ids: datosParaGraficos.ids
             });
         }
         // Mostrar la rejilla de gráficos (oculta por defecto con .chart-grid)
