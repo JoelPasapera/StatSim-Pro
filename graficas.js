@@ -77,7 +77,7 @@ class ScientificCharts {
     _ajustarTamanoCSS(vbW, vbH) {
         const cw = (this.container && this.container.clientWidth) || 0;
         const chDisp = (this.container && this.container.clientHeight) || 0;
-        let w = cw > 40 ? Math.min(cw, vbW * (this._cardExpandida ? 1.6 : 1.3)) : vbW;
+        let w = cw > 40 ? Math.min(cw, vbW * (this._cardExpandida ? 2.2 : 1.3)) : vbW;
         let h = w * vbH / vbW;
         // Si la card tiene alto definido, no sobrepasarlo (dejando ~34 px
         // para el caption); se reduce manteniendo la proporción. Las cards
@@ -305,6 +305,74 @@ class ScientificCharts {
         return this;
     }
     /**
+     * Distribución normal teórica de VARIAS variables superpuestas: una curva
+     * N(μᵢ, σᵢ) por variable, con línea vertical en cada media y leyenda con
+     * μ y σ. Pensado para justificar la normalidad de todas las variables del
+     * análisis en un solo panel (sección de descriptivos de una tesis).
+     * @param {Array<Array>} datasets - Array de arrays numéricos (una serie por variable)
+     * @param {Array<string>} labels - Nombres de las variables
+     * @param {object} options - Opciones (title, xLabel, yLabel)
+     * @returns {ScientificCharts} - Instancia para chaining
+     */
+    createGaussianDistributionMulti(datasets, labels = [], options = {}) {
+        if (!Array.isArray(datasets) || !datasets.length || !Array.isArray(datasets[0])) {
+            throw new Error('datasets debe ser un array de arrays numéricos');
+        }
+        const PALETA = ['#60a5fa', '#f87171', '#34d399', '#fbbf24', '#c084fc', '#22d3ee', '#fb923c', '#a3e635'];
+        const series = datasets.map((d, i) => {
+            const mu = d3.mean(d);
+            const sigma = d3.deviation(d) || 1;
+            return { mu, sigma, n: d.length, label: labels[i] || `Variable ${i + 1}`, color: PALETA[i % PALETA.length] };
+        });
+        const xMin = d3.min(series, s => s.mu - 4 * s.sigma);
+        const xMax = d3.max(series, s => s.mu + 4 * s.sigma);
+        const W = this.config.width - this.config.margin.left - this.config.margin.right;
+        const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
+        const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0, W]).nice();
+        const pdf = (x, s) => Math.exp(-0.5 * ((x - s.mu) / s.sigma) ** 2) / (s.sigma * Math.sqrt(2 * Math.PI));
+        const yMax = d3.max(series, s => pdf(s.mu, s)) * 1.06;
+        const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]);
+        const g = this._createChartBase(
+            options.title || 'Distribución Normal de Puntajes',
+            options.xLabel || 'Puntaje',
+            options.yLabel || 'Densidad de Probabilidad'
+        );
+        const dom = xScale.domain();
+        series.forEach(s => {
+            const curva = d3.range(120).map(i => {
+                const x = dom[0] + (i / 119) * (dom[1] - dom[0]);
+                return { x, y: pdf(x, s) };
+            });
+            // Área suave translúcida + contorno
+            g.append('path').datum(curva)
+                .attr('fill', s.color).attr('fill-opacity', 0.12)
+                .attr('d', d3.area().x(d => xScale(d.x)).y0(H).y1(d => yScale(d.y)).curve(d3.curveBasis));
+            g.append('path').datum(curva)
+                .attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 2.2)
+                .attr('d', d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
+            // Línea vertical en la media
+            g.append('line')
+                .attr('x1', xScale(s.mu)).attr('x2', xScale(s.mu))
+                .attr('y1', H).attr('y2', yScale(pdf(s.mu, s)))
+                .attr('stroke', s.color).attr('stroke-width', 1.2)
+                .attr('stroke-dasharray', '4,3').attr('opacity', 0.85);
+        });
+        // Ejes
+        g.append('g').attr('transform', `translate(0,${H})`).call(d3.axisBottom(xScale));
+        g.append('g').call(d3.axisLeft(yScale));
+        // Leyenda: etiqueta + μ y σ de cada variable
+        const leyenda = g.append('g').attr('class', 'leyenda-multi')
+            .attr('transform', `translate(${W - 8}, 4)`);
+        series.forEach((s, i) => {
+            const fila = leyenda.append('g').attr('transform', `translate(0, ${i * 18})`);
+            fila.append('line').attr('x1', -180).attr('x2', -160).attr('y1', 6).attr('y2', 6)
+                .attr('stroke', s.color).attr('stroke-width', 3);
+            fila.append('text').attr('x', -154).attr('y', 10).attr('font-size', 11)
+                .text(`${s.label}: μ=${s.mu.toFixed(1)}, σ=${s.sigma.toFixed(1)}`);
+        });
+        return this;
+    }
+    /**
      * Crea una matriz de correlación (heatmap)
      * @param {Array} data - Matriz de correlaciones
      * @param {Array} labels - Etiquetas de variables
@@ -327,12 +395,16 @@ class ScientificCharts {
         // las etiquetas se salgan del área del gráfico.
         const anchoContenido = this.config.width - this.config.margin.left - this.config.margin.right;
         const altoContenido = this.config.height - this.config.margin.top - this.config.margin.bottom;
-        const margenEtiquetasFila = 72;
+        // Margen para etiquetas de fila proporcional al nombre más largo,
+        // para que quepan completos (con tope para no comerse la matriz).
+        const largoMaximo = Math.max(...labels.map(l => String(l).length));
+        const margenEtiquetasFila = Math.min(180, Math.max(72, 14 + 6.6 * largoMaximo));
+        const maxCaracteres = Math.floor((margenEtiquetasFila - 14) / 6.6);
         const margenEtiquetasColumna = 56;
         const espacioLeyenda = 44;
         // La matriz llena el ancho disponible; el lienzo crece en vertical si
         // hace falta (el SVG es responsive por viewBox).
-        const cellSize = Math.max(44, Math.min(96, (anchoContenido - margenEtiquetasFila) / n));
+        const cellSize = Math.max(52, Math.min(120, (anchoContenido - margenEtiquetasFila) / n));
         const width = cellSize * n;
         const height = cellSize * n;
         // Ampliar el viewBox del lienzo si la matriz + leyenda lo requieren
@@ -344,7 +416,7 @@ class ScientificCharts {
             this._ajustarTamanoCSS(this.config.width, this.config.height);
         }
         // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
-        const acortarEtiqueta = t => (typeof t === 'string' && t.length > 12) ? t.slice(0, 11) + '…' : t;
+        const acortarEtiqueta = t => (typeof t === 'string' && t.length > maxCaracteres) ? t.slice(0, maxCaracteres - 1) + '…' : t;
         // Escala de color para correlaciones, diseñada para tema oscuro:
         // rojo (negativas) ← slate oscuro (r≈0) → azul (positivas).
         // A diferencia de RdBu clásica, el centro NO es blanco, así que
