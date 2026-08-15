@@ -511,6 +511,10 @@ function mostrarDatosCargados(datos) {
         datos
     );
     poblarSelectsVariables(datos);
+    // Configurador de dimensiones: detección automática editable
+    if (typeof Fiabilidad !== 'undefined' && Fiabilidad.mostrarConfigurador) {
+        Fiabilidad.mostrarConfigurador('configuradorDimensiones', datos);
+    }
     // Mostrar containers
     container.style.display = 'block';
     seleccionContainer.style.display = 'block';
