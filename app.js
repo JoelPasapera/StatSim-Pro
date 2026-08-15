@@ -2283,8 +2283,7 @@ function inicializarGraficos() {
     const contenedores = [
         'distribucion-gaussiana',
         'matriz-correlacion',
-        'diagrama-caja',
-        'diagrama-violin'
+        'diagrama-caja'
     ];
     // Filtrar contenedores que existen en el DOM
     const contenedoresValidos = contenedores.filter(id => {
@@ -2316,7 +2315,7 @@ function inicializarGraficos() {
                 height: 300,
                 primaryColor: '#2E5BBA'
             });
-            chartGauss.createGaussianDistribution(datosParaGraficos.distribucion, null, null, {
+            chartGauss.createGaussianDistributionMulti(datosParaGraficos.cajas, datosParaGraficos.labels, {
                 title: 'Distribución Normal de Puntajes',
                 xLabel: 'Puntaje',
                 yLabel: 'Densidad'
@@ -2343,17 +2342,6 @@ function inicializarGraficos() {
             });
             chartBox.createBoxPlot(datosParaGraficos.cajas, datosParaGraficos.labels, {
                 title: 'Distribución de Puntajes por Prueba'
-            });
-        }
-        // Crear diagrama de violín
-        if (contenedoresValidos.includes('diagrama-violin')) {
-            const chartViolin = new ScientificCharts('diagrama-violin', {
-                width: 400,
-                height: 300,
-                primaryColor: '#2E5BBA'
-            });
-            chartViolin.createViolinPlot(datosParaGraficos.violin, datosParaGraficos.labelsViolin, {
-                title: 'Densidad de Distribución por Prueba'
             });
         }
         // Mostrar la rejilla de gráficos (oculta por defecto con .chart-grid)
