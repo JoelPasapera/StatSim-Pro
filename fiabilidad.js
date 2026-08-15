@@ -682,8 +682,18 @@ const Fiabilidad = {
             });
         });
         const parrafos = [this._explicacionResumen(), this.redactarInterpretacion(reportables), this._explicacionItems(), ...parrafosExtra];
+        // Bloques ORDENADOS para el exportador: cada explicación viaja junto a
+        // su tabla (la guía general de ítems precede a los cuadros de ítems).
+        const bloques = [];
+        bloques.push({ tipo: 'tabla', ...tablas[0] });
+        bloques.push({ tipo: 'parrafo', texto: this._explicacionResumen() });
+        bloques.push({ tipo: 'parrafo', texto: this.redactarInterpretacion(reportables) });
+        bloques.push({ tipo: 'parrafo', texto: this._explicacionItems() });
+        tablas.slice(1).forEach(tb => bloques.push({ tipo: 'tabla', ...tb }));
+        parrafosExtra.forEach(p => bloques.push({ tipo: 'parrafo', texto: p }));
+        if (reportables.length > 6) bloques.push({ tipo: 'parrafo', texto: 'Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.' });
         if (reportables.length > 6) parrafos.push(`Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.`);
-        return { tablas, parrafos };
+        return { bloques, tablas, parrafos };
     }
 };
 if (typeof window !== 'undefined') window.Fiabilidad = Fiabilidad;
