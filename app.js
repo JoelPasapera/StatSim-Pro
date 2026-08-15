@@ -1074,10 +1074,10 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
             <div class="result-box">
                 <p class="result-subtitle" style="margin-bottom: 0.5rem;">Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.</p>
                 <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
-                    <div id="histVariable1"></div>
-                    <div id="qqVariable1"></div>
-                    <div id="histVariable2"></div>
-                    <div id="qqVariable2"></div>
+                    <div id="histVariable1" style="flex: 1 1 46%; min-width: 320px;"></div>
+                    <div id="qqVariable1" style="flex: 1 1 46%; min-width: 320px;"></div>
+                    <div id="histVariable2" style="flex: 1 1 46%; min-width: 320px;"></div>
+                    <div id="qqVariable2" style="flex: 1 1 46%; min-width: 320px;"></div>
                 </div>
             </div>
             <!-- Interpretación de Normalidad -->
@@ -1115,7 +1115,7 @@ function dibujarGraficosQQ(var1, var2, resultado) {
     // elección entre Pearson y Spearman.
     const dibujar = (idHist, idQQ, valores, etiqueta) => {
         if (!Array.isArray(valores) || valores.length < 3) return;
-        const cfg = { width: 360, height: 300, primaryColor: '#2E5BBA' };
+        const cfg = { width: 640, height: 400, primaryColor: '#2E5BBA' };
         try {
             if (document.getElementById(idHist)) {
                 new ScientificCharts(idHist, cfg)
@@ -2308,11 +2308,12 @@ function inicializarGraficos() {
             console.warn('No hay columnas numéricas para graficar');
             return;
         }
+        renderizarSelectorGraficos(datos);
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
             const chartGauss = new ScientificCharts('distribucion-gaussiana', {
-                width: 400,
-                height: 300,
+                width: 900,
+                height: 420,
                 primaryColor: '#2E5BBA'
             });
             chartGauss.createGaussianDistributionMulti(datosParaGraficos.cajas, datosParaGraficos.labels, {
@@ -2324,8 +2325,8 @@ function inicializarGraficos() {
         // Crear matriz de correlación
         if (contenedoresValidos.includes('matriz-correlacion')) {
             const chartCorr = new ScientificCharts('matriz-correlacion', {
-                width: 400,
-                height: 300,
+                width: 900,
+                height: 620,
                 primaryColor: '#2E5BBA'
             });
             chartCorr.createCorrelationMatrix(datosParaGraficos.correlaciones, datosParaGraficos.labels, {
@@ -2365,6 +2366,10 @@ function seleccionarColumnasGraficos(datos) {
         if (key === 'ID') return false;
         return typeof primera[key] === 'number' || !isNaN(parseFloat(primera[key]));
     });
+    if (Array.isArray(window.__varsGraficos) && window.__varsGraficos.length >= 2) {
+        const elegidas = window.__varsGraficos.filter(c => numericas.includes(c));
+        if (elegidas.length >= 2) return elegidas.slice(0, MAX_COLUMNAS_GRAFICOS);
+    }
     const totales = numericas.filter(key => /^(Total|Dimensi[oó]n|General)[_\-]/i.test(key));
     const base = totales.length >= 2 ? totales : numericas;
     return base.slice(0, MAX_COLUMNAS_GRAFICOS);
@@ -2515,4 +2520,47 @@ function descargarArchivo(contenido, nombreArchivo, tipoMime) {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     }
+}
+
+// ===== Selector de variables para los gráficos =====
+function renderizarSelectorGraficos(datos) {
+    const grid = document.getElementById('contenedorGraficos');
+    if (!grid || !datos || !datos.length) return;
+    const numericas = obtenerColumnasNumericas(datos);
+    if (numericas.length < 2) return;
+    let panel = document.getElementById('selectorVarsGraficos');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'selectorVarsGraficos';
+        panel.className = 'chart-container';
+        panel.style.cssText = 'width:100%; padding:0.9rem 1.1rem; margin-bottom:1rem;';
+        grid.parentNode.insertBefore(panel, grid);
+    }
+    const activas = new Set(seleccionarColumnasGraficos(datos));
+    panel.innerHTML = '<h3 class="chart-title" style="margin-bottom:0.5rem;">Variables a graficar</h3>'
+        + '<div style="display:flex; flex-wrap:wrap; gap:0.4rem 1.1rem;">'
+        + numericas.map(c => `
+            <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; font-size:0.92rem;">
+                <input type="checkbox" value="${c}" ${activas.has(c) ? 'checked' : ''}>
+                ${obtenerEtiquetaOpcion(c)}
+            </label>`).join('')
+        + '</div>'
+        + `<p class="help-text" style="margin:0.5rem 0 0;">Mínimo 2, máximo ${MAX_COLUMNAS_GRAFICOS} variables. Los gráficos se actualizan al instante.</p>`;
+    panel.querySelectorAll('input[type="checkbox"]').forEach(chk => {
+        chk.addEventListener('change', function () {
+            const marcadas = [...panel.querySelectorAll('input:checked')].map(x => x.value);
+            if (marcadas.length < 2) {
+                mostrarToast('Selecciona al menos 2 variables', 'warning');
+                this.checked = true;
+                return;
+            }
+            if (marcadas.length > MAX_COLUMNAS_GRAFICOS) {
+                mostrarToast(`Máximo ${MAX_COLUMNAS_GRAFICOS} variables`, 'warning');
+                this.checked = false;
+                return;
+            }
+            window.__varsGraficos = marcadas;
+            inicializarGraficos();
+        });
+    });
 }
