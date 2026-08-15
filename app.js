@@ -1291,8 +1291,8 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, 
 function mostrarFiabilidad(var1, var2) {
     const container = document.getElementById('resultadosFiabilidad');
     if (!container) return;
-    const dim1 = document.getElementById('dimensionesVar1').value.trim();
-    const dim2 = document.getElementById('dimensionesVar2').value.trim();
+    const dim1 = (document.getElementById('dimensionesVar1') || { value: '' }).value.trim();
+    const dim2 = (document.getElementById('dimensionesVar2') || { value: '' }).value.trim();
     if (!dim1 && !dim2) {
         container.style.display = 'none';
         container.innerHTML = '';
@@ -1798,8 +1798,8 @@ function copiarTexto(texto) {
 function mostrarDimensionesSiAplica(var1, var2, tipoPrueba) {
     const container = document.getElementById('resultadosDimensiones');
     if (!container) return;
-    const dim1 = document.getElementById('dimensionesVar1').value.trim();
-    const dim2 = document.getElementById('dimensionesVar2').value.trim();
+    const dim1 = (document.getElementById('dimensionesVar1') || { value: '' }).value.trim();
+    const dim2 = (document.getElementById('dimensionesVar2') || { value: '' }).value.trim();
     // Si no hay dimensiones para ambas variables, ocultar la sección
     if (!dim1 || !dim2) {
         container.style.display = 'none';
