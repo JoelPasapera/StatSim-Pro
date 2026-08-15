@@ -77,17 +77,37 @@ class ScientificCharts {
     _ajustarTamanoCSS(vbW, vbH) {
         const cw = (this.container && this.container.clientWidth) || 0;
         const chDisp = (this.container && this.container.clientHeight) || 0;
-        let w = cw > 40 ? Math.min(cw, vbW * 1.3) : vbW;
+        let w = cw > 40 ? Math.min(cw, vbW * (this._cardExpandida ? 1.6 : 1.3)) : vbW;
         let h = w * vbH / vbW;
         // Si la card tiene alto definido, no sobrepasarlo (dejando ~34 px
-        // para el caption); se reduce manteniendo la proporción.
-        if (chDisp > 80 && h > chDisp - 34) {
+        // para el caption); se reduce manteniendo la proporción. Las cards
+        // expandidas crecen libremente: su alto pasa a ser automático y el
+        // flujo de la página empuja lo demás en lugar de superponerse.
+        if (!this._cardExpandida && chDisp > 80 && h > chDisp - 34) {
             h = chDisp - 34;
             w = h * vbW / vbH;
         }
         this.svg
             .style('width', `${Math.round(w)}px`)
             .style('height', `${Math.round(h)}px`);
+    }
+    /**
+     * Expande la card del gráfico a la fila completa del layout (el espacio
+     * de dos gráficos) y libera su alto para que crezca con el contenido.
+     * Inofensivo si el layout no es un grid. Reajusta el tamaño después.
+     * @private
+     */
+    _expandirCard() {
+        this._cardExpandida = true;
+        if (this.container && this.container.style) {
+            this.container.style.gridColumn = '1 / -1';
+            this.container.style.width = '100%';
+            this.container.style.maxWidth = 'none';
+            this.container.style.height = 'auto';
+            this.container.style.maxHeight = 'none';
+        }
+        const vb = (this.svg.attr('viewBox') || `0 0 ${this.config.width} ${this.config.height}`).split(' ');
+        this._ajustarTamanoCSS(+vb[2], +vb[3]);
     }
     /**
      * Crea gradientes y patrones comunes
@@ -296,6 +316,7 @@ class ScientificCharts {
             throw new Error('Los datos y etiquetas deben ser arrays');
         }
         const n = labels.length;
+        this._expandirCard();
         if (!this._validateArrays(...data)) {
             throw new Error('Todas las filas deben tener la misma longitud');
         }
@@ -319,13 +340,33 @@ class ScientificCharts {
         if (this.svg && altoNecesario > this.config.height) {
             this.svg.attr('viewBox', `0 0 ${this.config.width} ${altoNecesario}`);
             this._ajustarTamanoCSS(this.config.width, altoNecesario);
+        } else {
+            this._ajustarTamanoCSS(this.config.width, this.config.height);
         }
         // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
         const acortarEtiqueta = t => (typeof t === 'string' && t.length > 12) ? t.slice(0, 11) + '…' : t;
-        // Escala de color para correlaciones
+        // Escala de color para correlaciones, diseñada para tema oscuro:
+        // rojo (negativas) ← slate oscuro (r≈0) → azul (positivas).
+        // A diferencia de RdBu clásica, el centro NO es blanco, así que
+        // ninguna celda queda con fondo claro sobre la web oscura.
+        const PARADAS_CORR = [
+            [153, 27, 27],   // -1.0  rojo profundo
+            [239, 68, 68],   // -0.5  rojo
+            [51, 65, 85],    //  0.0  slate oscuro (neutro)
+            [59, 130, 246],  // +0.5  azul
+            [29, 78, 216]    // +1.0  azul profundo
+        ];
+        const interpolarCorrelacion = t => {
+            t = Math.max(0, Math.min(1, t));
+            const x = t * (PARADAS_CORR.length - 1);
+            const i = Math.min(PARADAS_CORR.length - 2, Math.floor(x));
+            const u = x - i;
+            const c = PARADAS_CORR[i].map((a, k) => Math.round(a + (PARADAS_CORR[i + 1][k] - a) * u));
+            return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        };
         const colorScale = d3.scaleSequential()
             .domain([-1, 1])
-            .interpolator(d3.interpolateRdBu);
+            .interpolator(interpolarCorrelacion);
         // Crear base del gráfico
         const g = this._createChartBase(
             options.title || 'Matriz de Correlación',
@@ -439,6 +480,7 @@ class ScientificCharts {
      * @returns {ScientificCharts} - Instancia para chaining
      */
     createBoxPlot(data, labels = null, options = {}) {
+        this._expandirCard();
         let datasets;
         
         if (Array.isArray(data[0])) {
