@@ -309,7 +309,7 @@ const Fiabilidad = {
             const vT = this._varianza(totR);
             if (vT > 0) alfaRecod = (k / (k - 1)) * (1 - colsR.reduce((s, c) => s + this._varianza(c), 0) / vT);
         }
-        if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''}): posible(s) ítem(s) en sentido inverso sin recodificar${inversos.length ? ` (candidato(s): ${inversos.map(i => items[i]).join(', ')})` : ''}.${alfaRecod != null ? ` Si se recodifican, el alfa asciende a ${alfaRecod.toFixed(3)}; el alfa de la tabla está afectado por esta circunstancia.` : ''}`);
+        if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''})${inversos.length ? `; ítem(s) con correlación media negativa con el resto de la escala: ${inversos.map(i => items[i]).join(', ')}` : ''}. Este patrón constituye una ALERTA cuyo origen debe examinarse: puede obedecer a formulación en sentido inverso sin recodificar, a deficiencias de redacción, a multidimensionalidad, a errores de codificación o digitación, o a que el ítem mida un constructo distinto.${alfaRecod != null ? ` Como análisis de sensibilidad, ÚNICAMENTE si la causa fuera la formulación inversa, la recodificación elevaría el alfa a ${alfaRecod.toFixed(3)}; el alfa de la tabla refleja los datos tal como fueron capturados.` : ''}`);
 
         // Alfa (bruto y estandarizado) y lambda 2 de Guttman
         const sumaVarItems = vars.reduce((s, v) => s + v, 0);
@@ -332,7 +332,21 @@ const Fiabilidad = {
 
         // Omega total de McDonald: ejes principales iterados (1 factor) sobre R
         const om = this._omegaUnifactorial(R, k);
-        const omega = (om && om.ok) ? om.valor : null;
+        // ω en métrica de covarianzas (principal): cargas y unicidades
+        // reescaladas por las DE de los ítems — responde a la fiabilidad de la
+        // puntuación total OBSERVADA. El calculado sobre correlaciones queda
+        // como ω estandarizado (auxiliar).
+        let omega = null, omegaStd = null;
+        if (om && om.ok) {
+            omegaStd = om.valor;
+            const des = vars.map(vv => Math.sqrt(vv));
+            const lCov = om.cargas.map((l, i) => Math.max(l, 0) * des[i]);
+            const thCov = om.cargas.map((l, i) => (1 - Math.min(l * l, 0.999)) * vars[i]);
+            const sl = lCov.reduce((s, x) => s + x, 0);
+            const st = thCov.reduce((s, x) => s + x, 0);
+            const oc = (sl * sl) / ((sl * sl) + st);
+            omega = (oc > 0 && oc <= 1) ? oc : omegaStd;
+        }
         if (om && om.motivo) avisos.push(om.motivo);
         const spearmanBrown = (k === 2) ? (2 * rMedia) / (1 + rMedia) : null;
         const omegaH = this._omegaJerarquico(cols, items, R, grupo.particion);
@@ -366,7 +380,7 @@ const Fiabilidad = {
 
         return {
             grupo: grupo.nombre, etiqueta: grupo.etiqueta, origen: grupo.origen,
-            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, omegaH, spearmanBrown, lambda2, rMedia, rMin, rMax,
+            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, omegaStd, omegaH, spearmanBrown, lambda2, rMedia, rMin, rMax,
             items: itemsInfo, avisos,
             dudosa: (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)),
             coefPrincipal: omega != null ? 'ω' : 'α',
@@ -401,7 +415,26 @@ const Fiabilidad = {
                 puntuacionesDim.push(cols[0].map((_, f) => pos.reduce((s, i) => s + cols[i][f], 0)));
             }
             const d = particion.length;
-            const Rdim = puntuacionesDim.map((a, i) => puntuacionesDim.map((b, j) => i === j ? 1 : this._cor(a, b)));
+            // Fiabilidad (ω estandarizado) de cada dimensión, para desatenuar
+            // las correlaciones entre sus puntuaciones suma: el Schmid-Leiman
+            // requiere correlaciones entre FACTORES, no entre compuestos
+            // contaminados por error de medida (corrección de Spearman).
+            const fiabDim = particion.map(dim => {
+                const pos = dim.items.map(it => idx[it]).filter(i => i !== undefined);
+                const subR = pos.map(i => pos.map(j => R[i][j]));
+                const cg = this._cargasUnifactoriales(subR, pos.length);
+                if (!cg) return null;
+                const sl = cg.reduce((s, l) => s + Math.max(l, 0), 0);
+                const st = cg.reduce((s, l) => s + (1 - Math.min(l * l, 0.999)), 0);
+                const o = (sl * sl) / ((sl * sl) + st);
+                return (o > 0.05 && o <= 1) ? o : null;
+            });
+            if (fiabDim.some(x => x == null)) return null;
+            const Rdim = puntuacionesDim.map((a, i) => puntuacionesDim.map((b, j) => {
+                if (i === j) return 1;
+                const rAt = this._cor(a, b);
+                return Math.max(-0.999, Math.min(0.999, rAt / Math.sqrt(fiabDim[i] * fiabDim[j])));
+            }));
             let gammas;
             if (d === 2) {
                 // Solución cerrada clásica con dos indicadores: cargas iguales √r₁₂
@@ -451,7 +484,7 @@ const Fiabilidad = {
             const signoGlobal = v.reduce((s, x) => s + x, 0) >= 0 ? 1 : -1;
             const nuevas = v.map(x => Math.sqrt(lambda) * x * signoGlobal);
             if (nuevas.some(l => l < -0.05)) {
-                return { ok: false, motivo: 'El ω no se reporta: existen cargas factoriales de signo mixto (posible ítem inverso sin recodificar); recodifique los ítems señalados y repita el análisis.' };
+                return { ok: false, motivo: 'El ω no se reporta: existen cargas factoriales de signo mixto. Examine el origen de las correlaciones negativas señaladas (formulación inversa, redacción deficiente, multidimensionalidad, errores de captura o constructo distinto) antes de cualquier recodificación.' };
             }
             const cambio = Math.max(...nuevas.map((c, i) => Math.abs(c * c - h2[i])));
             h2 = nuevas.map(c => Math.min(c * c, 0.999));
@@ -459,7 +492,7 @@ const Fiabilidad = {
             if (cambio < 1e-6) break;
         }
         const heywood = cargas.some(l => l * l >= 0.999);
-        const sumaCargas = cargas.reduce((s, l) => s + l, 0);
+        const sumaCargas = cargas.reduce((s, l) => s + Math.max(l, 0), 0);
         const sumaUnicidades = cargas.reduce((s, l) => s + (1 - Math.min(l * l, 0.999)), 0);
         const om = (sumaCargas ** 2) / ((sumaCargas ** 2) + sumaUnicidades);
         if (!(om > 0 && om <= 1)) return { ok: false, motivo: 'El ω no se reporta: la solución factorial produjo un valor fuera de rango.' };
@@ -668,7 +701,7 @@ const Fiabilidad = {
                 fmt(r.alfaStd),
                 fmt(r.lambda2), fmt(r.rMedia)
             ]),
-            nota: 'ω = omega total de McDonald (coeficiente principal; solución unifactorial congenérica; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta Spearman-Brown, SB); ω jerárquico = fiabilidad atribuible al factor general (aproximación de Schmid-Leiman; solo para escalas totales con partición conocida en dimensiones); α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. La interpretación aplica los criterios convencionales al coeficiente principal disponible (ω, o α en su defecto).'
+            nota: 'ω = omega total de McDonald en la métrica de las puntuaciones observadas (coeficiente principal; modelo congenérico unifactorial estimado por ejes principales iterados; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta Spearman-Brown, SB); ω jerárquico = fiabilidad atribuible al factor general (transformación de Schmid-Leiman con correlaciones entre dimensiones desatenuadas por su fiabilidad; solo para escalas totales con partición conocida); α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. La interpretación aplica los criterios convencionales al coeficiente principal disponible (ω, o α en su defecto).'
         });
         reportables.slice(0, 6).forEach(r => {
             tablas.push({
