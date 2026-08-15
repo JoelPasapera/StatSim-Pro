@@ -2308,7 +2308,10 @@ function inicializarGraficos() {
             console.warn('No hay columnas numéricas para graficar');
             return;
         }
+        // El renderizadooooo
         renderizarSelectorGraficos(datos);
+        // Inserta una explicacion pedagogica en cada grafico :3 
+        insertarDescripcionesGraficos();
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
             const chartGauss = new ScientificCharts('distribucion-gaussiana', {
@@ -2562,5 +2565,26 @@ function renderizarSelectorGraficos(datos) {
             window.__varsGraficos = marcadas;
             inicializarGraficos();
         });
+    });
+}
+
+
+// ===== Descripciones pedagógicas de cada gráfico (estilo tesis) =====
+function insertarDescripcionesGraficos() {
+    const descripciones = {
+        'distribucion-gaussiana': 'La curva de densidad normal representa el modelo teórico N(μ, σ) estimado para cada variable a partir de su media y desviación estándar muestrales. Su lectura permite valorar visualmente el supuesto de normalidad y comparar las distribuciones entre sí: curvas desplazadas horizontalmente reflejan medias distintas, mientras que curvas más anchas y de menor altura indican mayor variabilidad. Las líneas verticales discontinuas señalan la media de cada distribución; el eje de ordenadas expresa densidad de probabilidad, de modo que el área bajo cada curva equivale a la totalidad de los casos.',
+        'matriz-correlacion': 'La matriz de correlaciones sintetiza la magnitud y dirección de la asociación entre cada par de variables mediante un mapa de calor: los tonos azules denotan correlaciones positivas, los rojos negativas, y la intensidad del color refleja la fuerza de la relación en el rango de −1 a +1. La diagonal, por definición, presenta correlaciones perfectas de cada variable consigo misma. El coeficiente empleado en cada par (r de Pearson o ρ de Spearman) se selecciona según el cumplimiento del supuesto de normalidad, con el mismo criterio aplicado en el análisis inferencial.',
+        'diagrama-caja': 'El diagrama de caja y bigotes resume la distribución de cada variable mediante cinco estadísticos: la línea central corresponde a la mediana, la caja delimita el rango intercuartílico (50 % central de las observaciones), los bigotes se extienden hasta los valores dentro de 1.5 veces dicho rango, y los puntos aislados representan casos atípicos. Su comparación conjunta permite identificar diferencias de nivel y de dispersión entre las pruebas, así como posibles asimetrías en las distribuciones.'
+    };
+    Object.entries(descripciones).forEach(([id, texto]) => {
+        const wrapper = document.getElementById(id);
+        if (!wrapper) return;
+        const card = wrapper.closest('.chart-container') || wrapper.parentElement;
+        if (!card || card.querySelector('.chart-desc')) return;
+        const p = document.createElement('p');
+        p.className = 'chart-desc';
+        p.style.cssText = 'color:#94a3b8; font-size:0.9rem; line-height:1.55; margin:0.25rem 0 0.75rem; text-align:justify;';
+        p.textContent = texto;
+        card.insertBefore(p, wrapper);
     });
 }
