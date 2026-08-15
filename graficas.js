@@ -394,7 +394,7 @@ class ScientificCharts {
         const series = datasets.map((d, i) => {
             const mu = d3.mean(d);
             const sigma = d3.deviation(d) || 1;
-            return { mu, sigma, n: d.length, label: labels[i] || `Variable ${i + 1}`, color: PALETA[i % PALETA.length] };
+            return { mu, sigma, n: d.length, valores: d, label: labels[i] || `Variable ${i + 1}`, color: PALETA[i % PALETA.length] };
         });
         const xMin = d3.min(series, s => s.mu - 4 * s.sigma);
         const xMax = d3.max(series, s => s.mu + 4 * s.sigma);
@@ -402,7 +402,26 @@ class ScientificCharts {
         const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
         const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0, W]).nice();
         const pdf = (x, s) => Math.exp(-0.5 * ((x - s.mu) / s.sigma) ** 2) / (s.sigma * Math.sqrt(2 * Math.PI));
-        const yMax = d3.max(series, s => pdf(s.mu, s)) * 1.06;
+        // Densidad EMPÍRICA de cada variable (KDE gaussiana, banda de
+        // Silverman): permite contrastar visualmente los datos reales contra
+        // el modelo normal teórico. Si ambas curvas coinciden, la distribución
+        // es compatible con la normal; si divergen, hay desviaciones.
+        const kdeDe = s => {
+            const h = (1.06 * s.sigma * Math.pow(s.n, -0.2)) || 1;
+            const paso = (xMax - xMin) / 120;
+            const puntos = [];
+            for (let x = xMin; x <= xMax; x += paso) {
+                let suma = 0;
+                for (const xi of s.valores) suma += Math.exp(-0.5 * ((x - xi) / h) ** 2);
+                puntos.push({ x, y: suma / (s.n * h * Math.sqrt(2 * Math.PI)) });
+            }
+            return puntos;
+        };
+        series.forEach(s => { s.kde = kdeDe(s); });
+        const yMax = Math.max(
+            d3.max(series, s => pdf(s.mu, s)),
+            d3.max(series, s => d3.max(s.kde, p => p.y))
+        ) * 1.06;
         const yScale = d3.scaleLinear().domain([0, yMax]).range([H, 0]);
         const g = this._createChartBase(
             options.title || 'Distribución Normal de Puntajes',
@@ -422,6 +441,12 @@ class ScientificCharts {
                 .attr('d', d3.area().x(d => xScale(d.x)).y0(H).y1(d => yScale(d.y)).curve(d3.curveBasis));
             g.append('path').datum(curva)
                 .attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 2.2)
+                .attr('d', d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
+            // Densidad empírica (datos reales): línea punteada del mismo color
+            g.append('path').datum(s.kde)
+                .attr('class', 'kde-empirica')
+                .attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 1.6)
+                .attr('stroke-dasharray', '6,4').attr('opacity', 0.9)
                 .attr('d', d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
             // Línea vertical en la media
             g.append('line')
@@ -443,6 +468,14 @@ class ScientificCharts {
             fila.append('text').attr('x', -154).attr('y', 10).attr('font-size', 11)
                 .text(`${s.label}: μ=${s.mu.toFixed(1)}, σ=${s.sigma.toFixed(1)}`);
         });
+        // Clave de estilos: modelo teórico (línea continua) vs. datos (punteada)
+        const filaClave = leyenda.append('g').attr('transform', `translate(0, ${series.length * 18 + 6})`);
+        filaClave.append('line').attr('x1', -180).attr('x2', -160).attr('y1', 6).attr('y2', 6)
+            .attr('stroke', '#e2e8f0').attr('stroke-width', 2.2);
+        filaClave.append('text').attr('x', -154).attr('y', 10).attr('font-size', 11).text('normal teórica');
+        filaClave.append('line').attr('x1', -70).attr('x2', -50).attr('y1', 6).attr('y2', 6)
+            .attr('stroke', '#e2e8f0').attr('stroke-width', 1.6).attr('stroke-dasharray', '6,4');
+        filaClave.append('text').attr('x', -44).attr('y', 10).attr('font-size', 11).text('empírica');
         // Cursor de coordenadas (cruz) solo dentro de este gráfico
         this._agregarCrosshair(g, W, H,
             px => xScale.invert(px).toFixed(1),
