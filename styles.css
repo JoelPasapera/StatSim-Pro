@@ -1124,4 +1124,7 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
 .ana-hero:has(.ana-hero-video:empty) .ana-ctas { justify-content: center; }
 .ana-hero:has(.ana-hero-video:empty) .ana-cta-tutorial { display: none; }
 
- 
+ /* Gráficos apilados: cada uno aprovecha todo el ancho, sin recortes */
+#contenedorGraficos.chart-grid.show { display: flex; flex-direction: column; gap: 1.5rem; }
+#contenedorGraficos .chart-container { width: 100%; height: auto; max-height: none; overflow: visible; }
+#contenedorGraficos .chart-wrapper { width: 100%; height: auto; min-height: 0; }
