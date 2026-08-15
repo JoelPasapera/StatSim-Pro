@@ -2312,6 +2312,8 @@ function inicializarGraficos() {
         renderizarSelectorGraficos(datos);
         // Inserta una explicacion pedagogica en cada grafico :3 
         insertarDescripcionesGraficos();
+        // El simbolo de interrogacion de explicacion supere entendibleeeeeeee siuu xd 
+        agregarAyudasGraficos();
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
             const chartGauss = new ScientificCharts('distribucion-gaussiana', {
@@ -2586,5 +2588,60 @@ function insertarDescripcionesGraficos() {
         p.style.cssText = 'color:#94a3b8; font-size:0.9rem; line-height:1.55; margin:0.25rem 0 0.75rem; text-align:justify;';
         p.textContent = texto;
         card.insertBefore(p, wrapper);
+    });
+}
+
+// ===== Ayudas pedagógicas: botón "?" junto al título de cada gráfico =====
+function agregarAyudasGraficos() {
+    const ayudas = {
+        'distribucion-gaussiana': {
+            titulo: 'Distribución de Puntajes: Teórica vs. Empírica',
+            html: '<p><b>¿Qué estoy viendo?</b> Cada variable tiene dos líneas del mismo color. La <b>continua</b> muestra cómo se verían tus datos si siguieran una distribución normal perfecta (la famosa "campana") con su misma media y desviación. La <b>punteada</b> muestra cómo se distribuyen tus datos <i>de verdad</i>.</p><p><b>¿Para qué sirve?</b> Es como una radiografía antes del tratamiento: muchos análisis (Pearson, t de Student, ANOVA, regresión) asumen normalidad, así que antes de confiar en ellos conviene mirar cómo se comportan tus datos. Este gráfico no dice "tus datos son normales"; dice "compara tú mismo lo observado con lo esperado".</p><p><b>¿Qué buscar?</b> Si la punteada abraza a la continua, tus datos son compatibles con la normal. Si tiene <b>dos jorobas</b> (posible bimodalidad), una <b>cola larga</b> hacia un lado (asimetría) o una forma claramente distinta, hay desviaciones: confírmalo con las pruebas formales (Shapiro-Wilk / K-S) del panel de normalidad y considera alternativas como Spearman.</p><p><b>Ojo con la altura:</b> no cuenta personas. Una curva alta y estrecha significa datos muy concentrados (σ pequeña); una baja y ancha, datos dispersos (σ grande). El área bajo cada curva siempre suma el 100 %. Y recuerda: cada variable está en su escala original, así que la posición de las curvas depende de cómo se mide cada una.</p>'
+        },
+        'matriz-correlacion': {
+            titulo: 'Matriz de Correlaciones por Variable',
+            html: '<p><b>¿Qué estoy viendo?</b> Una tabla de colores que resume, de un vistazo, qué variables se mueven juntas. <b>Azul</b>: cuando una sube, la otra también (correlación positiva). <b>Rojo</b>: cuando una sube, la otra baja (negativa). Cuanto más intenso el color y más cercano a ±1 el número, más fuerte la relación; valores cerca de 0 significan que casi no hay relación lineal.</p><p><b>¿Y la diagonal?</b> Siempre vale 1.00: es cada variable correlacionada consigo misma (perfecta por definición).</p><p><b>Detalle fino:</b> para cada par, el programa elige automáticamente el coeficiente correcto — r de Pearson si ambas variables pasan la prueba de normalidad, ρ de Spearman si alguna no — con el mismo criterio del análisis principal (lo indica el texto sobre la matriz).</p><p><b>Advertencia clásica de tesis:</b> correlación no implica causalidad. Que dos variables se muevan juntas no demuestra que una cause a la otra.</p>'
+        },
+        'diagrama-caja': {
+            titulo: 'Diagrama de Caja (Boxplot)',
+            html: '<p><b>¿Qué estoy viendo?</b> La "foto de grupo" de cada variable. La <b>línea central</b> de cada caja es la mediana: el valor de la persona que queda justo en el medio. La <b>caja</b> contiene al 50 % central de los participantes. Los <b>bigotes</b> se extienden hasta los valores típicos, y los <b>puntos sueltos</b> son casos atípicos que se salen de lo esperado.</p><p><b>¿Para qué sirve?</b> Para comparar variables (o pruebas) de un vistazo: cajas más arriba = puntajes mayores; cajas más largas = más variabilidad entre personas; una mediana descentrada dentro de su caja sugiere asimetría.</p><p><b>Tip de investigador:</b> los puntos atípicos merecen una mirada antes de correr análisis — a veces son errores de digitación, a veces casos genuinamente extremos que pueden influir en los resultados.</p>'
+        }
+    };
+    let modal = document.getElementById('modalAyudaGrafico');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'modalAyudaGrafico';
+        modal.style.cssText = 'display:none; position:fixed; inset:0; background:rgba(2,6,23,0.72); z-index:1000; align-items:center; justify-content:center; padding:1rem;';
+        modal.innerHTML = '<div id="modalAyudaCaja" style="background:#0f172a; border:1px solid #334155; border-radius:12px; max-width:640px; width:100%; max-height:82vh; overflow-y:auto; padding:1.4rem 1.6rem; box-shadow:0 20px 60px rgba(0,0,0,0.5);">'
+            + '<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:0.6rem;">'
+            + '<h4 id="modalAyudaTitulo" style="margin:0; color:#fbbf24; font-size:1.05rem;"></h4>'
+            + '<button id="modalAyudaCerrar" aria-label="Cerrar" style="background:none; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer; line-height:1;">✕</button>'
+            + '</div><div id="modalAyudaContenido" style="color:#cbd5e1; font-size:0.95rem; line-height:1.6;"></div></div>';
+        document.body.appendChild(modal);
+        modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+        modal.querySelector('#modalAyudaCerrar').addEventListener('click', () => { modal.style.display = 'none'; });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.style.display = 'none'; });
+    }
+    Object.entries(ayudas).forEach(([id, ayuda]) => {
+        const wrapper = document.getElementById(id);
+        if (!wrapper) return;
+        const card = wrapper.closest('.chart-container') || wrapper.parentElement;
+        const titulo = card ? card.querySelector('.chart-title') : null;
+        if (!titulo || titulo.querySelector('.btn-ayuda-grafico')) return;
+        const btn = document.createElement('button');
+        btn.className = 'btn-ayuda-grafico';
+        btn.type = 'button';
+        btn.textContent = '?';
+        btn.setAttribute('aria-label', 'Explicación de este gráfico');
+        btn.title = '¿Qué es este gráfico?';
+        btn.style.cssText = 'display:inline-flex; align-items:center; justify-content:center; width:19px; height:19px; margin-left:0.5rem; border:none; border-radius:50%; background:linear-gradient(135deg,#f59e0b,#d97706); color:#fff; font-size:12px; font-weight:700; cursor:pointer; vertical-align:middle; box-shadow:0 1px 4px rgba(245,158,11,0.45); transition:transform 0.15s;';
+        btn.addEventListener('mouseenter', () => { btn.style.transform = 'scale(1.18)'; });
+        btn.addEventListener('mouseleave', () => { btn.style.transform = 'scale(1)'; });
+        btn.addEventListener('click', () => {
+            document.getElementById('modalAyudaTitulo').textContent = ayuda.titulo;
+            document.getElementById('modalAyudaContenido').innerHTML = ayuda.html;
+            modal.style.display = 'flex';
+        });
+        titulo.appendChild(btn);
     });
 }
