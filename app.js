@@ -2429,17 +2429,9 @@ function esAproxNormalSimple(v) {
     // coeficiente en los resultados; el atajo de momentos queda como respaldo.
     if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.shapiroWilk) {
         try {
-            const r = valores.length < 50
-                ? AnalizadorEstadistico.shapiroWilk(valores)
-                : AnalizadorEstadistico.kolmogorovSmirnov(valores);
-            if (r && Number.isFinite(r.pValor)) return r.pValor > 0.05;
-        } catch (e) { /* respaldo por momentos */ }
-    }
-    if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.shapiroWilk) {
-        try {
-            const r = valores.length < 50
-                ? AnalizadorEstadistico.shapiroWilk(valores)
-                : AnalizadorEstadistico.kolmogorovSmirnov(valores);
+            const r = v.length < 50
+                ? AnalizadorEstadistico.shapiroWilk(v)
+                : AnalizadorEstadistico.kolmogorovSmirnov(v);
             if (r && Number.isFinite(r.pValor)) return r.pValor > 0.05;
         } catch (e) { /* respaldo por momentos */ }
     }
