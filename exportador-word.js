@@ -318,7 +318,14 @@ const ExportadorWord = {
         // ---- Fiabilidad y consistencia interna ----
         if (typeof Fiabilidad !== 'undefined' && Fiabilidad.paraWord) {
             const FB = Fiabilidad.paraWord();
-            if (FB) {
+            if (FB && FB.bloques) {
+                // Bloques ordenados: cada explicación va junto a su tabla.
+                FB.bloques.forEach(b => {
+                    h += (b.tipo === 'tabla')
+                        ? this._tablaAPA(b.titulo, b.headers, b.filas, b.nota)
+                        : this._p(b.texto);
+                });
+            } else if (FB) {
                 FB.tablas.forEach(t => { h += this._tablaAPA(t.titulo, t.headers, t.filas, t.nota); });
                 FB.parrafos.forEach(p => { h += this._p(p); });
             }
