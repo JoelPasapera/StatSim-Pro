@@ -462,6 +462,38 @@ const Fiabilidad = {
         return 'En las tablas de análisis de ítems, M y DE corresponden a la media y la desviación estándar de cada ítem, que permiten identificar elementos con distribuciones extremas o escasa variabilidad. La correlación ítem-total corregida expresa la relación entre el ítem y la suma de los ítems restantes (excluido el propio, para evitar la contaminación de la correlación por su pertenencia al total); valores iguales o superiores a .30 indican una contribución adecuada al constructo, en tanto que valores inferiores señalan ítems cuya pertinencia debe revisarse. La columna «α si se elimina» informa el valor que adoptaría el coeficiente al suprimir el ítem correspondiente: cuando dicho valor supera al α global de la escala, el ítem reduce la consistencia interna y constituye un candidato a revisión, reformulación o eliminación.';
     },
 
+    // Interpretación específica de los hallazgos de una tabla de análisis de
+    // ítems (redacción académica generada a partir de los datos de la escala).
+    _interpretarItems(r) {
+        const f3 = x => Number.isFinite(x) ? x.toFixed(3).replace(/^(-?)0\./, '$1.') : '—';
+        const porR = [...r.items].sort((a, b) => a.rItemTotal - b.rItemTotal);
+        const peor = porR[0], mejor = porR[porR.length - 1];
+        const debiles = r.items.filter(x => x.debil);
+        let t = `En la escala ${r.etiqueta}, las correlaciones ítem-total corregidas oscilaron entre ${f3(peor.rItemTotal)} (${peor.item}) y ${f3(mejor.rItemTotal)} (${mejor.item}). `;
+        if (!debiles.length) {
+            t += `La totalidad de los ítems supera el criterio de .30, lo que indica que cada elemento contribuye de manera adecuada a la medición del constructo; el ítem ${mejor.item} presenta la asociación más estrecha con la puntuación total y constituye el indicador más representativo del conjunto. `;
+        } else {
+            t += `${debiles.length === 1 ? `El ítem ${debiles[0].item} presenta una correlación inferior al criterio de .30 (${f3(debiles[0].rItemTotal)})` : `Los ítems ${debiles.map(x => x.item).join(', ')} presentan correlaciones inferiores al criterio de .30`}, de modo que su aporte a la consistencia de la escala es reducido y su pertinencia debe examinarse; en contraste, el ítem ${mejor.item} muestra la asociación más estrecha con la puntuación total. `;
+        }
+        const conAlfa = r.items.filter(x => Number.isFinite(x.alfaSinItem));
+        if (conAlfa.length) {
+            const maxA = conAlfa.reduce((a, b) => (b.alfaSinItem > a.alfaSinItem ? b : a));
+            if (maxA.alfaSinItem > r.alfa + 0.0005) {
+                t += `La supresión del ítem ${maxA.item} elevaría el coeficiente de ${f3(r.alfa)} a ${f3(maxA.alfaSinItem)}, por lo que constituye el principal candidato a revisión, reformulación o eliminación. `;
+            } else {
+                t += `Ningún ítem incrementaría el coeficiente al ser eliminado, lo que respalda la conservación del conjunto completo. `;
+            }
+        }
+        const des = r.items.map(x => x.de).sort((a, b) => a - b);
+        const medianaDE = des[Math.floor(des.length / 2)];
+        const bajaVar = r.items.filter(x => medianaDE > 0 && x.de < 0.5 * medianaDE);
+        if (bajaVar.length) {
+            t += `${bajaVar.length === 1 ? `El ítem ${bajaVar[0].item} exhibe` : `Los ítems ${bajaVar.map(x => x.item).join(', ')} exhiben`} una variabilidad notablemente inferior a la del resto, circunstancia que limita su capacidad de discriminación entre participantes. `;
+        }
+        t += `En conjunto, el patrón observado resulta coherente con el alfa de ${f3(r.alfa)} de la escala, de interpretación ${r.interpretacion}.`;
+        return t;
+    },
+
     // ---------- sección de la interfaz ----------
     mostrar(idContenedor, datos) {
         const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
@@ -497,6 +529,7 @@ const Fiabilidad = {
                     </tr>`).join('')}
                 </table>
                 ${r.avisos.length ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">${r.avisos.join(' ')}</p>` : ''}
+                <p class="result-subtitle" style="margin-top: 0.5rem;">${this._interpretarItems(r)}</p>
             </div>`).join('');
         cont.innerHTML = `
             <div class="result-section">
@@ -511,10 +544,11 @@ const Fiabilidad = {
                 <div class="result-box">
                     <p class="result-subtitle" style="margin: 0;">${this._explicacionResumen()}</p>
                 </div>
-                ${bloquesItems}
                 <div class="result-box">
+                    <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Análisis de ítems: guía de lectura</h5>
                     <p class="result-subtitle" style="margin: 0;">${this._explicacionItems()}</p>
                 </div>
+                ${bloquesItems}
                 <div class="result-box interpretation-box interpretation-box--hipotesis">
                     <h5 class="interpretation-title">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -581,7 +615,7 @@ const Fiabilidad = {
                     it.item, it.media.toFixed(2), it.de.toFixed(2), fmt(it.rItemTotal),
                     it.alfaSinItem != null ? fmt(it.alfaSinItem) : '—'
                 ]),
-                nota: r.avisos.length ? r.avisos.join(' ') : null
+                nota: this._interpretarItems(r) + (r.avisos.length ? ' ' + r.avisos.join(' ') : '')
             });
         });
         const parrafos = [this._explicacionResumen(), this.redactarInterpretacion(reportables), this._explicacionItems(), ...parrafosExtra];
