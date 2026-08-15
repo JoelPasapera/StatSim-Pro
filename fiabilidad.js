@@ -178,8 +178,18 @@ const Fiabilidad = {
             if (items.length < 2) return;
             items.sort((a, b) => (parseInt(a.match(/(\d+)$/)[1], 10)) - (parseInt(b.match(/(\d+)$/)[1], 10)));
             items.forEach(it => usados.add(it));
-            const etiqueta = (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.etiqueta)
-                ? EtiquetasVariables.etiqueta(prefijo) : prefijo;
+            // El prefijo es un ALIAS: si existe una columna de puntaje asociada
+            // (Dimension_F / Total_F / General_F) y el usuario la renombró en el
+            // editor de etiquetas, el grupo de ítems hereda ese nombre real;
+            // sin renombre, conserva el alias.
+            let etiqueta = prefijo;
+            if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.etiqueta) {
+                const etDirecta = EtiquetasVariables.etiqueta(prefijo);
+                const asociada = columnas.find(c => new RegExp('^\\s*(total|dimensi[oó]n|general)[_\\-]' + prefijo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '$', 'i').test(c));
+                const etAsociada = asociada ? EtiquetasVariables.etiqueta(asociada) : null;
+                if (etDirecta && etDirecta !== prefijo) etiqueta = etDirecta;
+                else if (asociada && etAsociada && etAsociada !== asociada) etiqueta = etAsociada;
+            }
             grupos.push({ nombre: prefijo, etiqueta, items, origen: 'prefijo' });
         });
         return grupos;
