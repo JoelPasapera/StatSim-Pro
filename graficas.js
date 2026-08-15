@@ -33,7 +33,7 @@ class ScientificCharts {
             gridColor: '#E5E5E5',
             primaryColor: '#2E5BBA',
             secondaryColor: '#D32F2F',
-            backgroundColor: '#FFFFFF',
+            backgroundColor: 'transparent',
             ...config
         };
         // Estado interno
@@ -53,9 +53,11 @@ class ScientificCharts {
             .append('svg')
             .attr('viewBox', `0 0 ${this.config.width} ${this.config.height}`)
             .attr('preserveAspectRatio', 'xMidYMid meet')
-            .style('width', '100%')
-            .style('height', 'auto')
-            .style('max-width', `${Math.round(this.config.width * 1.35)}px`)
+            // Color de texto por defecto (heredado por todos los <text> sin
+            // fill propio): claro, en sintonía con el tema oscuro de la web.
+            .attr('fill', '#e2e8f0')
+            .style('display', 'block')
+            .style('margin', '0 auto')
             .attr('font-family', this.config.fontFamily)
             // role="img" + aria-label (con el título) para lectores de pantalla.
             .attr('role', 'img')
@@ -63,6 +65,29 @@ class ScientificCharts {
         // Añadir definiciones para gradientes y patrones
         this.defs = this.svg.append('defs');
         this._createGradients();
+        this._ajustarTamanoCSS(this.config.width, this.config.height);
+    }
+    /**
+     * Fija el tamaño CSS del SVG midiendo el marco real donde vive, de modo
+     * que el gráfico ocupe el ancho disponible SIN desbordar nunca su card
+     * (ni en ancho ni en alto; se reserva un pequeño espacio para el
+     * subtítulo/caption que pueda haber debajo). El dibujo escala por viewBox.
+     * @private
+     */
+    _ajustarTamanoCSS(vbW, vbH) {
+        const cw = (this.container && this.container.clientWidth) || 0;
+        const chDisp = (this.container && this.container.clientHeight) || 0;
+        let w = cw > 40 ? Math.min(cw, vbW * 1.3) : vbW;
+        let h = w * vbH / vbW;
+        // Si la card tiene alto definido, no sobrepasarlo (dejando ~34 px
+        // para el caption); se reduce manteniendo la proporción.
+        if (chDisp > 80 && h > chDisp - 34) {
+            h = chDisp - 34;
+            w = h * vbW / vbH;
+        }
+        this.svg
+            .style('width', `${Math.round(w)}px`)
+            .style('height', `${Math.round(h)}px`);
     }
     /**
      * Crea gradientes y patrones comunes
@@ -293,6 +318,7 @@ class ScientificCharts {
         const altoNecesario = this.config.margin.top + margenEtiquetasColumna + height + 100 + this.config.margin.bottom;
         if (this.svg && altoNecesario > this.config.height) {
             this.svg.attr('viewBox', `0 0 ${this.config.width} ${altoNecesario}`);
+            this._ajustarTamanoCSS(this.config.width, altoNecesario);
         }
         // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
         const acortarEtiqueta = t => (typeof t === 'string' && t.length > 12) ? t.slice(0, 11) + '…' : t;
@@ -734,8 +760,8 @@ class ScientificCharts {
         legend.append('rect')
             .attr('width', 140)
             .attr('height', 60)
-            .attr('fill', 'white')
-            .attr('stroke', '#ccc')
+            .attr('fill', 'rgba(15, 23, 42, 0.88)')
+            .attr('stroke', '#475569')
             .attr('opacity', 0.8);
         legend.append('text')
             .attr('x', 10)
@@ -826,11 +852,11 @@ class ScientificCharts {
             const cx = b >= 0 ? 10 : W - anchoCaja - 10;
             const caja = g.append('g').attr('transform', `translate(${cx},8)`);
             caja.append('rect').attr('width', anchoCaja).attr('height', altoCaja)
-                .attr('rx', 6).attr('fill', '#ffffff').attr('fill-opacity', 0.92)
-                .attr('stroke', '#cbd5e1');
+                .attr('rx', 6).attr('fill', 'rgba(15, 23, 42, 0.92)')
+                .attr('stroke', '#475569');
             lineas.forEach((l, i) => {
                 caja.append('text').attr('x', 8).attr('y', 20 + i * 17)
-                    .attr('font-size', 12).attr('fill', '#1e293b').text(l);
+                    .attr('font-size', 12).attr('fill', '#e2e8f0').text(l);
             });
         }
         return this;
@@ -1205,8 +1231,8 @@ class ScientificCharts {
         legend.append('rect')
             .attr('width', 190)
             .attr('height', 80)
-            .attr('fill', 'white')
-            .attr('stroke', '#ccc')
+            .attr('fill', 'rgba(15, 23, 42, 0.88)')
+            .attr('stroke', '#475569')
             .attr('opacity', 0.8);
         legend.append('text')
             .attr('x', 10)
@@ -1397,8 +1423,8 @@ class ScientificCharts {
         legend.append('rect')
             .attr('width', 140)
             .attr('height', 80)
-            .attr('fill', 'white')
-            .attr('stroke', '#ccc')
+            .attr('fill', 'rgba(15, 23, 42, 0.88)')
+            .attr('stroke', '#475569')
             .attr('opacity', 0.8);
         legend.append('text')
             .attr('x', 10)
@@ -1443,9 +1469,8 @@ class ScientificCharts {
         this.config.width = width;
         this.config.height = height;
         
-        this.svg
-            .attr('viewBox', `0 0 ${width} ${height}`)
-            .style('max-width', `${Math.round(width * 1.35)}px`);
+        this.svg.attr('viewBox', `0 0 ${width} ${height}`);
+        this._ajustarTamanoCSS(width, height);
         
         return this;
     }
