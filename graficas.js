@@ -87,6 +87,11 @@ class ScientificCharts {
             h = chDisp - 34;
             w = h * vbW / vbH;
         }
+        // Card expandida: tope estético de altura (se reduce en proporción).
+        if (this._cardExpandida && h > 660) {
+            h = 660;
+            w = h * vbW / vbH;
+        }
         this.svg
             .style('width', `${Math.round(w)}px`)
             .style('height', `${Math.round(h)}px`);
@@ -182,6 +187,7 @@ class ScientificCharts {
                 .attr('text-anchor', 'middle')
                 .attr('font-size', this.config.titleFontSize)
                 .attr('font-weight', 'bold')
+                .attr('class', 'titulo-grafico')
                 .text(title);
         }
         // Dimensiones del área de contenido (dentro de los márgenes)
@@ -370,6 +376,45 @@ class ScientificCharts {
             fila.append('text').attr('x', -154).attr('y', 10).attr('font-size', 11)
                 .text(`${s.label}: μ=${s.mu.toFixed(1)}, σ=${s.sigma.toFixed(1)}`);
         });
+        // ---- Cursor de coordenadas (cruz) SOLO dentro de este gráfico ----
+        const capa = g.append('g').attr('class', 'crosshair-capa').style('display', 'none');
+        capa.append('line').attr('class', 'ch-v').attr('y1', 0).attr('y2', H)
+            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+        capa.append('line').attr('class', 'ch-h').attr('x1', 0).attr('x2', W)
+            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+        const chFondo = capa.append('rect')
+            .attr('height', 20).attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)').attr('stroke', '#475569');
+        const chTexto = capa.append('text')
+            .attr('font-size', 12).attr('fill', '#e2e8f0');
+        const svgNode = this.svg.node();
+        const self = this;
+        g.append('rect')
+            .attr('width', W).attr('height', H)
+            .attr('fill', 'transparent')
+            .style('cursor', 'crosshair')
+            .on('mousemove', function (event) {
+                const rect = svgNode.getBoundingClientRect();
+                const vb = (self.svg.attr('viewBox') || `0 0 ${self.config.width} ${self.config.height}`).split(' ').map(Number);
+                const fx = rect.width > 0 ? vb[2] / rect.width : 1;
+                const fy = rect.height > 0 ? vb[3] / rect.height : 1;
+                const px = (event.clientX - rect.left) * fx - self.config.margin.left;
+                const py = (event.clientY - rect.top) * fy - self.config.margin.top;
+                if (px < 0 || px > W || py < 0 || py > H) { capa.style('display', 'none'); return; }
+                const xVal = xScale.invert(px);
+                const yVal = yScale.invert(py);
+                capa.style('display', '');
+                capa.select('.ch-v').attr('x1', px).attr('x2', px);
+                capa.select('.ch-h').attr('y1', py).attr('y2', py);
+                const etiqueta = `(${xVal.toFixed(1)}, ${yVal.toFixed(4)})`;
+                chTexto.text(etiqueta);
+                const anchoCaja = 14 + etiqueta.length * 6.6;
+                const cx = Math.max(0, Math.min(px + 12, W - anchoCaja));
+                const cy = Math.max(py - 26, 2);
+                chFondo.attr('x', cx).attr('y', cy).attr('width', anchoCaja);
+                chTexto.attr('x', cx + 7).attr('y', cy + 14);
+            })
+            .on('mouseleave', function () { capa.style('display', 'none'); });
         return this;
     }
     /**
@@ -400,21 +445,39 @@ class ScientificCharts {
         const largoMaximo = Math.max(...labels.map(l => String(l).length));
         const margenEtiquetasFila = Math.min(180, Math.max(72, 14 + 6.6 * largoMaximo));
         const maxCaracteres = Math.floor((margenEtiquetasFila - 14) / 6.6);
-        const margenEtiquetasColumna = 56;
+        // Altura para las etiquetas de columna rotadas -45°: proporcional al
+        // nombre más largo (su proyección vertical), para que no se recorten
+        // por arriba ni pisen el subtítulo.
+        const margenEtiquetasColumna = Math.max(56, 20 + Math.ceil(4.7 * largoMaximo));
         const espacioLeyenda = 44;
         // La matriz llena el ancho disponible; el lienzo crece en vertical si
         // hace falta (el SVG es responsive por viewBox).
         const cellSize = Math.max(52, Math.min(120, (anchoContenido - margenEtiquetasFila) / n));
         const width = cellSize * n;
         const height = cellSize * n;
-        // Ampliar el viewBox del lienzo si la matriz + leyenda lo requieren
-        const altoNecesario = this.config.margin.top + margenEtiquetasColumna + height + 100 + this.config.margin.bottom;
-        if (this.svg && altoNecesario > this.config.height) {
-            this.svg.attr('viewBox', `0 0 ${this.config.width} ${altoNecesario}`);
-            this._ajustarTamanoCSS(this.config.width, altoNecesario);
-        } else {
-            this._ajustarTamanoCSS(this.config.width, this.config.height);
+        // Ampliar el viewBox del lienzo (ancho Y alto) si la matriz completa
+        // — celdas + etiquetas + leyenda — no cabe en el tamaño configurado.
+        // Sin esto, con lienzos pequeños (p. ej. 400×300) el dibujo excedería
+        // el viewBox y se vería RECORTADO por la derecha y por abajo.
+        const extraEtiquetasCol = Math.max(0, Math.ceil(4.7 * largoMaximo) - this.config.margin.right);
+        const anchoNecesario = Math.max(
+            this.config.width,
+            this.config.margin.left + margenEtiquetasFila + width + extraEtiquetasCol + this.config.margin.right
+        );
+        const altoNecesario = Math.max(
+            this.config.height,
+            this.config.margin.top + margenEtiquetasColumna + height + 100 + this.config.margin.bottom
+        );
+        if (this.svg) {
+            this.svg.attr('viewBox', `0 0 ${anchoNecesario} ${altoNecesario}`);
+            this._ajustarTamanoCSS(anchoNecesario, altoNecesario);
+            this.svg.select('.titulo-grafico').attr('x', anchoNecesario / 2);
         }
+        // Centrado horizontal de la matriz (etiquetas incluidas) en el lienzo,
+        // sea cual sea el número de variables.
+        const anchoEfectivo = anchoNecesario - this.config.margin.left - this.config.margin.right;
+        const offsetXMatriz = margenEtiquetasFila +
+            Math.max(0, (anchoEfectivo - margenEtiquetasFila - width - extraEtiquetasCol) / 2);
         // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
         const acortarEtiqueta = t => (typeof t === 'string' && t.length > maxCaracteres) ? t.slice(0, maxCaracteres - 1) + '…' : t;
         // Escala de color para correlaciones, diseñada para tema oscuro:
@@ -448,16 +511,17 @@ class ScientificCharts {
         // Subtítulo con el coeficiente empleado (coherente con el análisis).
         if (options.subtitle) {
             g.append('text')
-                .attr('x', anchoContenido / 2)
-                .attr('y', -8)
+                .attr('x', (anchoNecesario - this.config.margin.left - this.config.margin.right) / 2)
+                .attr('y', 16)
                 .attr('text-anchor', 'middle')
-                .attr('font-size', 11)
-                .attr('fill', '#94a3b8')
+                .attr('font-size', 13)
+                .attr('font-weight', 600)
+                .attr('fill', '#cbd5e1')
                 .text(options.subtitle);
         }
         // Subgrupo de la matriz, desplazado para dejar sitio a las etiquetas.
         const gMatriz = g.append('g')
-            .attr('transform', `translate(${margenEtiquetasFila}, ${margenEtiquetasColumna})`);
+            .attr('transform', `translate(${offsetXMatriz}, ${margenEtiquetasColumna})`);
         // Crear celdas del heatmap
         const cells = gMatriz.selectAll('.cell')
             .data(data.flatMap((row, i) =>
@@ -479,7 +543,8 @@ class ScientificCharts {
             .attr('y', cellSize / 2)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('font-size', Math.min(cellSize * 0.32, 16))
+            .attr('font-size', cellSize * 0.3)
+            .attr('font-weight', 600)
             .attr('fill', d => {
                 // Luminancia relativa del color de fondo: decide blanco u oscuro.
                 const m = String(colorScale(d.value)).match(/\d+/g).map(Number);
@@ -663,10 +728,15 @@ class ScientificCharts {
                     .attr('fill', this.config.secondaryColor);
             }
         });
-        // Ejes
-        g.append('g')
+        // Ejes (etiquetas del eje X en diagonal: legibles con muchas variables)
+        const ejeXBox = g.append('g')
             .attr('transform', `translate(0,${this.config.height - this.config.margin.top - this.config.margin.bottom})`)
             .call(d3.axisBottom(xScale));
+        ejeXBox.selectAll('text')
+            .attr('transform', 'rotate(-35)')
+            .attr('text-anchor', 'end')
+            .attr('dx', '-0.4em')
+            .attr('dy', '0.45em');
         g.append('g')
             .call(d3.axisLeft(yScale));
         return this;
