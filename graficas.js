@@ -155,9 +155,10 @@ class ScientificCharts {
             .attr('font-size', 12).attr('fill', '#e2e8f0');
         const svgNode = this.svg.node();
         const self = this;
-        g.append('rect')
-            .attr('width', W).attr('height', H)
-            .attr('fill', 'transparent')
+        // Los eventos se escuchan en el SVG completo (no en un rect captor):
+        // así el crosshair convive con los elementos interactivos de debajo
+        // (cajas, outliers), que reciben sus propios eventos por burbujeo.
+        this.svg
             .style('cursor', 'crosshair')
             .on('mousemove', function (event) {
                 const rect = svgNode.getBoundingClientRect();
