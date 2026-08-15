@@ -115,6 +115,72 @@ class ScientificCharts {
         this._ajustarTamanoCSS(+vb[2], +vb[3]);
     }
     /**
+     * Rejilla de referencia muy tenue. Dibuja líneas horizontales según los
+     * ticks de la escala Y y, si la escala X es continua (tiene ticks),
+     * también verticales. Debe añadirse ANTES de las formas del gráfico.
+     * @private
+     */
+    _agregarRejilla(g, W, H, xScale, yScale) {
+        const rejilla = g.append('g').attr('class', 'rejilla');
+        if (yScale && yScale.ticks) {
+            rejilla.selectAll('.rj-h').data(yScale.ticks(6)).enter().append('line')
+                .attr('x1', 0).attr('x2', W)
+                .attr('y1', d => yScale(d)).attr('y2', d => yScale(d))
+                .attr('stroke', '#94a3b8').attr('stroke-opacity', 0.1);
+        }
+        if (xScale && xScale.ticks) {
+            rejilla.selectAll('.rj-v').data(xScale.ticks(8)).enter().append('line')
+                .attr('y1', 0).attr('y2', H)
+                .attr('x1', d => xScale(d)).attr('x2', d => xScale(d))
+                .attr('stroke', '#94a3b8').attr('stroke-opacity', 0.08);
+        }
+        return rejilla;
+    }
+    /**
+     * Cursor de coordenadas (cruz) dentro del área del gráfico: líneas guía y
+     * etiqueta flotante. fmtX/fmtY convierten la posición en píxeles del área
+     * de contenido al texto a mostrar (valor de la escala, grupo, etc.).
+     * @private
+     */
+    _agregarCrosshair(g, W, H, fmtX, fmtY) {
+        const capa = g.append('g').attr('class', 'crosshair-capa').style('display', 'none');
+        capa.append('line').attr('class', 'ch-v').attr('y1', 0).attr('y2', H)
+            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+        capa.append('line').attr('class', 'ch-h').attr('x1', 0).attr('x2', W)
+            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
+        const chFondo = capa.append('rect')
+            .attr('height', 20).attr('rx', 4)
+            .attr('fill', 'rgba(15, 23, 42, 0.92)').attr('stroke', '#475569');
+        const chTexto = capa.append('text')
+            .attr('font-size', 12).attr('fill', '#e2e8f0');
+        const svgNode = this.svg.node();
+        const self = this;
+        g.append('rect')
+            .attr('width', W).attr('height', H)
+            .attr('fill', 'transparent')
+            .style('cursor', 'crosshair')
+            .on('mousemove', function (event) {
+                const rect = svgNode.getBoundingClientRect();
+                const vb = (self.svg.attr('viewBox') || `0 0 ${self.config.width} ${self.config.height}`).split(' ').map(Number);
+                const fx = rect.width > 0 ? vb[2] / rect.width : 1;
+                const fy = rect.height > 0 ? vb[3] / rect.height : 1;
+                const px = (event.clientX - rect.left) * fx - self.config.margin.left;
+                const py = (event.clientY - rect.top) * fy - self.config.margin.top;
+                if (px < 0 || px > W || py < 0 || py > H) { capa.style('display', 'none'); return; }
+                capa.style('display', '');
+                capa.select('.ch-v').attr('x1', px).attr('x2', px);
+                capa.select('.ch-h').attr('y1', py).attr('y2', py);
+                const etiqueta = `(${fmtX(px)}, ${fmtY(py)})`;
+                chTexto.text(etiqueta);
+                const anchoCaja = 14 + etiqueta.length * 6.6;
+                const cx = Math.max(0, Math.min(px + 12, W - anchoCaja));
+                const cy = Math.max(py - 26, 2);
+                chFondo.attr('x', cx).attr('y', cy).attr('width', anchoCaja);
+                chTexto.attr('x', cx + 7).attr('y', cy + 14);
+            })
+            .on('mouseleave', function () { capa.style('display', 'none'); });
+    }
+    /**
      * Crea gradientes y patrones comunes
      * @private
      */
@@ -343,6 +409,7 @@ class ScientificCharts {
             options.xLabel || 'Puntaje',
             options.yLabel || 'Densidad de Probabilidad'
         );
+        this._agregarRejilla(g, W, H, xScale, yScale);
         const dom = xScale.domain();
         series.forEach(s => {
             const curva = d3.range(120).map(i => {
@@ -376,45 +443,10 @@ class ScientificCharts {
             fila.append('text').attr('x', -154).attr('y', 10).attr('font-size', 11)
                 .text(`${s.label}: μ=${s.mu.toFixed(1)}, σ=${s.sigma.toFixed(1)}`);
         });
-        // ---- Cursor de coordenadas (cruz) SOLO dentro de este gráfico ----
-        const capa = g.append('g').attr('class', 'crosshair-capa').style('display', 'none');
-        capa.append('line').attr('class', 'ch-v').attr('y1', 0).attr('y2', H)
-            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
-        capa.append('line').attr('class', 'ch-h').attr('x1', 0).attr('x2', W)
-            .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
-        const chFondo = capa.append('rect')
-            .attr('height', 20).attr('rx', 4)
-            .attr('fill', 'rgba(15, 23, 42, 0.92)').attr('stroke', '#475569');
-        const chTexto = capa.append('text')
-            .attr('font-size', 12).attr('fill', '#e2e8f0');
-        const svgNode = this.svg.node();
-        const self = this;
-        g.append('rect')
-            .attr('width', W).attr('height', H)
-            .attr('fill', 'transparent')
-            .style('cursor', 'crosshair')
-            .on('mousemove', function (event) {
-                const rect = svgNode.getBoundingClientRect();
-                const vb = (self.svg.attr('viewBox') || `0 0 ${self.config.width} ${self.config.height}`).split(' ').map(Number);
-                const fx = rect.width > 0 ? vb[2] / rect.width : 1;
-                const fy = rect.height > 0 ? vb[3] / rect.height : 1;
-                const px = (event.clientX - rect.left) * fx - self.config.margin.left;
-                const py = (event.clientY - rect.top) * fy - self.config.margin.top;
-                if (px < 0 || px > W || py < 0 || py > H) { capa.style('display', 'none'); return; }
-                const xVal = xScale.invert(px);
-                const yVal = yScale.invert(py);
-                capa.style('display', '');
-                capa.select('.ch-v').attr('x1', px).attr('x2', px);
-                capa.select('.ch-h').attr('y1', py).attr('y2', py);
-                const etiqueta = `(${xVal.toFixed(1)}, ${yVal.toFixed(4)})`;
-                chTexto.text(etiqueta);
-                const anchoCaja = 14 + etiqueta.length * 6.6;
-                const cx = Math.max(0, Math.min(px + 12, W - anchoCaja));
-                const cy = Math.max(py - 26, 2);
-                chFondo.attr('x', cx).attr('y', cy).attr('width', anchoCaja);
-                chTexto.attr('x', cx + 7).attr('y', cy + 14);
-            })
-            .on('mouseleave', function () { capa.style('display', 'none'); });
+        // Cursor de coordenadas (cruz) solo dentro de este gráfico
+        this._agregarCrosshair(g, W, H,
+            px => xScale.invert(px).toFixed(1),
+            py => yScale.invert(py).toFixed(4));
         return this;
     }
     /**
@@ -459,25 +491,17 @@ class ScientificCharts {
         // — celdas + etiquetas + leyenda — no cabe en el tamaño configurado.
         // Sin esto, con lienzos pequeños (p. ej. 400×300) el dibujo excedería
         // el viewBox y se vería RECORTADO por la derecha y por abajo.
+        // Lienzo EXACTO al contenido (ni recortes ni espacio muerto): al
+        // escalarse al ancho de la card, la matriz aprovecha todo el marco.
         const extraEtiquetasCol = Math.max(0, Math.ceil(4.7 * largoMaximo) - this.config.margin.right);
-        const anchoNecesario = Math.max(
-            this.config.width,
-            this.config.margin.left + margenEtiquetasFila + width + extraEtiquetasCol + this.config.margin.right
-        );
-        const altoNecesario = Math.max(
-            this.config.height,
-            this.config.margin.top + margenEtiquetasColumna + height + 100 + this.config.margin.bottom
-        );
+        const anchoNecesario = this.config.margin.left + margenEtiquetasFila + width + extraEtiquetasCol + this.config.margin.right;
+        const altoNecesario = this.config.margin.top + margenEtiquetasColumna + height + 92 + this.config.margin.bottom;
         if (this.svg) {
             this.svg.attr('viewBox', `0 0 ${anchoNecesario} ${altoNecesario}`);
             this._ajustarTamanoCSS(anchoNecesario, altoNecesario);
             this.svg.select('.titulo-grafico').attr('x', anchoNecesario / 2);
         }
-        // Centrado horizontal de la matriz (etiquetas incluidas) en el lienzo,
-        // sea cual sea el número de variables.
-        const anchoEfectivo = anchoNecesario - this.config.margin.left - this.config.margin.right;
-        const offsetXMatriz = margenEtiquetasFila +
-            Math.max(0, (anchoEfectivo - margenEtiquetasFila - width - extraEtiquetasCol) / 2);
+        const offsetXMatriz = margenEtiquetasFila;
         // Acorta etiquetas muy largas (el nombre completo queda en el tooltip).
         const acortarEtiqueta = t => (typeof t === 'string' && t.length > maxCaracteres) ? t.slice(0, maxCaracteres - 1) + '…' : t;
         // Escala de color para correlaciones, diseñada para tema oscuro:
@@ -504,7 +528,7 @@ class ScientificCharts {
             .interpolator(interpolarCorrelacion);
         // Crear base del gráfico
         const g = this._createChartBase(
-            options.title || 'Matriz de Correlación',
+            ('title' in options) ? options.title : 'Matriz de Correlación',
             options.xLabel || '',
             options.yLabel || ''
         );
@@ -512,7 +536,7 @@ class ScientificCharts {
         if (options.subtitle) {
             g.append('text')
                 .attr('x', (anchoNecesario - this.config.margin.left - this.config.margin.right) / 2)
-                .attr('y', 16)
+                .attr('y', 20 - this.config.margin.top)
                 .attr('text-anchor', 'middle')
                 .attr('font-size', 13)
                 .attr('font-weight', 600)
@@ -543,7 +567,7 @@ class ScientificCharts {
             .attr('y', cellSize / 2)
             .attr('text-anchor', 'middle')
             .attr('dominant-baseline', 'middle')
-            .attr('font-size', cellSize * 0.3)
+            .attr('font-size', cellSize * 0.32)
             .attr('font-weight', 600)
             .attr('fill', d => {
                 // Luminancia relativa del color de fondo: decide blanco u oscuro.
@@ -661,6 +685,9 @@ class ScientificCharts {
             options.xLabel || '',
             options.yLabel || 'Valor'
         );
+        const Wb = this.config.width - this.config.margin.left - this.config.margin.right;
+        const Hb = this.config.height - this.config.margin.top - this.config.margin.bottom;
+        this._agregarRejilla(g, Wb, Hb, null, yScale);
         // Crear boxplots
         boxData.forEach((d, i) => {
             const x = xScale(d.label);
@@ -739,6 +766,11 @@ class ScientificCharts {
             .attr('dy', '0.45em');
         g.append('g')
             .call(d3.axisLeft(yScale));
+        // Cursor de coordenadas: nombre del grupo bajo el cursor + valor Y
+        const dominioBox = xScale.domain();
+        this._agregarCrosshair(g, Wb, Hb,
+            px => String(dominioBox[Math.max(0, Math.min(dominioBox.length - 1, Math.floor(px / Wb * dominioBox.length)))]),
+            py => yScale.invert(py).toFixed(1));
         return this;
     }
     /**
