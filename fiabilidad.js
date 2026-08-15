@@ -189,7 +189,8 @@ const Fiabilidad = {
                 nombre: 'TOTAL_' + prueba,
                 etiqueta: `Escala total (${prueba})`,
                 items: dims.flatMap(d => d.items),
-                origen: 'simulador'
+                origen: 'simulador',
+                particion: dims.map(d => ({ nombre: d.etiqueta, items: d.items.slice() }))
             });
         });
         // 3) Heurística de prefijos sobre lo restante
@@ -334,6 +335,7 @@ const Fiabilidad = {
         const omega = (om && om.ok) ? om.valor : null;
         if (om && om.motivo) avisos.push(om.motivo);
         const spearmanBrown = (k === 2) ? (2 * rMedia) / (1 + rMedia) : null;
+        const omegaH = this._omegaJerarquico(cols, items, R, grupo.particion);
 
         // Análisis de ítems: r ítem-total corregida y alfa sin el elemento
         const itemsInfo = items.map((it, j) => {
@@ -364,11 +366,66 @@ const Fiabilidad = {
 
         return {
             grupo: grupo.nombre, etiqueta: grupo.etiqueta, origen: grupo.origen,
-            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, spearmanBrown, lambda2, rMedia, rMin, rMax,
+            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, omegaH, spearmanBrown, lambda2, rMedia, rMin, rMax,
             items: itemsInfo, avisos,
             dudosa: (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)),
-            interpretacion: this.interpretar(alfa)
+            coefPrincipal: omega != null ? 'ω' : 'α',
+            interpretacion: this.interpretar(omega != null ? omega : alfa) + (omega != null ? ' (ω)' : ' (α)')
         };
+    },
+
+    // Cargas de la solución unifactorial (ejes principales iterados) o null.
+    _cargasUnifactoriales(R, k) {
+        const om = this._omegaUnifactorial(R, k);
+        return (om && om.ok && om.cargas) ? om.cargas : null;
+    },
+
+    // ω jerárquico (aproximación de Schmid-Leiman): fiabilidad atribuible al
+    // factor GENERAL de una escala total con partición conocida en dimensiones.
+    // λg(ítem) = λ(ítem→dimensión) × γ(dimensión→general); ωh = (Σλg)² / ΣΣR.
+    _omegaJerarquico(cols, items, R, particion) {
+        try {
+            if (!particion || particion.length < 2) return null;
+            const idx = {};
+            items.forEach((it, i) => { idx[it] = i; });
+            const gammasBase = [];
+            const lambdasPorItem = new Array(items.length).fill(null);
+            const puntuacionesDim = [];
+            for (const dim of particion) {
+                const pos = dim.items.map(it => idx[it]).filter(i => i !== undefined);
+                if (pos.length < 2) return null;
+                const subR = pos.map(i => pos.map(j => R[i][j]));
+                const cargas = this._cargasUnifactoriales(subR, pos.length);
+                if (!cargas) return null;
+                pos.forEach((i, q) => { lambdasPorItem[i] = cargas[q]; });
+                puntuacionesDim.push(cols[0].map((_, f) => pos.reduce((s, i) => s + cols[i][f], 0)));
+            }
+            const d = particion.length;
+            const Rdim = puntuacionesDim.map((a, i) => puntuacionesDim.map((b, j) => i === j ? 1 : this._cor(a, b)));
+            let gammas;
+            if (d === 2) {
+                // Solución cerrada clásica con dos indicadores: cargas iguales √r₁₂
+                const r12 = Rdim[0][1];
+                if (!(r12 > 0)) return null; // sin covariación positiva no hay factor general
+                gammas = [Math.sqrt(r12), Math.sqrt(r12)];
+            } else {
+                gammas = this._cargasUnifactoriales(Rdim, d);
+                if (!gammas) return null;
+            }
+            let sumaLg = 0;
+            particion.forEach((dim, di) => {
+                dim.items.forEach(it => {
+                    const i = idx[it];
+                    if (i !== undefined && Number.isFinite(lambdasPorItem[i])) {
+                        sumaLg += lambdasPorItem[i] * gammas[di];
+                    }
+                });
+            });
+            let sumaR = 0;
+            for (let i = 0; i < items.length; i++) for (let j = 0; j < items.length; j++) sumaR += R[i][j];
+            const oh = (sumaLg * sumaLg) / sumaR;
+            return (oh > 0 && oh <= 1) ? oh : null;
+        } catch (e) { return null; }
     },
 
     _omegaUnifactorial(R, k) {
@@ -406,7 +463,7 @@ const Fiabilidad = {
         const sumaUnicidades = cargas.reduce((s, l) => s + (1 - Math.min(l * l, 0.999)), 0);
         const om = (sumaCargas ** 2) / ((sumaCargas ** 2) + sumaUnicidades);
         if (!(om > 0 && om <= 1)) return { ok: false, motivo: 'El ω no se reporta: la solución factorial produjo un valor fuera de rango.' };
-        return { ok: true, valor: om, motivo: heywood ? 'La solución del ω presenta un caso Heywood (comunalidad en el límite); el valor debe tomarse como orientativo.' : null };
+        return { ok: true, valor: om, cargas, motivo: heywood ? 'La solución del ω presenta un caso Heywood (comunalidad en el límite); el valor debe tomarse como orientativo.' : null };
     },
 
     interpretar(alfa) {
@@ -456,7 +513,7 @@ const Fiabilidad = {
 
     // ---------- explicaciones pedagógicas (registro académico) ----------
     _explicacionResumen() {
-        return 'En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El coeficiente alfa de Cronbach (α) estima la consistencia interna, es decir, el grado en que los ítems covarían como indicadores de un mismo constructo; el intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango de valores plausibles del parámetro en la población, de modo que un intervalo cuyo límite inferior supera .70 ofrece garantías más sólidas que el valor puntual aislado. El α estandarizado se calcula sobre la matriz de correlaciones y coincide con el bruto cuando las varianzas de los ítems son homogéneas. El omega total de McDonald (ω) estima la fiabilidad a partir de las cargas de una solución factorial de un factor y no requiere el supuesto de tau-equivalencia que el α presupone, por lo que discrepancias acusadas entre ambos coeficientes sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa de la fiabilidad, sistemáticamente igual o superior al α. La correlación inter-ítem media, acompañada de su mínimo y su máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados, mientras que valores muy bajos indican heterogeneidad y valores muy altos, redundancia. La columna de interpretación aplica los criterios de George y Mallery (2003): α ≥ .70 aceptable, ≥ .80 buena y ≥ .90 excelente.';
+        return 'En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El omega total de McDonald (ω) se reporta como coeficiente principal de fiabilidad, en consonancia con las recomendaciones psicométricas actuales: se estima a partir de las cargas de un modelo factorial congenérico, que admite que cada ítem mida el constructo con distinta precisión y pondera su contribución en consecuencia, sin exigir el supuesto de tau-equivalencia que el alfa presupone. El omega jerárquico, disponible para las escalas totales con partición conocida en dimensiones, cuantifica la proporción de varianza atribuible exclusivamente al factor general (aproximación de Schmid-Leiman): valores elevados respaldan la interpretación unidimensional de la puntuación total, y la diferencia entre el ω total y el ω jerárquico expresa la varianza aportada por las dimensiones específicas. El alfa de Cronbach (α) se conserva como referencia comparativa por su tradición en la literatura; su intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango plausible del parámetro poblacional, y el α estandarizado coincide con el bruto cuando las varianzas de los ítems son homogéneas. Discrepancias acusadas entre ω y α sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa, sistemáticamente igual o superior al α. La correlación inter-ítem media, con su mínimo y máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados. La columna de interpretación aplica los criterios convencionales (≥ .70 aceptable, ≥ .80 buena, ≥ .90 excelente; George y Mallery, 2003) al coeficiente principal disponible, señalado entre paréntesis.';
     },
     _explicacionItems() {
         return 'En las tablas de análisis de ítems, M y DE corresponden a la media y la desviación estándar de cada ítem, que permiten identificar elementos con distribuciones extremas o escasa variabilidad. La correlación ítem-total corregida expresa la relación entre el ítem y la suma de los ítems restantes (excluido el propio, para evitar la contaminación de la correlación por su pertenencia al total); valores iguales o superiores a .30 indican una contribución adecuada al constructo, en tanto que valores inferiores señalan ítems cuya pertinencia debe revisarse. La columna «α si se elimina» informa el valor que adoptaría el coeficiente al suprimir el ítem correspondiente: cuando dicho valor supera al α global de la escala, el ítem reduce la consistencia interna y constituye un candidato a revisión, reformulación o eliminación.';
@@ -509,9 +566,10 @@ const Fiabilidad = {
             <tr>
                 <td><strong>${r.etiqueta}</strong></td>
                 <td>${r.k}</td><td>${r.n}</td>
-                <td><strong>${fmt(r.alfa)}</strong>${r.icAlfa ? `<br><span style="font-size:0.85em;">[${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]</span>` : ''}</td>
+                <td><strong>${r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? 'SB = ' + fmt(r.spearmanBrown) : '—')}</strong></td>
+                <td>${r.omegaH != null ? fmt(r.omegaH) : '—'}</td>
+                <td>${fmt(r.alfa)}${r.icAlfa ? `<br><span style="font-size:0.85em;">[${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]</span>` : ''}</td>
                 <td>${fmt(r.alfaStd)}</td>
-                <td>${r.omega != null ? fmt(r.omega) : '—'}</td>
                 <td>${fmt(r.lambda2)}</td>
                 <td>${fmt(r.rMedia)}<br><span style="font-size:0.85em;">[${fmt(r.rMin)}, ${fmt(r.rMax)}]</span></td>
                 <td>${r.interpretacion}</td>
@@ -537,7 +595,7 @@ const Fiabilidad = {
                 <p class="result-subtitle">Consistencia interna de las escalas detectadas en la base de datos. El alfa de Cronbach se reporta en su forma bruta (con intervalo de confianza del 95 % según el procedimiento de Feldt) y estandarizada; el omega total de McDonald se estima a partir de una solución unifactorial y la lambda 2 de Guttman constituye una cota inferior alternativa de la fiabilidad. Según George y Mallery (2003), valores de α ≥ .70 indican una fiabilidad aceptable, ≥ .80 buena y ≥ .90 excelente.</p>
                 <div class="result-box" style="overflow-x: auto;">
                     <table class="result-table">
-                        <tr><th>Escala</th><th>k</th><th>n</th><th>α [IC 95 %]</th><th>α estand.</th><th>ω</th><th>λ₂</th><th>r inter-ítem M [mín, máx]</th><th>Interpretación</th></tr>
+                        <tr><th>Escala</th><th>k</th><th>n</th><th>ω total</th><th>ω jerárquico</th><th>α [IC 95 %]</th><th>α estand.</th><th>λ₂</th><th>r inter-ítem M [mín, máx]</th><th>Interpretación</th></tr>
                         ${filasResumen}
                     </table>
                 </div>
@@ -565,8 +623,12 @@ const Fiabilidad = {
     redactarInterpretacion(validos) {
         const fmt = x => Number.isFinite(x) ? x.toFixed(3).replace(/^0\./, '.') : '—';
         const partes = validos.map(r => {
-            const om = r.omega != null ? ` y un omega total de ${fmt(r.omega)}` : '';
-            return `${r.etiqueta} obtuvo un alfa de Cronbach de ${fmt(r.alfa)}${r.icAlfa ? ` (IC 95 % [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}])` : ''}${om}, lo que corresponde a una fiabilidad ${r.interpretacion}`;
+            const ic = r.icAlfa ? ` (IC 95 % [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}])` : '';
+            if (r.omega != null) {
+                const oh = r.omegaH != null ? ` y un omega jerárquico de ${fmt(r.omegaH)}, indicativo de la varianza atribuible al factor general` : '';
+                return `${r.etiqueta} obtuvo un omega total de ${fmt(r.omega)}${oh}, con un alfa de Cronbach de ${fmt(r.alfa)}${ic} como referencia comparativa, lo que corresponde a una fiabilidad ${r.interpretacion}`;
+            }
+            return `${r.etiqueta} obtuvo un alfa de Cronbach de ${fmt(r.alfa)}${ic}, lo que corresponde a una fiabilidad ${r.interpretacion}`;
         });
         const conAviso = validos.filter(r => r.avisos.length).length;
         let texto = `El análisis de consistencia interna se aplicó a ${validos.length === 1 ? 'la escala detectada' : `las ${validos.length} escalas detectadas`} en la base de datos. ${partes.join('; ')}. `;
@@ -597,15 +659,16 @@ const Fiabilidad = {
         if (excluidas.length) parrafosExtra.push(`Se excluyó del reporte ${excluidas.length === 1 ? 'una agrupación heurística' : excluidas.length + ' agrupaciones heurísticas'} de dudosa entidad como escala (${excluidas.map(r => r.etiqueta).join(', ')}), por presentar coeficientes alfa inferiores a .50 o correlaciones inter-ítem medias inferiores a .10.`);
         tablas.push({
             titulo: 'Fiabilidad y consistencia interna de las escalas',
-            headers: ['Escala', 'k', 'n', 'α [IC 95 %]', 'α estandarizado', 'ω total', 'λ₂', 'r inter-ítem (M)'],
+            headers: ['Escala', 'k', 'n', 'ω total', 'ω jerárquico', 'α [IC 95 %]', 'α estandarizado', 'λ₂', 'r inter-ítem (M)'],
             filas: reportables.map(r => [
                 r.etiqueta, r.k, r.n,
+                r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? `SB = ${fmt(r.spearmanBrown)}` : '—'),
+                r.omegaH != null ? fmt(r.omegaH) : '—',
                 `${fmt(r.alfa)}${r.icAlfa ? ` [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]` : ''}`,
                 fmt(r.alfaStd),
-                r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? `SB = ${fmt(r.spearmanBrown)}` : '—'),
                 fmt(r.lambda2), fmt(r.rMedia)
             ]),
-            nota: 'α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); ω = omega total de McDonald (solución unifactorial; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta el coeficiente de Spearman-Brown, SB); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. Si se detectan ítems en sentido inverso, el α informado está afectado y la nota de la escala indica el α tras la recodificación.'
+            nota: 'ω = omega total de McDonald (coeficiente principal; solución unifactorial congenérica; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta Spearman-Brown, SB); ω jerárquico = fiabilidad atribuible al factor general (aproximación de Schmid-Leiman; solo para escalas totales con partición conocida en dimensiones); α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. La interpretación aplica los criterios convencionales al coeficiente principal disponible (ω, o α en su defecto).'
         });
         reportables.slice(0, 6).forEach(r => {
             tablas.push({
