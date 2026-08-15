@@ -104,7 +104,16 @@
             return escala;
         };
         escala.ticks = n => generarTicks(dominio[0], dominio[1], n || 10);
-        escala.tickFormat = (n, e) => d3.format(e || (Number.isInteger(pasoTick(Math.min(...dominio), Math.max(...dominio), n || 10)) ? 'd' : '.1f'));
+        escala.tickFormat = (n, e) => {
+            if (e) return d3.format(e);
+            // Decimales ADAPTATIVOS según el paso real entre ticks: con pasos
+            // pequeños (0.02, 0.005...) el formato fijo '.1f' colapsaba todas
+            // las etiquetas a '0.0'.
+            const paso = pasoTick(Math.min(...dominio), Math.max(...dominio), n || 10);
+            if (Number.isInteger(paso)) return d3.format('d');
+            const dec = Math.max(1, Math.min(6, Math.ceil(-Math.log10(paso))));
+            return d3.format('.' + dec + 'f');
+        };
         escala.invert = y => {
             const [d0, d1] = dominio, [r0, r1] = rango;
             const t = r1 === r0 ? 0.5 : (y - r0) / (r1 - r0);
