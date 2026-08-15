@@ -95,6 +95,19 @@ const Fiabilidad = {
     //  2) la estructura del Simulador (EtiquetasVariables), si existe,
     //  3) la heurística de prefijos: columnas numéricas no-puntaje con patrón
     //     «prefijo + número» (PE1…PE8, F1…F36) forman una escala candidata.
+    _grupoDesdeTexto(nombre, listaTexto, numericas, usados, origen) {
+        const pedidos = (listaTexto || '').split(',').map(s => s.trim()).filter(Boolean);
+        const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
+        const noEncontrados = pedidos.filter(it => !numericas.includes(it));
+        if (items.length < 2) return null;
+        items.forEach(it => usados.add(it));
+        return {
+            nombre: (nombre || 'Dimensión').trim(), etiqueta: (nombre || 'Dimensión').trim(),
+            items, origen,
+            avisosPrevios: noEncontrados.length ? [`Ítem(s) indicado(s) pero no encontrado(s) en la base: ${noEncontrados.join(', ')}.`] : []
+        };
+    },
+
     detectarGrupos(datos) {
         const grupos = [];
         const usados = new Set();
@@ -106,6 +119,21 @@ const Fiabilidad = {
         const numericas = columnas.filter(c =>
             datos.some(f => Number.isFinite(parseFloat(f[c]))));
 
+        // 0) Configurador visual: si el usuario tiene filas definidas ahí,
+        //    esa configuración MANDA sobre toda detección automática.
+        const cfg = (typeof document !== 'undefined') ? document.getElementById('configuradorDimensiones') : null;
+        if (cfg) {
+            const filasCfg = cfg.querySelectorAll('[data-fb-fila]');
+            if (filasCfg.length) {
+                filasCfg.forEach(f => {
+                    const nom = (f.querySelector('[data-fb-nombre]') || {}).value || '';
+                    const lst = (f.querySelector('[data-fb-items]') || {}).value || '';
+                    const g = this._grupoDesdeTexto(nom, lst, numericas, usados, 'config');
+                    if (g) grupos.push(g);
+                });
+                if (grupos.length) return grupos;
+            }
+        }
         // 1) Campos manuales «Nombre: it1, it2; Nombre2: it3, it4»
         ['dimensionesVar1', 'dimensionesVar2'].forEach(id => {
             const campo = (typeof document !== 'undefined') ? document.getElementById(id) : null;
@@ -399,6 +427,41 @@ const Fiabilidad = {
         return this._ultimo;
     },
 
+    // ---------- configurador de dimensiones (auto-rellenado, editable) ----------
+    mostrarConfigurador(idContenedor, datos) {
+        const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
+        if (!cont) return;
+        cont.innerHTML = ''; // limpiar ANTES de detectar: así la detección parte de cero con la base nueva
+        const grupos = this.detectarGrupos(datos);
+        const esc = s => String(s).replace(/"/g, '&quot;');
+        const fila = (nombre, items) => `<div data-fb-fila style="display:flex; gap:0.5rem; margin:0.35rem 0; align-items:center;">
+            <input data-fb-nombre class="input input-sm" style="flex:0 0 13rem;" value="${esc(nombre)}" aria-label="Nombre de la dimensión" placeholder="Nombre de la dimensión">
+            <input data-fb-items class="input input-sm" style="flex:1;" value="${esc(items)}" aria-label="Ítems separados por comas" placeholder="Ítems, p. ej.: F1, F2, F3">
+            <button type="button" data-fb-quitar title="Quitar" aria-label="Quitar dimensión" style="background:none; border:none; color:#9aa0a6; cursor:pointer; font-size:0.95em; padding:0 0.2rem;">✕</button>
+        </div>`;
+        cont.innerHTML = `
+            <p class="help-text" style="margin-bottom: 0.5rem;">Dimensiones detectadas automáticamente a partir de los nombres de las columnas (ítems que comparten prefijo y terminan en número). Puedes renombrarlas, ajustar sus ítems, quitarlas o añadir otras; la configuración que quede aquí es la que empleará el análisis de fiabilidad.</p>
+            <div data-fb-lista>${grupos.map(g => fila(g.etiqueta, g.items.join(', '))).join('')}</div>
+            <button type="button" id="fbAgregarDimension" class="btn btn-outline" style="margin-top: 0.4rem;">＋ Agregar dimensión</button>`;
+        const conectarQuitar = () => cont.querySelectorAll('[data-fb-quitar]').forEach(b => {
+            b.onclick = () => b.closest('[data-fb-fila]').remove();
+        });
+        conectarQuitar();
+        cont.querySelector('#fbAgregarDimension').addEventListener('click', () => {
+            cont.querySelector('[data-fb-lista]').insertAdjacentHTML('beforeend', fila('', ''));
+            conectarQuitar();
+        });
+        cont.style.display = 'block';
+    },
+
+    // ---------- explicaciones pedagógicas (registro académico) ----------
+    _explicacionResumen() {
+        return 'En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El coeficiente alfa de Cronbach (α) estima la consistencia interna, es decir, el grado en que los ítems covarían como indicadores de un mismo constructo; el intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango de valores plausibles del parámetro en la población, de modo que un intervalo cuyo límite inferior supera .70 ofrece garantías más sólidas que el valor puntual aislado. El α estandarizado se calcula sobre la matriz de correlaciones y coincide con el bruto cuando las varianzas de los ítems son homogéneas. El omega total de McDonald (ω) estima la fiabilidad a partir de las cargas de una solución factorial de un factor y no requiere el supuesto de tau-equivalencia que el α presupone, por lo que discrepancias acusadas entre ambos coeficientes sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa de la fiabilidad, sistemáticamente igual o superior al α. La correlación inter-ítem media, acompañada de su mínimo y su máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados, mientras que valores muy bajos indican heterogeneidad y valores muy altos, redundancia. La columna de interpretación aplica los criterios de George y Mallery (2003): α ≥ .70 aceptable, ≥ .80 buena y ≥ .90 excelente.';
+    },
+    _explicacionItems() {
+        return 'En las tablas de análisis de ítems, M y DE corresponden a la media y la desviación estándar de cada ítem, que permiten identificar elementos con distribuciones extremas o escasa variabilidad. La correlación ítem-total corregida expresa la relación entre el ítem y la suma de los ítems restantes (excluido el propio, para evitar la contaminación de la correlación por su pertenencia al total); valores iguales o superiores a .30 indican una contribución adecuada al constructo, en tanto que valores inferiores señalan ítems cuya pertinencia debe revisarse. La columna «α si se elimina» informa el valor que adoptaría el coeficiente al suprimir el ítem correspondiente: cuando dicho valor supera al α global de la escala, el ítem reduce la consistencia interna y constituye un candidato a revisión, reformulación o eliminación.';
+    },
+
     // ---------- sección de la interfaz ----------
     mostrar(idContenedor, datos) {
         const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
@@ -445,7 +508,13 @@ const Fiabilidad = {
                         ${filasResumen}
                     </table>
                 </div>
+                <div class="result-box">
+                    <p class="result-subtitle" style="margin: 0;">${this._explicacionResumen()}</p>
+                </div>
                 ${bloquesItems}
+                <div class="result-box">
+                    <p class="result-subtitle" style="margin: 0;">${this._explicacionItems()}</p>
+                </div>
                 <div class="result-box interpretation-box interpretation-box--hipotesis">
                     <h5 class="interpretation-title">
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -515,7 +584,7 @@ const Fiabilidad = {
                 nota: r.avisos.length ? r.avisos.join(' ') : null
             });
         });
-        const parrafos = [this.redactarInterpretacion(reportables), ...parrafosExtra];
+        const parrafos = [this._explicacionResumen(), this.redactarInterpretacion(reportables), this._explicacionItems(), ...parrafosExtra];
         if (reportables.length > 6) parrafos.push(`Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.`);
         return { tablas, parrafos };
     }
