@@ -181,6 +181,71 @@ class ScientificCharts {
             .on('mouseleave', function () { capa.style('display', 'none'); });
     }
     /**
+     * Tooltip HTML flotante compartido (matriz, boxplot...). Sigue al cursor
+     * sin salirse de la ventana. Se crea una sola vez por instancia.
+     * @private
+     */
+    _mostrarTooltip(html, event) {
+        if (!this._tt) {
+            this._tt = document.createElement('div');
+            this._tt.style.cssText = 'position:fixed; z-index:1001; max-width:340px; background:rgba(15, 23, 42, 0.97); border:1px solid #475569; border-radius:8px; padding:0.6rem 0.85rem; color:#e2e8f0; font-size:12.5px; line-height:1.55; pointer-events:none; box-shadow:0 8px 24px rgba(0,0,0,0.45); font-family:' + this.config.fontFamily + ';';
+            document.body.appendChild(this._tt);
+        }
+        this._tt.innerHTML = html;
+        this._tt.style.display = 'block';
+        const margen = 14;
+        let x = event.clientX + margen, y = event.clientY + margen;
+        const r = this._tt.getBoundingClientRect();
+        const vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
+        if (x + r.width > vw - 8) x = Math.max(8, event.clientX - r.width - margen);
+        if (y + r.height > vh - 8) y = Math.max(8, event.clientY - r.height - margen);
+        this._tt.style.left = x + 'px';
+        this._tt.style.top = y + 'px';
+    }
+    /** @private */
+    _ocultarTooltip() { if (this._tt) this._tt.style.display = 'none'; }
+    /**
+     * CDF de la normal estándar (aproximación de Zelen & Severo).
+     * @private
+     */
+    _phi(x) {
+        const t = 1 / (1 + 0.2316419 * Math.abs(x));
+        const d = Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+        const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        return x >= 0 ? 1 - p : p;
+    }
+    /**
+     * p-valor bilateral aproximado del coeficiente de correlación (estadístico
+     * t con aproximación normal; adecuado para los N habituales del análisis).
+     * @private
+     */
+    _pCorrelacion(r, n) {
+        if (n == null || n < 4 || Math.abs(r) >= 1) return null;
+        const t = Math.abs(r) * Math.sqrt((n - 2) / Math.max(1e-12, 1 - r * r));
+        return Math.max(0, Math.min(1, 2 * (1 - this._phi(t))));
+    }
+    /**
+     * IC 95% del coeficiente por transformación z de Fisher.
+     * @private
+     */
+    _icFisher(r, n) {
+        if (n == null || n < 4 || Math.abs(r) >= 1) return null;
+        const z = Math.atanh(r);
+        const se = 1 / Math.sqrt(n - 3);
+        return [Math.tanh(z - 1.96 * se), Math.tanh(z + 1.96 * se)];
+    }
+    /** Bandas de Cohen para la fuerza de la correlación. @private */
+    _fuerzaCorrelacion(r) {
+        const a = Math.abs(r);
+        const fuerza = a < 0.1 ? 'despreciable' : a < 0.3 ? 'débil' : a < 0.5 ? 'moderada' : 'fuerte';
+        return { fuerza, direccion: r >= 0 ? 'positiva' : 'negativa' };
+    }
+    /** Formato APA del p-valor del tooltip (aproximado). @private */
+    _fmtPTooltip(p) {
+        if (p == null) return null;
+        return p < 0.001 ? 'p < .001' : 'p ≈ ' + p.toFixed(3).replace(/^0/, '');
+    }
+    /**
      * Crea gradientes y patrones comunes
      * @private
      */
@@ -609,6 +674,41 @@ class ScientificCharts {
                 return lum > 0.55 ? '#0f172a' : '#FFFFFF';
             })
             .text(d => d.value.toFixed(2));
+        // ---- Tooltip exploratorio por celda: coeficiente, p, N, IC 95% e
+        // interpretación en lenguaje natural con los nombres de las variables.
+        const seriesVar = options.seriesPorVariable || null;
+        const normalesVar = options.normalesPorVariable || null;
+        cells
+            .on('mousemove', (event, d) => {
+                if (d.i === d.j) {
+                    this._mostrarTooltip(`<b style="color:#fbbf24;">${labels[d.i]}</b><br>Correlación de la variable consigo misma: siempre 1.00 por definición.`, event);
+                    return;
+                }
+                const esPearson = normalesVar ? (normalesVar[d.i] && normalesVar[d.j]) : null;
+                const simbolo = esPearson === null ? 'r' : (esPearson ? 'r' : 'ρ');
+                const metodo = esPearson === null ? 'Coeficiente' : (esPearson ? "Pearson's r" : "Spearman's ρ");
+                const N = seriesVar ? Math.min(seriesVar[d.i].length, seriesVar[d.j].length) : null;
+                const p = this._pCorrelacion(d.value, N);
+                const ic = this._icFisher(d.value, N);
+                const { fuerza, direccion } = this._fuerzaCorrelacion(d.value);
+                const fr = x => (x < 0 ? '-' : '') + Math.abs(x).toFixed(2).replace(/^0/, '');
+                let html = `<b style="color:#fbbf24;">${labels[d.i]} × ${labels[d.j]}</b><br>`;
+                html += `${metodo} = ${fr(d.value)}`;
+                if (p != null) html += `<br>${this._fmtPTooltip(p)}`;
+                if (N != null) html += `<br>N = ${N}`;
+                if (ic) html += `<br>IC 95% [${fr(ic[0])}, ${fr(ic[1])}]`;
+                html += `<br>Asociación ${direccion} ${fuerza}`;
+                let interp;
+                if (Math.abs(d.value) < 0.1) {
+                    interp = `No se aprecia una asociación relevante entre ${labels[d.i]} y ${labels[d.j]}.`;
+                } else {
+                    interp = `Puntuaciones más elevadas en ${labels[d.i]} tienden a asociarse con puntuaciones más ${d.value >= 0 ? 'elevadas' : 'bajas'} en ${labels[d.j]}`;
+                    interp += (p != null && p >= 0.05) ? ', aunque la asociación no alcanza significación estadística (α = .05).' : '.';
+                }
+                html += `<br><span style="color:#94a3b8;">Interpretación: ${interp}</span>`;
+                this._mostrarTooltip(html, event);
+            })
+            .on('mouseleave', () => this._ocultarTooltip());
         // Etiquetas de filas (ancladas a la derecha, dentro del margen izquierdo)
         const rowLabels = gMatriz.selectAll('.row-label')
             .data(labels)
@@ -689,16 +789,19 @@ class ScientificCharts {
             }];
         }
         // Calcular estadísticas para cada dataset
-        const boxData = datasets.map(dataset => {
-            const sorted = [...dataset.data].sort((a, b) => a - b);
+        const boxData = datasets.map((dataset, idx) => {
             const stats = this._calculateStats(dataset.data);
-            
+            const limInf = stats.q1 - 1.5 * stats.iqr;
+            const limSup = stats.q3 + 1.5 * stats.iqr;
+            const idsSerie = (options.ids && options.ids[idx]) || null;
             return {
                 ...stats,
                 label: dataset.label,
-                outliers: dataset.data.filter(d => 
-                    d < stats.q1 - 1.5 * stats.iqr || d > stats.q3 + 1.5 * stats.iqr
-                )
+                limInf,
+                limSup,
+                outliers: dataset.data
+                    .map((v, k) => ({ valor: v, id: idsSerie ? idsSerie[k] : null }))
+                    .filter(o => o.valor < limInf || o.valor > limSup)
             };
         });
         // Configurar escalas
@@ -725,7 +828,7 @@ class ScientificCharts {
         boxData.forEach((d, i) => {
             const x = xScale(d.label);
             const width = xScale.bandwidth();
-            // Caja principal
+            // Caja principal (con tooltip de estadísticos al pasar el cursor)
             g.append('rect')
                 .attr('x', x)
                 .attr('y', yScale(d.q3))
@@ -734,7 +837,17 @@ class ScientificCharts {
                 .attr('fill', this.config.primaryColor)
                 .attr('opacity', 0.3)
                 .attr('stroke', this.config.primaryColor)
-                .attr('stroke-width', 1);
+                .attr('stroke-width', 1)
+                .on('mousemove', (event) => {
+                    const html = `<b style="color:#fbbf24;">${d.label}</b><br>` +
+                        `N = ${d.n}<br>Mediana = ${d.median.toFixed(1)}<br>` +
+                        `Q1 = ${d.q1.toFixed(1)} · Q3 = ${d.q3.toFixed(1)}<br>` +
+                        `RIC = ${d.iqr.toFixed(1)}<br>` +
+                        `Mínimo = ${d.min.toFixed(1)} · Máximo = ${d.max.toFixed(1)}<br>` +
+                        `Outliers = ${d.outliers.length}`;
+                    this._mostrarTooltip(html, event);
+                })
+                .on('mouseleave', () => this._ocultarTooltip());
             // Línea media
             g.append('line')
                 .attr('x1', x)
@@ -778,14 +891,26 @@ class ScientificCharts {
                 .attr('stroke-width', 1);
             // Outliers
             if (d.outliers.length > 0) {
+                const fichaOutlier = (event, o) => {
+                    let html = `<b style="color:#fbbf24;">Observación potencialmente atípica</b><br>` +
+                        `Variable: ${d.label}<br>Valor: ${o.valor}<br>` +
+                        `Q1: ${d.q1.toFixed(1)} · Q3: ${d.q3.toFixed(1)} · RIC: ${d.iqr.toFixed(1)}<br>` +
+                        `Límite inferior: ${d.limInf.toFixed(1)}<br>Límite superior: ${d.limSup.toFixed(1)}`;
+                    if (o.id !== null && o.id !== '') html += `<br>Identificador: participante ${o.id}`;
+                    this._mostrarTooltip(html, event);
+                };
                 g.selectAll(`.outlier-${i}`)
                     .data(d.outliers)
                     .enter().append('circle')
                     .attr('class', `outlier-${i}`)
                     .attr('cx', x + width / 2)
-                    .attr('cy', d => yScale(d))
-                    .attr('r', 3)
-                    .attr('fill', this.config.secondaryColor);
+                    .attr('cy', o => yScale(o.valor))
+                    .attr('r', 3.5)
+                    .attr('fill', this.config.secondaryColor)
+                    .style('cursor', 'pointer')
+                    .on('mousemove', fichaOutlier)
+                    .on('click', fichaOutlier)
+                    .on('mouseleave', () => this._ocultarTooltip());
             }
         });
         // Ejes (etiquetas del eje X en diagonal: legibles con muchas variables)
