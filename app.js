@@ -2330,7 +2330,7 @@ function inicializarGraficos() {
                 primaryColor: '#2E5BBA'
             });
             chartCorr.createCorrelationMatrix(datosParaGraficos.correlaciones, datosParaGraficos.labels, {
-                title: 'Matriz de Correlaciones por Variable',
+                title: '', // se quitó esta vaina de titulo "Matriz de Correlaciones por Variable" para ponerlo dinamicamenteeee en 'graficas.js' :v
                 subtitle: datosParaGraficos.metodoCorrelacion
             });
         }
