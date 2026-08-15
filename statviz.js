@@ -331,7 +331,7 @@
                     const doc = g.ownerDocument;
                     const linea = doc.createElementNS(NS.svg, 'path');
                     linea.setAttribute('class', 'domain');
-                    linea.setAttribute('stroke', 'currentColor');
+                    linea.setAttribute('stroke', '#64748b');
                     linea.setAttribute('fill', 'none');
                     linea.setAttribute('d', orientacion === 'bottom'
                         ? `M${r0},${tamTick}V0H${r1}V${tamTick}`
@@ -345,11 +345,11 @@
                         gt.setAttribute('transform', orientacion === 'bottom'
                             ? `translate(${pos + desplaz},0)` : `translate(0,${pos + desplaz})`);
                         const l = doc.createElementNS(NS.svg, 'line');
-                        l.setAttribute('stroke', 'currentColor');
+                        l.setAttribute('stroke', '#64748b');
                         if (orientacion === 'bottom') l.setAttribute('y2', tamTick); else l.setAttribute('x2', -tamTick);
                         const tx = doc.createElementNS(NS.svg, 'text');
-                        tx.setAttribute('fill', 'currentColor');
-                        tx.setAttribute('font-size', '10');
+                        tx.setAttribute('fill', '#cbd5e1');
+                        tx.setAttribute('font-size', '11');
                         if (orientacion === 'bottom') {
                             tx.setAttribute('y', tamTick + sep); tx.setAttribute('dy', '0.71em');
                             tx.setAttribute('text-anchor', 'middle');
@@ -415,28 +415,32 @@
         return linea;
     };
     d3.area = function () {
-        let X = d => d[0], X1 = null, Y0 = () => 0, Y1 = d => d[1], curva = null, definido = () => true;
+        // Semántica d3: .x(f) fija x0 y anula x1; .y(f) fija y0 y anula y1.
+        // Borde principal = (x1 ?? x0, y1 ?? y0); base = (x0, y0).
+        let X0 = d => d[0], X1 = null, Y0 = () => 0, Y1 = null, curva = null, definido = () => true;
         function area(datos) {
             const arriba = [], abajo = [];
             let i = -1;
             for (const dd of datos) {
                 ++i;
                 if (!definido(dd, i, datos)) continue;
-                const x0 = +X(dd, i, datos), x1 = X1 ? +X1(dd, i, datos) : x0;
-                arriba.push([x1, +Y1(dd, i, datos)]);
-                abajo.push([x0, +Y0(dd, i, datos)]);
+                const x0 = +X0(dd, i, datos), y0 = +Y0(dd, i, datos);
+                const x1 = X1 ? +X1(dd, i, datos) : x0;
+                const y1 = Y1 ? +Y1(dd, i, datos) : y0;
+                arriba.push([x1, y1]);
+                abajo.push([x0, y0]);
             }
             if (!arriba.length) return '';
             const dSup = trazar(arriba, curva);
             const dInf = trazar(abajo.reverse(), curva).replace(/^M/, 'L');
             return dSup + dInf + 'Z';
         }
-        area.x = f => (X = typeof f === 'function' ? f : () => +f, area);
-        area.x0 = f => (X = typeof f === 'function' ? f : () => +f, area);
-        area.x1 = f => (X1 = typeof f === 'function' ? f : () => +f, area);
-        area.y = f => (Y1 = typeof f === 'function' ? f : () => +f, area);
+        area.x = f => (X0 = typeof f === 'function' ? f : () => +f, X1 = null, area);
+        area.x0 = f => (X0 = typeof f === 'function' ? f : () => +f, area);
+        area.x1 = f => (X1 = f == null ? null : (typeof f === 'function' ? f : () => +f), area);
+        area.y = f => (Y0 = typeof f === 'function' ? f : () => +f, Y1 = null, area);
         area.y0 = f => (Y0 = typeof f === 'function' ? f : () => +f, area);
-        area.y1 = f => (Y1 = typeof f === 'function' ? f : () => +f, area);
+        area.y1 = f => (Y1 = f == null ? null : (typeof f === 'function' ? f : () => +f), area);
         area.curve = c => (curva = c, area);
         area.defined = f => (definido = f, area);
         return area;
