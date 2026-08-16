@@ -10,6 +10,28 @@
 // CORS lo impide a nivel de navegador; se ofrece como pestaña externa.
 // ========================================
 
+// CORS lo impide a nivel de navegador; se ofrece como pestaña externa.
+// ========================================
+
+// ---- ExcelJS bajo demanda: se descarga UNA vez, al primer uso (exportar o
+// importar .xlsx), en vez de en el arranque de la página (~926 KB ahorrados).
+let _excelJSPromesa = null;
+function asegurarExcelJS() {
+    if (typeof ExcelJS !== 'undefined') return Promise.resolve();
+    if (_excelJSPromesa) return _excelJSPromesa;
+    _excelJSPromesa = new Promise((listo, falla) => {
+        const s = document.createElement('script');
+        s.src = 'exceljs.min.js';
+        s.onload = listo;
+        s.onerror = () => {
+            _excelJSPromesa = null;
+            falla(new Error('No se pudo descargar el módulo de Excel. Revisa tu conexión e inténtalo de nuevo.'));
+        };
+        document.head.appendChild(s);
+    });
+    return _excelJSPromesa;
+}
+    
 const Antecedentes = {
 
     CONFIG: {
@@ -1792,6 +1814,7 @@ const Antecedentes = {
 
     async _exportarXLSX(cols, filas) {
         try {
+            await asegurarExcelJS();
             const wb = this._construirLibroXLSX(cols, filas);
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
