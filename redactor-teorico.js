@@ -227,8 +227,10 @@ const RedactorTeorico = {
         if (filas.length < 2) throw new Error('El CSV no tiene datos (solo encabezado o vacío).');
         return { cols: filas[0].map(c => String(c).trim()), filas: filas.slice(1) };
     },
-    // Lee la primera hoja de un .xlsx (requiere ExcelJS, ya cargado en la app).
+    
+    // Lee la primera hoja de un .xlsx (ExcelJS se carga bajo demanda aquí).
     async _parsearXLSX(buffer) {
+        await asegurarExcelJS();
         if (typeof ExcelJS === 'undefined') throw new Error('La librería de Excel no está cargada. Recarga la página.');
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
