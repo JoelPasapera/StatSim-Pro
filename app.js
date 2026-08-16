@@ -2314,6 +2314,7 @@ function inicializarGraficos() {
         insertarDescripcionesGraficos();
         // El simbolo de interrogacion de explicacion supere entendibleeeeeeee siuu xd 
         agregarAyudasGraficos();
+        if (typeof AnalisisGraficos !== 'undefined') AnalisisGraficos.insertarTodos(datosParaGraficos);
         // Crear gráfico de distribución gaussiana
         if (contenedoresValidos.includes('distribucion-gaussiana')) {
             const chartGauss = new ScientificCharts('distribucion-gaussiana', {
