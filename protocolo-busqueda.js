@@ -245,6 +245,94 @@
             <p style="color:#64748b; font-size:0.78rem; margin:0.6rem 0 0;">Ficha t\u00e9cnica generada autom\u00e1ticamente por StatSim Pro \u00b7 ${r.nConsultas} consultas \u00b7 total identificados: ${r.totalIdentificados}</p>`;
     }
 
+    // --------------------- exportación a Word (APA 7) ---------------------
+
+    /** Interpretación automática del protocolo, condicional a los datos. */
+    function interpretacionAutomatica() {
+        const r = resumen();
+        if (r.nFuentes === 0) return [];
+        const p = [];
+        const rango = fechaLegible(r.fechaInicio) === fechaLegible(r.fechaFin)
+            ? `el ${fechaLegible(r.fechaInicio)}`
+            : `entre el ${fechaLegible(r.fechaInicio)} y el ${fechaLegible(r.fechaFin)}`;
+        p.push(`La tabla documenta ${r.nEcuaciones} ${r.nEcuaciones === 1 ? 'ecuación de búsqueda ejecutada' : 'ecuaciones de búsqueda ejecutadas'} sobre ${r.nFuentes} ${r.nFuentes === 1 ? 'base de datos' : 'bases de datos'} ${rango}, con el registro literal de cada ecuación y sus filtros; ello permite a cualquier lector replicar la búsqueda paso a paso, requisito central de una revisión transparente.`);
+        if (r.totalIdentificados > 0) {
+            const top = r.fuentes[0];
+            p.push(`En conjunto se identificaron ${r.totalIdentificados} registros; la fuente más productiva fue ${top.nombre}, con ${top.totalResultados} ${top.totalResultados === 1 ? 'registro' : 'registros'}.`);
+        }
+        const variantes = estado.consultas.filter(c => /variante/i.test(c.nota || '')).length;
+        if (variantes > 0) {
+            p.push(`${variantes} de las ecuaciones ${variantes === 1 ? 'corresponde a una variante generada' : 'corresponden a variantes generadas'} durante la búsqueda intensiva; su registro documenta la expansión de la consulta original hacia sinónimos y términos alternativos en español e inglés.`);
+        }
+        const sinConteo = estado.consultas.filter(c => !Number.isFinite(c.resultados)).length;
+        if (sinConteo > 0) {
+            p.push(`${sinConteo} ${sinConteo === 1 ? 'consulta no reportó' : 'consultas no reportaron'} conteo porque la fuente no respondió en el momento de la búsqueda (símbolo —); por transparencia la consulta queda documentada igualmente y el total identificado se declara como un mínimo.`);
+        }
+        p.push('Se trata de una revisión estructurada con protocolo de búsqueda documentado; no se reclama la exhaustividad de una revisión sistemática formal (sin doble cribado independiente ni evaluación formal de riesgo de sesgo).');
+        return p;
+    }
+
+    /** HTML del protocolo en formato APA 7 (Times 12, tabla sin filetes verticales).
+     *  Reutilizable por el exportador del capítulo (apéndice metodológico). */
+    function wordHTML(nTabla = 1) {
+        const r = resumen();
+        if (r.nFuentes === 0) return '<p>Aún no hay consultas registradas.</p>';
+        const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const F = "font-family:'Times New Roman',serif; font-size:12pt;";
+        const hayNota = estado.consultas.some(c => c.nota);
+        const th = 'border-top:1.5pt solid #000; border-bottom:1pt solid #000; padding:3pt 6pt; text-align:left; font-weight:bold;';
+        const td = 'padding:3pt 6pt; text-align:left; vertical-align:top;';
+        const ult = estado.consultas.length - 1;
+        const filas = estado.consultas.map((c, i) => {
+            const borde = i === ult ? ' border-bottom:1.5pt solid #000;' : '';
+            return `<tr>` +
+                `<td style="${td}${borde}">${esc(c.fuente)}</td>` +
+                `<td style="${td}${borde}">${esc(c.ecuacion)}</td>` +
+                `<td style="${td}${borde}">${esc(c.filtros) || '—'}</td>` +
+                `<td style="${td}${borde} text-align:right;">${Number.isFinite(c.resultados) ? c.resultados : '—'}</td>` +
+                `<td style="${td}${borde}">${fechaLegible(c.fecha)}</td>` +
+                (hayNota ? `<td style="${td}${borde}">${esc(c.nota) || ''}</td>` : '') +
+                `</tr>`;
+        }).join('');
+        const interpretacion = interpretacionAutomatica()
+            .map(x => `<p style="${F} line-height:200%; margin:0 0 6pt; text-align:left;">${x}</p>`).join('');
+        return `
+            <h2 style="${F} font-size:12pt; font-weight:bold; text-align:center; margin:0 0 12pt;">Ficha técnica de la revisión (protocolo de búsqueda)</h2>
+            <p style="${F} line-height:200%; text-align:left; margin:0 0 12pt;">${parrafoMetodologico()}</p>
+            <p style="${F} font-weight:bold; margin:12pt 0 0;">Tabla ${nTabla}</p>
+            <p style="${F} font-style:italic; margin:2pt 0 8pt;">Protocolo de búsqueda por fuente y ecuación</p>
+            <table style="border-collapse:collapse; width:100%; ${F} font-size:11pt;">
+                <thead><tr>
+                    <th style="${th}">Fuente</th>
+                    <th style="${th}">Ecuación de búsqueda</th>
+                    <th style="${th}">Filtros</th>
+                    <th style="${th} text-align:right;">Resultados</th>
+                    <th style="${th}">Fecha</th>
+                    ${hayNota ? `<th style="${th}">Nota</th>` : ''}
+                </tr></thead>
+                <tbody>${filas}</tbody>
+            </table>
+            <p style="${F} font-size:10pt; margin:6pt 0 14pt;"><i>Nota.</i> Ficha generada automáticamente por StatSim Pro a partir del registro de consultas de la sesión. El símbolo — indica que la fuente no reportó conteo (fallo de conexión), por lo que el total identificado es un mínimo.</p>
+            <h3 style="${F} font-size:12pt; font-weight:bold; margin:0 0 8pt;">Interpretación</h3>
+            ${interpretacion}`;
+    }
+
+    /** Descarga el protocolo como .docx real (requiere html-docx cargado). */
+    function exportarWord() {
+        if (typeof htmlDocx === 'undefined' || typeof htmlDocx.asBlob !== 'function') {
+            if (typeof alert === 'function') alert('El generador de Word aún no está cargado. Recarga la página e inténtalo de nuevo.');
+            return;
+        }
+        const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${wordHTML()}</body></html>`;
+        const blob = htmlDocx.asBlob(doc);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'protocolo_busqueda.docx'; a.style.visibility = 'hidden';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        if (typeof window !== 'undefined' && typeof window.mostrarToast === 'function') window.mostrarToast('Protocolo exportado a Word', 'success');
+    }
+
     function descargar(contenido, nombre, mime) {
         // Usa la utilidad global de la app si existe; si no, fallback propio.
         if (typeof window !== 'undefined' && typeof window.descargarArchivo === 'function') {
@@ -281,6 +369,7 @@
                 <h4 style="margin:0; color:#fbbf24; font-size:0.95rem;">\ud83d\udccb Ficha t\u00e9cnica de la revisi\u00f3n (protocolo de b\u00fasqueda)</h4>
                 <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
                     <button type="button" class="pb-btn" data-accion="copiar">Copiar p\u00e1rrafo</button>
+                    <button type="button" class="pb-btn" data-accion="word">Word (APA)</button>
                     <button type="button" class="pb-btn" data-accion="csv">CSV</button>
                     <button type="button" class="pb-btn" data-accion="json">JSON</button>
                     <button type="button" class="pb-btn" data-accion="limpiar">Nueva revisi\u00f3n</button>
@@ -297,6 +386,8 @@
                         navigator.clipboard.writeText(texto);
                     }
                     if (typeof window.mostrarToast === 'function') window.mostrarToast('P\u00e1rrafo metodol\u00f3gico copiado', 'success');
+                } else if (accion === 'word') {
+                    exportarWord();
                 } else if (accion === 'csv') {
                     descargar(exportarCSV(), 'protocolo_busqueda.csv', 'text/csv');
                 } else if (accion === 'json') {
@@ -324,6 +415,8 @@
         resumen,
         parrafoMetodologico,
         fichaHTML,
+        wordHTML,
+        exportarWord,
         exportarCSV,
         exportarJSON,
         mostrarFicha,
