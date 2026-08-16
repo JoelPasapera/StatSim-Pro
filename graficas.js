@@ -76,8 +76,12 @@ class ScientificCharts {
      */
     _ajustarTamanoCSS(vbW, vbH) {
         const cw = (this.container && this.container.clientWidth) || 0;
+        if (cw < 40 && this.container && typeof requestAnimationFrame === 'function' && !this._reintentoTam) {
+            this._reintentoTam = true;
+            requestAnimationFrame(() => { this._reintentoTam = false; this._ajustarTamanoCSS(vbW, vbH); });
+        }
         const chDisp = (this.container && this.container.clientHeight) || 0;
-        let w = cw > 40 ? Math.min(cw, vbW * (this._cardExpandida ? 2.2 : 1.3)) : vbW;
+        let w = cw > 40 ? (this._cardExpandida ? Math.min(cw * 0.82, vbW * 1.9) : Math.min(cw, vbW * 1.3)) : vbW;
         let h = w * vbH / vbW;
         // Si la card tiene alto definido, no sobrepasarlo (dejando ~34 px
         // para el caption); se reduce manteniendo la proporción. Las cards
@@ -805,10 +809,14 @@ class ScientificCharts {
                     .filter(o => o.valor < limInf || o.valor > limSup)
             };
         });
+        // Ancho de dibujo proporcional al número de variables: cada caja
+        // dispone de un espacio consistente (~112 px de lienzo) tenga el
+        // gráfico 2 u 8 variables, y el viewBox se ajusta a ese contenido.
+        const Wb = Math.max(340, Math.min(1360, boxData.length * 112));
         // Configurar escalas
         const xScale = d3.scaleBand()
             .domain(boxData.map(d => d.label))
-            .range([0, this.config.width - this.config.margin.left - this.config.margin.right])
+            .range([0, Wb])
             .padding(0.3);
         // Los valores se toman de `datasets` (que conserva `.data`); `boxData`
         // solo guarda estadísticos resumidos, no las observaciones originales.
@@ -822,7 +830,6 @@ class ScientificCharts {
             options.xLabel || '',
             options.yLabel || 'Valor'
         );
-        const Wb = this.config.width - this.config.margin.left - this.config.margin.right;
         const Hb = this.config.height - this.config.margin.top - this.config.margin.bottom;
         this._agregarRejilla(g, Wb, Hb, null, yScale);
         // Crear boxplots
@@ -914,6 +921,9 @@ class ScientificCharts {
                     .on('mouseleave', () => this._ocultarTooltip());
             }
         });
+        // Las líneas internas (mediana, bigotes) y la rejilla no capturan el
+        // mouse: evita el parpadeo del tooltip al pasar sobre ellas.
+        g.selectAll('line').style('pointer-events', 'none');
         // Ejes (etiquetas del eje X en diagonal: legibles con muchas variables)
         const ejeXBox = g.append('g')
             .attr('transform', `translate(0,${this.config.height - this.config.margin.top - this.config.margin.bottom})`)
@@ -930,6 +940,12 @@ class ScientificCharts {
         this._agregarCrosshair(g, Wb, Hb,
             px => String(dominioBox[Math.max(0, Math.min(dominioBox.length - 1, Math.floor(px / Wb * dominioBox.length)))]),
             py => yScale.invert(py).toFixed(1));
+        // Lienzo ajustado al contenido real (ancho proporcional a las cajas)
+        const vbWBox = this.config.margin.left + Wb + this.config.margin.right;
+        if (this.svg) {
+            this.svg.attr('viewBox', `0 0 ${vbWBox} ${this.config.height}`);
+            this._ajustarTamanoCSS(vbWBox, this.config.height);
+        }
         return this;
     }
     /**
