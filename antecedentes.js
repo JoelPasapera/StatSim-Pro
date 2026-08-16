@@ -742,6 +742,11 @@ const Antecedentes = {
         if (selUmbral) selUmbral.addEventListener('change', () => {
             this._umbralRelevancia = parseInt(selUmbral.value, 10) || 0;
             this._selMat = 0; // volver a la primera página de la matriz
+            if (typeof PrismaDiagrama !== 'undefined') {
+                const u = this._umbralRelevancia;
+                const exc = u > 0 ? this._obras.filter(o => (o._relevancia || 0) > 0 && o._relevancia < u).length : 0;
+                PrismaDiagrama.registrar('excluidos', { n: exc, motivo: u > 0 ? `relevancia < ${u} según los criterios de inclusión/exclusión` : '' });
+            }
             this._renderSeleccion();
             if (typeof RedactorTeorico !== 'undefined') RedactorTeorico.actualizarInfoFuentes();
         });
@@ -968,6 +973,9 @@ const Antecedentes = {
 
         const _dur = this._formatoTiempo(performance.now() - _t0);
         const evaluados = this._obras.filter(o => o._relevancia > 0).length;
+        if (typeof PrismaDiagrama !== 'undefined') {
+            PrismaDiagrama.registrar('cribados', { n: evaluados });
+        }
         if (estado) estado.textContent = `✓ ${evaluados} artículos evaluados en ${_dur}`
             + (conError ? ` (${conError} lote(s) con error)` : '')
             + `. Matriz reordenada por relevancia. Usa «Filtrar por relevancia» para ocultar las de puntuación baja.`;
@@ -1047,11 +1055,15 @@ const Antecedentes = {
                     this._protocoloNota = '';
                     infosTodas.push(`«${q}»: ${infos}`);
                     // Deduplicar contra lo ya acumulado.
+                    const antesDup = acumuladas.length;
                     for (const o of obras) {
                         const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
                         if (vistos.has(k)) continue;
                         vistos.add(k);
                         acumuladas.push(o);
+                    }
+                    if (typeof PrismaDiagrama !== 'undefined') {
+                        PrismaDiagrama.registrar('duplicados', { n: obras.length - (acumuladas.length - antesDup) });
                     }
                 } catch (e) {
                     conError++;
@@ -1174,6 +1186,9 @@ const Antecedentes = {
                 if (vistos.has(k)) return false;
                 vistos.add(k); return true;
             });
+            if (typeof PrismaDiagrama !== 'undefined') {
+                PrismaDiagrama.registrar('duplicados', { n: obras.length - this._obras.length });
+            }
             this._pagina = 0;
             this._resetRelevancia();
             const _dur = this._formatoTiempo(performance.now() - _t0);
@@ -1206,6 +1221,9 @@ const Antecedentes = {
             const fallo = r && typeof r.info === 'string' && /falló|fallaron/.test(r.info);
             if (r && Array.isArray(r.obras) && !fallo) {
                 ProtocoloBusqueda.actualizarResultados(fuente, q, r.obras.length);
+                if (typeof PrismaDiagrama !== 'undefined') {
+                    PrismaDiagrama.registrar('identificados', { fuente, n: r.obras.length });
+                }
             }
             return r;
         });
@@ -1396,7 +1414,10 @@ const Antecedentes = {
     _renderSeleccion() {
         const sel = [...this._seleccion.values()];
         const cont = document.getElementById('antSeleccion');
-        if (!sel.length) { cont.innerHTML = ''; this._selRef = 0; this._selMat = 0; return; }
+        if (!sel.length) {
+            if (typeof PrismaDiagrama !== 'undefined') PrismaDiagrama.registrar('incluidos', { n: 0 });
+            cont.innerHTML = ''; this._selRef = 0; this._selMat = 0; return;
+        }
         if (this._selRef == null) this._selRef = 0;
         if (this._selMat == null) this._selMat = 0;
         const PP = 15;
@@ -1413,6 +1434,9 @@ const Antecedentes = {
         // incluye artículos con puntuación >= umbral. No borra nada del listado.
         const umbralRel = (this._relevanciaAplicada && this._umbralRelevancia > 0) ? this._umbralRelevancia : 0;
         const selMatriz = this.obtenerFuentesRedaccion(sel);
+        if (typeof PrismaDiagrama !== 'undefined') {
+            PrismaDiagrama.registrar('incluidos', { n: selMatriz.length });
+        }
         const filasMatriz = selMatriz.map(o => this._filaMatriz(o));
         const infoUmbral = umbralRel > 0
             ? ` <span style="font-weight:normal; font-size:0.75em; color:#666;">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
