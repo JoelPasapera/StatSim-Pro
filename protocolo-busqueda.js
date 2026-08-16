@@ -35,6 +35,10 @@
 
     const CLAVE_ALMACEN = 'statsim_protocolo_busqueda_v1';
 
+    // Estado visual: la ficha inicia PLEGADA; si el usuario la abre, las
+    // re-renderizaciones tras cada búsqueda respetan su elección.
+    let fichaAbierta = false;
+
     // ------------------------------ estado ------------------------------
 
     let estado = {
@@ -364,18 +368,32 @@
             cont.appendChild(caja);
         }
         const r = resumen();
+        const resumenCorto = r.nFuentes === 0
+            ? 'aún sin consultas registradas'
+            : `${r.nEcuaciones} ${r.nEcuaciones === 1 ? 'ecuación' : 'ecuaciones'} · ${r.nFuentes} ${r.nFuentes === 1 ? 'fuente' : 'fuentes'} · ${r.totalIdentificados} identificados`;
         caja.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.6rem;">
-                <h4 style="margin:0; color:#fbbf24; font-size:0.95rem;">\ud83d\udccb Ficha t\u00e9cnica de la revisi\u00f3n (protocolo de b\u00fasqueda)</h4>
-                <div style="display:flex; gap:0.4rem; flex-wrap:wrap;">
-                    <button type="button" class="pb-btn" data-accion="copiar">Copiar p\u00e1rrafo</button>
-                    <button type="button" class="pb-btn" data-accion="word">Word (APA)</button>
-                    <button type="button" class="pb-btn" data-accion="csv">CSV</button>
-                    <button type="button" class="pb-btn" data-accion="json">JSON</button>
-                    <button type="button" class="pb-btn" data-accion="limpiar">Nueva revisi\u00f3n</button>
+            <details class="pb-details" ${fichaAbierta ? 'open' : ''}>
+                <summary style="cursor:pointer; list-style:none; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                    <h4 style="margin:0; color:#fbbf24; font-size:0.95rem;"><span class="pb-flecha">${fichaAbierta ? '▾' : '▸'}</span> 📋 Ficha técnica de la revisión (protocolo de búsqueda)</h4>
+                    <span style="color:#94a3b8; font-size:0.8rem;">${resumenCorto}</span>
+                </summary>
+                <div style="margin-top:0.8rem;">
+                    <div style="display:flex; justify-content:flex-end; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.6rem;">
+                        <button type="button" class="pb-btn" data-accion="copiar">Copiar párrafo</button>
+                        <button type="button" class="pb-btn" data-accion="word">Word (APA)</button>
+                        <button type="button" class="pb-btn" data-accion="csv">CSV</button>
+                        <button type="button" class="pb-btn" data-accion="json">JSON</button>
+                        <button type="button" class="pb-btn" data-accion="limpiar">Nueva revisión</button>
+                    </div>
+                    <div class="pb-contenido">${fichaHTML()}</div>
                 </div>
-            </div>
-            <div class="pb-contenido">${fichaHTML()}</div>`;
+            </details>`;
+        const det = caja.querySelector('details');
+        if (det) det.addEventListener('toggle', () => {
+            fichaAbierta = det.open;
+            const flecha = caja.querySelector('.pb-flecha');
+            if (flecha) flecha.textContent = det.open ? '▾' : '▸';
+        });
         caja.querySelectorAll('.pb-btn').forEach(b => {
             b.style.cssText = 'background:rgba(15,23,42,0.9); border:1px solid #475569; color:#cbd5e1; border-radius:6px; padding:0.25rem 0.6rem; font-size:0.78rem; cursor:pointer;';
             b.addEventListener('click', () => {
