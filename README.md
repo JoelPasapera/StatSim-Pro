@@ -4,9 +4,9 @@
 
 **Suite estadística y metodológica completa para tesis de psicología y ciencias sociales — 100 % en tu navegador.**
 
-De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas, ejecuta análisis con rigor de SPSS, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
+De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas, ejecuta análisis con rigor de SPSS, explora tus resultados en gráficos interactivos con análisis automático, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
 
-> Implementado 100 % en el navegador. Sin frameworks pesados, sin backend, sin instalación. ¡Pruébalo aquí 👇!
+> Implementado 100 % en el navegador. Sin frameworks, sin backend, sin instalación — y desde esta versión, **sin librerías de gráficos externas**: la visualización también es motor propio. ¡Pruébalo aquí 👇!
 
 [![GitHub Pages](https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge)](https://joelpasapera.github.io/StatSim-Pro)
 
@@ -27,6 +27,7 @@ De la simulación de datos a la redacción del marco teórico: genera bases de d
 Los resultados arrojados por **StatSim Pro** fueron comparados directamente con los reportados por **IBM SPSS Statistics** (versión estándar de laboratorio) sobre la **misma base de datos**.
 
 ### Archivo de prueba
+
 - [`base_datos_simulada.csv`](./base_datos_simulada.csv) — Base de datos simulada generada con el módulo interno de StatSim Pro (*N* = 300 participantes, variables `Total_R` y `Total_T`).
 
 ### Resultados obtenidos
@@ -53,6 +54,7 @@ Los resultados arrojados por **StatSim Pro** fueron comparados directamente con 
 ### Capturas de pantalla
 
 **Correlación de Spearman — StatSim Pro vs. SPSS**
+
 ![image](https://github.com/JoelPasapera/StatSim-Pro.github.io/blob/fec7b57c8f97627c3b8cb247d32ca96407bb5d67/Evidencia%20%5BSPSS%5D%20-%20Correlaci%C3%B3n.png)
 
 **Pruebas de normalidad — StatSim Pro vs. SPSS**
@@ -83,9 +85,21 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 
 ---
 
+## 🎨 Motor de visualización propio (statviz.js)
+
+Desde esta versión, StatSim Pro **ya no depende de D3.js**: los gráficos se dibujan con `statviz.js`, un motor SVG ligero (~33 KB sin minificar, frente a ~280 KB de D3) escrito desde cero para el proyecto, que implementa exactamente el contrato que la app necesita:
+
+- Escalas lineales (con `nice`, ticks y **formato adaptativo de decimales** según el paso), de banda y secuenciales
+- Ejes con estilos legibles en tema oscuro, selecciones data-join (`data/enter/exit/join`), generadores de línea y área con **curvas B-spline** (curveBasis) y cierre lineal
+- Histogramas con umbrales, jerarquías con empaquetado de círculos y proyección geográfica Natural Earth para el panorama mundial
+- Verificado con una **batería de regresión propia** (jsdom) que cubre estadísticos, escalas, ejes, áreas de violín, empaquetado y geografía
+
+---
+
 ## ✨ Características
 
 ### 🎲 Generador de bases de datos (Simulador)
+
 - ✅ Simulación de datos controlados con media y desviación estándar objetivo
 - ✅ Soporte para múltiples pruebas psicométricas con ítems, dimensiones y puntajes de escala
 - ✅ Variables sociodemográficas personalizables (sexo, edad, carrera, etc.)
@@ -95,6 +109,7 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - ✅ Exportación a CSV (con BOM, compatible con Excel) y vista previa
 
 ### 🔬 Analizador estadístico
+
 - ✅ Carga de CSV propio o de los datos generados, con vista previa (N y variables)
 - ✅ **Etiquetas de variables**: renombra puntajes de escala (`General_IE` → “Inteligencia emocional”) y toda la app y el Word usan el nombre legible
 - ✅ Configuración de la investigación (título, unidad de análisis, contexto) y de dimensiones por variable
@@ -105,11 +120,22 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - ✅ **Lectura causal honesta**: la sección “De la correlación al control estadístico” explica las tres condiciones causales y por qué un diseño transversal aporta asociación ajustada, necesaria pero no suficiente
 - ✅ Criba automática de correlaciones por dimensiones para los objetivos específicos (priorizada y con Holm)
 - ✅ Hallazgos según variables sociodemográficas (pruebas según la naturaleza de cada variable)
-- ✅ Gráficos D3: histogramas con curva normal y ejes numéricos, Q-Q plots, dispersión con recta de mínimos cuadrados y banda de confianza al 95 %, matriz de correlación
 - ✅ Interpretaciones en lenguaje llano de cada resultado
 - ✅ Marco metodológico asistido: pregunta, objetivo general, objetivos específicos, hipótesis H₀/H₁ y **matriz de consistencia** construida automáticamente
 
+### 📈 Dashboard de gráficos interactivos con análisis automático
+
+- ✅ **Selector de variables con casillas**: elige qué variables graficar (2–8) y todos los gráficos, junto con sus análisis, se redibujan al instante
+- ✅ **Distribución de puntajes: teórica vs. empírica** — para cada variable, la curva normal N(μ, σ) (continua) se contrasta con la **densidad empírica de los datos reales** (KDE de Silverman, punteada): la comparación visual delata asimetrías y bimodalidades antes de las pruebas formales; con líneas de media, cursor en cruz con coordenadas y rejilla tenue
+- ✅ **Matriz de correlaciones exploratoria**: paleta divergente diseñada para tema oscuro (sin celdas blancas), contraste del texto por luminancia real, celdas y tipografía adaptativas, etiquetas de variables completas y **tooltip por celda** con coeficiente (Pearson o Spearman según la normalidad de ese par), p aproximado, N, IC 95 % (Fisher) e interpretación en lenguaje natural
+- ✅ **Diagrama de caja investigable**: lienzo proporcional al número de variables, etiquetas del eje en diagonal, **tooltip con los estadísticos completos de cada caja** (N, mediana, cuartiles, RIC, mínimo, máximo, atípicos) y **ficha por cada punto atípico** (valor, límites de Tukey e identificador del participante)
+- ✅ **Análisis automático bajo cada gráfico** (`analisis-graficos.js`): un párrafo con redacción científica publicable generado desde los datos vigentes — severidad de las desviaciones de normalidad (γ₁, γ₂) con dirección e implicación, dispersión relativa (CV), estructura correlacional (varianza compartida, cautela por comparaciones múltiples), atípicos con dirección, asimetría por mediana y bigotes, y recomendaciones condicionales (paramétricos vs. robustos; media/DE vs. mediana/RIC), con avisos automáticos por N reducido o escalas dispares
+- ✅ **Ayudas pedagógicas**: botón «?» junto a cada título abre una explicación en lenguaje coloquial de qué es el gráfico, para qué sirve y qué observar
+- ✅ Todos los gráficos son **responsive de verdad**: el lienzo se ajusta exactamente al contenido y al marco que lo contiene, sin recortes ni superposiciones
+- ✅ En el panel de normalidad: histogramas con curva normal y ejes numéricos, Q-Q plots; en correlación: dispersión con recta de mínimos cuadrados y **banda de confianza al 95 %**
+
 ### 📄 Exportador de capítulo de resultados (Word APA 7)
+
 - ✅ Documento **.docx real** con portada, resumen, índice con anclas y numeración APA de tablas y figuras
 - ✅ Marco metodológico completo + matriz de consistencia
 - ✅ Tabla sociodemográfica **con interpretación pedagógica** (categorías predominantes, lectura de f y %)
@@ -123,6 +149,7 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - ✅ Referencias APA del capítulo
 
 ### 🔎 Buscador de antecedentes académicos
+
 - ✅ Búsqueda simultánea en **Scopus** (rotación de múltiples claves API), **PubMed**, **SciELO**, **ALICIA (Concytec)**, **Google Scholar**, **OpenAlex** y **Crossref**
 - ✅ **Búsqueda intensiva con IA**: generación de criterios de inclusión/exclusión, expansión de la consulta en variantes (ES/EN) y paginación profunda
 - ✅ **Análisis de relevancia con IA** (escala 1–5 con justificación) vía Cloudflare Worker con **rotación de hasta 10 claves gratuitas de Groq en paralelo**, JSON estricto y reintentos con enfriamiento automático
@@ -134,6 +161,7 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - ✅ Referencias APA 7 correctas: apellidos e iniciales interpretados desde cualquier formato de las APIs (“Batbayar E.”, “E. Batbayar”, “EB Batbayar”…), “y” en español, cursivas de revista
 
 ### ✍️ Redactor de marco teórico con IA
+
 - ✅ **Identificación de variables** de estudio a partir del problema (la IA propone, tú confirmas)
 - ✅ **Documento completo de 9 secciones**: Planteamiento del problema, Estado de la cuestión, Antecedentes (en partes para cubrir todas las fuentes), Bases teóricas y Modelos teóricos por variable, Justificación y Definición conceptual de las variables — redactadas **en paralelo** por múltiples claves de IA
 - ✅ **Regla de oro inviolable: toda idea lleva cita** — cada párrafo debe contener al menos una cita (parentética o narrativa) construida por la app desde la matriz; los textuales solo pueden ser literales de los resúmenes
@@ -145,9 +173,10 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - ✅ Aviso honesto permanente: es un **borrador asistido** — verifica cada cita contra la fuente original y reescríbelo con tu voz
 
 ### 🔒 Privacidad y arquitectura
+
 - ✅ **100 % del procesamiento estadístico ocurre en tu navegador**: tus datos nunca salen de tu equipo
 - ✅ Sin backend propio ni base de datos; despliegue estático en GitHub Pages
-- ✅ Vanilla JavaScript modular (sin frameworks), D3.js para gráficos, ExcelJS y html-docx-js desde CDN
+- ✅ Vanilla JavaScript modular (sin frameworks) con **motor de visualización propio** (`statviz.js`, sin D3 ni otras librerías de gráficos); ExcelJS y html-docx-js desde CDN solo para exportaciones
 - ✅ Las llamadas a IA (solo en el buscador/redactor) envían únicamente títulos y resúmenes de artículos públicos a través de un Worker propio; las claves nunca se exponen en el cliente
 
 ---
@@ -157,9 +186,10 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 1. Abre la demo: [joelpasapera.github.io/StatSim-Pro](https://joelpasapera.github.io/StatSim-Pro)
 2. **Simulador** → genera una base de datos realista (o salta este paso si tienes la tuya)
 3. **Analizador** → carga tu CSV o usa los datos generados; etiqueta tus variables; elige el análisis (correlación, comparación de grupos, chi², multivariado) y ejecuta
-4. Exporta el **capítulo de resultados en Word APA** con un clic
-5. **Buscador** → busca antecedentes, analiza relevancia con IA, llena la matriz y expórtala
-6. **Redactor** → importa la matriz, identifica variables y genera el **marco teórico completo en Word APA**
+4. **Explora el dashboard**: selecciona variables con las casillas, pasa el cursor por la matriz y los diagramas de caja, investiga los atípicos y lee el análisis automático bajo cada gráfico
+5. Exporta el **capítulo de resultados en Word APA** con un clic
+6. **Buscador** → busca antecedentes, analiza relevancia con IA, llena la matriz y expórtala
+7. **Redactor** → importa la matriz, identifica variables y genera el **marco teórico completo en Word APA**
 
 Para uso local: clona el repositorio y abre `index.html` (o sirve la carpeta con cualquier servidor estático).
 
@@ -180,7 +210,9 @@ python -m http.server 8000   # o cualquier servidor estático
 | `analizador-estadistico.js` | Motor estadístico central (normalidad, correlaciones, fiabilidad, Holm…) |
 | `comparacion-grupos.js` | Protocolo automático t/Welch/U/ANOVA/Kruskal-Wallis + post-hoc |
 | `regresion-multiple.js` | Matriz multi-variable y regresión múltiple OLS (VIF, crudo vs. ajustado) |
-| `graficas.js` | Gráficos D3 (histogramas, Q-Q, dispersión, matriz) |
+| `statviz.js` | **Motor de visualización propio** (escalas, ejes, selecciones, curvas, histogramas, pack, geo) — reemplaza a D3 |
+| `graficas.js` | Librería de gráficos científicos: distribución teórica vs. empírica (KDE), matriz de correlaciones, boxplot, Q-Q, dispersión con banda de confianza — responsive, tema oscuro, tooltips exploratorios y cursor de coordenadas |
+| `analisis-graficos.js` | Análisis automático bajo cada gráfico: redacción científica condicional a los datos, extensible por registro |
 | `interpretaciones-estadisticas.js` | Redacción en lenguaje llano de los resultados |
 | `criba-correlaciones.js`, `criba-sociodemografica.js`, `analisis-dimensiones.js` | Objetivos específicos y hallazgos por sociodemográficos |
 | `etiquetas-variables.js`, `matriz-consistencia.js` | Nombres legibles y matriz de consistencia |
@@ -193,7 +225,7 @@ python -m http.server 8000   # o cualquier servidor estático
 
 ## ⚠️ Nota de responsabilidad académica
 
-StatSim Pro automatiza cálculos y borradores, no el criterio del investigador. Los textos generados con IA son **borradores de trabajo**: contrasta cada cita con la fuente original, verifica los supuestos de tus análisis y reescribe con tu propia voz antes de incorporar cualquier resultado a tu tesis.
+StatSim Pro automatiza cálculos y borradores, no el criterio del investigador. Los textos generados con IA son **borradores de trabajo**, y los análisis automáticos bajo los gráficos son **lecturas descriptivas preliminares**: contrasta cada cita con la fuente original, confirma los supuestos con las pruebas formales y reescribe con tu propia voz antes de incorporar cualquier resultado a tu tesis.
 
 ---
 
