@@ -412,7 +412,11 @@
                     descargar(exportarJSON(), 'protocolo_busqueda.json', 'application/json');
                 } else if (accion === 'limpiar') {
                     const seguir = typeof confirm === 'function' ? confirm('\u00bfIniciar una nueva revisi\u00f3n? Se borrar\u00e1 el protocolo registrado en esta sesi\u00f3n.') : true;
-                    if (seguir) { limpiar(); mostrarFicha(idContenedor); }
+                    if (seguir) {
+                        limpiar();
+                        if (typeof PrismaDiagrama !== 'undefined') PrismaDiagrama.reiniciar();
+                        mostrarFicha(idContenedor);
+                    }
                 }
             });
         });
