@@ -26,6 +26,18 @@ const PrismaDiagrama = {
     // registrar('duplicados', {n:35}) · registrar('cribados', {n:165})
     // registrar('excluidos', {n:80, motivo:'relevancia < 3'})
     // registrar('incluidos', {n:85})
+    _CLAVE: 'statsim_prisma_flujo_v1',
+    _guardar() {
+        if (typeof sessionStorage === 'undefined') return;
+        try { sessionStorage.setItem(this._CLAVE, JSON.stringify(this._datos)); } catch (e) {}
+    },
+    _cargar() {
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const g = JSON.parse(sessionStorage.getItem(this._CLAVE) || 'null');
+            if (g && typeof g === 'object' && g.identificados) this._datos = g;
+        } catch (e) {}
+    },
     registrar(evento, datos = {}) {
         const d = this._datos;
         const n = Math.max(0, parseInt(datos.n, 10) || 0);
@@ -35,10 +47,12 @@ const PrismaDiagrama = {
         else if (evento === 'cribados') d.cribados = n;
         else if (evento === 'excluidos') { d.excluidos = n; if (datos.motivo) d.motivoExclusion = datos.motivo; }
         else if (evento === 'incluidos') d.incluidos = n;
+        this._guardar();
         this._pintarResumen();
     },
     reiniciar() {
         this._datos = { identificados: {}, duplicados: 0, cribados: 0, excluidos: 0, motivoExclusion: '', incluidos: 0 };
+        this._guardar();
         this._pintarResumen();
     },
     _totalIdentificados() {
@@ -53,7 +67,7 @@ const PrismaDiagrama = {
         panel.className = 'form-group';
         panel.style.cssText = 'margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);';
         panel.innerHTML = `
-          <h3 style="margin:0 0 0.3rem; font-size:1.05rem;">🔀 Diagrama de flujo PRISMA</h3>
+          <h3 style="margin:0 0 0.3rem; font-size:1.05rem;">🔀 Flujo de selección de estudios (adaptado de PRISMA)</h3>
           <p class="help-text" style="margin:0 0 0.6rem;">El recorrido de tu revisión (identificados → duplicados → cribados → incluidos), en el formato de diagrama que piden las revisiones sistemáticas. Los números se capturan solos al buscar y cribar; también puedes editarlos a mano.</p>
           <div id="prismaResumen" class="help-text" style="margin:0 0 0.6rem;"></div>
           <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center;">
@@ -85,6 +99,15 @@ const PrismaDiagrama = {
         document.getElementById('prismaAplicar').addEventListener('click', () => this._aplicarEditor());
         document.getElementById('prismaPNG').addEventListener('click', () => this._descargarPNG());
         document.getElementById('prismaTexto').addEventListener('click', () => this._copiarTexto());
+        // Coherencia tras recargar: la ficha del protocolo persiste; si este
+        // embudo quedó vacío, siembra los identificados desde sus conteos.
+        if (!this._totalIdentificados() && typeof ProtocoloBusqueda !== 'undefined') {
+            try {
+                (ProtocoloBusqueda.resumen().fuentes || []).forEach(f => {
+                    if (f.totalResultados > 0) this._datos.identificados[f.nombre] = f.totalResultados;
+                });
+            } catch (e) {}
+        }
         this._pintarResumen();
     },
     _pintarResumen() {
@@ -113,6 +136,7 @@ const PrismaDiagrama = {
         this._datos.excluidos = g('prismaInExc');
         this._datos.incluidos = g('prismaInInc');
         this._datos.motivoExclusion = ((document.getElementById('prismaInMot') || {}).value || '').trim();
+        this._guardar();
         this._pintarResumen();
         this.mostrar();
     },
@@ -186,7 +210,7 @@ const PrismaDiagrama = {
         return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${y}" viewBox="0 0 ${W} ${y}" font-family="Arial, Helvetica, sans-serif">
           <defs><marker id="pf" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2E5BBA"/></marker></defs>
           <rect width="${W}" height="${y}" fill="#ffffff"/>
-          <text x="60" y="24" font-size="13" font-weight="bold" fill="#1a1a1a">Diagrama de flujo de la revisión (formato PRISMA 2020)</text>
+          <text x="60" y="24" font-size="13" font-weight="bold" fill="#1a1a1a">Diagrama de flujo de la revisión (adaptado de PRISMA 2020)</text>
           ${partes.join('\n')}
         </svg>`;
     },
@@ -223,7 +247,7 @@ const PrismaDiagrama = {
     textoPlano() {
         const c = this._completo();
         const fuentes = Object.entries(c.fuentes).filter(([, n]) => n > 0).map(([f, n]) => `${f} (n = ${n})`).join('; ');
-        return `Diagrama de flujo de la revisión (PRISMA 2020)\n`
+        return `Diagrama de flujo de la revisión (adaptado de PRISMA 2020)\n`
             + `Identificación: registros identificados n = ${c.tot}${fuentes ? ` [${fuentes}]` : ''}; `
             + `duplicados eliminados n = ${c.duplicados}.\n`
             + `Cribado: registros evaluados por título y resumen n = ${c.cribados}; `
@@ -245,6 +269,7 @@ const PrismaDiagrama = {
 };
 if (typeof window !== 'undefined') {
     window.PrismaDiagrama = PrismaDiagrama;
+    PrismaDiagrama._cargar();
     if (document.readyState === 'loading') {
         window.addEventListener('DOMContentLoaded', () => PrismaDiagrama.montar());
     } else {
