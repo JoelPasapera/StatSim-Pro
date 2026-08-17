@@ -33,8 +33,7 @@ const ProxiesCORS = {
         { id: 'corsproxy-io',      build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,                  mode: 'raw' }
     ],
 
-    // ---- Salud persistente (localStorage no está disponible en artifacts del
-    // chat, pero sí en el sitio desplegado; se degrada a memoria si falla) ----
+    // ---- Salud persistente ----
     _mem: {},
     _CLAVE: 'statsim_proxy_health',
 
