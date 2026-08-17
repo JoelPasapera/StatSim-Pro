@@ -270,6 +270,13 @@ const ScopusDirecto = {
                 { anchura: 4, timeout: 20000, oleadas: 2 });
             return { ok: true, obras, proxy, total: senal.total };
         } catch (e) {
+            // Señales también desde el error estructurado del arsenal (por si el
+            // cuerpo no llegó al validador): destino 401/403 ⇒ auth · 429 ⇒ cuota.
+            if (e && e.destino) {
+                const st = e.destinoStatus || +(String(e.message).match(/HTTP(\d+)/) || [])[1] || 0;
+                if (st === 401 || st === 403) senal.auth = true;
+                else if (st === 429) senal.cuota = true;
+            }
             return { ok: false, senal, error: e.message };
         }
     },
