@@ -366,7 +366,10 @@ const ScopusDirecto = {
     // vista y total real); el resto sale en ventana de 5 simultáneas — con el
     // directo a Elsevier, 1000 resultados cuestan ~el tiempo de 8 páginas, no
     // de 40. Cada página rota su propia clave: la carga se reparte sola.
-    VENTANA_PAGINAS: 5,
+    // 8 simultáneas: con la rotación de claves, cada clave ve ~1-2 req/s —
+    // muy por debajo del acelerador de Elsevier. 5000 resultados ≈ 200 páginas
+    // ≈ 25 tandas ≈ ~35-40 s en vez de un minuto largo.
+    VENTANA_PAGINAS: 8,
 
     async buscar(query, filtros = {}) {
         if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
@@ -411,12 +414,19 @@ const ScopusDirecto = {
         // una página murió, se corta ahí — mejor 175 resultados bien ordenados
         // que 1000 con un agujero en medio del ranking.
         const todas = [];
+        // Dedup por Set (O(n)): con 5000 obras, el 'some' anidado de antes
+        // hacía ~12 millones de comparaciones y congelaba el hilo al ensamblar.
+        const vistos = new Set();
         let paginasOK = 0, hueco = false;
         for (let p = 0; p < paginas; p++) {
             const lote = porPagina[p];
             if (lote == null) { hueco = true; break; }
             paginasOK++;
-            const nuevos = lote.filter(o => !todas.some(t => (t.doi && t.doi === o.doi) || t.titulo === o.titulo));
+            const nuevos = lote.filter(o => {
+                const clave = (o.doi && o.doi.toLowerCase()) || String(o.titulo || '').toLowerCase();
+                if (vistos.has(clave)) return false;
+                vistos.add(clave); return true;
+            });
             todas.push(...nuevos);
             if (lote.length < 25) break; // fin real de resultados
         }
