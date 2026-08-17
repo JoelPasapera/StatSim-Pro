@@ -613,8 +613,9 @@ const Antecedentes = {
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
                   <select id="antCantidadScopus" class="input"><option value="25">25</option>
                   <option value="50">50</option><option value="100" selected>100</option>
-                  <option value="200">200 (más lento)</option><option value="300">300 (más lento)</option>
-                  <option value="500">500 (revisión exhaustiva)</option></select></div>
+                  <option value="200">200</option><option value="300">300</option>
+                  <option value="500">500 (revisión exhaustiva)</option>
+                  <option value="1000">1000 (exhaustiva máxima)</option></select></div>
                 <div class="form-group"><label class="label">Resultados (PubMed)</label>
                   <select id="antCantidadPubmed" class="input"><option value="50">50</option>
                   <option value="100" selected>100</option><option value="200">200</option>
