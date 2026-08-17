@@ -168,20 +168,24 @@ const IAAsistente = {
             + 'sistemáticas. Generas frases de búsqueda alternativas para bases de datos científicas, '
             + 'maximizando la cobertura sin perder el foco temático. Conoces la sinonimia y las dimensiones '
             + 'teóricas de los constructos en psicología y ciencias sociales.';
-        const user = `Genera EXACTAMENTE ${n} frases de búsqueda alternativas a la siguiente consulta, para `
-            + `encontrar más artículos relevantes en bases académicas.\n`
-            + `Reglas:\n`
-            + `- Identifica las variables/constructos principales y reformúlalos con sinónimos y términos `
-            + `técnicos equivalentes.\n`
-            + `- Considera dimensiones o subcategorías de esas variables (sin desviarte del tema central).\n`
-            + `- Cada frase debe ser una consulta de búsqueda (palabras clave), NO una pregunta ni una oración larga.\n`
-            + `- Varía el enfoque entre frases, pero todas deben mantener el foco del tema original.\n`
-            + `- Responde SOLO con las ${n} frases, una por línea, sin numeración, sin viñetas, sin comillas, `
-            + `sin texto adicional.\n`
+        const user = `Genera EXACTAMENTE ${n} ecuaciones de búsqueda alternativas a la consulta dada, para `
+            + `bases académicas de salud y psicología. Cada una debe seguir una ESTRATEGIA metodológica `
+            + `DISTINTA, como haría un metodólogo de revisiones sistemáticas:\n`
+            + `1) Terminología técnica de tesauro: los términos tipo DeCS/MeSH de los constructos.\n`
+            + `2) Sinónimos del constructo Y de la población (p. ej. adolescentes → jóvenes, estudiantes de secundaria).\n`
+            + `3) Operadores: truncamiento con * y alternativas con OR entre paréntesis, p. ej. (ansiedad OR estrés) AND adolesc*.\n`
+            + `4) Constructos o marcos teóricos estrechamente relacionados (sin cambiar de tema).\n`
+            + `5) Instrumentos de medición típicos de esas variables (p. ej. TMMS-24, STAI, PHQ-9), si existen.\n`
+            + `Si se piden más de 5, combina estrategias SIN repetir la misma jugada con otras palabras.\n`
+            + `Reglas de salida:\n`
+            + `- Cada línea es una consulta de palabras clave, NO una pregunta ni una oración larga.\n`
+            + `- Prohibido el parafraseo trivial (cambiar una palabra por su sinónimo obvio y nada más).\n`
+            + `- Mantén SIEMPRE el foco del tema original.\n`
+            + `- Responde SOLO con las ${n} líneas, sin numeración, sin viñetas, sin comillas, sin texto adicional.\n`
             + `CONSULTA ORIGINAL:\n${q}`;
         const texto = await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.8, max_tokens: 4000 }
+            { temperature: 0.6, max_tokens: 4000 }
         );
         const variantes = texto.split(/\r?\n/)
             .map(l => l.replace(/^\s*(?:\d+[.)\-]\s*|[-*•]\s*)/, '').replace(/^["'«»]|["'«»]$/g, '').trim())
