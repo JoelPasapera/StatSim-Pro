@@ -194,16 +194,19 @@ const ProxiesCORS = {
     },
 
     // Extrae el HTML de la respuesta según el modo del proxy.
-    async extraer(proxy, resp) {
+    // Devuelve SIEMPRE el cuerpo (los consumidores lo usan como canal de
+    // señales: leen el error de la fuente para rotar claves, etc.) y, cuando el
+    // proxy lo delata (AllOrigins /get), el código HTTP real del destino.
+    async _extraerConCodigo(proxy, resp) {
         if (proxy.mode === 'json') {
             const j = await resp.json();
-            // AllOrigins /get transporta el estado REAL del destino. Si el
-            // destino respondió 4xx/5xx, la culpa es suya: el proxy no paga.
-            const codigo = j && j.status && +j.status.http_code;
-            if (codigo && codigo >= 400) throw Object.assign(new Error(`destino HTTP${codigo}`), { destino: true });
-            return (proxy.jsonField ? j[proxy.jsonField] : j) || '';
+            const codigoDestino = (j && j.status && +j.status.http_code) || 0;
+            return { cuerpo: (proxy.jsonField ? j[proxy.jsonField] : j) || '', codigoDestino };
         }
-        return resp.text();
+        return { cuerpo: await resp.text(), codigoDestino: 0 };
+    },
+    async extraer(proxy, resp) {
+        return (await this._extraerConCodigo(proxy, resp)).cuerpo;
     },
 
     // ========================================================================
@@ -318,9 +321,14 @@ const ProxiesCORS = {
                         // Techo de tamaño cuando el proxy declara Content-Length.
                         const cl = +(r.headers && r.headers.get && r.headers.get('content-length'));
                         if (cl && cl > 3e6) throw Object.assign(new Error('respuesta >3 MB'), { proxyId: proxy.id });
-                        const html = await this.extraer(proxy, r);
-                        const obras = validar(html);
-                        if (!obras || !obras.length) throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
+                        const { cuerpo, codigoDestino } = await this._extraerConCodigo(proxy, r);
+                        // El validador del consumidor SIEMPRE ve el cuerpo (ahí leen
+                        // los módulos el error real de la fuente para rotar claves).
+                        const obras = validar(cuerpo);
+                        if (!obras || !obras.length) {
+                            if (codigoDestino >= 400) throw Object.assign(new Error(`destino HTTP${codigoDestino}`), { proxyId: proxy.id, destino: true, destinoStatus: codigoDestino });
+                            throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
+                        }
                         // El deadline vive hasta validar; recién aquí se desarma.
                         clearTimeout(tid);
                         this.registrar(proxy.id, true, Date.now() - t0); // éxito anotado en el settle del propio corredor
@@ -387,7 +395,7 @@ const ProxiesCORS = {
         // problema no está en los intermediarios.
         if (errDestino) {
             const err = new Error(`${errDestino.message} — el problema está en la fuente consultada, no en los intermediarios`);
-            err.carrera = true; err.destino = true;
+            err.carrera = true; err.destino = true; err.destinoStatus = errDestino.destinoStatus || 0;
             throw err;
         }
         if (!op._gracia) {
@@ -419,8 +427,10 @@ const ProxiesCORS = {
                 const r = await fetch(proxy.build(objetivo), { signal: ctrl.signal });
                 if (!r.ok) { clearTimeout(tid); throw new Error('HTTP' + r.status); }
                 // El deadline sigue armado durante cuerpo y validación.
-                const obras = validar(await this.extraer(proxy, r));
+                const { cuerpo, codigoDestino } = await this._extraerConCodigo(proxy, r);
+                const obras = validar(cuerpo);
                 clearTimeout(tid);
+                if ((!obras || !obras.length) && codigoDestino >= 400) throw Object.assign(new Error(`destino HTTP${codigoDestino}`), { destino: true, destinoStatus: codigoDestino });
                 if (obras && obras.length) { this.registrar(proxy.id, true, Date.now() - t0); return { obras, proxy: proxy.id, ms: Date.now() - t0 }; }
                 this.registrar(proxy.id, false); diag.push(`${proxy.id}:vacío`);
             } catch (e) {
