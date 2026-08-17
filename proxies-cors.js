@@ -33,7 +33,8 @@ const ProxiesCORS = {
         { id: 'corsproxy-io',      build: u => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,                  mode: 'raw' }
     ],
 
-    // ---- Salud persistente ----
+    // ---- Salud persistente en localStorage: sobrevive recargas y pestañas;
+    // si el almacenamiento falla o está bloqueado, se degrada a memoria. ----
     _mem: {},
     _CLAVE: 'statsim_proxy_health',
 
@@ -43,10 +44,10 @@ const ProxiesCORS = {
             const g = raw ? JSON.parse(raw) : null;
             this._mem = (g && typeof g === 'object' && !Array.isArray(g)) ? g : {};
         } catch (e) { this._mem = {}; }
-        // SANITIZACIÓN (A4): el almacén pudo corromperse y NADA de aquí puede
+        // SANITIZACIÓN: el almacén pudo corromperse y NADA de aquí puede
         // romper una búsqueda: números coercionados, negativos a cero, relojes
         // del futuro descartados, basura eliminada.
-        // DECAIMIENTO PROPORCIONAL (A6): tras 24 h sin actividad el historial
+        // DECAIMIENTO PROPORCIONAL: tras 24 h sin actividad el historial
         // ENCOGE (×0.3) conservando la tasa — envejecer no es olvidar quién
         // era bueno y quién era malo.
         const AHORA = Date.now();
@@ -68,7 +69,7 @@ const ProxiesCORS = {
     },
     _guardarTid: null,
     _guardarSalud() {
-        // B2: hasta ~16 escrituras síncronas por búsqueda fallida → una sola,
+        // Hasta ~16 escrituras síncronas por búsqueda fallida → una sola,
         // 250 ms después de la última novedad.
         clearTimeout(this._guardarTid);
         this._guardarTid = setTimeout(() => {
@@ -105,10 +106,10 @@ const ProxiesCORS = {
 
     registrar(id, exito, ms, duro) {
         const h = this._mem[id] || (this._mem[id] = { ok: 0, fail: 0, msProm: 0, rachaFail: 0 });
-        h.ts = Date.now();
+        h.ts = Date.now(); // marca de actividad: el decaimiento de 24 h cuenta desde aquí
         if (exito) {
             h.ok++; h.rachaFail = 0;
-            // M9: la latencia solo se aprende cuando viene — la sonda de 1 KB
+            // La latencia solo se aprende cuando viene — la sonda de 1 KB
             // no contamina el promedio de las búsquedas reales.
             if (Number.isFinite(ms) && ms > 0) h.msProm = h.msProm ? Math.round(h.msProm * 0.7 + ms * 0.3) : ms;
         } else { h.fail++; h.rachaFail = (h.rachaFail || 0) + 1 + (duro ? 2 : 0); h.ultimoFail = Date.now(); }
@@ -140,7 +141,7 @@ const ProxiesCORS = {
         return orden(activos);
     },
 
-    // A7: DEADLINE INDIVIDUAL — cada corredor con su propio plazo (3× su
+    // DEADLINE INDIVIDUAL — cada corredor con su propio plazo (3× su
     // promedio, entre 4 s y el techo). Sin historia: el techo completo. El
     // máximo del lote castigaba a los rápidos por culpa del lento.
     _plazoProxy(id, base) {
@@ -149,7 +150,7 @@ const ProxiesCORS = {
         return Math.max(4000, Math.min(base, ms * 3));
     },
 
-    // A5: FAMILIA = backend real (host). allorigins-raw/get/cf son EL MISMO
+    // FAMILIA = backend real (host). allorigins-raw/get/cf son EL MISMO
     // servidor: correr 3 contra él no da diversidad, dispara su rate limit y
     // correlaciona los fallos. Máx. 2 corredores por familia por lote; los
     // diferidos encabezan la siguiente oleada.
@@ -173,7 +174,7 @@ const ProxiesCORS = {
     // los proxies sin historial con una petición diminuta (~1 KB). La próxima
     // carrera sale informada, sin costarle un milisegundo al usuario.
     _sondeada: false,
-    _SONDA_URL: 'https://api.crossref.org/works?rows=1',
+    _SONDA_URL: 'https://api.crossref.org/works?rows=1', // objetivo diminuto (~1 KB) para probar proxies sin gastar nada
     _sondaTrasVictoria() {
         if (this._sondeada) return;
         this._sondeada = true;
@@ -184,8 +185,8 @@ const ProxiesCORS = {
             fetch(p.build(this._SONDA_URL), { signal: ctrl.signal })
                 .then(async r => {
                     const cuerpo = r.ok ? await this.extraer(p, r) : '';
-                    clearTimeout(tid); // C1: también aquí el cuerpo tiene deadline
-                    // M9: sin ms a propósito — 1 KB de sonda no es una búsqueda real.
+                    clearTimeout(tid); // también aquí el cuerpo tiene deadline
+                    // Sin ms a propósito — 1 KB de sonda no es una búsqueda real.
                     this.registrar(p.id, !!(r.ok && cuerpo && String(cuerpo).length > 2));
                 })
                 .catch(() => { clearTimeout(tid); this.registrar(p.id, false); });
@@ -196,7 +197,7 @@ const ProxiesCORS = {
     async extraer(proxy, resp) {
         if (proxy.mode === 'json') {
             const j = await resp.json();
-            // A2: AllOrigins /get transporta el estado REAL del destino. Si el
+            // AllOrigins /get transporta el estado REAL del destino. Si el
             // destino respondió 4xx/5xx, la culpa es suya: el proxy no paga.
             const codigo = j && j.status && +j.status.http_code;
             if (codigo && codigo >= 400) throw Object.assign(new Error(`destino HTTP${codigo}`), { destino: true });
@@ -221,7 +222,7 @@ const ProxiesCORS = {
     // coinciden, doble clic) devuelve la respuesta al instante y comparte
     // un único vuelo si aún está en el aire. Los fallos NO se cachean.
     // Clave = URL objetivo (cada fuente valida sus propias URLs).
-    // CONTRATO (M8c): las obras se comparten por referencia entre hits — no
+    // CONTRATO: las obras se comparten por referencia entre hits — no
     // reordenes ni vacíes el array recibido (anotar sus objetos sí vale).
     _m: { carreras: 0, requests: 0, victorias: 0, hitsCache: 0, dedupVuelos: 0, adelantos: 0 },
     metricas() {
@@ -231,22 +232,22 @@ const ProxiesCORS = {
     },
 
     _cache: new Map(),
-    _CACHE_TTL: 600000,
-    _CACHE_MAX: 30,
+    _CACHE_TTL: 600000, // 10 minutos: repeticiones dentro de la misma sesión de trabajo
+    _CACHE_MAX: 30,     // tope de respuestas vivas; la más olvidada sale primero
     async carrera(objetivo, validar, op = {}) {
         if (op.sinCache) return this._carreraViva(objetivo, validar, op);
         const hit = this._cache.get(objetivo);
         if (hit && (Date.now() - hit.t) < this._CACHE_TTL) {
-            this._cache.delete(objetivo); this._cache.set(objetivo, hit); // M8b: LRU real, el uso refresca
+            this._cache.delete(objetivo); this._cache.set(objetivo, hit); // LRU real: el uso refresca la posición
             if (hit.listo) this._m.hitsCache++; else this._m.dedupVuelos++;
             return hit.prom;
         }
         const prom = this._carreraViva(objetivo, validar, op);
-        const entrada = { t: Date.now(), prom, listo: false };
+        const entrada = { t: Date.now(), prom, listo: false }; // 'listo' separa hit real (resuelto) de dedup (aún en vuelo)
         this._cache.set(objetivo, entrada);
         prom.then(() => { entrada.listo = true; }, () => {});
         if (this._cache.size > this._CACHE_MAX) this._cache.delete(this._cache.keys().next().value);
-        prom.catch(() => { const v = this._cache.get(objetivo); if (v && v.prom === prom) this._cache.delete(objetivo); }); // M8a: borra solo SU entrada
+        prom.catch(() => { const v = this._cache.get(objetivo); if (v && v.prom === prom) this._cache.delete(objetivo); }); // borra solo SU entrada (si otra más nueva ocupó la URL, no se toca)
         return prom;
     },
 
@@ -263,7 +264,7 @@ const ProxiesCORS = {
 
     async _carreraViva(objetivo, validar, op = {}) {
         if (typeof Promise.any !== 'function') return this._carreraSecuencial(objetivo, validar, op);
-        // M6: sin red no hay culpables — la salud de los proxies no se toca.
+        // Sin red no hay culpables — la salud de los proxies no se toca.
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
             const e = new Error('sin conexión a internet'); e.carrera = true; throw e;
         }
@@ -276,10 +277,10 @@ const ProxiesCORS = {
         const oleadas = op.oleadas || 2;
         if (!op._gracia) this._m.carreras++;
         const diag = [];
-        let regimenLento = false; // A7: cadena muerta por timeouts ⇒ techo completo en la gracia
-        let errDestino = null;    // A2: la fuente respondió con error ⇒ los proxies no pagan
+        let regimenLento = false; // una cadena muerta por timeouts ⇒ techo completo en la gracia
+        let errDestino = null;    // la fuente respondió con error ⇒ los proxies no pagan
 
-        // CADENA HEDGED (E4): el arsenal ordenado por salud y diversidad de
+        // CADENA HEDGED: el arsenal ordenado por salud y diversidad de
         // familia sale ESCALONADO — el mejor primero; cada siguiente, solo si el
         // anterior aún no resolvió cuando ya debería. En hosts sanos la búsqueda
         // cuesta ~1 petición; los corredores no lanzados se cancelan GRATIS.
@@ -288,7 +289,7 @@ const ProxiesCORS = {
         const cola = this.ordenados();
         const orden = [];
         while (cola.length) orden.push(...this._armarLote(cola, anchura));
-        orden.length = Math.min(orden.length, anchura * oleadas);
+        orden.length = Math.min(orden.length, anchura * oleadas); // tope de la cadena: nunca más corredores que anchura × oleadas
 
         const ctrls = orden.map(() => new AbortController());
         const marcas = orden.map(() => ({ timeout: false, lanzado: false }));
@@ -314,15 +315,15 @@ const ProxiesCORS = {
                 fetch(proxy.build(objetivo), { signal: ctrls[i].signal })
                     .then(async r => {
                         if (!r.ok) throw Object.assign(new Error(`HTTP${r.status}`), { proxyId: proxy.id });
-                        // M4: techo de tamaño cuando el proxy declara Content-Length.
+                        // Techo de tamaño cuando el proxy declara Content-Length.
                         const cl = +(r.headers && r.headers.get && r.headers.get('content-length'));
                         if (cl && cl > 3e6) throw Object.assign(new Error('respuesta >3 MB'), { proxyId: proxy.id });
                         const html = await this.extraer(proxy, r);
                         const obras = validar(html);
                         if (!obras || !obras.length) throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
-                        // C1: el deadline vive hasta validar; recién aquí se desarma.
+                        // El deadline vive hasta validar; recién aquí se desarma.
                         clearTimeout(tid);
-                        this.registrar(proxy.id, true, Date.now() - t0); // A1: éxito en su settle
+                        this.registrar(proxy.id, true, Date.now() - t0); // éxito anotado en el settle del propio corredor
                         resolver({ obras, proxy, ms: Date.now() - t0 });
                     })
                     .catch(e => {
@@ -332,7 +333,7 @@ const ProxiesCORS = {
                         err.esTimeout = esAbort && marcas[i].timeout;
                         err.esCancelacion = esAbort && !marcas[i].timeout;
                         if (err.destino) {
-                            // A2: la culpa es de la fuente. 4xx firme (≠429) ⇒ parar la
+                            // La culpa es de la fuente. 4xx firme (≠429) ⇒ parar la
                             // cadena YA: más proxies no arreglan un 404. 5xx/429 ⇒ se
                             // sigue (otro camino puede esquivar un borde caído), pero
                             // el proxy no paga.
@@ -363,6 +364,7 @@ const ProxiesCORS = {
         };
 
         try {
+            // Gana el primer corredor válido… o frena todo si la fuente confesó un 4xx.
             const ganador = await Promise.race([Promise.any(corredores), frenoDestino]);
             // CANCELACIÓN REAL: en vuelo se abortan; los no lanzados jamás salen.
             lanzadores.forEach(l => clearTimeout(l));
@@ -381,7 +383,7 @@ const ProxiesCORS = {
             });
             if (timeouts >= Math.ceil(Math.max(1, errs.length) / 2)) regimenLento = true;
         }
-        // A2: si la fuente contestó con error, ni amnistía ni gracia — el
+        // Si la fuente contestó con error, ni amnistía ni gracia — el
         // problema no está en los intermediarios.
         if (errDestino) {
             const err = new Error(`${errDestino.message} — el problema está en la fuente consultada, no en los intermediarios`);
@@ -390,7 +392,7 @@ const ProxiesCORS = {
         }
         if (!op._gracia) {
             this.amnistia();
-            // M5: respiro con jitter — relanzar el arsenal en el mismo milisegundo
+            // Respiro con jitter — relanzar el arsenal en el mismo milisegundo
             // agrava justo lo que acaba de matarnos (rate limits).
             await new Promise(r => setTimeout(r, 1000 + Math.floor(Math.random() * 2000)));
             try {
@@ -416,7 +418,7 @@ const ProxiesCORS = {
             try {
                 const r = await fetch(proxy.build(objetivo), { signal: ctrl.signal });
                 if (!r.ok) { clearTimeout(tid); throw new Error('HTTP' + r.status); }
-                // C1: el deadline sigue armado durante cuerpo y validación.
+                // El deadline sigue armado durante cuerpo y validación.
                 const obras = validar(await this.extraer(proxy, r));
                 clearTimeout(tid);
                 if (obras && obras.length) { this.registrar(proxy.id, true, Date.now() - t0); return { obras, proxy: proxy.id, ms: Date.now() - t0 }; }
