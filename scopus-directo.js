@@ -257,16 +257,61 @@ const ScopusDirecto = {
         return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
     },
 
-    // Trae UNA página (offset start) probando claves con carrera de proxies.
+    // Trae UNA página (offset start): DIRECTO-PRIMERO (Elsevier acepta CORS,
+    // verificado en producción) y arsenal de proxies solo de RESCATE por si
+    // algún día cierran la puerta. Máxima velocidad, misma resiliencia.
     // Una vez sabido si COMPLETE funciona, se recuerda para no reintentarlo.
     _viewConfirmada: null, // null=sin probar, 'COMPLETE' o 'STANDARD'
+
+    // ¿Acepta Elsevier peticiones directas del navegador en esta sesión?
+    // null = sin probar · true = confirmado · false = bloqueado (no insistir).
+    _directoOK: null,
+
+    // Petición directa (sin peaje). Si el navegador la bloquea o tarda de más,
+    // lanza {rescatable:true} y la búsqueda cae al arsenal de proxies.
+    async _pedirDirecto(url, senal) {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 9000);
+        let r;
+        try {
+            r = await fetch(url, { signal: ctrl.signal });
+        } catch (e) {
+            clearTimeout(tid);
+            const esAbort = e && (e.name === 'AbortError' || /abort/i.test(String(e.message)));
+            const sinRed = typeof navigator !== 'undefined' && navigator.onLine === false;
+            // Bloqueo CORS real ⇒ no insistir el resto de la sesión. Un timeout o
+            // un wifi caído NO condenan al directo: podría ser transitorio.
+            if (!esAbort && !sinRed) this._directoOK = false;
+            throw Object.assign(new Error(esAbort ? 'directo: timeout' : 'directo: bloqueado por el navegador'), { rescatable: true });
+        }
+        clearTimeout(tid);
+        this._directoOK = true; // hubo respuesta legible ⇒ la puerta CORS está abierta
+        // Estados que los proxies NO arreglan (son de Elsevier): se señalan y NO
+        // se gasta el arsenal en ellos.
+        if (r.status === 401 || r.status === 403) { senal.auth = true; throw Object.assign(new Error(`HTTP${r.status} de Elsevier`), { destinoDirecto: true }); }
+        if (r.status === 429) { senal.cuota = true; throw Object.assign(new Error('HTTP429 de Elsevier'), { destinoDirecto: true }); }
+        if (!r.ok) { senal.motivo = `HTTP${r.status} de Elsevier`; throw Object.assign(new Error(senal.motivo), { destinoDirecto: true }); }
+        return r.text();
+    },
 
     async _buscarPaginaConVista(query, filtros, start, view, key) {
         const baseURL = this.construirURL(query, { ...filtros, count: 25, start, view });
         const senal = {};
+        const urlConKey = baseURL + `&apiKey=${key}`;
+        if (this._directoOK !== false) {
+            try {
+                const html = await this._pedirDirecto(urlConKey, senal);
+                const obras = this._validarScopus(html, senal);
+                if (obras && obras.length) return { ok: true, obras, proxy: 'directo', total: senal.total };
+                return { ok: false, senal, error: senal.motivo || 'vacío (directo)' };
+            } catch (e) {
+                if (!e.rescatable) return { ok: false, senal, error: e.message };
+                // bloqueado o timeout ⇒ el arsenal toma el relevo
+            }
+        }
         try {
             const { obras, proxy } = await ProxiesCORS.carrera(
-                baseURL + `&apiKey=${key}`, html => this._validarScopus(html, senal),
+                urlConKey, html => this._validarScopus(html, senal),
                 { anchura: 4, timeout: 20000, oleadas: 2 });
             return { ok: true, obras, proxy, total: senal.total };
         } catch (e) {
