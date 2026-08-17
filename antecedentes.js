@@ -10,6 +10,25 @@
 // CORS lo impide a nivel de navegador; se ofrece como pestaña externa.
 // ========================================
 
+// ---- ExcelJS bajo demanda: se descarga UNA vez, al primer uso (exportar o
+// importar .xlsx), en vez de en el arranque de la página (~926 KB ahorrados).
+let _excelJSPromesa = null;
+function asegurarExcelJS() {
+    if (typeof ExcelJS !== 'undefined') return Promise.resolve();
+    if (_excelJSPromesa) return _excelJSPromesa;
+    _excelJSPromesa = new Promise((listo, falla) => {
+        const s = document.createElement('script');
+        s.src = 'exceljs.min.js';
+        s.onload = listo;
+        s.onerror = () => {
+            _excelJSPromesa = null;
+            falla(new Error('No se pudo descargar el módulo de Excel. Revisa tu conexión e inténtalo de nuevo.'));
+        };
+        document.head.appendChild(s);
+    });
+    return _excelJSPromesa;
+}
+
 const Antecedentes = {
 
     CONFIG: {
@@ -663,6 +682,7 @@ const Antecedentes = {
               <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
+              <div id="antProtocolo"></div>
 
               <div id="antIntensiva" style="margin-top:2rem; border-top:2px solid var(--color-border, #e5e5e5); padding-top:1.5rem;">
                 <h3 style="margin:0 0 0.3rem; font-size:1.15rem;">✨ Criba con IA — criterios y relevancia</h3>
@@ -707,6 +727,9 @@ const Antecedentes = {
             </div>
         </div>`;
         document.getElementById('antBuscar').addEventListener('click', () => this._onBuscar());
+        if (typeof ProtocoloBusqueda !== 'undefined' && ProtocoloBusqueda.resumen().nFuentes > 0) {
+            ProtocoloBusqueda.mostrarFicha('antProtocolo');
+        }
         const btnCrit = document.getElementById('antGenerarCriterios');
         if (btnCrit) btnCrit.addEventListener('click', () => this._onGenerarCriterios());
         const btnVar = document.getElementById('antGenerarVariantes');
@@ -719,6 +742,11 @@ const Antecedentes = {
         if (selUmbral) selUmbral.addEventListener('change', () => {
             this._umbralRelevancia = parseInt(selUmbral.value, 10) || 0;
             this._selMat = 0; // volver a la primera página de la matriz
+            if (typeof PrismaDiagrama !== 'undefined') {
+                const u = this._umbralRelevancia;
+                const exc = u > 0 ? this._obras.filter(o => (o._relevancia || 0) > 0 && o._relevancia < u).length : 0;
+                PrismaDiagrama.registrar('excluidos', { n: exc, motivo: u > 0 ? `relevancia < ${u} según los criterios de inclusión/exclusión` : '' });
+            }
             this._renderSeleccion();
             if (typeof RedactorTeorico !== 'undefined') RedactorTeorico.actualizarInfoFuentes();
         });
@@ -945,6 +973,9 @@ const Antecedentes = {
 
         const _dur = this._formatoTiempo(performance.now() - _t0);
         const evaluados = this._obras.filter(o => o._relevancia > 0).length;
+        if (typeof PrismaDiagrama !== 'undefined') {
+            PrismaDiagrama.registrar('cribados', { n: evaluados });
+        }
         if (estado) estado.textContent = `✓ ${evaluados} artículos evaluados en ${_dur}`
             + (conError ? ` (${conError} lote(s) con error)` : '')
             + `. Matriz reordenada por relevancia. Usa «Filtrar por relevancia» para ocultar las de puntuación baja.`;
@@ -1017,14 +1048,22 @@ const Antecedentes = {
                         const tr = await this.traducirTexto(q, 'es', 'en');
                         if (tr && tr.toLowerCase() !== q.toLowerCase()) qEjec = tr;
                     }
+                    this._protocoloNota = (q === consultaOrig)
+                        ? 'búsqueda intensiva (consulta original)'
+                        : 'variante de la búsqueda intensiva';
                     const { obras, infos } = await this._buscarUnaConsulta(qEjec, f);
+                    this._protocoloNota = '';
                     infosTodas.push(`«${q}»: ${infos}`);
                     // Deduplicar contra lo ya acumulado.
+                    const antesDup = acumuladas.length;
                     for (const o of obras) {
                         const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
                         if (vistos.has(k)) continue;
                         vistos.add(k);
                         acumuladas.push(o);
+                    }
+                    if (typeof PrismaDiagrama !== 'undefined') {
+                        PrismaDiagrama.registrar('duplicados', { n: obras.length - (acumuladas.length - antesDup) });
                     }
                 } catch (e) {
                     conError++;
@@ -1042,6 +1081,7 @@ const Antecedentes = {
             if (estado) estado.textContent = `✓ ${resumen}. Revisa la matriz abajo.`;
             if (estadoBuscador) estadoBuscador.textContent = `${resumen}. Marca los pertinentes:`;
             this._renderResultados(this._obras);
+            if (typeof ProtocoloBusqueda !== 'undefined') ProtocoloBusqueda.mostrarFicha('antProtocolo');
             this._enriquecerAutomatico(this._obras);
         } catch (e) {
             if (estado) estado.textContent = `❌ No se pudo completar la búsqueda intensiva (${e.message}).`;
@@ -1137,8 +1177,6 @@ const Antecedentes = {
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
         estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
-
-        estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
         try {
             const { obras, infos } = await this._buscarUnaConsulta(q, f, opciones);
             // Deduplicar por DOI/título.
@@ -1148,6 +1186,9 @@ const Antecedentes = {
                 if (vistos.has(k)) return false;
                 vistos.add(k); return true;
             });
+            if (typeof PrismaDiagrama !== 'undefined') {
+                PrismaDiagrama.registrar('duplicados', { n: obras.length - this._obras.length });
+            }
             this._pagina = 0;
             this._resetRelevancia();
             const _dur = this._formatoTiempo(performance.now() - _t0);
@@ -1155,10 +1196,37 @@ const Antecedentes = {
                 ? `${avisoTraduccion}${this._obras.length} resultados combinados en ${_dur} (${infos}). Marca los pertinentes:`
                 : `${avisoTraduccion}Sin resultados (${_dur}). ${infos}`;
             this._renderResultados(this._obras);
+            if (typeof ProtocoloBusqueda !== 'undefined') ProtocoloBusqueda.mostrarFicha('antProtocolo');
             this._enriquecerAutomatico(this._obras);
         } catch (e) {
             estado.textContent = `No se pudo completar la búsqueda (${e.message}).`;
         }
+    },
+
+    // ------------------------------------------------------------------
+    // PROTOCOLO DE BÚSQUEDA (ficha técnica de la revisión · Mejora 1).
+    // Envuelve cada tarea de fuente: registra la ecuación literal despachada
+    // y, al resolver, anota el nº de resultados. Si la fuente FALLÓ, el
+    // conteo queda vacío («—») y el total se marca como mínimo: un fallo
+    // no es un cero. Inofensivo si protocolo-busqueda.js no está cargado.
+    _protocoloNota: '',
+    _protocolo(fuente, q, f, promesa) {
+        if (typeof ProtocoloBusqueda === 'undefined') return promesa;
+        const filtros = [
+            f && f.desde ? `Desde ${f.desde}` : '',
+            f && f.idioma === 'en' ? 'Prioriza inglés' : ''
+        ].filter(Boolean).join(' · ');
+        ProtocoloBusqueda.registrar({ fuente, ecuacion: q, filtros, nota: this._protocoloNota });
+        return promesa.then(r => {
+            const fallo = r && typeof r.info === 'string' && /falló|fallaron/.test(r.info);
+            if (r && Array.isArray(r.obras) && !fallo) {
+                ProtocoloBusqueda.actualizarResultados(fuente, q, r.obras.length);
+                if (typeof PrismaDiagrama !== 'undefined') {
+                    PrismaDiagrama.registrar('identificados', { fuente, n: r.obras.length });
+                }
+            }
+            return r;
+        });
     },
 
     // ---- Ejecuta UNA consulta sobre todas las fuentes marcadas y devuelve
@@ -1182,55 +1250,55 @@ const Antecedentes = {
         const tareas = [];
         if (usarScopus) {
             const maxScopus = parseInt((document.getElementById('antCantidadScopus') || {}).value || '25', 10);
-            tareas.push(
+            tareas.push(this._protocolo('Scopus', q, f,
                 ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => {
                     const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
                     return { obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.${vista})` };
-                }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` })));
+                }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` }))));
         }
         if (usarPubmed) {
             const maxPubmed = parseInt((document.getElementById('antCantidadPubmed') || {}).value || '100', 10);
-            tareas.push(
+            tareas.push(this._protocolo('PubMed', q, f,
                 PubMedDirecto.buscar(q, { ...f, maxResultados: maxPubmed }).then(r => ({
                     obras: r.obras,
                     info: `PubMed (${r.obras.length} result., con resúmenes ✓)`
-                })).catch(e => ({ obras: [], info: `PubMed falló (${e.message})` })));
+                })).catch(e => ({ obras: [], info: `PubMed falló (${e.message})` }))));
         }
         if (usarScielo) {
             const maxScielo = parseInt((document.getElementById('antCantidadScielo') || {}).value || '100', 10);
-            tareas.push(
+            tareas.push(this._protocolo('SciELO', q, f,
                 ScieloDirecto.buscar(q, { ...f, maxResultados: maxScielo }).then(r => ({
                     obras: r.obras,
                     info: `SciELO (${r.obras.length} result.)`
-                })).catch(e => ({ obras: [], info: `SciELO falló (${e.message})` })));
+                })).catch(e => ({ obras: [], info: `SciELO falló (${e.message})` }))));
         }
         if (usarAlicia) {
             const maxAlicia = parseInt((document.getElementById('antCantidadAlicia') || {}).value || '100', 10);
-            tareas.push(
+            tareas.push(this._protocolo('ALICIA', q, f,
                 AliciaDirecto.buscar(q, { ...f, maxResultados: maxAlicia }).then(r => ({
                     obras: r.obras,
                     info: `ALICIA (${r.obras.length} result., con resúmenes ✓)`
-                })).catch(e => ({ obras: [], info: `ALICIA falló (${e.message})` })));
+                })).catch(e => ({ obras: [], info: `ALICIA falló (${e.message})` }))));
         }
         if (usarScholar) {
             const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
-            tareas.push(
+            tareas.push(this._protocolo('Google Académico', q, f,
                 ScholarDirecto.buscarPaginado(q, f.desde, maxPag).then(r => ({
                     obras: r.obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] })),
                     info: `Scholar (${r.paginas} pág.${r.captchaEn ? `, bloqueó en ${r.captchaEn}` : ''})`
-                })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` })));
+                })).catch(e => ({ obras: [], info: `Scholar falló (${e.message})` }))));
         }
         if (usarOMS && this._nInput('antNumOMS', 15) > 0) {
-            tareas.push(
+            tareas.push(this._protocolo('OMS · IRIS', q, f,
                 this._fetchJSONConRescate(this.urlIRIS(q, f)).then(d => {
                     const obras = this._extraerIRIS(d).map(x => this.normIRIS(x))
                         .filter(o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde);
                     return { obras, info: `OMS · IRIS (${obras.length} result.)` };
-                }).catch(e => ({ obras: [], info: `OMS · IRIS falló (${e.message})` })));
+                }).catch(e => ({ obras: [], info: `OMS · IRIS falló (${e.message})` }))));
         }
         if (usarONU && this._nInput('antNumONU', 10) > 0) {
             const filtroAnio = o => !f.desde || o.anio === 's. f.' || parseInt(o.anio, 10) >= f.desde;
-            tareas.push((async () => {
+            tareas.push(this._protocolo('ONU', q, f, (async () => {
                 // 1º: ReliefWeb — directo desde el navegador (CORS por diseño).
                 for (const appname of ['statsim-pro', 'vocabulary']) {
                     try {
@@ -1256,11 +1324,11 @@ const Antecedentes = {
                 } catch (e2) {
                     return { obras: [], info: `ONU falló en las 3 vías (${e2.message})` };
                 }
-            })());
+            })()));
         }
-        if (usarAbiertas) tareas.push(
+        if (usarAbiertas) tareas.push(this._protocolo('Fuentes complementarias', q, f,
             this.buscarMulti(q, f).then(r => ({ obras: r.obras, info: `${r.fuentesOK} fuentes complementarias — ${r.detalle || ''}` }))
-                .catch(e => ({ obras: [], info: `fuentes complementarias fallaron` })));
+                .catch(e => ({ obras: [], info: `fuentes complementarias fallaron` }))));
 
         const res = await Promise.all(tareas);
         const combinadas = [];
@@ -1346,7 +1414,10 @@ const Antecedentes = {
     _renderSeleccion() {
         const sel = [...this._seleccion.values()];
         const cont = document.getElementById('antSeleccion');
-        if (!sel.length) { cont.innerHTML = ''; this._selRef = 0; this._selMat = 0; return; }
+        if (!sel.length) {
+            if (typeof PrismaDiagrama !== 'undefined') PrismaDiagrama.registrar('incluidos', { n: 0 });
+            cont.innerHTML = ''; this._selRef = 0; this._selMat = 0; return;
+        }
         if (this._selRef == null) this._selRef = 0;
         if (this._selMat == null) this._selMat = 0;
         const PP = 15;
@@ -1363,6 +1434,9 @@ const Antecedentes = {
         // incluye artículos con puntuación >= umbral. No borra nada del listado.
         const umbralRel = (this._relevanciaAplicada && this._umbralRelevancia > 0) ? this._umbralRelevancia : 0;
         const selMatriz = this.obtenerFuentesRedaccion(sel);
+        if (typeof PrismaDiagrama !== 'undefined') {
+            PrismaDiagrama.registrar('incluidos', { n: selMatriz.length });
+        }
         const filasMatriz = selMatriz.map(o => this._filaMatriz(o));
         const infoUmbral = umbralRel > 0
             ? ` <span style="font-weight:normal; font-size:0.75em; color:#666;">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
@@ -1792,6 +1866,7 @@ const Antecedentes = {
 
     async _exportarXLSX(cols, filas) {
         try {
+            await asegurarExcelJS();
             const wb = this._construirLibroXLSX(cols, filas);
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
