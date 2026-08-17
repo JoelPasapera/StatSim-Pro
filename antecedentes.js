@@ -605,29 +605,23 @@ const Antecedentes = {
                   <input type="number" id="antNumOMS" class="input" value="15" min="0" max="50" step="1"
                     title="Informes y guías del repositorio IRIS de la OMS. 0 = no consultar."></div>
                 <div class="form-group"><label class="label">Resultados (Scholar)</label>
-                  <select id="antCantidad" class="input"><option value="1">10 (rápido)</option>
-                  <option value="2" selected>20</option><option value="3">30 (más lento)</option></select></div>
+                  <input type="number" id="antCantidad" class="input" value="20" min="10" max="50" step="10"
+                    title="Google Académico pagina de 10 en 10 y castiga la avidez (anti-bot): tope prudente de 50."></div>
                 <div class="form-group"><label class="label">Resultados (ONU)</label>
                   <input type="number" id="antNumONU" class="input" value="10" min="0" max="25" step="1"
                     title="Biblioteca Digital de la ONU (su API responde lento: cifras moderadas). 0 = no consultar."></div>
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
-                  <select id="antCantidadScopus" class="input"><option value="25">25</option>
-                  <option value="50">50</option><option value="100" selected>100</option>
-                  <option value="200">200</option><option value="300">300</option>
-                  <option value="500">500 (revisión exhaustiva)</option>
-                  <option value="1000">1000 (exhaustiva máxima)</option></select></div>
+                  <input type="number" id="antCantidadScopus" class="input" value="100" min="25" max="5000" step="100"
+                    title="Paginación paralela directa a Elsevier. Tope 5000: es el techo de la propia API de Scopus (su paginación por offset no llega más lejos). ~200 peticiones = 1% de la cuota semanal de UNA clave."></div>
                 <div class="form-group"><label class="label">Resultados (PubMed)</label>
-                  <select id="antCantidadPubmed" class="input"><option value="50">50</option>
-                  <option value="100" selected>100</option><option value="200">200</option>
-                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
+                  <input type="number" id="antCantidadPubmed" class="input" value="100" min="10" max="1000" step="10"
+                    title="API oficial de NCBI, eficiente en dos pasos: aguanta cifras grandes sin drama."></div>
                 <div class="form-group"><label class="label">Resultados (SciELO)</label>
-                  <select id="antCantidadScielo" class="input"><option value="50">50</option>
-                  <option value="100" selected>100</option><option value="200">200</option>
-                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
+                  <input type="number" id="antCantidadScielo" class="input" value="100" min="10" max="500" step="10"
+                    title="Vía Crossref. Teclea la cifra que quieras (tope 500)."></div>
                 <div class="form-group"><label class="label">Resultados (ALICIA)</label>
-                  <select id="antCantidadAlicia" class="input"><option value="50">50</option>
-                  <option value="100" selected>100</option><option value="200">200</option>
-                  <option value="300">300 (más lento)</option><option value="500">500 (revisión exhaustiva)</option></select></div>
+                  <input type="number" id="antCantidadAlicia" class="input" value="100" min="10" max="500" step="10"
+                    title="Repositorio nacional (Concytec). Teclea la cifra que quieras (tope 500)."></div>
               </div>
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScholar" checked> Intentar Google Académico directo (experimental, vía proxy)
@@ -1250,7 +1244,10 @@ const Antecedentes = {
 
         const tareas = [];
         if (usarScopus) {
-            const maxScopus = parseInt((document.getElementById('antCantidadScopus') || {}).value || '25', 10);
+            // Abrazadera: las flechas respetan min/max solas, pero el teclado no —
+            // cualquier cifra escrita a mano se encierra en el rango seguro.
+            const lim = (v, a, b) => Math.min(b, Math.max(a, isNaN(v) ? a : v));
+            const maxScopus = lim(parseInt((document.getElementById('antCantidadScopus') || {}).value || '100', 10), 25, 5000);
             tareas.push(this._protocolo('Scopus', q, f,
                 ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => {
                     const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
@@ -1258,7 +1255,7 @@ const Antecedentes = {
                 }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` }))));
         }
         if (usarPubmed) {
-            const maxPubmed = parseInt((document.getElementById('antCantidadPubmed') || {}).value || '100', 10);
+            const maxPubmed = lim(parseInt((document.getElementById('antCantidadPubmed') || {}).value || '100', 10), 10, 1000);
             tareas.push(this._protocolo('PubMed', q, f,
                 PubMedDirecto.buscar(q, { ...f, maxResultados: maxPubmed }).then(r => ({
                     obras: r.obras,
@@ -1266,7 +1263,7 @@ const Antecedentes = {
                 })).catch(e => ({ obras: [], info: `PubMed falló (${e.message})` }))));
         }
         if (usarScielo) {
-            const maxScielo = parseInt((document.getElementById('antCantidadScielo') || {}).value || '100', 10);
+            const maxScielo = lim(parseInt((document.getElementById('antCantidadScielo') || {}).value || '100', 10), 10, 500);
             tareas.push(this._protocolo('SciELO', q, f,
                 ScieloDirecto.buscar(q, { ...f, maxResultados: maxScielo }).then(r => ({
                     obras: r.obras,
@@ -1274,7 +1271,7 @@ const Antecedentes = {
                 })).catch(e => ({ obras: [], info: `SciELO falló (${e.message})` }))));
         }
         if (usarAlicia) {
-            const maxAlicia = parseInt((document.getElementById('antCantidadAlicia') || {}).value || '100', 10);
+            const maxAlicia = lim(parseInt((document.getElementById('antCantidadAlicia') || {}).value || '100', 10), 10, 500);
             tareas.push(this._protocolo('ALICIA', q, f,
                 AliciaDirecto.buscar(q, { ...f, maxResultados: maxAlicia }).then(r => ({
                     obras: r.obras,
@@ -1282,7 +1279,10 @@ const Antecedentes = {
                 })).catch(e => ({ obras: [], info: `ALICIA falló (${e.message})` }))));
         }
         if (usarScholar) {
-            const maxPag = parseInt((document.getElementById('antCantidad') || {}).value || '2', 10);
+            // Scholar pagina de 10 en 10: el campo pide RESULTADOS y aquí se
+            // traduce a páginas (20 resultados = 2 páginas).
+            const resScholar = lim(parseInt((document.getElementById('antCantidad') || {}).value || '20', 10), 10, 50);
+            const maxPag = Math.max(1, Math.round(resScholar / 10));
             tareas.push(this._protocolo('Google Académico', q, f,
                 ScholarDirecto.buscarPaginado(q, f.desde, maxPag).then(r => ({
                     obras: r.obras.map(o => ({ ...o, link: o.link || '', autores: o.autoresRaw ? o.autoresRaw.split(/,\s*/) : [] })),
