@@ -54,6 +54,39 @@ const Antecedentes = {
 
     // Traduce 'texto' de 'desde' a 'hacia'. Devuelve el texto traducido, o el
     // original si la API falla (degradación elegante: nunca rompe la búsqueda).
+    // ---- Idiomas de búsqueda (chips) + presupuesto de consultas ----
+    _IDIOMAS: [
+        ['es', 'español'], ['en', 'inglés'], ['pt', 'portugués'],
+        ['fr', 'francés'], ['de', 'alemán'], ['zh-CN', 'chino']
+    ],
+    _PRESUPUESTO_CONSULTAS: 30,
+    _idiomasSeleccionados() {
+        const cont = document.getElementById('antIdiomas');
+        if (!cont) return [['es', 'español']];
+        const marcados = new Set([...cont.querySelectorAll('input:checked')].map(i => i.value));
+        const sel = this._IDIOMAS.filter(([cod]) => marcados.has(cod));
+        return sel.length ? sel : [['es', 'español']];
+    },
+    // Con variantes × idiomas manda el tope de 30 consultas: se recortan
+    // variantes, nunca idiomas (esos los eligió el usuario a mano).
+    _planPresupuesto(nVariantes, nIdiomas) {
+        const total = nVariantes * nIdiomas;
+        if (total <= this._PRESUPUESTO_CONSULTAS) return { variantes: nVariantes, total, recortado: false };
+        const v = Math.max(1, Math.floor(this._PRESUPUESTO_CONSULTAS / nIdiomas));
+        return { variantes: v, total: v * nIdiomas, recortado: true };
+    },
+    // Traducción con caché de sesión: la misma frase al mismo idioma no se
+    // retraduce (ahorra red y respeta el límite diario de MyMemory).
+    _cacheTraducciones: {},
+    async _traducirA(texto, cod) {
+        if (cod === 'es') return texto;
+        const clave = cod + '|' + texto.toLowerCase();
+        if (this._cacheTraducciones[clave]) return this._cacheTraducciones[clave];
+        const t = await this.traducirTexto(texto, 'es', cod);
+        this._cacheTraducciones[clave] = (t && t.trim()) || texto;
+        return this._cacheTraducciones[clave];
+    },
+
     async traducirTexto(texto, desde, hacia) {
         try {
             const url = 'https://api.mymemory.translated.net/get?q='
@@ -598,9 +631,18 @@ const Antecedentes = {
                 </div>
                 <div class="form-group"><label class="label">Desde el año</label>
                   <input type="number" id="antDesde" class="input" value="${new Date().getFullYear() - 5}"></div>
-                <div class="form-group"><label class="label">Priorizar idioma</label>
-                  <select id="antIdioma" class="input"><option value="">Indistinto</option>
-                  <option value="es" selected>Español</option><option value="en">Inglés</option></select></div>
+                <div class="form-group" style="grid-column: 1 / -1;"><label class="label">Idiomas de búsqueda</label>
+                  <div id="antIdiomas" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="es" checked> Español</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="en" checked> English</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="pt"> Português</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="fr"> Français</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="de"> Deutsch</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="zh-CN"> 中文 (chino)</label>
+                  </div>
+                  <div id="antIdiomasCoste" style="font-size:0.78em; color:var(--color-text-soft, #8b93a7); margin-top:0.35rem;"></div>
+                  <div style="font-size:0.74em; color:var(--color-text-soft, #8b93a7); margin-top:0.15rem;">La consulta se traduce a cada idioma marcado y cada ecuación queda documentada en la ficha del protocolo. Ojo: Scopus y PubMed indexan título y resumen en inglés incluso para artículos en chino, alemán o francés — la consulta en English ya los captura; esos idiomas rinden sobre todo vía Google Académico.</div>
+                </div>
                 <div class="form-group"><label class="label">Resultados (OMS)</label>
                   <input type="number" id="antNumOMS" class="input" value="15" min="0" max="50" step="1"
                     title="Informes y guías del repositorio IRIS de la OMS. 0 = no consultar."></div>
@@ -648,7 +690,7 @@ const Antecedentes = {
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
               <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;">
-                ⚠️ Scopus indexa casi exclusivamente artículos en <strong>inglés</strong>. Con el idioma en «Español», es probable que devuelva pocos o ningún resultado. Para aprovechar Scopus, cambia «Priorizar idioma» a <strong>Inglés</strong>: la consulta se traducirá automáticamente.
+                ⚠️ Scopus indexa casi exclusivamente artículos en <strong>inglés</strong>. Con el idioma en «Español», es probable que devuelva pocos o ningún resultado. Para aprovechar Scopus, marca <strong>English</strong> en «Idiomas de búsqueda»: la consulta se traducirá automáticamente.
               </div>
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.2rem 0 0.6rem;">
                 <button id="antBuscar" class="btn btn-primary">🔎 Búsqueda individual</button>
@@ -754,7 +796,7 @@ const Antecedentes = {
             let q = document.getElementById('antQuery').value.trim();
             if (!q || typeof ScopusDirecto === 'undefined') return;
             // Si se prioriza inglés, traducir también para la búsqueda web.
-            if (document.getElementById('antIdioma').value === 'en') {
+            if (this._idiomasSeleccionados().some(([c]) => c === 'en')) {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
             window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -774,7 +816,7 @@ const Antecedentes = {
             let q = document.getElementById('antQuery').value.trim();
             if (!q || typeof PubMedDirecto === 'undefined') return;
             // PubMed es mayormente inglés: traducir si se prioriza inglés.
-            if (document.getElementById('antIdioma').value === 'en') {
+            if (this._idiomasSeleccionados().some(([c]) => c === 'en')) {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
             window.open(PubMedDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
@@ -786,14 +828,28 @@ const Antecedentes = {
             const aviso = document.getElementById('antAvisoScopusEs');
             if (!aviso) return;
             const scopusOn = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked;
-            const idioma = document.getElementById('antIdioma') && document.getElementById('antIdioma').value;
-            aviso.style.display = (scopusOn && idioma !== 'en') ? 'block' : 'none';
+            const enMarcado = !!document.querySelector('#antIdiomas input[value="en"]:checked');
+            aviso.style.display = (scopusOn && !enMarcado) ? 'block' : 'none';
         };
-        ['antIdioma', 'antUsarScopus'].forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.addEventListener('change', actualizarAvisoScopus);
-        });
+        // Contador de coste en vivo: idiomas × variantes = consultas totales.
+        const actualizarCosteIdiomas = () => {
+            const coste = document.getElementById('antIdiomasCoste');
+            if (!coste) return;
+            const nIdi = this._idiomasSeleccionados().length;
+            const nVar = parseInt((document.getElementById('antNumVariantes') || {}).value || '5', 10) || 5;
+            const plan = this._planPresupuesto(nVar, nIdi);
+            coste.textContent = `Individual: ${nIdi} consulta${nIdi === 1 ? '' : 's'} · Intensiva: `
+                + `${plan.recortado ? `${plan.variantes} de ${nVar}` : nVar} variantes × ${nIdi} idioma${nIdi === 1 ? '' : 's'} `
+                + `= ${plan.total} consultas (tope ${this._PRESUPUESTO_CONSULTAS})`;
+        };
+        const zonaIdiomas = document.getElementById('antIdiomas');
+        if (zonaIdiomas) zonaIdiomas.addEventListener('change', () => { actualizarAvisoScopus(); actualizarCosteIdiomas(); });
+        const elUsarScopus = document.getElementById('antUsarScopus');
+        if (elUsarScopus) elUsarScopus.addEventListener('change', actualizarAvisoScopus);
+        const elNumVar = document.getElementById('antNumVariantes');
+        if (elNumVar) elNumVar.addEventListener('input', actualizarCosteIdiomas);
         actualizarAvisoScopus();
+        actualizarCosteIdiomas();
     },
 
     _renderSinonimos() {
@@ -1010,13 +1066,17 @@ const Antecedentes = {
         // ¿Incluir la consulta original como una búsqueda más?
         const incluirOrig = (document.getElementById('antIncluirOriginal') || {}).checked;
         const consultaOrig = (document.getElementById('antQuery') || {}).value.trim();
-        const f = { desde: (document.getElementById('antDesde') || {}).value, idioma: (document.getElementById('antIdioma') || {}).value };
+        const f = { desde: (document.getElementById('antDesde') || {}).value };
+        const idiomas = this._idiomasSeleccionados();
 
-        // Lista final de consultas a ejecutar (original primero si se incluye).
+        // Lista final de consultas base (original primero si se incluye).
         let consultas = variantes.slice();
         if (incluirOrig && consultaOrig && !consultas.some(c => c.toLowerCase() === consultaOrig.toLowerCase())) {
             consultas = [consultaOrig, ...consultas];
         }
+        // PRESUPUESTO: variantes × idiomas con tope de 30 consultas totales.
+        const plan = this._planPresupuesto(consultas.length, idiomas.length);
+        if (plan.recortado) consultas = consultas.slice(0, plan.variantes);
 
         const textoBtn = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; }
@@ -1029,26 +1089,31 @@ const Antecedentes = {
         let conError = 0;
 
         try {
+            let paso = 0;
             for (let i = 0; i < consultas.length; i++) {
                 const q = consultas[i];
-                const etiqueta = `Buscando variante ${i + 1} de ${consultas.length}: «${q}»…`;
+                for (let ix = 0; ix < idiomas.length; ix++) {
+                    const [cod, nombre] = idiomas[ix];
+                    paso++;
+                const etiqueta = `Variante ${i + 1}/${consultas.length} · ${nombre} (consulta ${paso}/${plan.total}): «${q}»…`;
                 if (estado) estado.textContent = `🚀 ${etiqueta}`;
                 if (estadoBuscador) estadoBuscador.textContent = etiqueta;
-                if (btn) btn.textContent = `⏳ ${i + 1}/${consultas.length}…`;
+                if (btn) btn.textContent = `⏳ ${paso}/${plan.total}…`;
 
                 try {
-                    // Si se prioriza inglés, traducir esta variante (como en la búsqueda normal).
+                    // Traducir esta variante al idioma de esta pasada (con caché).
                     let qEjec = q;
-                    if (f.idioma === 'en') {
-                        const tr = await this.traducirTexto(q, 'es', 'en');
+                    if (cod !== 'es') {
+                        const tr = await this._traducirA(q, cod);
                         if (tr && tr.toLowerCase() !== q.toLowerCase()) qEjec = tr;
                     }
-                    this._protocoloNota = (q === consultaOrig)
+                    const base = (q === consultaOrig)
                         ? 'búsqueda intensiva (consulta original)'
                         : 'variante de la búsqueda intensiva';
-                    const { obras, infos } = await this._buscarUnaConsulta(qEjec, f);
+                    this._protocoloNota = cod === 'es' ? base : `${base} · traducción al ${nombre}`;
+                    const { obras, infos } = await this._buscarUnaConsulta(qEjec, { ...f, idioma: cod });
                     this._protocoloNota = '';
-                    infosTodas.push(`«${q}»: ${infos}`);
+                    infosTodas.push(`«${q}» [${nombre}]: ${infos}`);
                     // Deduplicar contra lo ya acumulado.
                     const antesDup = acumuladas.length;
                     for (const o of obras) {
@@ -1062,7 +1127,8 @@ const Antecedentes = {
                     }
                 } catch (e) {
                     conError++;
-                    infosTodas.push(`«${q}»: falló (${e.message})`);
+                    infosTodas.push(`«${q}» [${nombre}]: falló (${e.message})`);
+                }
                 }
             }
 
@@ -1139,7 +1205,7 @@ const Antecedentes = {
         const estado = document.getElementById('antEstado');
         const qOriginal = document.getElementById('antQuery').value.trim();
         if (!qOriginal) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
-        const f = { desde: document.getElementById('antDesde').value, idioma: document.getElementById('antIdioma').value };
+        const f = { desde: document.getElementById('antDesde').value };
         const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
         const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
         const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
@@ -1152,18 +1218,6 @@ const Antecedentes = {
             return;
         }
 
-        // Si se prioriza Inglés, traducir la consulta UNA vez y usarla para
-        // TODAS las fuentes (Scopus, Scholar y abiertas son mayormente inglés).
-        let q = qOriginal, avisoTraduccion = '';
-        if (f.idioma === 'en') {
-            estado.textContent = 'Traduciendo la consulta al inglés…';
-            const traducida = await this.traducirTexto(qOriginal, 'es', 'en');
-            if (traducida && traducida.toLowerCase() !== qOriginal.toLowerCase()) {
-                q = traducida;
-                avisoTraduccion = `🔁 Consulta traducida al inglés para mejores resultados: «${q}». `;
-            }
-        }
-
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
         if (usarPubmed) fuentes.push('PubMed');
@@ -1171,25 +1225,48 @@ const Antecedentes = {
         if (usarAlicia) fuentes.push('ALICIA');
         if (usarScholar) fuentes.push('Google Académico');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
-        estado.textContent = `${avisoTraduccion}Consultando ${fuentes.join(' + ')}…`;
+
+        // MULTI-IDIOMA: una pasada por idioma marcado. «Español» usa el texto
+        // tal cual; el resto se traduce (con caché) y cada ecuación entra a la
+        // ficha del protocolo con su nota de idioma.
+        const idiomas = this._idiomasSeleccionados();
+        const etiquetaIdiomas = idiomas.map(([, n]) => n).join(' + ');
+        const vistos = new Set();
+        const acumuladas = [];
+        const infosTodas = [];
+        let brutosTotal = 0;
         try {
-            const { obras, infos } = await this._buscarUnaConsulta(q, f, opciones);
-            // Deduplicar por DOI/título.
-            const vistos = new Set();
-            this._obras = obras.filter(o => {
-                const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
-                if (vistos.has(k)) return false;
-                vistos.add(k); return true;
-            });
+            for (let ix = 0; ix < idiomas.length; ix++) {
+                const [cod, nombre] = idiomas[ix];
+                estado.textContent = `Consultando en ${nombre} (${ix + 1}/${idiomas.length}) — ${fuentes.join(' + ')}…`;
+                let qEjec = qOriginal;
+                if (cod !== 'es') {
+                    const tr = await this._traducirA(qOriginal, cod);
+                    if (tr && tr.toLowerCase() !== qOriginal.toLowerCase()) qEjec = tr;
+                }
+                this._protocoloNota = cod === 'es' ? '' : `traducción al ${nombre}`;
+                const { obras, infos } = await this._buscarUnaConsulta(qEjec, { ...f, idioma: cod }, opciones);
+                this._protocoloNota = '';
+                infosTodas.push(idiomas.length > 1 ? `[${nombre}] ${infos}` : String(infos));
+                brutosTotal += obras.length;
+                for (const o of obras) {
+                    const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
+                    if (vistos.has(k)) continue;
+                    vistos.add(k);
+                    acumuladas.push(o);
+                }
+            }
+            this._obras = acumuladas;
             if (typeof PrismaDiagrama !== 'undefined') {
-                PrismaDiagrama.registrar('duplicados', { n: obras.length - this._obras.length });
+                PrismaDiagrama.registrar('duplicados', { n: brutosTotal - this._obras.length });
             }
             this._pagina = 0;
             this._resetRelevancia();
             const _dur = this._formatoTiempo(performance.now() - _t0);
+            const _detalle = infosTodas.join(' · ');
             estado.textContent = this._obras.length
-                ? `${avisoTraduccion}${this._obras.length} resultados combinados en ${_dur} (${infos}). Marca los pertinentes:`
-                : `${avisoTraduccion}Sin resultados (${_dur}). ${infos}`;
+                ? `${this._obras.length} resultados combinados en ${_dur}${idiomas.length > 1 ? ` (${etiquetaIdiomas})` : ''} — ${_detalle}. Marca los pertinentes:`
+                : `Sin resultados (${_dur}). ${_detalle}`;
             this._renderResultados(this._obras);
             if (typeof ProtocoloBusqueda !== 'undefined') ProtocoloBusqueda.mostrarFicha('antProtocolo');
             this._enriquecerAutomatico(this._obras);
@@ -1209,7 +1286,7 @@ const Antecedentes = {
         if (typeof ProtocoloBusqueda === 'undefined') return promesa;
         const filtros = [
             f && f.desde ? `Desde ${f.desde}` : '',
-            f && f.idioma === 'en' ? 'Prioriza inglés' : ''
+            f && f.idioma && f.idioma !== 'es' ? 'Idioma: ' + String(f.idioma).toUpperCase() : ''
         ].filter(Boolean).join(' · ');
         ProtocoloBusqueda.registrar({ fuente, ecuacion: q, filtros, nota: this._protocoloNota });
         return promesa.then(r => {
