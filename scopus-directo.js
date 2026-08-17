@@ -362,28 +362,69 @@ const ScopusDirecto = {
 
     // Búsqueda con PAGINACIÓN: trae páginas de 25 hasta 'maxResultados'.
     // Scopus es API legítima → paginar es seguro (no hay anti-bot como Scholar).
+    // Búsqueda con PAGINACIÓN PARALELA: la página 0 va sola (sondea claves,
+    // vista y total real); el resto sale en ventana de 5 simultáneas — con el
+    // directo a Elsevier, 1000 resultados cuestan ~el tiempo de 8 páginas, no
+    // de 40. Cada página rota su propia clave: la carga se reparte sola.
+    VENTANA_PAGINAS: 5,
+
     async buscar(query, filtros = {}) {
         if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
         const objetivo = filtros.maxResultados || 25;
-        const paginas = Math.ceil(objetivo / 25);
-        const todas = [];
-        let ultMeta = {};
-        for (let p = 0; p < paginas; p++) {
-            let res;
-            try { res = await this._buscarPagina(query, filtros, p * 25); }
-            catch (e) {
-                if (p === 0) { e.scopus = true; throw e; } // primer fallo: propagar
-                break; // ya tenemos algo de páginas previas
-            }
-            ultMeta = { key: res.key, proxy: res.proxy };
-            const nuevos = res.obras.filter(o => !todas.some(t => (t.doi && t.doi === o.doi) || t.titulo === o.titulo));
-            todas.push(...nuevos);
-            // Si Scopus devolvió menos de 25, no hay más páginas.
-            if (res.obras.length < 25) break;
-            const total = parseInt(res.total || '0', 10);
-            if (total && (p + 1) * 25 >= total) break; // alcanzado el total real
+
+        // Página 0: sonda secuencial. Su fallo se propaga (igual que siempre);
+        // su 'total' decide cuántas páginas más existen de verdad.
+        let res0;
+        try { res0 = await this._buscarPagina(query, filtros, 0); }
+        catch (e) { e.scopus = true; throw e; }
+        const totalReal = parseInt(res0.total || '0', 10);
+        const meta = totalReal ? Math.min(objetivo, totalReal) : objetivo;
+        const paginas = Math.max(1, Math.ceil(meta / 25));
+        const porPagina = [res0.obras];
+        let ultMeta = { key: res0.key, proxy: res0.proxy };
+
+        if (paginas > 1 && res0.obras.length === 25) {
+            // Ventana de trabajadores sobre las páginas 1..n-1, con UN reintento
+            // por página. Un 'vacío real' en cola no es fallo: es el final.
+            const indices = []; for (let p = 1; p < paginas; p++) indices.push(p);
+            let cursor = 0;
+            const trabajador = async () => {
+                while (cursor < indices.length) {
+                    const p = indices[cursor++];
+                    for (let intento = 0; intento < 2; intento++) {
+                        try {
+                            const r = await this._buscarPagina(query, filtros, p * 25);
+                            porPagina[p] = r.obras;
+                            ultMeta = { key: r.key, proxy: r.proxy };
+                            break;
+                        } catch (e) {
+                            if (e && e.vacioReal) { porPagina[p] = []; break; }
+                            if (intento === 1) porPagina[p] = null; // fallo persistente
+                        }
+                    }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.VENTANA_PAGINAS, indices.length) }, trabajador));
         }
-        return { obras: todas.slice(0, objetivo), ...ultMeta, paginas: Math.ceil(todas.length / 25), view: this._viewConfirmada };
+
+        // Ensamblado EN ORDEN (el ranking de relevancia manda) y contiguo: si
+        // una página murió, se corta ahí — mejor 175 resultados bien ordenados
+        // que 1000 con un agujero en medio del ranking.
+        const todas = [];
+        let paginasOK = 0, hueco = false;
+        for (let p = 0; p < paginas; p++) {
+            const lote = porPagina[p];
+            if (lote == null) { hueco = true; break; }
+            paginasOK++;
+            const nuevos = lote.filter(o => !todas.some(t => (t.doi && t.doi === o.doi) || t.titulo === o.titulo));
+            todas.push(...nuevos);
+            if (lote.length < 25) break; // fin real de resultados
+        }
+        return {
+            obras: todas.slice(0, objetivo), ...ultMeta,
+            paginas: paginasOK, view: this._viewConfirmada,
+            parcial: hueco ? `${paginasOK}/${paginas} páginas` : ''
+        };
     }
 };
 
