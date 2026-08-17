@@ -224,6 +224,13 @@ const ProxiesCORS = {
     // Clave = URL objetivo (cada fuente valida sus propias URLs).
     // CONTRATO (M8c): las obras se comparten por referencia entre hits — no
     // reordenes ni vacíes el array recibido (anotar sus objetos sí vale).
+    _m: { carreras: 0, requests: 0, victorias: 0, hitsCache: 0, dedupVuelos: 0, adelantos: 0 },
+    metricas() {
+        const m = { ...this._m };
+        m.reqPorBusqueda = m.victorias ? +(m.requests / m.victorias).toFixed(2) : null;
+        return m;
+    },
+
     _cache: new Map(),
     _CACHE_TTL: 600000,
     _CACHE_MAX: 30,
@@ -232,13 +239,27 @@ const ProxiesCORS = {
         const hit = this._cache.get(objetivo);
         if (hit && (Date.now() - hit.t) < this._CACHE_TTL) {
             this._cache.delete(objetivo); this._cache.set(objetivo, hit); // M8b: LRU real, el uso refresca
+            if (hit.listo) this._m.hitsCache++; else this._m.dedupVuelos++;
             return hit.prom;
         }
         const prom = this._carreraViva(objetivo, validar, op);
-        this._cache.set(objetivo, { t: Date.now(), prom });
+        const entrada = { t: Date.now(), prom, listo: false };
+        this._cache.set(objetivo, entrada);
+        prom.then(() => { entrada.listo = true; }, () => {});
         if (this._cache.size > this._CACHE_MAX) this._cache.delete(this._cache.keys().next().value);
         prom.catch(() => { const v = this._cache.get(objetivo); if (v && v.prom === prom) this._cache.delete(objetivo); }); // M8a: borra solo SU entrada
         return prom;
+    },
+
+    // Interruptor de emergencia: ProxiesCORS.HEDGING = false en consola vuelve
+    // al comportamiento de oleadas (todos los del lote a la vez).
+    HEDGING: true,
+
+    // Retraso del hedge: el siguiente corredor sale cuando el anterior ya
+    // debería haber respondido (su promedio ×1.1, entre 700 ms y 2.5 s).
+    _retrasoHedge(idPrevio) {
+        const ms = (this._mem[idPrevio] || {}).msProm;
+        return Math.min(2500, Math.max(700, ms ? Math.round(ms * 1.1) : 1200));
     },
 
     async _carreraViva(objetivo, validar, op = {}) {
@@ -254,25 +275,44 @@ const ProxiesCORS = {
         const anchura = op.anchura || 4;
         const timeout = op.timeout || 15000;
         const oleadas = op.oleadas || 2;
-        const cola = this.ordenados();
+        if (!op._gracia) this._m.carreras++;
         const diag = [];
-        let regimenLento = false; // A7: oleada muerta por timeouts ⇒ techo completo después
-        let errDestino = null;    // A2: el destino respondió con error ⇒ correr más proxies es inútil
+        let regimenLento = false; // A7: cadena muerta por timeouts ⇒ techo completo en la gracia
+        let errDestino = null;    // A2: la fuente respondió con error ⇒ los proxies no pagan
 
-        for (let ola = 0; ola < oleadas && cola.length; ola++) {
-            const lote = this._armarLote(cola, anchura);
-            if (!lote.length) break;
+        // CADENA HEDGED (E4): el arsenal ordenado por salud y diversidad de
+        // familia sale ESCALONADO — el mejor primero; cada siguiente, solo si el
+        // anterior aún no resolvió cuando ya debería. En hosts sanos la búsqueda
+        // cuesta ~1 petición; los corredores no lanzados se cancelan GRATIS.
+        // AVANCE RÁPIDO: si un corredor muere en 200 ms, el siguiente sale ya —
+        // tráfico de francotirador, latencia de escopeta.
+        const cola = this.ordenados();
+        const orden = [];
+        while (cola.length) orden.push(...this._armarLote(cola, anchura));
+        orden.length = Math.min(orden.length, anchura * oleadas);
 
-            // Un AbortController POR corredor + marca de POR QUÉ se abortó
-            // (timeout propio ≠ cancelación por victoria ajena: solo el primero
-            // es un fallo del proxy).
-            const ctrls = lote.map(() => new AbortController());
-            const marcas = lote.map(() => ({ timeout: false }));
-            const corredores = lote.map((proxy, i) => {
+        const ctrls = orden.map(() => new AbortController());
+        const marcas = orden.map(() => ({ timeout: false, lanzado: false }));
+        const arranques = new Array(orden.length).fill(null);
+        const lanzadores = [];
+        let pararPorDestino = null;
+        const frenoDestino = new Promise((resolver, rechazar) => { pararPorDestino = rechazar; });
+        frenoDestino.catch(() => {}); // sin unhandledrejection si nadie escucha aún
+
+        const adelantar = () => {
+            const i = marcas.findIndex(m => !m.lanzado);
+            if (i !== -1 && arranques[i]) { this._m.adelantos++; arranques[i](); }
+        };
+
+        const corredores = orden.map((proxy, i) => new Promise((resolver, rechazar) => {
+            const arrancar = () => {
+                if (marcas[i].lanzado) return;
+                marcas[i].lanzado = true;
+                this._m.requests++;
                 const t0 = Date.now();
                 const plazo = regimenLento ? timeout : this._plazoProxy(proxy.id, timeout);
                 const tid = setTimeout(() => { marcas[i].timeout = true; ctrls[i].abort(); }, plazo);
-                return fetch(proxy.build(objetivo), { signal: ctrls[i].signal })
+                fetch(proxy.build(objetivo), { signal: ctrls[i].signal })
                     .then(async r => {
                         if (!r.ok) throw Object.assign(new Error(`HTTP${r.status}`), { proxyId: proxy.id });
                         // M4: techo de tamaño cuando el proxy declara Content-Length.
@@ -281,12 +321,10 @@ const ProxiesCORS = {
                         const html = await this.extraer(proxy, r);
                         const obras = validar(html);
                         if (!obras || !obras.length) throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
-                        // C1: el deadline vivió hasta validar — el cuerpo goteado
-                        // también muere a tiempo. Recién aquí se desarma.
+                        // C1: el deadline vive hasta validar; recién aquí se desarma.
                         clearTimeout(tid);
-                        // A1: el éxito se anota en el settle del corredor.
-                        this.registrar(proxy.id, true, Date.now() - t0);
-                        return { obras, proxy, ms: Date.now() - t0 };
+                        this.registrar(proxy.id, true, Date.now() - t0); // A1: éxito en su settle
+                        resolver({ obras, proxy, ms: Date.now() - t0 });
                     })
                     .catch(e => {
                         clearTimeout(tid);
@@ -294,37 +332,58 @@ const ProxiesCORS = {
                         const esAbort = err.name === 'AbortError' || /abort/i.test(String(err.message));
                         err.esTimeout = esAbort && marcas[i].timeout;
                         err.esCancelacion = esAbort && !marcas[i].timeout;
-                        // A1: el fallo DEFINITIVO de un perdedor también enseña —
-                        // un favorito muerto ya no corre gratis para siempre. La
-                        // cancelación (ganó otro) no penaliza; el timeout sí.
-                        if (err.destino) { /* A2: culpa del destino, el proxy no paga */ }
-                        else if (!err.esCancelacion) this.registrar(err.proxyId, false, 0, /HTTP429/.test(String(err.message)));
-                        throw err;
+                        if (err.destino) {
+                            // A2: la culpa es de la fuente. 4xx firme (≠429) ⇒ parar la
+                            // cadena YA: más proxies no arreglan un 404. 5xx/429 ⇒ se
+                            // sigue (otro camino puede esquivar un borde caído), pero
+                            // el proxy no paga.
+                            const cod = +(String(err.message).match(/HTTP(\d+)/) || [])[1] || 0;
+                            if (cod >= 400 && cod < 500 && cod !== 429) pararPorDestino(err);
+                        } else if (!err.esCancelacion) {
+                            this.registrar(err.proxyId, false, 0, /HTTP429/.test(String(err.message)));
+                            adelantar(); // AVANCE RÁPIDO: fallo definitivo ⇒ el siguiente sale ya
+                        }
+                        rechazar(err);
                     });
-            });
+            };
+            arranques[i] = arrancar;
+            if (i === 0) arrancar();
+        }));
 
-            try {
-                const ganador = await Promise.any(corredores);
-                // CANCELACIÓN REAL de los rezagados (ahorra ancho de banda y, en
-                // Scholar, evita peticiones extra que dispararían el anti-bot).
-                ctrls.forEach((c, i) => { if (lote[i].id !== ganador.proxy.id) { try { c.abort(); } catch (e) {} } });
-                this._sondaTrasVictoria();
-                return { obras: ganador.obras, proxy: ganador.proxy.id, ms: ganador.ms };
-            } catch (agg) {
-                const errs = (agg && agg.errors) ? agg.errors : [agg];
-                let timeouts = 0;
-                errs.forEach(e => {
-                    if (e && e.destino && !errDestino) errDestino = e;
-                    if (e && e.esTimeout) timeouts++;
-                    diag.push(e && e.proxyId ? `${e.proxyId}:${e.message}` : String((e && e.message) || 'err'));
-                });
-                if (timeouts >= Math.ceil(errs.length / 2)) regimenLento = true;
-                if (errDestino) break;
-            }
+        // Calendario de lanzamientos escalonados (el avance rápido puede
+        // adelantarlos; el guardián de 'lanzado' evita dobles arranques).
+        let retraso = 0;
+        for (let i = 1; i < orden.length; i++) {
+            retraso += this.HEDGING ? this._retrasoHedge(orden[i - 1].id) : ((i % anchura) === 0 ? 1500 : 0);
+            lanzadores.push(setTimeout(arranques[i], retraso));
         }
-        // A2: si el destino contestó con error, ni amnistía ni gracia — el
-        // problema está en la fuente, y borrar la salud sería destruir
-        // conocimiento real sobre los proxies.
+
+        const limpiar = () => {
+            lanzadores.forEach(l => clearTimeout(l));
+            ctrls.forEach((c, i) => { if (marcas[i].lanzado) { try { c.abort(); } catch (e) {} } });
+        };
+
+        try {
+            const ganador = await Promise.race([Promise.any(corredores), frenoDestino]);
+            // CANCELACIÓN REAL: en vuelo se abortan; los no lanzados jamás salen.
+            lanzadores.forEach(l => clearTimeout(l));
+            ctrls.forEach((c, i) => { if (marcas[i].lanzado && orden[i].id !== ganador.proxy.id) { try { c.abort(); } catch (e) {} } });
+            this._m.victorias++;
+            this._sondaTrasVictoria();
+            return { obras: ganador.obras, proxy: ganador.proxy.id, ms: ganador.ms };
+        } catch (agg) {
+            limpiar();
+            const errs = (agg && agg.errors) ? agg.errors : [agg];
+            let timeouts = 0;
+            errs.forEach(e => {
+                if (e && e.destino && !errDestino) errDestino = e;
+                if (e && e.esTimeout) timeouts++;
+                if (!(e && e.esCancelacion)) diag.push(e && e.proxyId ? `${e.proxyId}:${e.message}` : String((e && e.message) || 'err'));
+            });
+            if (timeouts >= Math.ceil(Math.max(1, errs.length) / 2)) regimenLento = true;
+        }
+        // A2: si la fuente contestó con error, ni amnistía ni gracia — el
+        // problema no está en los intermediarios.
         if (errDestino) {
             const err = new Error(`${errDestino.message} — el problema está en la fuente consultada, no en los intermediarios`);
             err.carrera = true; err.destino = true;
@@ -332,8 +391,8 @@ const ProxiesCORS = {
         }
         if (!op._gracia) {
             this.amnistia();
-            // M5: respiro con jitter — relanzar el arsenal completo en el mismo
-            // milisegundo agrava justo lo que acaba de matarnos (rate limits).
+            // M5: respiro con jitter — relanzar el arsenal en el mismo milisegundo
+            // agrava justo lo que acaba de matarnos (rate limits).
             await new Promise(r => setTimeout(r, 1000 + Math.floor(Math.random() * 2000)));
             try {
                 return await this._carreraViva(objetivo, validar, { ...op, timeout: regimenLento ? timeout : Math.min(timeout, 10000), _gracia: true });
