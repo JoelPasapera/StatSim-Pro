@@ -94,6 +94,18 @@
     </style>
     <link rel="icon" type="image/svg+xml" href="favicon.svg">
     
+    <!-- ============================================================
+         PRECONNECT — calentamiento de conexiones (solo rendimiento).
+         Le pide al navegador abrir POR ADELANTADO la conexión con
+         estos servidores (DNS + handshake TLS, ~100-300 ms) mientras
+         la página todavía está cargando. Así, la PRIMERA petición
+         real de la sesión sale con el saludo ya hecho.
+           · crossref / openalex → los usan DIRECTO las fuentes
+             complementarias y el enriquecimiento de resúmenes.
+           · allorigins → el proxy CORS mejor rankeado del arsenal.
+         Quitar estas líneas no rompe nada: solo se pierde ese
+         arranque en frío una vez por sesión.
+         ============================================================ -->
     <link rel="preconnect" href="https://api.crossref.org" crossorigin>
     <link rel="preconnect" href="https://api.openalex.org" crossorigin>
     <link rel="preconnect" href="https://api.allorigins.win" crossorigin>
