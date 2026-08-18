@@ -24,7 +24,7 @@
 const RankingRevistas = {
 
     SUBJ: 'PSYC',
-    _CLAVE: 'statsim_ranking_psyc_v4', // la caché vieja (percentil laxo, sin contadores de cobertura) se ignora sola
+    _CLAVE: 'statsim_ranking_psyc_v5', // la caché v4 (cobertura de UNA página por confiar en totalResults) se ignora sola
     _TTL: 7 * 86400000,          // 7 días: los datos son anuales
     _VENTANA: 4,                 // páginas en paralelo
 
@@ -167,6 +167,14 @@ const RankingRevistas = {
     },
 
     // ---------- carga completa: TODO el área, en paralelo ----------
+    // LECCIÓN (bug real de producción): el 'opensearch:totalResults' del listado
+    // por materia puede faltar o mentir a la baja — confiar en él dejó el ranking
+    // en UNA página (~200 títulos alfabéticos: por eso AMPPS entraba con la «A»
+    // y Psychological Science jamás con la «P»). Ahora el total SOLO decora el
+    // progreso: el fin real lo marca una página corta o vacía, con techo de
+    // seguridad, y los trabajadores reclaman páginas hasta encontrarlo.
+    _TECHO_TITULOS: 4000,
+
     async _traerRanking(alProgresar) {
         let primera;
         try { primera = await this._traerPagina(0, 200); }
@@ -176,44 +184,58 @@ const RankingRevistas = {
             else throw e;
         }
         if (!primera.entradas.length) throw new Error('Elsevier devolvió una primera página vacía');
-        const porPagina = primera.entradas.length;         // el count real que sirve el API
-        const total = primera.total || porPagina;
-        const paginas = Math.max(1, Math.ceil(total / porPagina));
-        const lotes = new Array(paginas).fill(null);
-        lotes[0] = primera.entradas;
-        let hechas = 1, fallos = 0;
-        this._stopCuota = false; // parada global explícita: SOLO la dispara la cuota
-        if (alProgresar) alProgresar(hechas, paginas);
+        const porPagina = primera.entradas.length;   // el count real que sirve el API
+        let totalDeclarado = primera.total || 0;     // orientativo: puede faltar o mentir
+        const lotes = [primera.entradas];            // lotes[p] = entradas · null = pendiente/fallo
+        let finAlcanzado = primera.entradas.length < 200; // primera ya corta ⇒ no hay más
+        let fallos = 0, leidas = 1, siguiente = 1;
+        this._stopCuota = false;
 
-        const indices = []; for (let p = 1; p < paginas; p++) indices.push(p);
-        let cursor = 0;
+        const estimadas = () => totalDeclarado
+            ? Math.min(Math.ceil(totalDeclarado / porPagina), Math.ceil(this._TECHO_TITULOS / porPagina))
+            : 0;
+        if (alProgresar) alProgresar(leidas, estimadas());
+
         const trabajador = async () => {
-            while (cursor < indices.length && !this._stopCuota) {
-                const p = indices[cursor++];
+            while (!this._stopCuota && !finAlcanzado) {
+                const p = siguiente++;
+                const start = p * porPagina;
+                if (start >= this._TECHO_TITULOS) { finAlcanzado = true; break; } // techo de seguridad
+                let entradas = null; // null = fallo (≠ [] = fin natural)
                 for (let intento = 0; intento < 2; intento++) {
                     try {
-                        const r = await this._traerPagina(p * porPagina, porPagina);
-                        lotes[p] = r.entradas; break;
+                        const r = await this._traerPagina(start, porPagina);
+                        entradas = r.entradas;
+                        if (!totalDeclarado && r.total) totalDeclarado = r.total;
+                        break;
                     } catch (e) {
-                        if (e && e.cuota) { this._stopCuota = true; fallos++; lotes[p] = []; break; } // cuota: parar TODO, no martillear
-                        if (intento === 1) { fallos++; lotes[p] = []; } // 5xx u otros: 1 reintento y se sigue con el resto
+                        if (e && e.cuota) { this._stopCuota = true; fallos++; break; } // cuota: parar TODO
+                        if (intento === 1) fallos++; // 5xx u otros: 1 reintento; el hueco queda anotado
                     }
                 }
-                hechas++; if (alProgresar) alProgresar(Math.min(hechas, paginas), paginas);
+                lotes[p] = entradas || [];
+                leidas++;
+                // Fin NATURAL solo si la página llegó (no falló) y vino corta o vacía.
+                if (entradas && entradas.length < porPagina) finAlcanzado = true;
+                if (alProgresar) alProgresar(leidas, estimadas());
             }
         };
-        await Promise.all(Array.from({ length: Math.min(this._VENTANA, indices.length) }, trabajador));
+        await Promise.all(Array.from({ length: this._VENTANA }, trabajador));
         if (this._stopCuota) fallos = Math.max(fallos, 1);
 
         const filas = [];
-        let excluidas = 0; // con métrica ausente (descontinuadas) — transparencia de cobertura
+        let excluidas = 0;
+        const vistos = new Set(); // por si el API repitiera páginas: cada revista UNA vez
         lotes.forEach(l => (l || []).forEach(e => {
             const f = this._fila(e);
             if (!f) return;                    // no-revistas (series, actas): ni cuentan
+            const clave = f.linkScopus || f.titulo.toLowerCase();
+            if (vistos.has(clave)) return;
+            vistos.add(clave);
             if (f.citeScore > 0) filas.push(f); else excluidas++;
         }));
         filas.sort((a, b) => b.citeScore - a.citeScore);
-        return { filas, total, parcial: fallos > 0, excluidas };
+        return { filas, total: totalDeclarado || (filas.length + excluidas), parcial: fallos > 0, excluidas };
     },
 
     // ---------- caché (solo cobertura completa) ----------
@@ -235,7 +257,7 @@ const RankingRevistas = {
         }
         try {
             const r = await this._traerRanking((h, t) => {
-                if (!cache) this._estado('Cargando el ranking… página ' + h + ' de ' + t);
+                if (!cache) this._estado('Cargando el ranking… página ' + h + (t ? ' de ~' + t : '…'));
             });
             if (!r.filas.length) { if (!cache) this._estado('No se pudo obtener el ranking (sin datos).'); else this._render(); return; }
             const nuevo = { t: Date.now(), filas: r.filas, total: r.total, parcial: r.parcial, excluidas: r.excluidas || 0 };
