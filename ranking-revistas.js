@@ -26,7 +26,7 @@ const RankingRevistas = {
     SUBJ: 'PSYC',
     _CLAVE: 'statsim_ranking_psyc_v5', // la caché v4 (cobertura de UNA página por confiar en totalResults) se ignora sola
     _TTL: 7 * 86400000,          // 7 días: los datos son anuales
-    _VENTANA: 4,                 // páginas en paralelo
+    _VENTANA: 6,                 // páginas en paralelo (el ritmo lo gobierna el espaciador)
 
     // ---------- estado de la vista (orden, filtros, profundidad) ----------
     _datos: null,                // { t, filas, total, parcial }
@@ -50,12 +50,21 @@ const RankingRevistas = {
     // Espaciador GLOBAL: la concurrencia (ventana 4) no limita el ritmo; esto
     // sí — un disparo cada ≥180 ms ⇒ ~5,5 req/s, bajo el techo de 6 req/s.
     _contentJournal: true, // fail-safe: se apaga si Elsevier devolviera 4xx por el parámetro
-    _ESPACIADO_MS: 180,
+    // El techo de ~6 req/s de Elsevier es POR CLAVE, y cada página rota clave en
+    // round-robin: el espaciado global puede dividirse entre las claves sin que
+    // ninguna supere su límite individual. 5 claves ⇒ ~36 ms (piso 40) ⇒ la
+    // descarga completa del área pasa de ~15-20 s a ~3-5 s.
+    _ESPACIADO_BASE_MS: 180,
     _proximoDisparo: 0,
+    _numClaves() {
+        try { return Math.max(1, ((typeof ScopusDirecto !== 'undefined' && ScopusDirecto.API_KEYS) || []).length); }
+        catch (e) { return 1; }
+    },
     async _espaciar() {
+        const paso = Math.max(40, Math.round(this._ESPACIADO_BASE_MS / this._numClaves()));
         const ahora = Date.now();
         const espera = Math.max(0, this._proximoDisparo - ahora);
-        this._proximoDisparo = Math.max(ahora, this._proximoDisparo) + this._ESPACIADO_MS;
+        this._proximoDisparo = Math.max(ahora, this._proximoDisparo) + paso;
         if (espera) await new Promise(r => setTimeout(r, espera));
     },
 
@@ -363,6 +372,8 @@ const RankingRevistas = {
                 + '<td style="padding:0.35rem 0.5rem; text-align:right;">' + barra + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; text-align:right;">' + (f.sjr == null ? '—' : f.sjr.toFixed(2)) + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; text-align:right;">' + (f.snip == null ? '—' : f.snip.toFixed(2)) + '</td>'
+                + '<td style="padding:0.35rem 0.5rem; max-width:170px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(f.areas.join(' · ')) + '">'
+                + (f.areas.length ? esc(f.areas[0]) + (f.areas.length > 1 ? ' <span style="color:var(--color-text-soft, #8b93a7);">+' + (f.areas.length - 1) + '</span>' : '') : '—') + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(f.editorial) + '">' + esc(f.editorial) + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; white-space:nowrap;">' + esc(f.issn) + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; white-space:nowrap;">'
@@ -390,14 +401,14 @@ const RankingRevistas = {
             + '<option value="">Todo tipo</option><option value="emp"' + (v.tipo === 'emp' ? ' selected' : '') + '>Ocultar revisiones 📖</option>'
             + '<option value="rev"' + (v.tipo === 'rev' ? ' selected' : '') + '>Solo revisión 📖</option></select>'
             + '<select id="rankingTop" class="input" style="flex:0 0 auto; font-size:0.85em; padding:0.3rem 0.5rem;">'
-            + [30, 50, 100].map(n => '<option value="' + n + '"' + (v.top === n ? ' selected' : '') + '>Top ' + n + '</option>').join('') + '</select></div>'
+            + [30, 50, 100, 300, 500].map(n => '<option value="' + n + '"' + (v.top === n ? ' selected' : '') + '>Top ' + n + '</option>').join('') + '</select></div>'
             + '<div style="max-height:420px; overflow:auto; border-radius:8px;">'
-            + '<table style="width:100%; border-collapse:collapse; font-size:0.82em;">'
+            + '<table style="width:100%; min-width:1180px; border-collapse:collapse; font-size:0.82em;">'
             + '<thead><tr style="color:#fbbf24; text-align:left; position:sticky; top:0; background:var(--color-bg-card, #10182b); z-index:1;">'
             + '<th style="padding:0.35rem 0.5rem; text-align:right;">#</th>' + th('titulo', 'Revista')
             + th('citeScore', 'CiteScore', 'right') + th('cuartil', 'Cuartil', 'center')
             + th('percentil', 'Percentil', 'right') + th('sjr', 'SJR', 'right') + th('snip', 'SNIP', 'right')
-            + '<th style="padding:0.35rem 0.5rem;">Editorial</th><th style="padding:0.35rem 0.5rem;">ISSN</th><th style="padding:0.35rem 0.5rem;">Enlaces</th>'
+            + '<th style="padding:0.35rem 0.5rem;">Subárea</th><th style="padding:0.35rem 0.5rem;">Editorial</th><th style="padding:0.35rem 0.5rem;">ISSN</th><th style="padding:0.35rem 0.5rem;">Enlaces</th>'
             + '</tr></thead><tbody>' + filasHTML + '</tbody></table></div>'
             + '<div style="font-size:0.72em; color:var(--color-text-soft, #8b93a7); margin-top:0.4rem;">Cuartil y percentil: del año <i>Complete</i> y solo de categorías de psicología (ASJC 32xx), tomando el mejor. 📖 = revista de revisión/síntesis: publican pocos artículos que todo el mundo cita como marco teórico, por eso su CiteScore aplasta al de las revistas empíricas (Annual Review ~55 vs. una empírica top ~10-16) — compara peras con peras usando el filtro de tipo. 🔓 = acceso abierto. El nombre enlaza al perfil en Scopus. Solo se listan revistas (content=journal) con CiteScore vigente: fuera series de libros, actas y títulos descontinuados. La marca 📖 es una heurística por el nombre, no un metadato de Scopus.</div>'
             + '</details>';
