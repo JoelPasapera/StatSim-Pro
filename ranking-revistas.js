@@ -327,18 +327,86 @@ const RankingRevistas = {
         return filas;
     },
 
-    _csv() {
-        const esc = s => '"' + String(s == null ? '' : s).replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
-        const filas = this._filasVisibles();
-        const cab = ['#', 'Revista', 'Tipo', 'CiteScore', 'Cuartil', 'Percentil', 'SJR', 'SNIP', 'Editorial', 'Acceso abierto', 'ISSN', 'Áreas', 'Scopus', 'SCImago'];
-        const cuerpo = filas.map((f, i) => [i + 1, f.titulo, f.esRevision ? 'Revisión (heurística)' : 'No revisión detectada', f.citeScore,
-            f.cuartil || '', f.percentil == null ? '' : f.percentil, f.sjr == null ? '' : f.sjr, f.snip == null ? '' : f.snip,
-            f.editorial, f.oa ? 'Sí' : 'No', f.issn, f.areas.join(' | '), f.linkScopus, f.linkScimago].map(esc).join(','));
-        const blob = new Blob(['\ufeff' + cab.map(esc).join(',') + '\n' + cuerpo.join('\n')], { type: 'text/csv;charset=utf-8' });
+    // ---- Exportación: CSV español (;) · CSV inglés (,) · Excel con estilo ----
+    _descargarBlob(blob, nombre) {
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob); a.download = 'ranking_revistas_psicologia.csv';
+        a.href = URL.createObjectURL(blob); a.download = nombre;
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
+    },
+
+    _filasExportables() {
+        const filas = this._filasVisibles();
+        return filas.map((f, i) => ({
+            n: i + 1, titulo: f.titulo, tipo: f.esRevision ? 'Revisión (heurística)' : 'No revisión detectada',
+            citeScore: f.citeScore, cuartil: f.cuartil || '', percentil: f.percentil,
+            sjr: f.sjr, snip: f.snip, areas: f.areas.join(' | '), editorial: f.editorial,
+            oa: f.oa ? 'Sí' : 'No', issn: f.issn, scopus: f.linkScopus, scimago: f.linkScimago
+        }));
+    },
+
+    // sep: separador de campos · decimalComa: 9,9 en vez de 9.9 (Excel en español
+    // espera AMBOS cambios a la vez; el inglés, ninguno).
+    _csv(sep, decimalComa, sufijo) {
+        const esc = s => '"' + String(s == null ? '' : s).replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
+        const num = (v, dec) => v == null ? '' : (decimalComa ? v.toFixed(dec).replace('.', ',') : v.toFixed(dec));
+        const cab = ['#', 'Revista', 'Tipo', 'CiteScore', 'Cuartil', 'Percentil', 'SJR', 'SNIP', 'Subáreas', 'Editorial', 'Acceso abierto', 'ISSN', 'Scopus', 'SCImago'];
+        const cuerpo = this._filasExportables().map(f => [f.n, f.titulo, f.tipo, num(f.citeScore, 1), f.cuartil,
+            f.percentil == null ? '' : f.percentil, num(f.sjr, 2), num(f.snip, 2), f.areas, f.editorial,
+            f.oa, f.issn, f.scopus, f.scimago].map(esc).join(sep));
+        const blob = new Blob(['\ufeff' + cab.map(esc).join(sep) + '\n' + cuerpo.join('\n')], { type: 'text/csv;charset=utf-8' });
+        this._descargarBlob(blob, 'ranking_revistas_psicologia_' + sufijo + '.csv');
+    },
+
+    async _xlsx() {
+        if (typeof ExcelJS === 'undefined') {
+            this._render('⚠️ ExcelJS no está cargado en esta página: usa los CSV mientras tanto.');
+            return;
+        }
+        const filas = this._filasExportables();
+        const wb = new ExcelJS.Workbook();
+        const ws = wb.addWorksheet('Ranking PSYC', { views: [{ state: 'frozen', ySplit: 3 }] });
+        const AMBAR = 'FFB45309', FONDO = 'FF111827', SUAVE = 'FFF3F4F6';
+        const QCOLOR = { Q1: ['FFD1FAE5', 'FF065F46'], Q2: ['FFFEF3C7', 'FF92400E'], Q3: ['FFFFEDD5', 'FF9A3412'], Q4: ['FFFEE2E2', 'FF991B1B'] };
+        ws.columns = [{ width: 5 }, { width: 48 }, { width: 20 }, { width: 11 }, { width: 9 }, { width: 11 },
+            { width: 9 }, { width: 9 }, { width: 34 }, { width: 30 }, { width: 9 }, { width: 12 }, { width: 14 }, { width: 14 }];
+        ws.mergeCells('A1:N1');
+        const anio = (this._datos.filas.find(f => f.anioCS) || {}).anioCS || '';
+        const c1 = ws.getCell('A1');
+        c1.value = '🏆 Ranking de revistas de Psicología — CiteScore ' + anio + ' (Scopus · área PSYC)';
+        c1.font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
+        c1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: FONDO } };
+        c1.alignment = { vertical: 'middle' }; ws.getRow(1).height = 26;
+        ws.mergeCells('A2:N2');
+        const c2 = ws.getCell('A2');
+        c2.value = filas.length + ' revistas exportadas · datos: Elsevier Serial Title API · ' + new Date(this._datos.t).toLocaleDateString('es');
+        c2.font = { italic: true, size: 10, color: { argb: 'FF6B7280' } };
+        const cab = ['#', 'Revista', 'Tipo', 'CiteScore', 'Cuartil', 'Percentil', 'SJR', 'SNIP', 'Subáreas', 'Editorial', 'OA', 'ISSN', 'Scopus', 'SCImago'];
+        const rCab = ws.addRow(cab);
+        rCab.eachCell(c => {
+            c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+            c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: AMBAR } };
+            c.border = { bottom: { style: 'medium', color: { argb: FONDO } } };
+        });
+        filas.forEach((f, i) => {
+            const r = ws.addRow([f.n, f.titulo, f.tipo, f.citeScore, f.cuartil || '—', f.percentil == null ? '—' : f.percentil,
+                f.sjr, f.snip, f.areas, f.editorial, f.oa, f.issn, '', '']);
+            if (i % 2) r.eachCell({ includeEmpty: true }, c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SUAVE } }; });
+            r.getCell(4).numFmt = '0.0';
+            r.getCell(7).numFmt = '0.00'; r.getCell(8).numFmt = '0.00';
+            const q = QCOLOR[f.cuartil];
+            if (q) { const cq = r.getCell(5); cq.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: q[0] } }; cq.font = { bold: true, color: { argb: q[1] } }; cq.alignment = { horizontal: 'center' }; }
+            if (f.scopus) { r.getCell(2).value = { text: f.titulo, hyperlink: f.scopus }; r.getCell(2).font = { color: { argb: 'FF1D4ED8' }, underline: true };
+                r.getCell(13).value = { text: 'Scopus', hyperlink: f.scopus }; r.getCell(13).font = { color: { argb: 'FF1D4ED8' }, underline: true }; }
+            if (f.scimago) { r.getCell(14).value = { text: 'SCImago', hyperlink: f.scimago }; r.getCell(14).font = { color: { argb: 'FF1D4ED8' }, underline: true }; }
+        });
+        ws.autoFilter = { from: 'A3', to: 'N3' };
+        try {
+            ws.addConditionalFormatting({ ref: 'F4:F' + (3 + filas.length), rules: [{ type: 'dataBar', minLength: 0, maxLength: 100, cfvo: [{ type: 'num', value: 0 }, { type: 'num', value: 100 }], color: { argb: 'FF22C55E' } }] });
+        } catch (e) { /* la barra de datos es adorno: si esta versión de ExcelJS no la trae, nada se pierde */ }
+        const buf = await wb.xlsx.writeBuffer();
+        this._descargarBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+            'ranking_revistas_psicologia.xlsx');
     },
 
     _render(aviso) {
@@ -391,7 +459,9 @@ const RankingRevistas = {
             + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin:0.5rem 0;">'
             + '<span style="font-size:0.78em; color:var(--color-text-soft, #8b93a7);">Top ' + filas.length + ' de ' + this._datos.filas.length + ' revistas con métrica · Scopus lista ' + (this._datos.total || '¿?') + ' títulos en PSYC (' + (this._datos.excluidas || 0) + ' sin CiteScore vigente excluidos) · CiteScore anual (junio) · actualizado ' + fecha + '</span>'
             + '<span style="display:flex; gap:0.4rem; flex-wrap:wrap;">'
-            + '<button id="rankingCSV" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;">⬇ CSV</button>'
+            + '<button id="rankingCSVes" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;" title="Separador ; y decimales con coma — para Excel en español">⬇ CSV (es)</button>'
+            + '<button id="rankingCSVen" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;" title="Separador , y decimales con punto — estándar internacional">⬇ CSV (en)</button>'
+            + '<button id="rankingXLSX" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;" title="Excel con formato: colores, hipervínculos y filtros">⬇ Excel</button>'
             + '<button id="rankingActualizar" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;">↻ Actualizar</button></span></div>'
             + '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0 0 0.5rem;">'
             + '<input id="rankingFiltro" class="input" placeholder="filtrar por nombre o editorial…" value="' + esc(v.filtro) + '" style="flex:2; min-width:180px; font-size:0.85em; padding:0.3rem 0.5rem;">'
@@ -402,6 +472,21 @@ const RankingRevistas = {
             + '<option value="rev"' + (v.tipo === 'rev' ? ' selected' : '') + '>Solo revisión 📖</option></select>'
             + '<select id="rankingTop" class="input" style="flex:0 0 auto; font-size:0.85em; padding:0.3rem 0.5rem;">'
             + [30, 50, 100, 300, 500].map(n => '<option value="' + n + '"' + (v.top === n ? ' selected' : '') + '>Top ' + n + '</option>').join('') + '</select></div>'
+            + '<details style="margin:0 0 0.5rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.4rem 0.7rem; font-size:0.8em;">'
+            + '<summary style="cursor:pointer; color:#fbbf24;">📚 ¿Qué es esta tabla y cómo leer cada columna?</summary>'
+            + '<div style="margin-top:0.45rem; line-height:1.6; color:var(--color-text-soft, #b8c0d4);">'
+            + 'Este ranking reúne <b>todas las revistas activas de psicología indexadas en Scopus</b> (categorías ASJC 32xx: clínica, social, del desarrollo, experimental, aplicada, neuropsicología…), traídas completas del API oficial de Elsevier y ordenadas por su impacto. Sirve para decidir <b>dónde leer</b> (priorizar antecedentes de revistas Q1–Q2 blinda tu marco teórico) y <b>dónde aspirar a publicar</b>. Ojo con la frontera: revistas de neurociencia pura como <i>Nature Neuroscience</i> o <i>Neuron</i> viven en otra área de Scopus (NEUR, códigos 28xx) y por eso no aparecen aquí — la neuropsicología (3206) sí es de la casa.<br><br>'
+            + '<b>Columna por columna:</b> <b>Revista</b> — el nombre enlaza a su perfil en Scopus; 📖 marca revistas de revisión/síntesis (heurística por el nombre) y 🔓 acceso abierto. '
+            + '<b>CiteScore</b> — promedio de citas por documento en una ventana de 4 años; la métrica oficial de Scopus, se publica cada junio. Es la que ordena por defecto. '
+            + '<b>Cuartil</b> — posición de la revista dentro de su categoría: Q1 = el 25 % superior, Q4 = el inferior; se deriva del percentil. '
+            + '<b>Percentil</b> — a qué porcentaje de revistas de su misma categoría supera (la barra verde lo dibuja): 93 significa «mejor que el 93 %». '
+            + '<b>SJR</b> — SCImago Journal Rank: prestigio ponderado, una cita desde una revista prestigiosa vale más que una cualquiera. '
+            + '<b>SNIP</b> — impacto normalizado por campo: corrige las costumbres de citación de cada disciplina y permite comparar entre áreas. '
+            + '<b>Subárea</b> — la(s) categoría(s) de psicología donde Scopus la clasifica (todas en el tooltip). '
+            + '<b>ISSN</b> — el identificador único de la revista (como el DNI). '
+            + '<b>Enlaces</b> — su ficha en Scopus y en SCImago para auditar cualquier dato. '
+            + 'Recuerda el efecto de las revistas de revisión explicado al pie: compara peras con peras usando el filtro de tipo.'
+            + '</div></details>'
             + '<div style="max-height:420px; overflow:auto; border-radius:8px;">'
             + '<table style="width:100%; min-width:1180px; border-collapse:collapse; font-size:0.82em;">'
             + '<thead><tr style="color:#fbbf24; text-align:left; position:sticky; top:0; background:var(--color-bg-card, #10182b); z-index:1;">'
@@ -415,7 +500,9 @@ const RankingRevistas = {
 
         const oir = (id, ev, fn) => { const el = document.getElementById(id); if (el) el.addEventListener(ev, fn); };
         oir('rankingActualizar', 'click', (e) => { e.preventDefault(); e.target.textContent = '⏳'; this.cargar(true); });
-        oir('rankingCSV', 'click', (e) => { e.preventDefault(); this._csv(); });
+        oir('rankingCSVes', 'click', (e) => { e.preventDefault(); this._csv(';', true, 'es'); });
+        oir('rankingCSVen', 'click', (e) => { e.preventDefault(); this._csv(',', false, 'en'); });
+        oir('rankingXLSX', 'click', (e) => { e.preventDefault(); this._xlsx(); });
         oir('rankingFiltro', 'input', (e) => { v.filtro = e.target.value; this._renderConservandoFoco('rankingFiltro'); });
         oir('rankingArea', 'change', (e) => { v.area = e.target.value; this._render(); });
         oir('rankingTipo', 'change', (e) => { v.tipo = e.target.value; this._render(); });
