@@ -627,6 +627,13 @@ const Antecedentes = {
                   <textarea id="antQuery" class="input" rows="2" style="resize:vertical;"
                     placeholder="Ej.: ¿Existe relación entre la inteligencia emocional y el rendimiento académico en universitarios de Lima? — o simplemente: inteligencia emocional rendimiento académico">${sugerida}</textarea>
                   <p class="help-text" style="margin:0.3rem 0 0; font-size:0.85em;">Un solo campo para ambas búsquedas: la <b>individual</b> lo usa tal cual; la <b>intensiva</b> lo toma como semilla para generar variantes con IA.</p>
+              <details style="margin:0.6rem 0 0.2rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.45rem 0.8rem; font-size:0.85em;">
+                <summary style="cursor:pointer; color:#fbbf24;">📚 Conceptos clave para no perderse: base de datos, revista, cuartil, DOI…</summary>
+                <div style="margin-top:0.5rem; line-height:1.6; color:var(--color-text-soft, #b8c0d4);">
+                  Piensa en una biblioteca. El <b>artículo</b> es el texto que buscas: un estudio concreto. La <b>revista</b> (journal) es la publicación que lo editó tras <b>revisión por pares</b> — el filtro donde expertos independientes evalúan el estudio antes de publicarse; es la línea que separa la evidencia de la opinión (ej.: <i>The Lancet</i>, <i>Revista Latinoamericana de Psicología</i>). Y la <b>base de datos</b> (Scopus, PubMed, SciELO) es el catálogo: indexa artículos de miles de revistas, no publica nada — organiza, filtra y deja buscar. Un artículo se publica en UNA revista, pero puede estar indexado en VARIAS bases a la vez (por eso aquí se deduplican).<br><br>
+                  <b>Indexación:</b> en qué bases figura una revista; «indexada en Scopus» significa que pasó su filtro de calidad. <b>Cuartil (Q1–Q4):</b> la posición de la <u>revista</u> — no del artículo — dentro de su categoría según citas: Q1 es el 25 % superior. <b>DOI:</b> la huella digital permanente de un artículo; el enlace que nunca muere. <b>Repositorio</b> (ALICIA): almacén institucional que aloja los documentos completos, incluida la <b>literatura gris</b> (tesis, informes técnicos) que no pasó por revistas — cobertura local valiosa que las bases comerciales ignoran. <b>Buscador académico</b> (Google Académico): rastrea toda la web académica; más amplio que una base, pero sin su curaduría — encuentra más y filtra menos.
+                </div>
+              </details>
                   <div id="antSinonimos" class="help-text" style="margin-top:0.35rem;"></div>
                 </div>
                 <div class="form-group"><label class="label">Desde el año</label>
@@ -635,9 +642,9 @@ const Antecedentes = {
                   <div id="antIdiomas" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
                     <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="es" checked> Español</label>
                     <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="en" checked> English</label>
-                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="pt"> Português</label>
-                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="fr"> Français</label>
-                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="de"> Deutsch</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="pt"> Portugués</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="fr"> Francés</label>
+                    <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="de"> Alemán</label>
                     <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="zh-CN"> 中文 (chino)</label>
                   </div>
                   <div id="antIdiomasCoste" style="font-size:0.78em; color:var(--color-text-soft, #8b93a7); margin-top:0.35rem;"></div>
@@ -653,7 +660,7 @@ const Antecedentes = {
                   <input type="number" id="antNumONU" class="input" value="10" min="0" max="25" step="1"
                     title="Biblioteca Digital de la ONU (su API responde lento: cifras moderadas). 0 = no consultar."></div>
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
-                  <input type="number" id="antCantidadScopus" class="input" value="100" min="25" max="5000" step="100"
+                  <input type="number" id="antCantidadScopus" class="input" value="500" min="25" max="5000" step="100"
                     title="Paginación paralela directa a Elsevier. Tope 5000: es el techo de la propia API de Scopus (su paginación por offset no llega más lejos). ~200 peticiones = 1% de la cuota semanal de UNA clave."></div>
                 <div class="form-group"><label class="label">Resultados (PubMed)</label>
                   <input type="number" id="antCantidadPubmed" class="input" value="100" min="10" max="1000" step="10"
@@ -1319,12 +1326,14 @@ const Antecedentes = {
         const usarOMS = (opciones.usarOMS ?? leer('antUsarOMS'));
         const usarONU = (opciones.usarONU ?? leer('antUsarONU'));
 
+        // Abrazadera COMPARTIDA por todas las fuentes: las flechas respetan
+        // min/max solas, pero el teclado no — cualquier cifra escrita a mano
+        // se encierra en su rango seguro. (Debe vivir AQUÍ, fuera de los if:
+        // dentro del bloque de Scopus, PubMed no la veía → 'lim is not defined'.)
+        const lim = (v, a, b) => Math.min(b, Math.max(a, isNaN(v) ? a : v));
         const tareas = [];
         if (usarScopus) {
-            // Abrazadera: las flechas respetan min/max solas, pero el teclado no —
-            // cualquier cifra escrita a mano se encierra en el rango seguro.
-            const lim = (v, a, b) => Math.min(b, Math.max(a, isNaN(v) ? a : v));
-            const maxScopus = lim(parseInt((document.getElementById('antCantidadScopus') || {}).value || '100', 10), 25, 5000);
+            const maxScopus = lim(parseInt((document.getElementById('antCantidadScopus') || {}).value || '500', 10), 25, 5000);
             tareas.push(this._protocolo('Scopus', q, f,
                 ScopusDirecto.buscar(q, { ...f, maxResultados: maxScopus }).then(r => {
                     const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
