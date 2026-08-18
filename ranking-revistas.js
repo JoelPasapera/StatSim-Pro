@@ -24,7 +24,7 @@
 const RankingRevistas = {
 
     SUBJ: 'PSYC',
-    _CLAVE: 'statsim_ranking_psyc_v3', // clave nueva: la caché v2 (con series de libros y áreas ajenas) se ignora sola
+    _CLAVE: 'statsim_ranking_psyc_v4', // la caché vieja (percentil laxo, sin contadores de cobertura) se ignora sola
     _TTL: 7 * 86400000,          // 7 días: los datos son anuales
     _VENTANA: 4,                 // páginas en paralelo
 
@@ -35,7 +35,7 @@ const RankingRevistas = {
     // ---------- red ----------
     _url(start, count, key) {
         return 'https://api.elsevier.com/content/serial/title?subj=' + this.SUBJ
-            + '&content=journal'  // SOLO revistas: fuera series de libros y actas de congresos
+            + (this._contentJournal ? '&content=journal' : '') // SOLO revistas; si el API rechazara el parámetro, se desactiva solo
             + '&count=' + count + '&start=' + start
             + '&view=CITESCORE&httpAccept=application/json&apiKey=' + key;
     },
@@ -49,6 +49,7 @@ const RankingRevistas = {
 
     // Espaciador GLOBAL: la concurrencia (ventana 4) no limita el ritmo; esto
     // sí — un disparo cada ≥180 ms ⇒ ~5,5 req/s, bajo el techo de 6 req/s.
+    _contentJournal: true, // fail-safe: se apaga si Elsevier devolviera 4xx por el parámetro
     _ESPACIADO_MS: 180,
     _proximoDisparo: 0,
     async _espaciar() {
@@ -106,6 +107,10 @@ const RankingRevistas = {
     // ---------- parseo ----------
     _fila(entry) {
         if (!entry || entry.error) return null;
+        // Tipo REAL del serial según Scopus: aunque content=journal fallara o
+        // mintiera, las series de libros y actas quedan fuera aquí.
+        const tipoFuente = String(entry['prism:aggregationType'] || '').toLowerCase();
+        if (tipoFuente && tipoFuente !== 'journal') return null;
         const cs = entry.citeScoreYearInfoList || {};
         const anioCS = String(cs.citeScoreCurrentMetricYear || '');
         // SJR/SNIP son SERIES por año: elegir el del año del CiteScore, o el más
@@ -120,12 +125,13 @@ const RankingRevistas = {
         };
         const sjr = elegirMetrica(entry.SJRList && entry.SJRList.SJR);
         const snip = elegirMetrica(entry.SNIPList && entry.SNIPList.SNIP);
-        // Percentil: del año Complete que COINCIDE con el CiteScore mostrado (si
-        // el API no trae ese año, cualquier Complete); mejor rank 32xx.
+        // Percentil: ESTRICTAMENTE del año Complete que coincide con el CiteScore
+        // mostrado. Sin coincidencia ⇒ «—»: mejor un hueco honesto que una métrica
+        // de otro año sin avisar. (SJR/SNIP sí caen al año más reciente: son
+        // informativas y varían lento; el cuartil DECIDE, y no se mezcla.)
         let percentil = null;
         const aniosInfo = (cs.citeScoreYearInfo || []).filter(a => String(a['@status'] || '').toLowerCase() === 'complete');
-        const preferidos = aniosInfo.some(a => String(a['@year'] || '') === anioCS)
-            ? aniosInfo.filter(a => String(a['@year'] || '') === anioCS) : aniosInfo;
+        const preferidos = aniosInfo.filter(a => String(a['@year'] || '') === anioCS);
         for (const a of preferidos) {
             const info = a.citeScoreInformationList && a.citeScoreInformationList[0]
                 && a.citeScoreInformationList[0].citeScoreInfo && a.citeScoreInformationList[0].citeScoreInfo[0];
@@ -162,7 +168,13 @@ const RankingRevistas = {
 
     // ---------- carga completa: TODO el área, en paralelo ----------
     async _traerRanking(alProgresar) {
-        const primera = await this._traerPagina(0, 200);
+        let primera;
+        try { primera = await this._traerPagina(0, 200); }
+        catch (e) {
+            // Si el rechazo pudo venir del parámetro content, reintentar sin él.
+            if (this._contentJournal && e && e.estadoHTTP && e.estadoHTTP < 500) { this._contentJournal = false; primera = await this._traerPagina(0, 200); }
+            else throw e;
+        }
         if (!primera.entradas.length) throw new Error('Elsevier devolvió una primera página vacía');
         const porPagina = primera.entradas.length;         // el count real que sirve el API
         const total = primera.total || porPagina;
@@ -194,10 +206,14 @@ const RankingRevistas = {
         if (this._stopCuota) fallos = Math.max(fallos, 1);
 
         const filas = [];
-        // Sin CiteScore vigente (descontinuadas o sin métrica) no entran al ranking.
-        lotes.forEach(l => (l || []).forEach(e => { const f = this._fila(e); if (f && f.citeScore > 0) filas.push(f); }));
+        let excluidas = 0; // con métrica ausente (descontinuadas) — transparencia de cobertura
+        lotes.forEach(l => (l || []).forEach(e => {
+            const f = this._fila(e);
+            if (!f) return;                    // no-revistas (series, actas): ni cuentan
+            if (f.citeScore > 0) filas.push(f); else excluidas++;
+        }));
         filas.sort((a, b) => b.citeScore - a.citeScore);
-        return { filas, total, parcial: fallos > 0 };
+        return { filas, total, parcial: fallos > 0, excluidas };
     },
 
     // ---------- caché (solo cobertura completa) ----------
@@ -222,7 +238,7 @@ const RankingRevistas = {
                 if (!cache) this._estado('Cargando el ranking… página ' + h + ' de ' + t);
             });
             if (!r.filas.length) { if (!cache) this._estado('No se pudo obtener el ranking (sin datos).'); else this._render(); return; }
-            const nuevo = { t: Date.now(), filas: r.filas, total: r.total, parcial: r.parcial };
+            const nuevo = { t: Date.now(), filas: r.filas, total: r.total, parcial: r.parcial, excluidas: r.excluidas || 0 };
             // #10: si nada cambió, no repintar (respeta el scroll del lector).
             const igual = this._datos && JSON.stringify(this._datos.filas) === JSON.stringify(nuevo.filas);
             this._datos = nuevo;
@@ -284,7 +300,7 @@ const RankingRevistas = {
         const esc = s => '"' + String(s == null ? '' : s).replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
         const filas = this._filasVisibles();
         const cab = ['#', 'Revista', 'Tipo', 'CiteScore', 'Cuartil', 'Percentil', 'SJR', 'SNIP', 'Editorial', 'Acceso abierto', 'ISSN', 'Áreas', 'Scopus', 'SCImago'];
-        const cuerpo = filas.map((f, i) => [i + 1, f.titulo, f.esRevision ? 'Revisión' : 'Empírica/otra', f.citeScore,
+        const cuerpo = filas.map((f, i) => [i + 1, f.titulo, f.esRevision ? 'Revisión (heurística)' : 'No revisión detectada', f.citeScore,
             f.cuartil || '', f.percentil == null ? '' : f.percentil, f.sjr == null ? '' : f.sjr, f.snip == null ? '' : f.snip,
             f.editorial, f.oa ? 'Sí' : 'No', f.issn, f.areas.join(' | '), f.linkScopus, f.linkScimago].map(esc).join(','));
         const blob = new Blob(['\ufeff' + cab.map(esc).join(',') + '\n' + cuerpo.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -327,7 +343,10 @@ const RankingRevistas = {
                 + '<td style="padding:0.35rem 0.5rem; text-align:right;">' + (f.snip == null ? '—' : f.snip.toFixed(2)) + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="' + esc(f.editorial) + '">' + esc(f.editorial) + '</td>'
                 + '<td style="padding:0.35rem 0.5rem; white-space:nowrap;">' + esc(f.issn) + '</td>'
-                + '<td style="padding:0.35rem 0.5rem; white-space:nowrap;">' + (f.linkScimago ? '<a href="' + f.linkScimago + '" target="_blank" rel="noopener" style="color:#7dd3fc;">SCImago</a>' : '—') + '</td>'
+                + '<td style="padding:0.35rem 0.5rem; white-space:nowrap;">'
+                + (((f.linkScopus ? '<a href="' + f.linkScopus + '" target="_blank" rel="noopener" style="color:#7dd3fc;">Scopus</a>' : '')
+                + (f.linkScopus && f.linkScimago ? ' · ' : '')
+                + (f.linkScimago ? '<a href="' + f.linkScimago + '" target="_blank" rel="noopener" style="color:#7dd3fc;">SCImago</a>' : '')) || '—') + '</td>'
                 + '</tr>';
         }).join('');
 
@@ -337,7 +356,7 @@ const RankingRevistas = {
             + (aviso ? '<div style="font-size:0.78em; color:#fbbf24; margin:0.4rem 0 0;">' + esc(aviso) + '</div>' : '')
             + (this._datos.parcial ? '<div style="font-size:0.78em; color:#f97316; margin:0.4rem 0 0;">⚠️ Cobertura parcial en esta carga (alguna página falló): el ranking se muestra pero NO se guardó en caché.</div>' : '')
             + '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin:0.5rem 0;">'
-            + '<span style="font-size:0.78em; color:var(--color-text-soft, #8b93a7);">Top ' + filas.length + ' de ' + this._datos.filas.length + ' revistas del área · datos: Elsevier Serial Title API · CiteScore anual (junio) · actualizado ' + fecha + '</span>'
+            + '<span style="font-size:0.78em; color:var(--color-text-soft, #8b93a7);">Top ' + filas.length + ' de ' + this._datos.filas.length + ' revistas con métrica · Scopus lista ' + (this._datos.total || '¿?') + ' títulos en PSYC (' + (this._datos.excluidas || 0) + ' sin CiteScore vigente excluidos) · CiteScore anual (junio) · actualizado ' + fecha + '</span>'
             + '<span style="display:flex; gap:0.4rem; flex-wrap:wrap;">'
             + '<button id="rankingCSV" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;">⬇ CSV</button>'
             + '<button id="rankingActualizar" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;">↻ Actualizar</button></span></div>'
@@ -386,6 +405,26 @@ const RankingRevistas = {
         this._render();
         const el2 = document.getElementById(id);
         if (el2) { el2.focus(); try { el2.setSelectionRange(pos, pos); } catch (e) { } }
+    },
+
+    // Diagnóstico desde la consola del navegador:
+    //   RankingRevistas.buscarTitulo('psychological science')
+    // Pregunta a Scopus por título y muestra tipo, códigos de área, CiteScore y
+    // si esa revista está dentro del ranking cargado — zanja cualquier ausencia.
+    async buscarTitulo(titulo) {
+        const key = (typeof ScopusDirecto !== 'undefined') ? ScopusDirecto._siguienteKey() : '';
+        const url = 'https://api.elsevier.com/content/serial/title?title=' + encodeURIComponent(titulo)
+            + '&view=CITESCORE&httpAccept=application/json&count=10&apiKey=' + key;
+        const r = await fetch(url);
+        const v = this._validar(await r.text());
+        if (!v) { console.log('Sin respuesta legible de Elsevier (HTTP' + r.status + ')'); return 0; }
+        v.entradas.forEach(e => console.log(
+            (e['dc:title'] || '?')
+            + '\n  tipo=' + (e['prism:aggregationType'] || '¿?')
+            + ' · áreas=' + ((e['subject-area'] || []).map(s => (s['@code'] || '?') + ':' + (s['@abbrev'] || '')).join(', '))
+            + ' · CiteScore=' + (((e.citeScoreYearInfoList || {}).citeScoreCurrentMetric) || '—')
+            + ' · ¿en el ranking cargado?: ' + (this._datos && this._datos.filas.some(f => f.titulo === e['dc:title']) ? 'SÍ' : 'NO')));
+        return v.entradas.length;
     },
 
     montar() { if (this._cont()) this.cargar(false); }
