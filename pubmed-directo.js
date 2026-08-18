@@ -59,17 +59,28 @@ const PubMedDirecto = {
         return [...new Set(toks)];
     },
 
-    // ---- Fetch con fallback: directo primero, proxies si CORS bloquea ----
+    // ---- Fetch con fallback: DIRECTO-PRIMERO con memoria de sesión (mismo
+    // patrón que Scopus). Si el navegador bloquea por CORS una vez, el resto
+    // de la sesión va directo al arsenal sin pagar reintentos condenados; un
+    // timeout o un wifi caído NO condenan al directo (pueden ser transitorios).
+    _directoOK: null, // null = sin probar · true = confirmado · false = bloqueado
     async _fetchJSON(url, validar) {
         // 1) Intento directo (NCBI suele permitir CORS).
-        try {
-            const r = await fetch(url);
-            if (r.ok) {
-                const txt = await r.text();
-                const d = validar(txt);
-                if (d !== null) { this._viaProxies = false; return d; }
+        if (this._directoOK !== false) {
+            try {
+                const r = await fetch(url);
+                this._directoOK = true; // hubo respuesta legible ⇒ la puerta CORS está abierta
+                if (r.ok) {
+                    const txt = await r.text();
+                    const d = validar(txt);
+                    if (d !== null) { this._viaProxies = false; return d; }
+                }
+            } catch (e) {
+                const esAbort = e && (e.name === 'AbortError' || /abort/i.test(String(e.message)));
+                const sinRed = typeof navigator !== 'undefined' && navigator.onLine === false;
+                if (!esAbort && !sinRed) this._directoOK = false; // bloqueo CORS: no insistir esta sesión
             }
-        } catch (e) { /* CORS o red: probar proxies */ }
+        }
         // 2) Fallback al arsenal de proxies.
         if (typeof ProxiesCORS !== 'undefined') {
             try {
