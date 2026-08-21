@@ -43,8 +43,12 @@ const RankingRevistas = {
     _validar(txt) {
         let d; try { d = JSON.parse(txt); } catch (e) { return null; }
         const meta = d['serial-metadata-response'];
-        if (!meta || !Array.isArray(meta.entry)) return null;
-        return { entradas: meta.entry, total: parseInt((meta['opensearch:totalResults']) || '0', 10) };
+        if (!meta) return null;
+        // Sin 'entry' o con lista vacía = página VACÍA válida: es el fin natural
+        // de los datos (pasa siempre que el total divide exacto al tamaño de
+        // página y se pide una más), no un fallo.
+        const entradas = Array.isArray(meta.entry) ? meta.entry : [];
+        return { entradas, total: parseInt((meta['opensearch:totalResults']) || '0', 10) };
     },
 
     // Espaciador GLOBAL: la concurrencia (ventana 4) no limita el ritmo; esto
@@ -93,6 +97,9 @@ const RankingRevistas = {
                         if (intento === 0) continue; // rotar clave y reintentar directo
                         throw Object.assign(new Error('clave/cuota rechazada por Elsevier (HTTP' + r.status + ')'), { cuota: true });
                     }
+                    // Más allá del último registro Elsevier suele responder 404:
+                    // eso es el FIN de los datos, no un fallo.
+                    if (r.status === 404) return { entradas: [], total: 0 };
                     if (r.ok) { const v = this._validar(await r.text()); if (v) return v; }
                     // 5xx y demás: fallo de ESTA página (reintentable), no de la clave.
                     throw Object.assign(new Error('HTTP' + r.status + ' de Elsevier'), { estadoHTTP: r.status });
@@ -196,8 +203,13 @@ const RankingRevistas = {
         const porPagina = primera.entradas.length;   // el count real que sirve el API
         let totalDeclarado = primera.total || 0;     // orientativo: puede faltar o mentir
         const lotes = [primera.entradas];            // lotes[p] = entradas · null = pendiente/fallo
-        let finAlcanzado = primera.entradas.length < 200; // primera ya corta ⇒ no hay más
+        // Solo la página VACÍA (o un 404) anuncia el fin: las páginas cortas
+        // son normales cuando el filtro content recorta entradas dentro de la
+        // página o el API sirve tamaños variables. Cortar en la primera corta
+        // costó cobertura real en producción.
+        let finAlcanzado = false;
         let fallos = 0, leidas = 1, siguiente = 1;
+        const caidas = []; // páginas con doble fallo: candidatas a la reparación final
         this._stopCuota = false;
 
         const estimadas = () => totalDeclarado
@@ -218,18 +230,34 @@ const RankingRevistas = {
                         if (!totalDeclarado && r.total) totalDeclarado = r.total;
                         break;
                     } catch (e) {
-                        if (e && e.cuota) { this._stopCuota = true; fallos++; break; } // cuota: parar TODO
-                        if (intento === 1) fallos++; // 5xx u otros: 1 reintento; el hueco queda anotado
+                        if (e && e.cuota) { this._stopCuota = true; break; } // cuota: parar TODO
+                        // Respiro antes del reintento: los 5xx transitorios suelen
+                        // curarse solos en un cuarto de segundo.
+                        if (intento === 0) await new Promise(r2 => setTimeout(r2, 250));
+                        else caidas.push(p); // doble fallo: a la pasada de reparación
                     }
                 }
                 lotes[p] = entradas || [];
                 leidas++;
-                // Fin NATURAL solo si la página llegó (no falló) y vino corta o vacía.
-                if (entradas && entradas.length < porPagina) finAlcanzado = true;
+                // Fin NATURAL solo si la página llegó (no falló) y vino VACÍA.
+                if (entradas && entradas.length === 0) finAlcanzado = true;
                 if (alProgresar) alProgresar(leidas, estimadas());
             }
         };
         await Promise.all(Array.from({ length: this._VENTANA }, trabajador));
+
+        // PASADA DE REPARACIÓN: antes de rendirse al «parcial», reintentar UNA
+        // vez (secuencial, con claves frescas) solo las páginas caídas.
+        for (const p of caidas) {
+            if (this._stopCuota) break;
+            try {
+                const r = await this._traerPagina(p * porPagina, porPagina);
+                lotes[p] = r.entradas;
+            } catch (e) {
+                if (e && e.cuota) this._stopCuota = true;
+                fallos++; // ni la reparación la salvó: parcial honesto
+            }
+        }
         if (this._stopCuota) fallos = Math.max(fallos, 1);
 
         const filas = [];
