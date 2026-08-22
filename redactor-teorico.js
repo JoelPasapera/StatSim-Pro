@@ -668,9 +668,16 @@ const RedactorTeorico = {
             await new Promise(r => setTimeout(r, Math.max(this._ENFRIAMIENTO_MS, 8000)));
             let fi = 0;
             const reint = async (canal) => {
+                let ultimoR = 0;
                 while (fi < fallidas.length) {
                     const i = fallidas[fi++];
                     const tarea = tareas[i];
+                    // Respiro también en la 2ª pasada: si cayó por cuota, martillear re-falla.
+                    if (ultimoR) {
+                        const espera = this._ENFRIAMIENTO_MS - (performance.now() - ultimoR);
+                        if (espera > 0) await new Promise(r => setTimeout(r, espera));
+                    }
+                    ultimoR = performance.now();
                     try {
                         const texto = await IAAsistente.redactarSeccion({
                             titulo: tarea.titulo, instrucciones: tarea.instrucciones,
@@ -678,7 +685,11 @@ const RedactorTeorico = {
                         });
                         resultados[i] = { seccion: tarea.seccion, texto };
                         conError--;
-                    } catch (e) { /* se queda el placeholder */ }
+                    } catch (e) {
+                        // El placeholder refleja el error MÁS RECIENTE (no el de la 1ª pasada).
+                        resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]`,
+                            reintentable: false, codigo: e.codigo || 'DESCONOCIDO' };
+                    }
                 }
             };
             await Promise.all(Array.from({ length: Math.min(canales, fallidas.length) }, (_, c) => reint(c)));
@@ -725,11 +736,12 @@ const RedactorTeorico = {
             if (res) { res.style.display = 'none'; }
             return; // no mostrar documento vacío ni botón de Word
         }
+        const avisoOMS = fuentes.some(f => this._esOMS(f)) ? ''
+            : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.';
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
-                + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.')
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
-            + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
+            + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS;
         if (btnWord) btnWord.style.display = '';
         const btnCop = document.getElementById('redCopiar');
         if (btnCop) btnCop.style.display = '';
@@ -787,7 +799,18 @@ const RedactorTeorico = {
             }
             return false;
         });
-        return usadas.length ? usadas : fuentes.slice();
+        if (!usadas.length) {
+            // Texto sustancial sin NINGUNA cita reconocida = el detector no entendió
+            // el formato: mejor listar todas en las referencias del Word que ninguna,
+            // pero avisando. Texto vacío o mínimo ⇒ 0 citadas DE VERDAD (antes este
+            // fallback mentía «239 de 239» incluso con el documento en blanco).
+            if (t.length > 500) {
+                if (typeof console !== 'undefined') console.warn('[Redactor] No se reconoció ninguna cita en el texto: se listarán todas las fuentes en las referencias del Word.');
+                return fuentes.slice();
+            }
+            return [];
+        }
+        return usadas;
     },
     // ---- Word .docx en formato APA ----
     _htmlAPA(doc) {
@@ -881,7 +904,8 @@ const RedactorTeorico = {
             if (estado) estado.textContent = `✓ Sección redactada en ${seg} s. Revisa el texto y las citas: `
                 + `si la calidad te convence, pasamos a generar el documento completo.`;
         } catch (e) {
-            if (estado) estado.textContent = '❌ ' + (e.message || 'No se pudo redactar la sección.');
+            if (estado) estado.textContent = '❌ ' + (e.message || 'No se pudo redactar la sección.')
+                + (e.codigo ? ` (código: ${e.codigo})` : '');
         } finally {
             if (btn) { btn.disabled = false; btn.textContent = t; }
         }
