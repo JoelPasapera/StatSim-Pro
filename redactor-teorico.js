@@ -227,10 +227,8 @@ const RedactorTeorico = {
         if (filas.length < 2) throw new Error('El CSV no tiene datos (solo encabezado o vacío).');
         return { cols: filas[0].map(c => String(c).trim()), filas: filas.slice(1) };
     },
-    
-    // Lee la primera hoja de un .xlsx (ExcelJS se carga bajo demanda aquí).
+    // Lee la primera hoja de un .xlsx (requiere ExcelJS, ya cargado en la app).
     async _parsearXLSX(buffer) {
-        await asegurarExcelJS();
         if (typeof ExcelJS === 'undefined') throw new Error('La librería de Excel no está cargada. Recarga la página.');
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
@@ -583,8 +581,12 @@ const RedactorTeorico = {
         if (res) { res.style.display = 'none'; res.textContent = ''; }
         const _t0 = performance.now();
         // Canales: los del Worker del REDACTOR (Gemini), con fallback al de Groq.
-        const canales = Math.min(await (IAAsistente.numClavesRedactor ? IAAsistente.numClavesRedactor()
-            : (IAAsistente.numClaves ? IAAsistente.numClaves() : 3)), tareas.length);
+        // Concurrencia = min(claves, tope prudente, nº de tareas). El tope evita
+        // que 9-10 llamadas pesadas golpeen Gemini a la vez (causa de los fallos
+        // parciales); el chatConReintento con backoff absorbe los transitorios.
+        const clavesDisp = await (IAAsistente.numClavesRedactor ? IAAsistente.numClavesRedactor()
+            : (IAAsistente.numClaves ? IAAsistente.numClaves() : 1));
+        const canales = Math.max(1, Math.min(clavesDisp, this._MAX_CANALES_REDACCION, tareas.length));
         let completadas = 0, conError = 0;
         const resultados = new Array(tareas.length).fill(null);
         const prog = () => {
@@ -613,18 +615,22 @@ const RedactorTeorico = {
                     resultados[i] = { seccion: tarea.seccion, texto };
                 } catch (e) {
                     conError++;
-                    resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]` };
+                    resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]`,
+                        reintentable: e.reintentable !== false, codigo: e.codigo || 'DESCONOCIDO' };
+                    if (typeof console !== 'undefined') console.warn(`[Redactor] sección "${tarea.titulo}" falló:`, e.codigo || '?', '·', e.message);
                 }
                 completadas++; prog();
             }
         };
         await Promise.all(Array.from({ length: canales }, (_, c) => trabajador(c)));
-        // SEGUNDA PASADA: reintentar las tareas que fallaron.
+        // SEGUNDA PASADA: reintentar SOLO las que fallaron por causas transitorias.
+        // Las definitivas (bloqueo de seguridad) ya no se reintentan en vano.
         const fallidas = [];
-        resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto)) fallidas.push(i); });
+        resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto) && r.reintentable !== false) fallidas.push(i); });
         if (fallidas.length) {
-            if (estado) estado.textContent = `🔁 Reintentando ${fallidas.length} sección(es) que fallaron…`;
-            if (this._ENFRIAMIENTO_MS > 0) await new Promise(r => setTimeout(r, this._ENFRIAMIENTO_MS));
+            if (estado) estado.textContent = `🔁 Reintentando ${fallidas.length} sección(es) con más calma…`;
+            // Enfriamiento más largo antes de la 2ª pasada: si fue cuota/rate, dar aire.
+            await new Promise(r => setTimeout(r, Math.max(this._ENFRIAMIENTO_MS, 8000)));
             let fi = 0;
             const reint = async (canal) => {
                 while (fi < fallidas.length) {
@@ -653,6 +659,13 @@ const RedactorTeorico = {
         this._documento = { secciones, fuentes, citadas, problema };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoCompleto.split(/\s+/).filter(Boolean).length;
+        // Diagnóstico agrupado por código de error (para depurar de un vistazo).
+        this._ultimoDiagnostico = {};
+        resultados.forEach(r => { if (r && r.codigo) this._ultimoDiagnostico[r.codigo] = (this._ultimoDiagnostico[r.codigo] || 0) + 1; });
+        if (conError > 0 && typeof console !== 'undefined') {
+            console.warn('[Redactor] Resumen de fallos por tipo:', this._ultimoDiagnostico,
+                '— consulta RedactorTeorico._ultimoDiagnostico para el detalle.');
+        }
         if (res) {
             res.style.display = '';
             let capAct = '';
