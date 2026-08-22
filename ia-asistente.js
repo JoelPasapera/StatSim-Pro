@@ -30,34 +30,40 @@ const IAAsistente = {
     },
     _numClavesCache: null,
     _numClavesRedactorCache: null,
+    // Pregunta a un Worker cuántas claves tiene (GET → { claves: N }). Es la
+    // pieza que hace el paralelismo AUTO-ESCALABLE: añades GROQ_KEY_N o
+    // GEMINI_KEY_N en Cloudflare (y pulsas Deploy) y el número sube solo, sin
+    // tocar la página. Reintenta una vez por si el primer GET falla en frío.
+    async _consultarClaves(url, etiqueta) {
+        for (let intento = 0; intento < 2; intento++) {
+            try {
+                const r = await fetch(url, { method: 'GET', cache: 'no-store' });
+                const d = await r.json();
+                if (d && Number.isInteger(d.claves) && d.claves > 0) return d.claves;
+                console.warn('[' + etiqueta + '] el Worker respondió sin un conteo válido de claves:', d);
+            } catch (e) {
+                if (intento === 1) console.warn('[' + etiqueta + '] no se pudo leer el nº de claves del Worker (' + url + '): ' + e.message
+                    + ' — ¿URL correcta y desplegada? Se usa 1 canal como mínimo seguro.');
+            }
+        }
+        return null;
+    },
     // ¿Cuántas claves tiene el Worker de Groq? (canales del filtrado paralelo).
     async numClaves() {
         if (this._numClavesCache) return this._numClavesCache;
-        try {
-            const r = await fetch(this.WORKER_URL, { method: 'GET' });
-            const d = await r.json();
-            if (d && Number.isInteger(d.claves) && d.claves > 0) {
-                this._numClavesCache = d.claves;
-                return d.claves;
-            }
-        } catch (e) { /* Worker viejo o red caída: usar fallback */ }
-        this._numClavesCache = 7;
-        return 7;
+        const n = await this._consultarClaves(this.WORKER_URL, 'Groq');
+        // Sin respuesta: 1 canal (mínimo seguro y honesto). NO inventa un número
+        // mayor que el real, para no lanzar más lotes de los que hay claves.
+        this._numClavesCache = n || 1;
+        return this._numClavesCache;
     },
     // ¿Cuántas claves tiene el Worker de Gemini? (canales del redactor). Misma
     // filosofía auto-escalable: añade GEMINI_KEY_N en Cloudflare y listo.
     async numClavesRedactor() {
         if (this._numClavesRedactorCache) return this._numClavesRedactorCache;
-        try {
-            const r = await fetch(this.WORKER_REDACTOR_URL, { method: 'GET' });
-            const d = await r.json();
-            if (d && Number.isInteger(d.claves) && d.claves > 0) {
-                this._numClavesRedactorCache = d.claves;
-                return d.claves;
-            }
-        } catch (e) { /* Worker aún no desplegado: fallback */ }
-        this._numClavesRedactorCache = 3;
-        return 3;
+        const n = await this._consultarClaves(this.WORKER_REDACTOR_URL, 'Gemini');
+        this._numClavesRedactorCache = n || 1;
+        return this._numClavesRedactorCache;
     },
     // ---- Llamada base al modelo ----
     // messages: [{role:'system'|'user'|'assistant', content:'...'}]
