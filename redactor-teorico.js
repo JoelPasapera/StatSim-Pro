@@ -15,8 +15,10 @@
 const RedactorTeorico = {
     _textos: {}, // secciones redactadas: { clave: { titulo, texto, fuentesUsadas } }
     montar() {
+        if (this._montado) return; // guardia: montar() dos veces duplicaría listeners
         const cont = document.getElementById('antRedactor');
         if (!cont) return; // el buscador aún no está montado
+        this._montado = true;
         cont.innerHTML = `
           <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
             <h3 style="margin:0 0 0.3rem; font-size:1.05rem;">📝 Redacción del marco teórico (borrador asistido)</h3>
@@ -448,8 +450,13 @@ const RedactorTeorico = {
     _leerVariables() {
         const t = (document.getElementById('redVariables') || {}).value || '';
         return t.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
-            const [nombre, ...resto] = l.split('—');
-            let definicion = resto.join('—').trim(), instrumento = '';
+            // Separador flexible: raya larga/media en cualquier posición; el guion
+            // corto SOLO rodeado de espacios — nombres como «auto-eficacia» o
+            // «socio-emocional» no deben partirse jamás (bug G2 del plan).
+            let partes = l.split(/\s*[—–]\s*/);
+            if (partes.length === 1) partes = l.split(/\s+-\s+/);
+            const nombre = partes[0];
+            let definicion = partes.slice(1).join(' — ').trim(), instrumento = '';
             const mi = definicion.match(/\s*[—-]\s*Instrumento\s*:\s*(.+)$/i);
             if (mi) { instrumento = mi[1].trim(); definicion = definicion.slice(0, mi.index).trim(); }
             return { nombre: (nombre || '').trim(), definicion, instrumento };
@@ -534,7 +541,13 @@ const RedactorTeorico = {
         const resto = fsel.filter(f => !cabeza.includes(f));
         return { fsel: [...cabeza, ...resto].slice(0, Math.max(n, cabeza.length)), oms: oms.length, onu: onu.length };
     },
-    _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0) {
+    // TESTAMENTO (CH1 del plan): hoy la única sección multi-parte (Antecedentes)
+    // tiene afinidad vacía ⇒ rotación pura ⇒ partición correcta del corpus. PERO
+    // si alguna vez una sección CON afinidad se hace multi-parte, sin 'excluir'
+    // todas sus partes recibirían las MISMAS fuentes top-afines (bug silencioso).
+    // El parámetro 'excluir' (Set por sección) desactiva esa mina para siempre.
+    _seleccionarFuentes(fuentes, afinidad, n = 32, offset = 0, excluir = null) {
+        if (excluir && excluir.size) fuentes = fuentes.filter(f => !excluir.has(f));
         if (fuentes.length <= n) return fuentes.slice();
         const claves = this._normTexto(afinidad).split(/\W+/).filter(w => w.length > 3);
         const puntuadas = fuentes.map((f, i) => {
@@ -581,8 +594,9 @@ const RedactorTeorico = {
                 ? Math.max(1, Math.ceil(fuentes.length / MAX))
                 : sec.partes;
             const porParte = Math.min(MAX, Math.max(Math.min(8, fuentes.length), Math.ceil(fuentes.length / nPartes)));
+            const usadasEnSeccion = nPartes > 1 ? new Set() : null; // partes de una misma sección: fuentes disjuntas
             for (let p = 0; p < nPartes; p++) {
-                let fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off);
+                let fsel = this._seleccionarFuentes(fuentes, sec.afinidad, porParte, off, usadasEnSeccion);
                 off += porParte; // ventana completa: cada parte trae fuentes distintas
                 let notaOMS = '';
                 if (sec.titulo === 'Antecedentes' && p === 0) {
@@ -599,6 +613,7 @@ const RedactorTeorico = {
                         + ' (las primeras fuentes de tu lista: OMS/OPS primero, luego ONU) para dimensionar el contexto'
                         + ' global del fenómeno — como marco de apertura, sin convertir la prevalencia en el vacío del estudio.';
                 }
+                if (usadasEnSeccion) fsel.forEach(f => usadasEnSeccion.add(f));
                 tareas.push({
                     seccion: sec.titulo,
                     titulo: nPartes > 1 ? `${sec.titulo} (parte ${p + 1} de ${nPartes})` : sec.titulo,
@@ -633,6 +648,10 @@ const RedactorTeorico = {
         prog();
         let siguiente = 0;
         const trabajador = async (canal) => {
+            // Escalonado de arranque: los canales usan claves DISTINTAS (keyHint=canal),
+            // así que la simultaneidad no quema cuota por clave; este pequeño stagger
+            // solo suaviza el pico global sobre el Worker (cortesía, no necesidad).
+            if (canal) await new Promise(r => setTimeout(r, Math.min(canal * 300, 1500)));
             let ultimo = 0;
             while (siguiente < tareas.length) {
                 const i = siguiente++;
@@ -704,12 +723,17 @@ const RedactorTeorico = {
         // Texto REAL = sin los marcadores de error; es lo que decide si hubo éxito.
         const textoReal = textoCompleto.replace(/\[No se pudo generar[^\]]*\]/g, '').trim();
         const citadas = this._fuentesCitadas(textoReal, fuentes);
+        const sospechosas = this._citasSospechosas(textoReal, fuentes);
         this._documento = { secciones, fuentes, citadas, problema };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
         this._ultimoDiagnostico = {};
         resultados.forEach(r => { if (r && r.codigo) this._ultimoDiagnostico[r.codigo] = (this._ultimoDiagnostico[r.codigo] || 0) + 1; });
+        if (sospechosas.length) {
+            this._ultimoDiagnostico.CITAS_SOSPECHOSAS = sospechosas.length;
+            if (typeof console !== 'undefined') console.warn('[Redactor] Citas que NO están en tu matriz (revísalas una a una):', sospechosas);
+        }
         if (conError > 0 && typeof console !== 'undefined') {
             console.warn('[Redactor] Resumen de fallos por tipo:', this._ultimoDiagnostico,
                 '— consulta RedactorTeorico._ultimoDiagnostico para el detalle.');
@@ -741,6 +765,7 @@ const RedactorTeorico = {
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
+            + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS;
         if (btnWord) btnWord.style.display = '';
         const btnCop = document.getElementById('redCopiar');
@@ -783,6 +808,62 @@ const RedactorTeorico = {
             .replace(/\*\*(.+?)\*\*/g, '$1')
             .replace(/[\u00A0\u2007\u2009\u202F\u2060]/g, ' ')
             .trim();
+    },
+    // ¿Qué citas del TEXTO no existen en la MATRIZ? La pregunta académicamente
+    // letal que nadie hace: el modelo puede inventar (Autor, año) con total fluidez.
+    // v0 heurística (F1.5 del plan); la versión exacta llega con los marcadores (F2).
+    _citasSospechosas(texto, fuentes) {
+        const t = String(texto || '');
+        if (!t || !fuentes.length) return [];
+        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        // Índice de la matriz: apellido|año para cada apellido de la cita corta, cada
+        // autor, y cada SIGLA entre corchetes («Organización Mundial de la Salud [OMS]»
+        // debe validar también «(OMS, 2023)» — sin esto, falso positivo garantizado).
+        const claves = new Set();
+        const registrar = (ap, anio) => { const a = norm(ap), y = norm(anio); if (a && y) claves.add(a + '|' + y); };
+        for (const f of fuentes) {
+            const inner = String(f.cita || '').replace(/^\(|\)$/g, '');
+            const anioCita = (inner.match(/(\d{4}[a-z]?|s\.\s*f\.)\s*$/) || [])[1] || String(f.anio || '');
+            const anios = new Set([anioCita, String(f.anio || '')].filter(Boolean));
+            const preAnio = inner.replace(/,?\s*(\d{4}[a-z]?|s\.\s*f\.)\s*$/, '');
+            const trozos = preAnio.split(/\s+(?:y|&|and)\s+|,\s*/).map(x => x.replace(/\bet al\.?/gi, '').trim()).filter(Boolean);
+            for (const anio of anios) {
+                for (const tr of trozos) {
+                    registrar(tr, anio);                                  // apellido compuesto completo
+                    const toks = tr.split(/\s+/).filter(Boolean);
+                    if (toks.length > 1) { registrar(toks[0], anio); registrar(toks[toks.length - 1], anio); }
+                }
+                for (const a of (f.autores || [])) registrar(String(a).split(',')[0], anio);
+                for (const m of String(f.cita || '').matchAll(/\[([A-Z\u00c0-\u017d]{2,})\]/g)) registrar(m[1], anio);
+                for (const a of (f.autores || [])) for (const m of String(a).matchAll(/\[([A-Z\u00c0-\u017d]{2,})\]/g)) registrar(m[1], anio);
+            }
+        }
+        const conocida = (ap, anio) => {
+            const apN = norm(ap).replace(/\bet al\.?/g, '').trim();
+            if (!apN) return true; // sin apellido interpretable: no acusar
+            const toks = apN.split(/\s+/).filter(Boolean);
+            for (const c of new Set([apN, toks[0], toks[toks.length - 1]]))
+                if (claves.has(c + '|' + norm(anio))) return true;
+            return false;
+        };
+        const sospechosas = new Set();
+        // 1) Parentéticas, incluidas agrupadas: (A, 2020; B, 2021)
+        for (const m of t.matchAll(/\(([^()]{3,200}?)\)/g)) {
+            if (!/\d{4}|s\.\s*f\./.test(m[1])) continue; // no es una cita
+            for (const seg of m[1].split(/;\s*/)) {
+                const mm = seg.trim().match(/^(.*?),\s*(\d{4}[a-z]?|s\.\s*f\.)$/);
+                if (!mm) continue;
+                const ap = mm[1].trim();
+                if (/^(p\.|pp\.|v\u00e9ase|ver\s|como se cit)/i.test(ap)) continue;
+                if (!conocida(ap, mm[2])) sospechosas.add('(' + ap + ', ' + mm[2] + ')');
+            }
+        }
+        // 2) Narrativas: Apellido (2020) · Apellido et al. (2020) · Apellido y Apellido (2020)
+        for (const m of t.matchAll(/\b([A-Z\u00c0-\u00d6\u00d8-\u00de][\w\u00c0-\u00ff'\u2019-]+(?:\s+(?:y|&)\s+[A-Z\u00c0-\u00d6\u00d8-\u00de][\w\u00c0-\u00ff'\u2019-]+)?(?:\s+et\s+al\.)?)\s*\((\d{4}[a-z]?)\)/g)) {
+            const primero = m[1].split(/\s+(?:y|&)\s+/)[0].replace(/\s+et\s+al\.?$/i, '').trim();
+            if (!conocida(primero, m[2])) sospechosas.add(m[1].trim() + ' (' + m[2] + ')');
+        }
+        return [...sospechosas];
     },
     _fuentesCitadas(texto, fuentes) {
         const t = String(texto || '');
