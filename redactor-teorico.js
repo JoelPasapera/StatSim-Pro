@@ -227,9 +227,39 @@ const RedactorTeorico = {
         if (filas.length < 2) throw new Error('El CSV no tiene datos (solo encabezado o vacío).');
         return { cols: filas[0].map(c => String(c).trim()), filas: filas.slice(1) };
     },
-    // Lee la primera hoja de un .xlsx (requiere ExcelJS, ya cargado en la app).
+    // ExcelJS BAJO DEMANDA: el index.html la carga, pero si ese <script> falló
+    // (CDN caído, bloqueador de anuncios, red inestable) la librería queda
+    // muerta toda la sesión. Aquí el redactor se cura solo: la inyecta él
+    // mismo, con CDN de respaldo, en vez de rendirse con "recarga la página".
+    _EXCELJS_URLS: [
+        'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
+        'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
+    ],
+    _cargaExcelJS: null,
+    async _asegurarExcelJS() {
+        if (typeof ExcelJS !== 'undefined') return;
+        if (!this._cargaExcelJS) {
+            this._cargaExcelJS = (async () => {
+                for (const url of this._EXCELJS_URLS) {
+                    const ok = await new Promise(res => {
+                        const s = document.createElement('script');
+                        s.src = url; s.async = true;
+                        const tid = setTimeout(() => { s.remove(); res(false); }, 12000);
+                        s.onload = () => { clearTimeout(tid); res(true); };
+                        s.onerror = () => { clearTimeout(tid); s.remove(); res(false); };
+                        document.head.appendChild(s);
+                    });
+                    if (ok && typeof ExcelJS !== 'undefined') return;
+                }
+                throw Object.assign(new Error('No se pudo cargar la librería de Excel desde ningún CDN. Revisa tu conexión o desactiva bloqueadores para cdnjs.cloudflare.com / cdn.jsdelivr.net y reintenta.'), { codigo: 'EXCELJS_NO_CARGA', reintentable: true });
+            })();
+        }
+        try { await this._cargaExcelJS; }
+        catch (e) { this._cargaExcelJS = null; throw e; } // fallo: permitir reintentar
+    },
+    // Lee la primera hoja de un .xlsx (con ExcelJS asegurado bajo demanda).
     async _parsearXLSX(buffer) {
-        if (typeof ExcelJS === 'undefined') throw new Error('La librería de Excel no está cargada. Recarga la página.');
+        await this._asegurarExcelJS();
         const wb = new ExcelJS.Workbook();
         await wb.xlsx.load(buffer);
         const ws = wb.worksheets[0];
