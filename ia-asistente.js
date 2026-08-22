@@ -15,8 +15,8 @@ const IAAsistente = {
     // URL del Worker de Groq (criterios / variantes / relevancia).
     WORKER_URL: 'https://myworker.joelpasapera101.workers.dev',
     // URL del Worker de Gemini (redacción del marco teórico). AJUSTA esta línea
-    // con la URL real de tu Worker nuevo (p. ej. https://redactor-gemini.<tu-cuenta>.workers.dev).
-    WORKER_REDACTOR_URL: 'https://redactor-gemini.joelpasapera101.workers.dev',
+    // con la URL real de tu Worker nuevo (el Worker se llama 'gemini' en tu Cloudflare).
+    WORKER_REDACTOR_URL: 'https://gemini.joelpasapera101.workers.dev',
     TIMEOUT_MS: 90000, // la redacción larga con Gemini puede tardar más que Groq
     // Máximo de fuentes POR LLAMADA de redacción. No es un límite del corpus:
     // el plan del redactor crea tantas partes como haga falta (ceil(total/MAX))
