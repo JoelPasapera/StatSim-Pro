@@ -438,6 +438,9 @@ const RedactorTeorico = {
     // canal es prudente. Si vieras errores de cuota (429), súbelo; el failover
     // del Worker entre claves también amortigua los picos. (0 en tests.)
     _ENFRIAMIENTO_MS: 15000,
+    // Tope de secciones simultáneas (independiente del nº de claves): evita
+    // que muchas llamadas pesadas golpeen Gemini a la vez. 4 = rápido sin ahogar.
+    _MAX_CANALES_REDACCION: 4,
     _normTexto(s) {
         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     },
@@ -616,7 +619,9 @@ const RedactorTeorico = {
         // parciales); el chatConReintento con backoff absorbe los transitorios.
         const clavesDisp = await (IAAsistente.numClavesRedactor ? IAAsistente.numClavesRedactor()
             : (IAAsistente.numClaves ? IAAsistente.numClaves() : 1));
-        const canales = Math.max(1, Math.min(clavesDisp, this._MAX_CANALES_REDACCION, tareas.length));
+        const topeCanales = this._MAX_CANALES_REDACCION || 4;
+        const clavesN = (Number.isFinite(clavesDisp) && clavesDisp > 0) ? clavesDisp : 1;
+        const canales = Math.max(1, Math.min(clavesN, topeCanales, tareas.length || 1));
         let completadas = 0, conError = 0;
         const resultados = new Array(tareas.length).fill(null);
         const prog = () => {
@@ -685,10 +690,12 @@ const RedactorTeorico = {
             secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n') });
         }
         const textoCompleto = secciones.map(s => s.texto).join('\n\n');
-        const citadas = this._fuentesCitadas(textoCompleto, fuentes);
+        // Texto REAL = sin los marcadores de error; es lo que decide si hubo éxito.
+        const textoReal = textoCompleto.replace(/\[No se pudo generar[^\]]*\]/g, '').trim();
+        const citadas = this._fuentesCitadas(textoReal, fuentes);
         this._documento = { secciones, fuentes, citadas, problema };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
-        const palabras = textoCompleto.split(/\s+/).filter(Boolean).length;
+        const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
         this._ultimoDiagnostico = {};
         resultados.forEach(r => { if (r && r.codigo) this._ultimoDiagnostico[r.codigo] = (this._ultimoDiagnostico[r.codigo] || 0) + 1; });
@@ -708,10 +715,20 @@ const RedactorTeorico = {
                 return enc + s.titulo.toUpperCase() + '\n\n' + s.texto;
             }).join('\n\n\n');
         }
+        // Si NO se produjo texto real, es un fallo total: diagnóstico claro, no falso "✓".
+        if (palabras < 20) {
+            const codigos = Object.entries(this._ultimoDiagnostico).sort((a, b) => b[1] - a[1]);
+            const dominante = codigos.length ? codigos[0][0] : 'DESCONOCIDO';
+            const explica = (IAAsistente._mensajePorCodigo ? IAAsistente._mensajePorCodigo(dominante, {}) : dominante);
+            if (estado) estado.textContent = `❌ No se generó texto (${tareas.length} secciones fallaron). Motivo principal: ${explica} · Detalle por tipo: ${JSON.stringify(this._ultimoDiagnostico)}. Abre la consola (F12) para ver cada sección. Si es cuota, espera 1 min o añade claves; si es tamaño, reduce fuentes.`;
+            if (btn) { btn.disabled = false; btn.textContent = t; }
+            if (res) { res.style.display = 'none'; }
+            return; // no mostrar documento vacío ni botón de Word
+        }
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
                 + (fuentes.some(f => this._esOMS(f)) ? '' : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.')
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
-            + (conError ? ` (${conError} parte(s) con error)` : '')
+            + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.`;
         if (btnWord) btnWord.style.display = '';
         const btnCop = document.getElementById('redCopiar');
