@@ -106,6 +106,7 @@ const IAAsistente = {
             err.reintentable = this._esReintentable(codigo);
             throw err;
         }
+        if (data.truncado && typeof console !== 'undefined') console.warn('[IA] Respuesta posiblemente TRUNCADA (MAX_TOKENS): la sección pudo quedar a media frase.');
         return (data.texto || '').trim();
     },
     // Mapa código→mensaje claro para el usuario/dueño. Cada uno dice QUÉ pasó
@@ -124,6 +125,7 @@ const IAAsistente = {
             TIMEOUT: 'Gemini tardó demasiado en responder (sección muy grande o servicio lento).',
             GEMINI_5XX: 'Error temporal del servidor de Gemini.',
             CLAVE_INVALIDA: 'Una clave de Gemini es inválida o expiró (se reintenta con otra).',
+            CLAVE_REGION: 'Todas las claves probadas pertenecen a cuentas cuya región no soporta la API de Gemini: reemplaza esas claves en el Worker (identifícalas con ?probar=1&clave=N).',
             GEMINI_4XX: 'Gemini rechazó la petición (formato o parámetros).',
             CUERPO_EXCEDE: 'La petición supera el tamaño permitido por el servidor.',
             CHARS_EXCEDE: 'El contexto enviado es demasiado largo.',
