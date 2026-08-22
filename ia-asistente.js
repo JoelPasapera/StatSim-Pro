@@ -91,28 +91,73 @@ const IAAsistente = {
             });
         } catch (e) {
             clearTimeout(t);
-            if (e.name === 'AbortError') throw new Error('La IA tardó demasiado en responder. Inténtalo de nuevo.');
-            throw new Error('No se pudo conectar con el asistente de IA. Revisa tu conexión.');
+            if (e.name === 'AbortError') { const err = new Error('La IA tardó demasiado en responder (timeout del cliente).'); err.codigo = 'TIMEOUT'; err.reintentable = true; throw err; }
+            const err = new Error('No se pudo conectar con el asistente de IA. Revisa tu conexión.'); err.codigo = 'RED'; err.reintentable = true; throw err;
         }
         clearTimeout(t);
         let data;
-        try { data = await r.json(); } catch (e) { throw new Error('El asistente devolvió una respuesta no válida.'); }
+        try { data = await r.json(); } catch (e) { const err = new Error('El asistente devolvió una respuesta no válida.'); err.codigo = 'RESPUESTA_ILEGIBLE'; err.reintentable = true; throw err; }
         if (!r.ok || data.error) {
-            const msg = data.error || `Error ${r.status}`;
-            if (/cuota|429|rate/i.test(msg)) throw new Error('Se agotó temporalmente la cuota de IA. Inténtalo en unos minutos.');
-            if (/origen|403/i.test(msg)) throw new Error('Esta página no está autorizada para usar el asistente de IA.');
-            throw new Error(`El asistente de IA falló: ${msg}`);
+            const codigo = data.codigo || (r.status === 429 ? 'CUOTA_GEMINI' : r.status === 413 ? 'CUERPO_EXCEDE' : 'HTTP_' + r.status);
+            const err = new Error(this._mensajePorCodigo(codigo, data));
+            err.codigo = codigo;
+            err.httpStatus = r.status;
+            err.diag = data.diag;               // solo llega si el Worker está en TEST_MODE
+            err.reintentable = this._esReintentable(codigo);
+            throw err;
         }
         return (data.texto || '').trim();
     },
-    async chatConReintento(messages, opciones = {}, intentos = 3) {
-        let ultimo = '';
+    // Mapa código→mensaje claro para el usuario/dueño. Cada uno dice QUÉ pasó
+    // y, cuando aplica, QUÉ hacer.
+    _mensajePorCodigo(codigo, data) {
+        const M = {
+            CUOTA_GEMINI: 'Cuota de Gemini agotada en una clave (se reintenta con otra).',
+            CUOTA_TODAS: 'Todas las claves de Gemini están en su límite por minuto. Reintenta en ~1 min.',
+            LIMITE_DIARIO: 'Se alcanzó el límite diario configurado del servicio.',
+            IP_RATE: 'Demasiadas solicitudes desde esta red en poco tiempo. Espera unos segundos.',
+            GLOBAL_SATURADO: 'El servicio está saturado ahora mismo. Reintenta en un momento.',
+            BREAKER_ABIERTO: 'El servicio se pausó tras varios fallos seguidos. Reintenta en ~30 s.',
+            SALIDA_TRUNCADA: 'La sección era demasiado extensa para una sola generación (se trocea en partes más pequeñas).',
+            BLOQUEO_SEGURIDAD: 'Gemini bloqueó el contenido por sus filtros de seguridad; reintentar no ayuda.',
+            RESPUESTA_VACIA: 'Gemini devolvió una respuesta vacía.',
+            TIMEOUT: 'Gemini tardó demasiado en responder (sección muy grande o servicio lento).',
+            GEMINI_5XX: 'Error temporal del servidor de Gemini.',
+            CLAVE_INVALIDA: 'Una clave de Gemini es inválida o expiró (se reintenta con otra).',
+            GEMINI_4XX: 'Gemini rechazó la petición (formato o parámetros).',
+            CUERPO_EXCEDE: 'La petición supera el tamaño permitido por el servidor.',
+            CHARS_EXCEDE: 'El contexto enviado es demasiado largo.',
+            ORIGEN: 'Esta página no está autorizada para usar el asistente de IA.',
+            TOKEN: 'Falta o es inválido el token de acceso al asistente.',
+            RED: 'No se pudo contactar con el servicio de IA.'
+        };
+        let base = M[codigo] || (data && data.error) || 'Error desconocido del asistente.';
+        if (data && data.diag && data.diag.detalle) base += ' [' + data.diag.detalle + ']'; // solo con TEST_MODE
+        return base;
+    },
+    // Fallos transitorios: reintentar tiene sentido. Los demás, no.
+    _esReintentable(codigo) {
+        return ['CUOTA_GEMINI', 'CUOTA_TODAS', 'IP_RATE', 'GLOBAL_SATURADO', 'BREAKER_ABIERTO',
+                'TIMEOUT', 'GEMINI_5XX', 'CLAVE_INVALIDA', 'RESPUESTA_ILEGIBLE', 'RED', 'RESPUESTA_VACIA'].includes(codigo);
+    },
+    async chatConReintento(messages, opciones = {}, intentos = 4) {
+        let ultimoError = null;
         for (let i = 0; i < intentos; i++) {
-            ultimo = await this.chat(messages, opciones);
-            if (ultimo && ultimo.trim()) return ultimo;
-            await new Promise(r => setTimeout(r, 400));
+            try {
+                const txt = await this.chat(messages, opciones);
+                if (txt && txt.trim()) return txt;
+                ultimoError = new Error('La IA devolvió una respuesta vacía.');
+                ultimoError.codigo = 'RESPUESTA_VACIA';
+            } catch (e) {
+                ultimoError = e;
+                // Error definitivo (bloqueo de seguridad, truncado, 4xx): no insistir.
+                if (e && e.reintentable === false) throw e;
+            }
+            // Espera creciente con jitter: alivia cuota y rate-limit temporales.
+            const espera = Math.min(400 * Math.pow(2, i), 4000) + Math.random() * 300;
+            if (i < intentos - 1) await new Promise(r => setTimeout(r, espera));
         }
-        throw new Error('La IA devolvió una respuesta vacía tras varios intentos. Inténtalo de nuevo en un momento.');
+        throw ultimoError || new Error('La IA no respondió tras varios intentos.');
     },
     // ============================================================
     // FUNCIÓN 1: generar criterios de inclusión/exclusión (Groq)
