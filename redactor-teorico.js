@@ -145,18 +145,64 @@ const RedactorTeorico = {
     },
     // Reconstruye la cita corta APA a partir de la lista de autores reales.
     // ============ F2.6: SANEADOR DE AUTORES Y CITAS (fixtures reales) ============
+    // Palabras y frases de REVISTA que jamás son un autor (lista viva: casos reales del jurado).
+    _PALABRAS_REVISTA: /^(research|intelligence|frontiers?|journal(s)?|revista(s)?|review(s)?|ciencias?|sciences?|magazine|mag|kosmos|psiquemag|editorial|proceedings|press|universidad|university|latam|redacción|redaccion|autor(es)?|author(s)?|anonymous|anónimo|anonimo|admin|online|education|educación|educacion|psychology|psicología|psicologia)$/i,
+    _FRASES_REVISTA: /^(ciencia latina|frontiers in\b.*|revista\b.*|journal of\b.*|international journal\b.*|res non verba.*)$/i,
     _sanearAutor(a) {
         let s = String(a || '').trim();
         if (!s) return '';
-        if (/[@]|https?:\/\//i.test(s)) return '';
-        const corte = s.split(/\s+[-–—]\s+/);
-        if (corte.length > 1 && /[:]|Revista|Journal|Latam|Cient[ií]f|Editorial|Universidad|Review|RES\s/i.test(corte.slice(1).join(' ')))
-            s = corte[0].trim();
-        if (/^\d{4}[a-z]?$/.test(s)) return '';
-        if (/^(research|editorial|redacci[oó]n|autor(es)?|author(s)?|anonymous|an[oó]nimo|admin)$/i.test(s)) return '';
+        if (/[@]|https?:\/\//i.test(s)) return '';        // correos y URLs jamás son autores
+        // ' - ' con espacios NUNCA forma parte de un apellido real (los compuestos
+        // van sin espacios: García-Álvarez). Se corta SIEMPRE y se queda lo de la izquierda.
+        s = s.split(/\s+[-–—]\s+/)[0].trim();
+        if (!s || /\d/.test(s)) return '';                // años o cifras incrustadas: fuera
+        if (this._PALABRAS_REVISTA.test(s) || this._FRASES_REVISTA.test(s)) return '';
+        // CamelCase interno (PsiqueMag, EduPsykhé) delata marca/revista — se salvan Mc/Mac/De/Di/La/O'
+        if (/^\p{Lu}\p{Ll}+\p{Lu}/u.test(s) && !/^(Mc|Mac|De|Di|La|O')/.test(s)) return '';
         if (s.length >= 4 && !/[a-zà-öø-ÿ]/.test(s) && !/\[/.test(s))
             s = s.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (x, p, c) => p + c.toUpperCase());
         return s;
+    },
+    // ========== VALIDADOR-REPARADOR DE CITAS (puerta única) ==========
+    // La cita es lo único que el lector ve: si huele a revista, correo o cifra,
+    // se reconstruye (autores → referencia → título) antes de dejarla citar.
+    _esCitaSucia(cita) {
+        const inner = String(cita || '').replace(/^\(|\)$/g, '').trim();
+        if (!inner) return true;
+        const sinAnio = inner.replace(/,\s*(?:19|20)\d{2}[a-z]?$/, '').replace(/,\s*s\.\s*f\.$/, '');
+        if (/[@]|https?:|\s[-–—]\s|\d/.test(sinAnio)) return true;
+        return sinAnio.split(/\s+y\s+|;\s*|,\s*|\s+et al\.?/).some(tok =>
+            tok && (this._PALABRAS_REVISTA.test(tok.trim()) || this._FRASES_REVISTA.test(tok.trim())));
+    },
+    _citaDesdeTitulo(titulo, anio) {
+        const cortas = String(titulo || '').split(/\s+/).slice(0, 4).join(' ').replace(/[.,;:]+$/, '');
+        return cortas ? `(“${cortas}”, ${anio || 's. f.'})` : '';
+    },
+    _repararCita(f) {
+        const limpios = (f.autores || []).map(a => this._sanearAutor(a)).filter(Boolean);
+        let c = limpios.length ? this._citaDesdeAutores(limpios, f.anio) : '';
+        if (!c || this._esCitaSucia(c)) c = this._citaDesdeRef(f.ref, f.anio);
+        if (!c || this._esCitaSucia(c)) c = this._citaDesdeTitulo(f.titulo, f.anio);
+        return c;
+    },
+    _sanearFuentes(lista) {
+        if (!Array.isArray(lista)) return lista;
+        let reparadas = 0, irreparables = 0;
+        for (const f of lista) {
+            if (!f || f._citaOK) continue;
+            if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._sanearAutor(a)).filter(Boolean);
+            if (this._esCitaSucia(f.cita)) {
+                const nueva = this._repararCita(f);
+                if (nueva && !this._esCitaSucia(nueva)) { f.cita = nueva; reparadas++; if (f.doi) f._autoresPendientes = true; }
+                else irreparables++;
+            }
+            f._citaOK = true;
+        }
+        if (reparadas || irreparables) {
+            this._ultimoSaneo = { reparadas, irreparables };
+            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : ''));
+        }
+        return lista;
     },
     _citaDesdeAutores(autores, anio) {
         const aps = (autores || []).map(a => this._apellido(a)).filter(Boolean);
@@ -392,16 +438,16 @@ const RedactorTeorico = {
     },
     // ---- Fuentes: las importadas (si hay) o las de la matriz de la sesión ----
     _fuentes() {
-        if (this._fuentesImportadas && this._fuentesImportadas.length) return this._fuentesImportadas;
+        if (this._fuentesImportadas && this._fuentesImportadas.length) return this._sanearFuentes(this._fuentesImportadas);
         if (typeof Antecedentes === 'undefined' || !Antecedentes.obtenerFuentesRedaccion) return [];
         const obras = Antecedentes.obtenerFuentesRedaccion();
-        return obras.map(o => ({
+        return this._sanearFuentes(obras.map(o => ({
             cita: this._citaCorta(o),
             ref: (Antecedentes.citaAPA ? Antecedentes.citaAPA(o) : ''),
             titulo: o.titulo || '',
             anio: o.anio || '',
             resumen: o.resumen || o.abstract || ''
-        }));
+        })));
     },
     _apellido(nombre) {
         const n = String(nombre || '').trim();
@@ -749,7 +795,9 @@ const RedactorTeorico = {
         // SEGUNDA PASADA: reintentar SOLO las que fallaron por causas transitorias.
         // Las definitivas (bloqueo de seguridad) ya no se reintentan en vano.
         const fallidas = [];
-        resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto) && r.reintentable !== false) fallidas.push(i); });
+        resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto) && (r.reintentable !== false || r.codigo === 'GEMINI_4XX')) fallidas.push(i); });
+        // GEMINI_4XX no es transitorio, pero un lote más pequeño a veces sí pasa:
+        // se reintenta UNA vez con la mitad de fuentes (mínimo 6).
         if (fallidas.length) {
             if (estado) estado.textContent = `🔁 Reintentando ${fallidas.length} sección(es) con más calma…`;
             // Enfriamiento más largo antes de la 2ª pasada: si fue cuota/rate, dar aire.
@@ -759,7 +807,12 @@ const RedactorTeorico = {
                 let ultimoR = 0;
                 while (fi < fallidas.length) {
                     const i = fallidas[fi++];
-                    const tarea = tareas[i];
+                    const base = tareas[i];
+                    const con4xx = resultados[i] && resultados[i].codigo === 'GEMINI_4XX';
+                    const tarea = con4xx
+                        ? { ...base, fuentes: base.fuentes.slice(0, Math.max(6, Math.ceil(base.fuentes.length / 2))) }
+                        : base;
+                    if (con4xx && typeof console !== 'undefined') console.warn(`[Redactor] reintento 4xx con lote encogido (${tarea.fuentes.length} fuentes):`, base.titulo);
                     // Respiro también en la 2ª pasada: si cayó por cuota, martillear re-falla.
                     if (ultimoR) {
                         const espera = this._ENFRIAMIENTO_MS - (performance.now() - ultimoR);
@@ -1009,7 +1062,9 @@ const RedactorTeorico = {
                 const f = fsel[n - 1];
                 if (!f) { invalidos++; continue; }
                 if (vistos.has(f)) continue;
-                vistos.add(f); usadas.add(f); partes.push(interior(f));
+                vistos.add(f); usadas.add(f);
+                const txtCita = interior(f);
+                if (txtCita && !partes.includes(txtCita)) partes.push(txtCita); // dedup visual: dos filas, misma cita
             }
             return partes.length ? '(' + partes.join('; ') + ')' : '';
         });
