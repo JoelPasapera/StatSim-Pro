@@ -315,8 +315,12 @@ const IAAsistente = {
             + 'marcador; si un párrafo no puede sustentarse en las fuentes, NO lo escribas. '
             + '(4) Si las fuentes no cubren un punto, NO lo desarrolles ni lo disculpes fuente por fuente: '
             + 'los vacíos de evidencia se enuncian UNA sola vez, con formulación propia y distinta cada vez, '
-            + 'al cierre de la sección. (5) NO escribas la lista de referencias al final. (6) Sin viñetas: '
-            + 'prosa académica.\n\n'
+            + 'al cierre — MÁXIMO UN vacío por parte. (5) NO escribas la lista de referencias al final. '
+            + '(6) Sin viñetas NI subtítulos internos: prosa corrida académica, sin encabezados dentro de la parte. '
+            + '(7) Cada instrumento se nombra con su constructo CORRECTO según el resumen: un inventario de '
+            + 'inteligencia emocional (p. ej., EQ-i) JAMÁS se etiqueta como «de coeficiente intelectual», ni al revés. '
+            + '(8) PROHIBIDO abrir la parte o cualquier párrafo con fórmulas genéricas tipo «la relación entre X e Y '
+            + 'es un campo de estudio complejo» o variantes: entra directo al contenido específico del eje.\n\n'
             + '== REGLAS DE SÍNTESIS CIENTÍFICA (LA DIFERENCIA ENTRE UNA MATRIZ Y UN MARCO TEÓRICO) ==\n'
             + '(A) ORGANIZA POR EJES TEMÁTICOS, JAMÁS POR AUTORES. El protagonista de cada párrafo es una '
             + 'IDEA (un hallazgo del conjunto de la evidencia, una convergencia, una controversia), nunca un '
@@ -362,8 +366,11 @@ const IAAsistente = {
             + `al problema y al eje; una fuente que no aporta al argumento se OMITE en silencio — PROHIBIDO `
             + `mencionarla solo para justificar su presencia o para señalar que "no aborda" el tema. OMITIR `
             + `fuentes sueltas JAMÁS significa entregar una sección vacía: si pocas encajan de lleno, redacta `
-            + `con las más cercanas al tema y decláralo con honestidad académica. Reparte las pertinentes `
-            + `dentro de los ejes (agrupadas por idea), nunca en fila india.\n\n`
+            + `BREVE (uno o dos párrafos) con las más cercanas y decláralo con honestidad académica. PROHIBIDO `
+            + `rellenar con estudios de poblaciones, patologías o campos ajenos al problema (otras enfermedades, `
+            + `otras profesiones, otros contextos no relacionados) solo para dar volumen: un párrafo pertinente `
+            + `vale más que una página de relleno. Reparte las pertinentes dentro de los ejes (agrupadas por `
+            + `idea), nunca en fila india.\n\n`
             + `Extensión: desarrolla con amplitud y profundidad lo que las fuentes permitan sustentar. `
             + `Empieza directamente con el texto (sin repetir el título).`;
         return await this.chatConReintento(
