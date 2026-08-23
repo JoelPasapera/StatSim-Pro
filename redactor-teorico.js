@@ -557,8 +557,9 @@ const RedactorTeorico = {
     // que muchas llamadas pesadas golpeen Gemini a la vez. 4 = rápido sin ahogar.
     // Techo de canales paralelos. El real es min(claves, tareas, este techo):
     // con 10 claves → 10 en vuelo (17 partes ≈ 2 tandas ≈ 70-90 s en vez de 3 min).
-    // 12 deja margen si se añaden claves sin rozar el RL_IP=30/min del Worker.
-    _MAX_CANALES_REDACCION: 12,
+    // 24 acompaña el plan de crecer a 30-40 claves (RL_IP del Worker: 120/min);
+    // ojo: el paralelismo REAL lo acota el nº de PARTES (con 239 fuentes ≈ 17).
+    _MAX_CANALES_REDACCION: 24,
     _STAGGER_MS: 300, // escalonado de arranque entre canales (no golpear el Worker en el mismo ms)
     _normTexto(s) {
         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
