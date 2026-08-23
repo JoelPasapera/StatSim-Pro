@@ -146,8 +146,12 @@ const RedactorTeorico = {
     // Reconstruye la cita corta APA a partir de la lista de autores reales.
     // ============ F2.6: SANEADOR DE AUTORES Y CITAS (fixtures reales) ============
     // Palabras y frases de REVISTA que jamás son un autor (lista viva: casos reales del jurado).
-    _PALABRAS_REVISTA: /^(research|intelligence|frontiers?|journal(s)?|revista(s)?|review(s)?|ciencias?|sciences?|magazine|mag|kosmos|psiquemag|editorial|proceedings|press|universidad|university|latam|redacción|redaccion|autor(es)?|author(s)?|anonymous|anónimo|anonimo|admin|online|education|educación|educacion|psychology|psicología|psicologia)$/i,
+    _PALABRAS_REVISTA: /^(research|intelligence|frontiers?|journal(s)?|revista(s)?|review(s)?|ciencias?|sciences?|magazine|mag|kosmos|psiquemag|editorial|proceedings|press|universidad|university|latam|redacción|redaccion|autor(es)?|author(s)?|anonymous|anónimo|anonimo|admin|online|education|educación|educacion|psychology|psicología|psicologia|neurociencias?|neuropsicolog[a-záéíóúüñ]*|psicopedagog[a-záéíóúüñ]*|pedagog[a-záéíóúüñ]*|sociolog[a-záéíóúüñ]*|antropolog[a-záéíóúüñ]*|medicina|enfermer[a-záéíóúüñ]*|salud|tecnolog[a-záéíóúüñ]*|innovaci[a-záéíóúüñ]*|investigaci[a-záéíóúüñ]*|docencia|educativ[a-záéíóúüñ]*|académic[a-záéíóúüñ]*|academic[a-záéíóúüñ]*|universitari[a-záéíóúüñ]*|científic[a-záéíóúüñ]*|cientific[a-záéíóúüñ]*|multidisciplinar[a-záéíóúüñ]*|interdisciplinar[a-záéíóúüñ]*|iberoamerican[a-záéíóúüñ]*|latinoamerican[a-záéíóúüñ]*|horizontes?|scielo|redalyc|dialnet|scopus|elsevier|springer|wiley|mdpi|heliyon|plos)$/i,
     _FRASES_REVISTA: /^(ciencia latina|frontiers in\b.*|revista\b.*|journal of\b.*|international journal\b.*|res non verba.*)$/i,
+    // Nombres de pila frecuentes (es/en): si encabezan un token multi-palabra sin coma, se descartan
+    // para citar por el APELLIDO (el jurado no perdona un «(Oscar Magna et al., 2025)»).
+    _NOMBRES_PILA: /^(oscar|óscar|maría|maria|josé|jose|juan|luis|carlos|ana|pedro|jorge|miguel|david|daniel|laura|paola|diego|pablo|sergio|andrés|andres|felipe|ricardo|roberto|fernando|francisco|javier|antonio|manuel|alejandro|cristian|christian|gabriel|gabriela|camila|valeria|sofía|sofia|lucía|lucia|elena|marta|rosa|carmen|julia|sara|john|michael|james|robert|william|mary|jennifer|linda|richard|thomas|charles|susan|jessica|karen|kevin|brian|mark|paul|steven|george|edward|peter|ryan)$/i,
+    _PARTICULAS_AP: /^(de|del|der|den|da|das|dos|di|du|la|las|los|le|van|von|ter|ten|mac|mc|san|santa)$/i,
     _sanearAutor(a) {
         let s = String(a || '').trim();
         if (!s) return '';
@@ -159,6 +163,12 @@ const RedactorTeorico = {
         if (this._PALABRAS_REVISTA.test(s) || this._FRASES_REVISTA.test(s)) return '';
         // CamelCase interno (PsiqueMag, EduPsykhé) delata marca/revista — se salvan Mc/Mac/De/Di/La/O'
         if (/^\p{Lu}\p{Ll}+\p{Lu}/u.test(s) && !/^(Mc|Mac|De|Di|La|O')/.test(s)) return '';
+        // «Oscar Magna» → «Magna»: pelar nombres de pila al frente (sin coma = orden Nombre Apellido)
+        if (!s.includes(',')) {
+            let toks = s.split(/\s+/);
+            while (toks.length > 1 && this._NOMBRES_PILA.test(toks[0])) toks.shift();
+            s = toks.join(' ');
+        }
         if (s.length >= 4 && !/[a-zà-öø-ÿ]/.test(s) && !/\[/.test(s))
             s = s.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (x, p, c) => p + c.toUpperCase());
         return s;
@@ -191,18 +201,30 @@ const RedactorTeorico = {
         for (const f of lista) {
             if (!f || f._citaOK) continue;
             if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._sanearAutor(a)).filter(Boolean);
-            if (this._esCitaSucia(f.cita)) {
+            // Año perdido pero presente en la referencia → rescatarlo (mata los «s. f.» falsos)
+            if (!f.anio) { const m = String(f.ref || '').match(/\((?:19|20)\d{2}[a-z]?\)/); if (m) f.anio = m[0].replace(/[()]/g, ''); }
+            const sfFalso = f.anio && /s\.\s*f\./.test(String(f.cita || ''));
+            if (sfFalso || this._esCitaSucia(f.cita)) {
                 const nueva = this._repararCita(f);
                 if (nueva && !this._esCitaSucia(nueva)) { f.cita = nueva; reparadas++; if (f.doi) f._autoresPendientes = true; }
                 else irreparables++;
             }
             f._citaOK = true;
         }
-        if (reparadas || irreparables) {
-            this._ultimoSaneo = { reparadas, irreparables };
-            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : ''));
+        // Filas gemelas por DOI: el mismo artículo dos veces parte al autor en dos citas distintas
+        const doisVistos = new Set(); let dupDoi = 0;
+        const filtrada = lista.filter(f => {
+            const d = String(f && f.doi || '').trim().toLowerCase();
+            if (!d) return true;
+            if (doisVistos.has(d)) { dupDoi++; return false; }
+            doisVistos.add(d); return true;
+        });
+        if (dupDoi && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
+        if (reparadas || irreparables || dupDoi) {
+            this._ultimoSaneo = { reparadas, irreparables, dupDoi };
+            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : ''));
         }
-        return lista;
+        return filtrada;
     },
     _citaDesdeAutores(autores, anio) {
         const aps = (autores || []).map(a => this._apellido(a)).filter(Boolean);
@@ -569,13 +591,17 @@ const RedactorTeorico = {
                 + 'metodológica y/o social), cada argumento sustentado con citas de las fuentes.' });
         plan.push({ titulo: 'Estado de la cuestión', capitulo: 'II', afinidad: '', partes: 1,
             instrucciones: 'Sintetiza qué se sabe actualmente sobre el tema, ORGANIZADO POR CONCEPTOS (no '
-                + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos.' });
+                + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos. '
+                + 'Responde implícitamente, en este orden: dónde COINCIDEN los estudios, dónde DISCREPAN, y '
+                + 'POR QUÉ podrían discrepar (medidas distintas, poblaciones, diseños); el lector debe llegar '
+                + 'al final sintiendo que la investigación propuesta es la consecuencia lógica del recorrido.' });
         plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 'auto',
             instrucciones: 'Redacta los antecedentes como una SÍNTESIS POR EJES TEMÁTICOS, no como un desfile '
                 + 'de estudios. Agrupa las fuentes según lo que sus hallazgos evidencian (relaciones halladas, '
                 + 'resultados divergentes, poblaciones o niveles de análisis, aproximaciones metodológicas) y '
                 + 'desarrolla cada eje integrando VARIOS estudios por párrafo, con sus citas agrupadas. Haz que '
-                + 'los estudios DIALOGUEN: convergencias, divergencias y qué sugiere cada contraste. Los datos '
+                + 'los estudios DIALOGUEN: convergencias, divergencias y qué sugiere cada contraste — y cierra '
+                + 'el recorrido dejando claro qué se sabe ESPECÍFICAMENTE de la población del problema y qué no. Los datos '
                 + 'de muestra, contexto o diseño solo se mencionan cuando son el argumento (p. ej., para explicar '
                 + 'una discrepancia entre estudios). Cubre TODAS las fuentes de la lista, repartidas dentro de '
                 + 'los ejes, y cierra cada eje con lo que el conjunto de la evidencia permite concluir.' });
@@ -731,7 +757,11 @@ const RedactorTeorico = {
                     seccion: sec.titulo,
                     titulo: nPartes > 1 ? `${sec.titulo} (parte ${p + 1} de ${nPartes})` : sec.titulo,
                     instrucciones: sec.instrucciones + notaOMS + (nPartes > 1
-                        ? ` Esta es la PARTE ${p + 1} de ${nPartes}: construye los ejes únicamente con las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales de la sección.` : ''),
+                        ? ` Esta es la PARTE ${p + 1} de ${nPartes}: construye los ejes únicamente con las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales de la sección.`
+                          + (p > 0 ? ' APERTURA DE CONTINUACIÓN: el lector viene de las partes anteriores — PROHIBIDO reintroducir el tema, definir de nuevo los conceptos o abrir con «La relación entre X e Y…»: entra DIRECTO al primer eje o estudio, como si continuaras el párrafo anterior.' : '')
+                          + (p < nPartes - 1 ? ' PROHIBIDO enunciar vacíos de evidencia en esta parte: se reservan para el cierre de la sección.'
+                                             : ' Al cerrar esta última parte, enuncia UN ÚNICO vacío maestro que integre y jerarquice lo que el conjunto de la sección no cubre — nada de vacíos sueltos por eje.')
+                        : ''),
                     fuentes: fsel
                 });
             }
@@ -839,9 +869,10 @@ const RedactorTeorico = {
         }
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
+        const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0 };
         for (const sec of plan) {
             const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
-            const partes = delSec.map(r => this._limpiarTexto(r.texto));
+            const partes = delSec.map(r => this._coserParte(this._limpiarTexto(r.texto), costura));
             const usadasSec = new Set(); delSec.forEach(r => (r.fuentesUsadas || []).forEach(f => usadasSec.add(f)));
             secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n'),
                 fuentesUsadas: [...usadasSec] });
@@ -861,7 +892,8 @@ const RedactorTeorico = {
         const sospechosas = this._citasSospechosas(textoReal, fuentes);
         this._documento = { secciones, fuentes, citadas, problema,
             meta: { plantilla: 'P2-marcadores', fecha: new Date().toISOString(), canales,
-                marcadores: { invalidos: marcInvalidosTotal, partesSinMarcadores: partesSinMarc, partesConMarcadores: partesConMarc } } };
+                marcadores: { invalidos: marcInvalidosTotal, partesSinMarcadores: partesSinMarc, partesConMarcadores: partesConMarc },
+                costura: { aperturas: costura.quitAperturas, comodin: costura.quitComodin } } };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
@@ -900,6 +932,7 @@ const RedactorTeorico = {
             + (partesConMarc > 0 ? ` (conteo exacto por marcadores${partesSinMarc ? `; ${partesSinMarc} parte(s) en modo compatibilidad` : ''})` : '')
             + (marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} marcador(es) inválido(s) eliminados (alucinación de fuente cazada)` : '')
             + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
+            + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
@@ -1044,6 +1077,63 @@ const RedactorTeorico = {
         }
         return [...sospechosas];
     },
+    // ============ COSTURA MECÁNICA (F2.7): lo que 17 llamadas paralelas no pueden ver ============
+    // Cada parte se redacta a ciegas de las demás; los tics convergentes (mismo abridor,
+    // misma conclusión-comodín) solo se cazan aquí, con el documento entero delante.
+    _frases(texto) {
+        const MASCARA = [[/et al\./g, 'et al\u0001'], [/s\.\s*f\./g, 's\u0001f\u0001'], [/p\.\s*ej\./g, 'p\u0001ej\u0001'], [/vs\./g, 'vs\u0001'], [/cols\./g, 'cols\u0001']];
+        let t = String(texto || '');
+        for (const [re, sub] of MASCARA) t = t.replace(re, sub);
+        const out = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ž¿¡«“(])/).map(s => s.replace(/\u0001/g, '.'));
+        return out;
+    },
+    _huellaApertura(frase) {
+        return this._normTexto(frase).split(/\s+/).slice(0, 5).join(' ');
+    },
+    _coserParte(texto, ctx) {
+        let frases = this._frases(texto);
+        if (!frases.length) return texto;
+        // 1) Abridores-molde: la misma huella de 5 palabras abriendo varias partes
+        const h = this._huellaApertura(frases[0]);
+        if (h && h.split(' ').length >= 4) {
+            const visto = ctx.aperturas.get(h) || 0;
+            ctx.aperturas.set(h, visto + 1);
+            if (visto >= 1 && frases.length > 1) { frases = frases.slice(1); ctx.quitAperturas++; }
+        }
+        // 2) Frases-comodín: misma cita + un 7-grama CONTIGUO compartido = la misma
+        // frase hecha reformulada; el shingle largo es casi inmune a falsos positivos.
+        const shingles = f => {
+            const w = this._normTexto(f.replace(/\([^)]*\)/g, ' ')).split(/\s+/).filter(Boolean);
+            const out = new Set();
+            for (let i = 0; i + 7 <= w.length; i++) out.add(w.slice(i, i + 7).join(' '));
+            return out;
+        };
+        const finales = [];
+        for (const fr of frases) {
+            // Los grupos «(A, 2024; B, 2023)» se parten: cada cita interior es una clave propia
+            const grupos = fr.match(/\([^()]{6,180}?, (?:19|20)\d{2}[a-z]?\)/g) || [];
+            const citas = [];
+            for (const g of grupos) for (const c of g.replace(/^\(|\)$/g, '').split(/;\s*/)) {
+                if (/, (?:19|20)\d{2}[a-z]?$/.test(c.trim())) citas.push('(' + c.trim() + ')');
+            }
+            const mios = shingles(fr);
+            let duplicada = false;
+            for (const c of citas) {
+                const vistos = ctx.citas.get(c);
+                if (!vistos) continue;
+                for (const sh of mios) if (vistos.has(sh)) { duplicada = true; break; }
+                if (duplicada) break;
+            }
+            if (duplicada && (finales.length || frases.length > 1)) { ctx.quitComodin++; continue; }
+            finales.push(fr);
+            for (const c of citas) {
+                let vistos = ctx.citas.get(c);
+                if (!vistos) { vistos = new Set(); ctx.citas.set(c, vistos); }
+                for (const sh of mios) vistos.add(sh);
+            }
+        }
+        return finales.join(' ');
+    },
     // ============ F2.1: TRAZABILIDAD POR MARCADORES [F#] ============
     // El modelo cita con marcadores locales a SU llamada ([F1..Fn] = su fsel);
     // aquí se convierten en citas APA exactas. Esto da lo que la detección por
@@ -1064,7 +1154,24 @@ const RedactorTeorico = {
                 if (vistos.has(f)) continue;
                 vistos.add(f); usadas.add(f);
                 const txtCita = interior(f);
-                if (txtCita && !partes.includes(txtCita)) partes.push(txtCita); // dedup visual: dos filas, misma cita
+                if (!txtCita || partes.includes(txtCita)) continue;   // dedup visual: dos filas, misma cita
+                // Fusión de PERSONA: «Salvo, 2026» y «Di Salvo, 2026» son el mismo autor con
+                // partícula perdida en una fila gemela — gana la forma completa.
+                const clave = c => { const m = c.match(/^(.*?),\s*((?:19|20)\d{2}[a-z]?|s\.\s*f\.)$/); return m ? { ap: m[1].trim(), an: m[2] } : null; };
+                const nueva = clave(txtCita); let absorbida = false;
+                if (nueva && !/\sy\s|;|et al\./.test(nueva.ap)) {
+                    for (let k = 0; k < partes.length; k++) {
+                        const prev = clave(partes[k]);
+                        if (!prev || prev.an !== nueva.an || /\sy\s|;|et al\./.test(prev.ap)) continue;
+                        const corta = nueva.ap.length <= prev.ap.length ? nueva.ap : prev.ap;
+                        const larga = nueva.ap.length <= prev.ap.length ? prev.ap : nueva.ap;
+                        const resto = larga.endsWith(' ' + corta) ? larga.slice(0, -corta.length).trim().split(/\s+/) : null;
+                        if (resto && resto.every(w => this._PARTICULAS_AP.test(w))) {
+                            partes[k] = larga + ', ' + prev.an; absorbida = true; break;
+                        }
+                    }
+                }
+                if (!absorbida) partes.push(txtCita);
             }
             return partes.length ? '(' + partes.join('; ') + ')' : '';
         });
