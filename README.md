@@ -2,6 +2,8 @@
 
 > *El pensamiento crítico no se reemplaza; se potencia. Como cualquier herramienta, esto existe para ampliar nuestras capacidades, no para sustituirlas. Al hacerse cargo de las tareas más mecánicas y repetitivas, nos libera para concentrarnos en aquello que genera verdadero valor: pensar, cuestionar, crear e innovar.*
 
+StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investigación al resultado, te ayuda a decidir qué hacer, te explica por qué y convierte el análisis en un proceso guiado, comprensible y defendible. Ahí está la diferencia respecto a otras herramientas como SPSS, R o Jamovi. StatSim Pro no busca competir contra ellas, sino acompañar al investigador de otra manera. Mientras otras herramientas te dan una respuesta, StatSim Pro te enseña por qué esa respuesta es la correcta. Te enseña el camino, no solo el resultado.
+
 **Suite estadística y metodológica completa para tesis de psicología y ciencias sociales — 100 % en tu navegador.**
 
 De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas, ejecuta análisis con rigor de SPSS, explora tus resultados en gráficos interactivos con análisis automático, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
