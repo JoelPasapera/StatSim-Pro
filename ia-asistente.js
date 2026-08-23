@@ -128,7 +128,7 @@ const IAAsistente = {
             GEMINI_5XX: 'Error temporal del servidor de Gemini.',
             CLAVE_INVALIDA: 'Una clave de Gemini es inválida o expiró (se reintenta con otra).',
             CLAVE_REGION: 'Todas las claves probadas pertenecen a cuentas cuya región no soporta la API de Gemini: reemplaza esas claves en el Worker (identifícalas con ?probar=1&clave=N).',
-            GEMINI_4XX: 'Gemini rechazó la petición (formato o parámetros).',
+            GEMINI_4XX: 'Gemini rechazó la petición con TODAS las claves (400): casi siempre es texto corrupto en la matriz (caracteres rotos del scraping) — reimporta la matriz para que el saneador los limpie, o revisa la fila más reciente.',
             CUERPO_EXCEDE: 'La petición supera el tamaño permitido por el servidor.',
             CHARS_EXCEDE: 'El contexto enviado es demasiado largo.',
             ORIGEN: 'Esta página no está autorizada para usar el asistente de IA.',
@@ -258,12 +258,19 @@ const IAAsistente = {
     // Una llamada extrae qué instrumentos aparecen en los resúmenes y qué
     // constructo mide cada uno SEGÚN LA PROPIA MATRIZ. Esa verdad se inyecta
     // en todas las partes y se verifica al ensamblar: cero listas a mano.
+    // Defensa en profundidad: NINGÚN string viaja al modelo sin pasar por aquí.
+    _limpiarParaModelo(x) {
+        return String(x == null ? '' : x)
+            .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+            .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    },
     async extraerFichaInstrumentos(fuentes) {
         const conResumen = (fuentes || []).filter(f => f && (f.resumen || '').length > 40).slice(0, 60);
         if (!conResumen.length) return [];
         let corpus = '';
         for (const f of conResumen) {
-            const linea = `- ${String(f.titulo || '').slice(0, 110)}: ${String(f.resumen).slice(0, 320)}\n`;
+            const linea = `- ${this._limpiarParaModelo(f.titulo).slice(0, 110)}: ${this._limpiarParaModelo(f.resumen).slice(0, 320)}\n`;
             if (corpus.length + linea.length > 42000) break;
             corpus += linea;
         }
@@ -338,10 +345,11 @@ const IAAsistente = {
         // falta, así que ninguna fuente queda fuera por este recorte.
         const fuentes = (spec.fuentes || []).slice(0, this.MAX_FUENTES_SECCION);
         if (!fuentes.length) throw new Error('No hay fuentes disponibles para redactar esta sección.');
+        const P = x => this._limpiarParaModelo(x);
         const listado = fuentes.map((f, i) =>
-            `[F${i + 1}] CITA EXACTA A USAR: ${f.cita}\n`
-            + `      Título: ${f.titulo || '(sin título)'} (${f.anio || 's. f.'})\n`
-            + `      RESUMEN: ${(f.resumen || '(sin resumen)').slice(0, 700)}`
+            `[F${i + 1}] CITA EXACTA A USAR: ${P(f.cita)}\n`
+            + `      Título: ${P(f.titulo) || '(sin título)'} (${f.anio || 's. f.'})\n`
+            + `      RESUMEN: ${(P(f.resumen) || '(sin resumen)').slice(0, 700)}`
         ).join('\n\n');
         const system = 'Eres un investigador senior que redacta marcos teóricos con nivel de publicación '
             + 'científica (español formal, normas APA 7).\n\n'
@@ -408,10 +416,10 @@ const IAAsistente = {
             + '(qué ha cambiado del año más antiguo al más reciente del conjunto) y una CONTEXTUAL '
             + '(contrastes entre regiones o poblaciones de los estudios).'
             : '';
-        const user = `PROBLEMA DE INVESTIGACIÓN:\n${spec.problema}\n\n`
-            + `VARIABLES DE ESTUDIO:\n${spec.variablesTexto}\n\n`
+        const user = `PROBLEMA DE INVESTIGACIÓN:\n${P(spec.problema)}\n\n`
+            + `VARIABLES DE ESTUDIO:\n${P(spec.variablesTexto)}\n\n`
             + `FUENTES DISPONIBLES (las ÚNICAS que puedes citar):\n${listado}\n\n`
-            + `TAREA: redacta la sección «${spec.titulo}» del marco teórico.\n${spec.instrucciones}${lecturas}\n\n`
+            + `TAREA: redacta la sección «${spec.titulo}» del marco teórico.\n${P(spec.instrucciones)}${lecturas}\n\n`
             + `ANTES DE ESCRIBIR: agrupa mentalmente las fuentes en 2-5 ejes temáticos según lo que sus `
             + `resúmenes evidencian (convergencias, divergencias, poblaciones o niveles de análisis); luego `
             + `redacta un desarrollo por eje siguiendo las reglas de síntesis. Usa las fuentes PERTINENTES `
