@@ -200,11 +200,30 @@ const RedactorTeorico = {
         if (!c || this._esCitaSucia(c)) c = this._citaDesdeTitulo(f.titulo, f.anio);
         return c;
     },
+    // Surrogates huérfanos y caracteres de control del scraping: JSON.stringify
+    // los escapa feliz, el navegador los envía feliz… y el parser de Gemini
+    // devuelve 400 INVALID_ARGUMENT con TODAS las claves. Invisibles para todos
+    // menos para la API — se ejecutan aquí, en la puerta única.
+    _limpiarUnicode(s) {
+        return String(s == null ? '' : s)
+            .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+            .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    },
     _sanearFuentes(lista) {
         if (!Array.isArray(lista)) return lista;
-        let reparadas = 0, irreparables = 0;
+        let reparadas = 0, irreparables = 0, corruptos = 0;
         for (const f of lista) {
             if (!f || f._citaOK) continue;
+            // Texto envenenado del scraping (surrogates rotos, controles) → limpiar TODO
+            for (const campo of ['titulo', 'resumen', 'ref', 'cita']) {
+                const v = f[campo];
+                if (typeof v === 'string' && v) {
+                    const limpio = this._limpiarUnicode(v);
+                    if (limpio !== v) { f[campo] = limpio; corruptos++; }
+                }
+            }
+            if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._limpiarUnicode(a));
             // Prefijos de scraping de Scholar en el título («[HTML] Interventions…»)
             if (f.titulo) f.titulo = String(f.titulo).replace(/^\s*\[(HTML|PDF|B|BOOK|CITATION|CITAS)\]\s*/i, '').trim();
             if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._sanearAutor(a)).filter(Boolean);
@@ -230,9 +249,9 @@ const RedactorTeorico = {
             doisVistos.add(d); return true;
         });
         if ((dupDoi || excluidas) && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
-        if (reparadas || irreparables || dupDoi || excluidas) {
-            this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas };
-            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : ''));
+        if (reparadas || irreparables || dupDoi || excluidas || corruptos) {
+            this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas, corruptos };
+            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : '') + (corruptos ? `, ${corruptos} campo(s) con caracteres corruptos limpiados` : ''));
         }
         return filtrada;
     },
@@ -981,7 +1000,7 @@ const RedactorTeorico = {
             + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
             + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
             + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} etiqueta(s) de instrumento corregida(s) según la ficha de la matriz` : '')
-            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)` : '')
+            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)${this._ultimoSaneo.corruptos ? `, ${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados` : ''}` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
