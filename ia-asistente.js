@@ -254,6 +254,47 @@ const IAAsistente = {
     // ============================================================
     // FUNCIÓN 4 (Redactor): extraer las VARIABLES del problema (Gemini)
     // ============================================================
+    // ===== FICHA DE INSTRUMENTOS (auto-fundamentada en la matriz) =====
+    // Una llamada extrae qué instrumentos aparecen en los resúmenes y qué
+    // constructo mide cada uno SEGÚN LA PROPIA MATRIZ. Esa verdad se inyecta
+    // en todas las partes y se verifica al ensamblar: cero listas a mano.
+    async extraerFichaInstrumentos(fuentes) {
+        const conResumen = (fuentes || []).filter(f => f && (f.resumen || '').length > 40).slice(0, 60);
+        if (!conResumen.length) return [];
+        let corpus = '';
+        for (const f of conResumen) {
+            const linea = `- ${String(f.titulo || '').slice(0, 110)}: ${String(f.resumen).slice(0, 320)}\n`;
+            if (corpus.length + linea.length > 42000) break;
+            corpus += linea;
+        }
+        const system = 'Eres un metodólogo experto. Identificas instrumentos de medición '
+            + '(tests, escalas, inventarios, cuestionarios) mencionados en resúmenes académicos y el '
+            + 'constructo EXACTO que cada uno mide según esos textos. Respondes ÚNICAMENTE en JSON válido.';
+        const user = 'De los siguientes resúmenes, extrae los instrumentos de medición mencionados. '
+            + 'Para cada uno: nombre (como aparece, p. ej. «Inventario de Bar-On»), sigla si la hay '
+            + '(p. ej. «EQ-i:YV») y el constructo que mide SEGÚN LOS TEXTOS (p. ej. «inteligencia '
+            + 'emocional»). Solo instrumentos realmente nombrados; nada inventado.\n\n'
+            + 'Responde SOLO con: {"instrumentos": [{"nombre": "...", "sigla": "...", "constructo": "..."}]}\n\n'
+            + 'RESÚMENES:\n' + corpus;
+        const texto = await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0, max_tokens: 2000, response_format: { type: 'json_object' },
+              worker: this.WORKER_REDACTOR_URL }, 2);
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
+        catch (e) { const m = texto.match(/\{[\s\S]*\}/); data = m ? JSON.parse(m[0]) : null; }
+        const items = (data && Array.isArray(data.instrumentos)) ? data.instrumentos : [];
+        const vistos = new Set();
+        return items.filter(i => i && i.nombre && i.constructo).map(i => ({
+            nombre: String(i.nombre).trim().slice(0, 80),
+            sigla: String(i.sigla || '').trim().slice(0, 30),
+            constructo: String(i.constructo).trim().toLowerCase().slice(0, 60)
+        })).filter(i => {
+            const k = (i.sigla || i.nombre).toLowerCase();
+            if (vistos.has(k)) return false;
+            vistos.add(k); return true;
+        }).slice(0, 20);
+    },
     async extraerVariables(problema) {
         const p = String(problema || '').trim();
         if (p.length < 15) throw new Error('Describe primero el problema de investigación.');
