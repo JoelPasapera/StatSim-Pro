@@ -360,8 +360,10 @@ const IAAsistente = {
             + `resúmenes evidencian (convergencias, divergencias, poblaciones o niveles de análisis); luego `
             + `redacta un desarrollo por eje siguiendo las reglas de síntesis. Usa las fuentes PERTINENTES `
             + `al problema y al eje; una fuente que no aporta al argumento se OMITE en silencio — PROHIBIDO `
-            + `mencionarla solo para justificar su presencia o para señalar que "no aborda" el tema. Reparte `
-            + `las pertinentes dentro de los ejes (agrupadas por idea), nunca en fila india.\n\n`
+            + `mencionarla solo para justificar su presencia o para señalar que "no aborda" el tema. OMITIR `
+            + `fuentes sueltas JAMÁS significa entregar una sección vacía: si pocas encajan de lleno, redacta `
+            + `con las más cercanas al tema y decláralo con honestidad académica. Reparte las pertinentes `
+            + `dentro de los ejes (agrupadas por idea), nunca en fila india.\n\n`
             + `Extensión: desarrolla con amplitud y profundidad lo que las fuentes permitan sustentar. `
             + `Empieza directamente con el texto (sin repetir el título).`;
         return await this.chatConReintento(
