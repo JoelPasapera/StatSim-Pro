@@ -143,7 +143,7 @@ const IAAsistente = {
     // Fallos transitorios: reintentar tiene sentido. Los demás, no.
     _esReintentable(codigo) {
         return ['CUOTA_GEMINI', 'CUOTA_TODAS', 'IP_RATE', 'GLOBAL_SATURADO', 'BREAKER_ABIERTO',
-                'TIMEOUT', 'GEMINI_5XX', 'CLAVE_INVALIDA', 'RESPUESTA_ILEGIBLE', 'RED', 'RESPUESTA_VACIA'].includes(codigo);
+                'TIMEOUT', 'GEMINI_5XX', 'GROQ_5XX', 'CUOTA_GROQ', 'CLAVE_INVALIDA', 'RESPUESTA_ILEGIBLE', 'RED', 'RESPUESTA_VACIA'].includes(codigo);
     },
     async chatConReintento(messages, opciones = {}, intentos = 4) {
         let ultimoError = null;
@@ -259,6 +259,28 @@ const IAAsistente = {
     // Una llamada extrae qué instrumentos aparecen en los resúmenes y qué
     // constructo mide cada uno SEGÚN LA PROPIA MATRIZ. Esa verdad se inyecta
     // en todas las partes y se verifica al ensamblar: cero listas a mano.
+    // ===== RESPALDO GROQ: Gemini×2 → Groq×1 (3 intentos totales) =====
+    // Los dos Workers son gemelos de contrato: mismo cuerpo, mismos códigos.
+    // El error combinado conserva el código PRIMARIO de Gemini para que el
+    // flujo del redactor (encogido en 4xx, etc.) siga funcionando igual.
+    _rescatesGroq: 0,
+    async _chatConRespaldo(mensajes, opciones = {}) {
+        try {
+            return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
+        } catch (e1) {
+            if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
+            try {
+                const texto = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_URL }, 1);
+                this._rescatesGroq++;
+                return texto;
+            } catch (e2) {
+                const err = new Error(`Gemini y Groq fallaron — Gemini [${e1.codigo || '?'}]: ${e1.message} · Groq [${e2.codigo || '?'}]: ${e2.message}`);
+                err.codigo = e1.codigo; err.reintentable = e1.reintentable;
+                err.codigoRespaldo = e2.codigo;
+                throw err;
+            }
+        }
+    },
     // Defensa en profundidad: NINGÚN string viaja al modelo sin pasar por aquí.
     _limpiarParaModelo(x) {
         return String(x == null ? '' : x)
@@ -286,10 +308,7 @@ const IAAsistente = {
             + 'Solo instrumentos realmente nombrados; nada inventado.\n\n'
             + 'Responde SOLO con: {"instrumentos": [{"nombre": "...", "sigla": "...", "constructo": "...", "familia": "..."}]}\n\n'
             + 'RESÚMENES:\n' + corpus;
-        const texto = await this.chatConReintento(
-            [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0, max_tokens: 2000, response_format: { type: 'json_object' },
-              worker: this.WORKER_REDACTOR_URL }, 2);
+        const texto = await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0, max_tokens: 2000, response_format: { type: 'json_object' } });
         let data;
         try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
         catch (e) { const m = texto.match(/\{[\s\S]*\}/); data = m ? JSON.parse(m[0]) : null; }
@@ -317,10 +336,7 @@ const IAAsistente = {
             + `conceptual breve (1-2 frases, sin citas).\n\n`
             + `Responde SOLO con: {"variables": [{"nombre": "...", "definicion": "..."}]}\n\n`
             + `PROBLEMA:\n${p}`;
-        const texto = await this.chatConReintento(
-            [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.3, max_tokens: 1500, response_format: { type: 'json_object' },
-              worker: this.WORKER_REDACTOR_URL }, 3);
+        const texto = await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0.3, max_tokens: 1500, response_format: { type: 'json_object' } });
         let data;
         try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
         catch (e) {
@@ -447,10 +463,7 @@ const IAAsistente = {
             + `idea), nunca en fila india.\n\n`
             + `Extensión: desarrolla con amplitud y profundidad lo que las fuentes permitan sustentar. `
             + `Empieza directamente con el texto (sin repetir el título).`;
-        return await this.chatConReintento(
-            [{ role: 'system', content: system }, { role: 'user', content: user }],
-            { temperature: 0.45, max_tokens: 8000, keyHint: spec.keyHint,
-              worker: this.WORKER_REDACTOR_URL }, 3);
+        return await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0.45, max_tokens: 8000, keyHint: spec.keyHint });
     },
     // ============================================================
     // FUNCIÓN 3: evaluar la RELEVANCIA de un lote de artículos (Groq)
