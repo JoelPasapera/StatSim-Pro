@@ -13,6 +13,7 @@
 // y reescribir con su propia voz antes de usarlo en la tesis.
 // ========================================
 const RedactorTeorico = {
+    _VERSION: 'F2-marcadores',
     _textos: {}, // secciones redactadas: { clave: { titulo, texto, fuentesUsadas } }
     montar() {
         if (this._montado) return; // guardia: montar() dos veces duplicaría listeners
@@ -43,6 +44,7 @@ const RedactorTeorico = {
             </div>
             <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
             <div id="redEstado" class="help-text" style="margin-top:0.5rem;"></div>
+            <a id="redRecuperar" href="#" class="help-text" style="display:none; margin-top:0.3rem; text-decoration:underline; cursor:pointer;">📂 Recuperar última redacción</a>
             <div id="redResultado" style="display:none; margin-top:0.8rem; padding:1rem; border:1px solid var(--color-border, #ddd); border-radius:0.5rem; background:#fafafa; white-space:pre-wrap; font-family:'Times New Roman', serif; font-size:0.95rem; line-height:1.6; max-height:28rem; overflow:auto;"></div>
           </div>`;
         // Variables de estudio: se montan ARRIBA, entre «Problema de investigación»
@@ -65,6 +67,19 @@ const RedactorTeorico = {
         if (btnVar) btnVar.addEventListener('click', () => this._onIdentificarVariables());
         const btnProbar = document.getElementById('redProbar');
         if (btnProbar) btnProbar.addEventListener('click', () => this._onProbarSeccion());
+        console.info('[Redactor] versión F2-marcadores activa · verificación: RedactorTeorico.autotest()');
+        const rec = document.getElementById('redRecuperar');
+        if (rec) {
+            rec.addEventListener('click', (ev) => { ev.preventDefault(); this._recuperarUltimo(); });
+            try {
+                const g = JSON.parse((typeof localStorage !== 'undefined' && localStorage.getItem(this._CLAVE_GUARDADO)) || 'null');
+                if (g && Array.isArray(g.secciones) && g.secciones.length) {
+                    const min = Math.max(1, Math.round((Date.now() - (g.t || Date.now())) / 60000));
+                    rec.textContent = `📂 Recuperar última redacción (hace ${min < 60 ? min + ' min' : Math.round(min / 60) + ' h'})`;
+                    rec.style.display = '';
+                }
+            } catch (e) {}
+        }
         const inpArchivo = document.getElementById('redArchivo');
         if (inpArchivo) inpArchivo.addEventListener('change', (e) => {
             const f = e.target.files && e.target.files[0];
@@ -129,6 +144,20 @@ const RedactorTeorico = {
         }
     },
     // Reconstruye la cita corta APA a partir de la lista de autores reales.
+    // ============ F2.6: SANEADOR DE AUTORES Y CITAS (fixtures reales) ============
+    _sanearAutor(a) {
+        let s = String(a || '').trim();
+        if (!s) return '';
+        if (/[@]|https?:\/\//i.test(s)) return '';
+        const corte = s.split(/\s+[-–—]\s+/);
+        if (corte.length > 1 && /[:]|Revista|Journal|Latam|Cient[ií]f|Editorial|Universidad|Review|RES\s/i.test(corte.slice(1).join(' ')))
+            s = corte[0].trim();
+        if (/^\d{4}[a-z]?$/.test(s)) return '';
+        if (/^(research|editorial|redacci[oó]n|autor(es)?|author(s)?|anonymous|an[oó]nimo|admin)$/i.test(s)) return '';
+        if (s.length >= 4 && !/[a-zà-öø-ÿ]/.test(s) && !/\[/.test(s))
+            s = s.toLowerCase().replace(/(^|[\s'’-])(\p{L})/gu, (x, p, c) => p + c.toUpperCase());
+        return s;
+    },
     _citaDesdeAutores(autores, anio) {
         const aps = (autores || []).map(a => this._apellido(a)).filter(Boolean);
         const y = anio || 's. f.';
@@ -144,6 +173,7 @@ const RedactorTeorico = {
         const pendientes = this._fuentesImportadas.filter(f =>
             f.doi && ((!f.resumen || f.resumen.length < 40) || f._autoresPendientes));
         if (!pendientes.length) return;
+        this._reparandoDOI = true;
         const info = document.getElementById('redImportInfo');
         const base = info ? info.textContent : '';
         let hechos = 0, logrados = 0;
@@ -158,7 +188,8 @@ const RedactorTeorico = {
                     // Reparar AUTORES rotos: cita nueva con apellidos reales y la
                     // referencia reconstruida (autores APA + resto original desde el año).
                     if (datos && datos.autores && datos.autores.length && f._autoresPendientes) {
-                        const nuevaCita = this._citaDesdeAutores(datos.autores, f.anio || datos.anio);
+                        const autoresLimpios = (datos.autores || []).map(a => this._sanearAutor(a)).filter(Boolean);
+                        const nuevaCita = this._citaDesdeAutores(autoresLimpios, f.anio || datos.anio);
                         if (nuevaCita) {
                             f.cita = nuevaCita;
                             const resto = String(f.ref).split(/(?=\(\s*(?:\d{4}|s\.\s*f\.))/)[1] || `(${f.anio || datos.anio || 's. f.'}). ${f.titulo}.`;
@@ -175,6 +206,7 @@ const RedactorTeorico = {
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
+        this._reparandoDOI = false;
         if (info) info.textContent = `${base} ✓ Completado por DOI: ${logrados} campo(s) reparado(s) (resúmenes y/o autores) en ${pendientes.length} fuentes.`;
         this.actualizarInfoFuentes();
     },
@@ -299,7 +331,7 @@ const RedactorTeorico = {
             throw new Error('El archivo no parece una matriz exportada por la app (faltan las columnas «Título» y «Referencia (APA)»).');
         }
         const limpiar = s => String(s == null ? '' : s).replace(/<[^>]+>/g, '').trim();
-        return filas.map(f => {
+        const lista = filas.map(f => {
             const titulo = limpiar(f[iTitulo]);
             const ref = limpiar(f[iRef]);
             if (!titulo && !ref) return null;
@@ -315,7 +347,7 @@ const RedactorTeorico = {
             const linkCrudo = limpiar(iLink >= 0 ? f[iLink] : '');
             const doi = /doi\.org\//.test(linkCrudo) || /^10\./.test(linkCrudo) ? linkCrudo : '';
             const autoresCol = limpiar(iAutor >= 0 ? f[iAutor] : '')
-                .split(/;\s*/).map(s => s.trim()).filter(Boolean);
+                .split(/;\s*/).map(s => this._sanearAutor(s)).filter(Boolean); // F2.6
             let cita, autoresPendientes;
             if (autoresCol.length) {
                 cita = this._citaDesdeAutores(autoresCol, anio);
@@ -324,8 +356,14 @@ const RedactorTeorico = {
                 cita = this._citaDesdeRef(ref, anio);
                 autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
             }
-            return { cita, ref, titulo, anio, resumen, doi, _autoresPendientes: autoresPendientes };
+            return { cita, ref, titulo, anio, resumen, doi, autores: autoresCol, _autoresPendientes: autoresPendientes };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
+        const vistosDedup = new Set();
+        return lista.filter(x => {
+            const k = this._normTexto(x.titulo).slice(0, 90) + '|' + (x.anio || '');
+            if (k !== '|' && vistosDedup.has(k)) return false;
+            vistosDedup.add(k); return true;
+        });
     },
     // Deriva la cita corta (Apellido, año) desde la referencia APA completa.
     _citaDesdeRef(ref, anioFallback) {
@@ -333,7 +371,10 @@ const RedactorTeorico = {
         const anio = (r.match(/\((\d{4}[a-z]?|s\.\s*f\.)\)/) || [])[1] || anioFallback || 's. f.';
         const preAnio = r.split(/\(\s*(?:\d{4}|s\.\s*f\.)/)[0] || '';
         const M = 'A-ZÀ-ÖØ-ÞĀ-Ž', m_ = 'a-zà-öø-ÿā-ž';
-        const m = [...preAnio.matchAll(new RegExp(`([${M}][${M}${m_}'’-]+(?:\\s+[${M}][${M}${m_}'’-]+)*)\\s*,\\s*(?:[${M}]\\.\\s*)+`, 'g'))];
+        // F2.2: partículas de apellidos compuestos («de la Cruz», «van Dijk»).
+        const PART = '(?:[Dd]e(?:l|\\s+la|\\s+las|\\s+los)?|[Ll]a|[Ll]as|[Ll]os|[Vv]an|[Vv]on|[Dd]a|[Dd]as|[Dd]os|[Dd]i|[Dd]u|[Ll]e|[Tt]er|[Tt]en|[Mm]ac|[Mm]c|[Ss]an(?:ta)?)';
+        const AP = `[${M}][${M}${m_}'’-]+`;
+        const m = [...preAnio.matchAll(new RegExp(`((?:${PART}\\s+)*${AP}(?:\\s+(?:${PART}\\s+)*${AP})*)\\s*,\\s*(?:[${M}]\\.\\s*)+`, 'g'))];
         const apellidos = m.map(x => x[1].trim()).filter(a => a && !new RegExp(`^([${M}]\\.?\\s*)+$`).test(a));
         if (!apellidos.length) {
             const palabras = preAnio.trim().split(/\s+/).filter(Boolean);
@@ -566,6 +607,28 @@ const RedactorTeorico = {
         }
         return sel;
     },
+    // ============ N3: AUTOTEST · el módulo lleva su auditor dentro ============
+    autotest() {
+        const T = []; const ok = (n, c) => T.push((c ? '✓ ' : '✗ ') + n);
+        const fs = [{ cita: '(Uno, 2020)' }, { cita: '(Dos y Tres, 2021)' }, { cita: '(Cuatro et al., 2022)' }];
+        let r = this._reemplazarMarcadores('Idea probada [F1]. Convergen [F2, F3]. Falsa [F9].', fs);
+        ok('marcadores: simple+grupo+inválido', r.texto.includes('(Uno, 2020)') && r.texto.includes('(Dos y Tres, 2021; Cuatro et al., 2022)') && !r.texto.includes('[F') && r.invalidos === 1 && r.usadas.size === 3);
+        r = this._reemplazarMarcadores('Consecutivos [F1] [F2].', fs);
+        ok('marcadores: consecutivos se funden', r.texto.includes('(Uno, 2020; Dos y Tres, 2021)'));
+        ok('cita compuesta: de la Cruz', this._citaDesdeRef('de la Cruz, J. (2020). Título.', '').startsWith('(de la Cruz'));
+        ok('cita compuesta: van Dijk', this._citaDesdeRef('van Dijk, K. (2019). Obra.', '').startsWith('(van Dijk'));
+        ok('saneador: revista pegada', this._sanearAutor('Tituaña - Revista Científica RES NON VERBA') === 'Tituaña');
+        ok('saneador: correo fuera', this._sanearAutor('K.tamara.t@gmail.com') === '');
+        ok('saneador: año fuera', this._sanearAutor('2023') === '');
+        ok('saneador: MAYÚSCULAS', this._sanearAutor('FERREIRA') === 'Ferreira');
+        const vp = (() => { const el = document.getElementById('redVariables'); const prev = el ? el.value : null;
+            if (el) el.value = 'auto-eficacia - creencia propia';
+            const v = this._leerVariables()[0] || {}; if (el && prev !== null) el.value = prev; return v; })();
+        ok('variables: guion con espacios', vp.nombre === 'auto-eficacia' && vp.definicion === 'creencia propia');
+        ok('fallback sin marcadores', this._procesarParte({ fuentes: fs }, 'Clásico (Uno, 2020).').sinMarcadores === true);
+        console.log('[Redactor.autotest]\n' + T.join('\n'));
+        return `${T.filter(x => x.startsWith('✓')).length}/${T.length} en verde`;
+    },
     // ---- Redactar el documento COMPLETO (todas las secciones, en paralelo) ----
     async _onRedactarTodo() {
         const estado = document.getElementById('redEstado');
@@ -576,11 +639,15 @@ const RedactorTeorico = {
         const variablesTexto = (document.getElementById('redVariables') || {}).value || '';
         const variables = this._leerVariables();
         this.actualizarInfoFuentes();
-        const fuentes = this._fuentes();
+        let fuentes = this._fuentes();
         if (problema.trim().length < 15) { if (estado) estado.textContent = '⚠️ Falta el problema de investigación (arriba).'; return; }
         if (!variables.length) { if (estado) estado.textContent = '⚠️ Identifica (o escribe) primero las variables de estudio.'; return; }
         if (!fuentes.length) { if (estado) estado.textContent = '⚠️ No hay fuentes: usa la matriz o importa una exportada.'; return; }
         if (typeof IAAsistente === 'undefined') { if (estado) estado.textContent = '❌ El asistente de IA no está cargado.'; return; }
+        // INSTANTÁNEA (F2.3): la reparación por DOI muta las fuentes en segundo
+        // plano; una copia congela lo que esta redacción usará, sin carreras.
+        fuentes = fuentes.map(f => ({ ...f, autores: (f.autores || []).slice(), fuentesAPI: (f.fuentesAPI || []).slice() }));
+        const avisoReparando = this._reparandoDOI ? ' (la reparación de resúmenes por DOI seguía en curso: se redactó con la instantánea del momento).' : '';
         // Techo por llamada: lo define el asistente (configurable en un lugar).
         const MAX = (IAAsistente.MAX_FUENTES_SECCION && IAAsistente.MAX_FUENTES_SECCION > 0)
             ? IAAsistente.MAX_FUENTES_SECCION : 32;
@@ -662,11 +729,13 @@ const RedactorTeorico = {
                 }
                 ultimo = performance.now();
                 try {
-                    const texto = await IAAsistente.redactarSeccion({
+                    const bruto = await IAAsistente.redactarSeccion({
                         titulo: tarea.titulo, instrucciones: tarea.instrucciones,
                         problema, variablesTexto, fuentes: tarea.fuentes, keyHint: canal
                     });
-                    resultados[i] = { seccion: tarea.seccion, texto };
+                    const proc = this._procesarParte(tarea, bruto);
+                    resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
+                        fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
                 } catch (e) {
                     conError++;
                     resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]`,
@@ -698,11 +767,13 @@ const RedactorTeorico = {
                     }
                     ultimoR = performance.now();
                     try {
-                        const texto = await IAAsistente.redactarSeccion({
+                        const bruto = await IAAsistente.redactarSeccion({
                             titulo: tarea.titulo, instrucciones: tarea.instrucciones,
                             problema, variablesTexto, fuentes: tarea.fuentes, keyHint: canal
                         });
-                        resultados[i] = { seccion: tarea.seccion, texto };
+                        const proc = this._procesarParte(tarea, bruto);
+                        resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
+                            fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
                         conError--;
                     } catch (e) {
                         // El placeholder refleja el error MÁS RECIENTE (no el de la 1ª pasada).
@@ -716,20 +787,34 @@ const RedactorTeorico = {
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
         for (const sec of plan) {
-            const partes = resultados.filter(r => r && r.seccion === sec.titulo).map(r => this._limpiarTexto(r.texto));
-            secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n') });
+            const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
+            const partes = delSec.map(r => this._limpiarTexto(r.texto));
+            const usadasSec = new Set(); delSec.forEach(r => (r.fuentesUsadas || []).forEach(f => usadasSec.add(f)));
+            secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n'),
+                fuentesUsadas: [...usadasSec] });
         }
         const textoCompleto = secciones.map(s => s.texto).join('\n\n');
         // Texto REAL = sin los marcadores de error; es lo que decide si hubo éxito.
         const textoReal = textoCompleto.replace(/\[No se pudo generar[^\]]*\]/g, '').trim();
-        const citadas = this._fuentesCitadas(textoReal, fuentes);
+        const usadasGlobal = new Set(); let marcInvalidosTotal = 0, partesSinMarc = 0, partesConMarc = 0;
+        resultados.forEach(r => {
+            if (!r) return;
+            (r.fuentesUsadas || []).forEach(f => usadasGlobal.add(f));
+            marcInvalidosTotal += r.marcInvalidos || 0;
+            if (r.sinMarcadores === true) partesSinMarc++; else if (r.fuentesUsadas) partesConMarc++;
+        });
+        const residuales = (textoReal.match(/\[F\s*\d/g) || []).length;
+        const citadas = partesConMarc > 0 ? [...usadasGlobal] : this._fuentesCitadas(textoReal, fuentes);
         const sospechosas = this._citasSospechosas(textoReal, fuentes);
-        this._documento = { secciones, fuentes, citadas, problema };
+        this._documento = { secciones, fuentes, citadas, problema,
+            meta: { plantilla: 'P2-marcadores', fecha: new Date().toISOString(), canales,
+                marcadores: { invalidos: marcInvalidosTotal, partesSinMarcadores: partesSinMarc, partesConMarcadores: partesConMarc } } };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
         this._ultimoDiagnostico = {};
         resultados.forEach(r => { if (r && r.codigo) this._ultimoDiagnostico[r.codigo] = (this._ultimoDiagnostico[r.codigo] || 0) + 1; });
+        if (marcInvalidosTotal > 0) this._ultimoDiagnostico.MARCADORES_INVALIDOS = marcInvalidosTotal;
         if (sospechosas.length) {
             this._ultimoDiagnostico.CITAS_SOSPECHOSAS = sospechosas.length;
             if (typeof console !== 'undefined') console.warn('[Redactor] Citas que NO están en tu matriz (revísalas una a una):', sospechosas);
@@ -740,16 +825,11 @@ const RedactorTeorico = {
         }
         if (res) {
             res.style.display = '';
-            let capAct = '';
-            res.textContent = secciones.map(s => {
-                let enc = '';
-                if ((s.capitulo || 'II') !== capAct) {
-                    capAct = s.capitulo || 'II';
-                    enc = (capAct === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO') + '\n\n';
-                }
-                return enc + s.titulo.toUpperCase() + '\n\n' + s.texto;
-            }).join('\n\n\n');
+            res.textContent = this._renderTexto(secciones);
         }
+        try { this._guardarUltimo(); } catch (e) {}
+        const recEnlace = document.getElementById('redRecuperar');
+        if (recEnlace) recEnlace.style.display = 'none';
         // Si NO se produjo texto real, es un fallo total: diagnóstico claro, no falso "✓".
         if (palabras < 20) {
             const codigos = Object.entries(this._ultimoDiagnostico).sort((a, b) => b[1] - a[1]);
@@ -764,9 +844,12 @@ const RedactorTeorico = {
             : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.';
         if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
             + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
+            + (partesConMarc > 0 ? ` (conteo exacto por marcadores${partesSinMarc ? `; ${partesSinMarc} parte(s) en modo compatibilidad` : ''})` : '')
+            + (marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} marcador(es) inválido(s) eliminados (alucinación de fuente cazada)` : '')
+            + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
-            + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS;
+            + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
         if (btnWord) btnWord.style.display = '';
         const btnCop = document.getElementById('redCopiar');
         if (btnCop) btnCop.style.display = '';
@@ -808,6 +891,49 @@ const RedactorTeorico = {
             .replace(/\*\*(.+?)\*\*/g, '$1')
             .replace(/[\u00A0\u2007\u2009\u202F\u2060]/g, ' ')
             .trim();
+    },
+    // ============ F2.4: AUTOGUARDADO · un cierre de pestaña no quema 6.000 palabras ============
+    _CLAVE_GUARDADO: 'statsim_redactor_ultimo',
+    _guardarUltimo() {
+        if (typeof localStorage === 'undefined' || !this._documento) return;
+        const d = this._documento;
+        const idx = new Map(d.fuentes.map((f, i) => [f, i]));
+        const ligera = f => ({ titulo: f.titulo, cita: f.cita, ref: f.ref, anio: f.anio, doi: f.doi,
+            autores: (f.autores || []).slice(0, 8), fuente: f.fuente });
+        const data = { t: Date.now(), problema: d.problema,
+            secciones: d.secciones.map(s => ({ titulo: s.titulo, capitulo: s.capitulo, texto: s.texto })),
+            fuentes: d.fuentes.map(ligera),
+            citadasIdx: (d.citadas || []).map(f => idx.get(f)).filter(n => n != null) };
+        try { localStorage.setItem(this._CLAVE_GUARDADO, JSON.stringify(data)); } catch (e) {}
+    },
+    _renderTexto(secciones) {
+        let capAct = '';
+        return secciones.map(s => {
+            let enc = '';
+            if ((s.capitulo || 'II') !== capAct) {
+                capAct = s.capitulo || 'II';
+                enc = (capAct === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO') + '\n\n';
+            }
+            return enc + s.titulo.toUpperCase() + '\n\n' + s.texto;
+        }).join('\n\n\n');
+    },
+    _recuperarUltimo() {
+        let d;
+        try { d = JSON.parse(localStorage.getItem(this._CLAVE_GUARDADO) || 'null'); } catch (e) { d = null; }
+        if (!d || !Array.isArray(d.secciones) || !d.secciones.length) return false;
+        const fuentes = d.fuentes || [];
+        this._documento = { secciones: d.secciones, fuentes,
+            citadas: (d.citadasIdx || []).map(i => fuentes[i]).filter(Boolean), problema: d.problema || '' };
+        const res = document.getElementById('redResultado');
+        if (res) { res.style.display = ''; res.textContent = this._renderTexto(d.secciones); }
+        const bW = document.getElementById('redDescargarWord'); if (bW) bW.style.display = '';
+        const bC = document.getElementById('redCopiar'); if (bC) bC.style.display = '';
+        const est = document.getElementById('redEstado');
+        const min = Math.max(1, Math.round((Date.now() - (d.t || Date.now())) / 60000));
+        if (est) est.textContent = `📂 Redacción recuperada (guardada hace ${min < 60 ? min + ' min' : Math.round(min / 60) + ' h'}): ` +
+            `${d.secciones.length} secciones, ${(this._documento.citadas || []).length} fuentes citadas. Puedes descargarla en Word.`;
+        const rec = document.getElementById('redRecuperar'); if (rec) rec.style.display = 'none';
+        return true;
     },
     // ¿Qué citas del TEXTO no existen en la MATRIZ? La pregunta académicamente
     // letal que nadie hace: el modelo puede inventar (Autor, año) con total fluidez.
@@ -864,6 +990,40 @@ const RedactorTeorico = {
             if (!conocida(primero, m[2])) sospechosas.add(m[1].trim() + ' (' + m[2] + ')');
         }
         return [...sospechosas];
+    },
+    // ============ F2.1: TRAZABILIDAD POR MARCADORES [F#] ============
+    // El modelo cita con marcadores locales a SU llamada ([F1..Fn] = su fsel);
+    // aquí se convierten en citas APA exactas. Esto da lo que la detección por
+    // strings jamás pudo: conteo EXACTO de citadas, marcadores inválidos =
+    // alucinación cazada en el acto, y el mapa afirmación→fuente para el futuro.
+    _reemplazarMarcadores(texto, fsel) {
+        let t = String(texto || '');
+        const usadas = new Set(); let invalidos = 0, grupos = 0;
+        const interior = f => String(f.cita || '').replace(/^\(|\)$/g, '').trim();
+        t = t.replace(/\]\s*\[(?=F?\s*\d)/g, ', ');
+        t = t.replace(/\[\s*F\s*\d+(?:\s*[,;]\s*F?\s*\d+)*\s*\]/g, (m) => {
+            grupos++;
+            const nums = (m.match(/\d+/g) || []).map(Number);
+            const partes = []; const vistos = new Set();
+            for (const n of nums) {
+                const f = fsel[n - 1];
+                if (!f) { invalidos++; continue; }
+                if (vistos.has(f)) continue;
+                vistos.add(f); usadas.add(f); partes.push(interior(f));
+            }
+            return partes.length ? '(' + partes.join('; ') + ')' : '';
+        });
+        t = t.replace(/\[\s*F[\d\s,;F]*\]?/g, () => { invalidos++; return ''; });
+        t = t.replace(/ {2,}/g, ' ').replace(/\s+([.,;:])/g, '$1');
+        return { texto: t, usadas, invalidos, grupos, sinMarcadores: grupos === 0 };
+    },
+    _procesarParte(tarea, textoCrudo) {
+        const r = this._reemplazarMarcadores(textoCrudo, tarea.fuentes || []);
+        if (r.sinMarcadores) {
+            const legado = this._fuentesCitadas(textoCrudo, tarea.fuentes || []);
+            return { texto: textoCrudo, fuentesUsadas: legado, invalidos: 0, sinMarcadores: true };
+        }
+        return { texto: r.texto, fuentesUsadas: [...r.usadas], invalidos: r.invalidos, sinMarcadores: false };
     },
     _fuentesCitadas(texto, fuentes) {
         const t = String(texto || '');
