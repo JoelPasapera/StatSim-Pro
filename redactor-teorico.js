@@ -548,10 +548,18 @@ const RedactorTeorico = {
     // el límite de peticiones/minuto del tier gratuito (no los tokens): 15 s por
     // canal es prudente. Si vieras errores de cuota (429), súbelo; el failover
     // del Worker entre claves también amortigua los picos. (0 en tests.)
-    _ENFRIAMIENTO_MS: 15000,
+    // Respiro entre llamadas del MISMO canal. Antes 15000: herencia de cuando los
+    // canales compartían claves a ciegas. Hoy keyHint da canal↔clave 1:1 en el
+    // Worker, así que una clave recibe ~1.5 llamadas/min (≪ 10 RPM del free tier):
+    // basta un margen corto anti-ráfaga para respuestas que vuelven en 1-2 s.
+    _ENFRIAMIENTO_MS: 4000,
     // Tope de secciones simultáneas (independiente del nº de claves): evita
     // que muchas llamadas pesadas golpeen Gemini a la vez. 4 = rápido sin ahogar.
-    _MAX_CANALES_REDACCION: 4,
+    // Techo de canales paralelos. El real es min(claves, tareas, este techo):
+    // con 10 claves → 10 en vuelo (17 partes ≈ 2 tandas ≈ 70-90 s en vez de 3 min).
+    // 12 deja margen si se añaden claves sin rozar el RL_IP=30/min del Worker.
+    _MAX_CANALES_REDACCION: 12,
+    _STAGGER_MS: 300, // escalonado de arranque entre canales (no golpear el Worker en el mismo ms)
     _normTexto(s) {
         return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     },
@@ -794,7 +802,7 @@ const RedactorTeorico = {
             // Escalonado de arranque: los canales usan claves DISTINTAS (keyHint=canal),
             // así que la simultaneidad no quema cuota por clave; este pequeño stagger
             // solo suaviza el pico global sobre el Worker (cortesía, no necesidad).
-            if (canal) await new Promise(r => setTimeout(r, Math.min(canal * 300, 1500)));
+            if (canal) await new Promise(r => setTimeout(r, Math.min(canal * this._STAGGER_MS, 1500)));
             let ultimo = 0;
             while (siguiente < tareas.length) {
                 const i = siguiente++;
