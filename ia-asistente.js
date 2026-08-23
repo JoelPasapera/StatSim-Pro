@@ -270,7 +270,8 @@ const IAAsistente = {
         } catch (e1) {
             if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
             try {
-                const texto = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_URL }, 1);
+                // Rescate con el modelo grande (elección del dueño): más músculo para prosa académica.
+                const texto = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b' }, 1);
                 this._rescatesGroq++;
                 return texto;
             } catch (e2) {
