@@ -107,7 +107,9 @@ const IAAsistente = {
             throw err;
         }
         if (data.truncado && typeof console !== 'undefined') console.warn('[IA] Respuesta posiblemente TRUNCADA (MAX_TOKENS): la sección pudo quedar a media frase.');
-        return (data.texto || '').trim();
+        // Centinela para el ensamblador: con 10 canales en paralelo un flag global
+        // tendría carreras; el marcador viaja pegado al propio texto.
+        return (data.texto || '').trim() + (data.truncado ? '\n[[TRUNCADO_MAX_TOKENS]]' : '');
     },
     // Mapa código→mensaje claro para el usuario/dueño. Cada uno dice QUÉ pasó
     // y, cuando aplica, QUÉ hacer.
