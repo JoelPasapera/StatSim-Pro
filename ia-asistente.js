@@ -99,7 +99,8 @@ const IAAsistente = {
         try { data = await r.json(); } catch (e) { const err = new Error('El asistente devolvió una respuesta no válida.'); err.codigo = 'RESPUESTA_ILEGIBLE'; err.reintentable = true; throw err; }
         if (!r.ok || data.error) {
             const codigo = data.codigo || (r.status === 429 ? 'CUOTA_GEMINI' : r.status === 413 ? 'CUERPO_EXCEDE' : 'HTTP_' + r.status);
-            const err = new Error(this._mensajePorCodigo(codigo, data));
+            const err = new Error(this._mensajePorCodigo(codigo, data)
+                + (data.pista ? ' · Gemini dijo: «' + String(data.pista).slice(0, 180) + '»' : ''));
             err.codigo = codigo;
             err.httpStatus = r.status;
             err.diag = data.diag;               // solo llega si el Worker está en TEST_MODE
