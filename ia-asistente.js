@@ -280,11 +280,9 @@ const IAAsistente = {
             + 'constructo EXACTO que cada uno mide según esos textos. Respondes ÚNICAMENTE en JSON válido.';
         const user = 'De los siguientes resúmenes, extrae los instrumentos de medición mencionados. '
             + 'Para cada uno: nombre (como aparece, p. ej. «Inventario de Bar-On»), sigla si la hay '
-            + '(p. ej. «EQ-i:YV»), el constructo que mide SEGÚN LOS TEXTOS (p. ej. «inteligencia '
-            + 'emocional») y la familia (autor del modelo teórico al que pertenece según los textos: '
-            + '«Bar-On», «Mayer y Salovey», «Goleman/Boyatzis», «Wechsler»…; "" si el texto no lo dice). '
-            + 'Solo instrumentos realmente nombrados; nada inventado.\n\n'
-            + 'Responde SOLO con: {"instrumentos": [{"nombre": "...", "sigla": "...", "constructo": "...", "familia": "..."}]}\n\n'
+            + '(p. ej. «EQ-i:YV») y el constructo que mide SEGÚN LOS TEXTOS (p. ej. «inteligencia '
+            + 'emocional»). Solo instrumentos realmente nombrados; nada inventado.\n\n'
+            + 'Responde SOLO con: {"instrumentos": [{"nombre": "...", "sigla": "...", "constructo": "..."}]}\n\n'
             + 'RESÚMENES:\n' + corpus;
         const texto = await this.chatConReintento(
             [{ role: 'system', content: system }, { role: 'user', content: user }],
@@ -298,8 +296,7 @@ const IAAsistente = {
         return items.filter(i => i && i.nombre && i.constructo).map(i => ({
             nombre: String(i.nombre).trim().slice(0, 80),
             sigla: String(i.sigla || '').trim().slice(0, 30),
-            constructo: String(i.constructo).trim().toLowerCase().slice(0, 60),
-            familia: String(i.familia || '').trim().slice(0, 50)
+            constructo: String(i.constructo).trim().toLowerCase().slice(0, 60)
         })).filter(i => {
             const k = (i.sigla || i.nombre).toLowerCase();
             if (vistos.has(k)) return false;
@@ -377,17 +374,7 @@ const IAAsistente = {
             + '(8) PROHIBIDO abrir la parte o cualquier párrafo con fórmulas genéricas tipo «la relación entre X e Y '
             + 'es un campo de estudio complejo» o variantes: entra directo al contenido específico del eje. '
             + '(9) PROHIBIDO reformular la misma conclusión más de una vez: si ya afirmaste una idea con sus '
-            + 'fuentes, no vuelvas a enunciarla con otras palabras en otro párrafo. '
-            + '(10) PROHIBIDO encadenar más de DOS enunciados seguidos que empiecen con cita narrativa '
-            + '(«Autor (año) halló…»): agrupa por IDEA con una frase-tema tuya y mete los estudios dentro '
-            + 'como respaldo — el tren «A halló… B encontró… C reportó… D observó…» delata falta de síntesis. '
-            + '(11) DEFINICIÓN OPERACIONAL ESTRICTA: cada VARIABLE se usa EXACTAMENTE con la definición dada '
-            + 'arriba; los constructos vecinos (CI, inteligencia general, funciones ejecutivas…) solo aparecen '
-            + 'para DIFERENCIARLOS explícitamente de la variable, jamás como sinónimos intercambiables. '
-            + '(12) ALINEACIÓN MODELO↔INSTRUMENTO: si adoptas un modelo teórico y anclas un instrumento, ambos '
-            + 'deben pertenecer a la MISMA familia según la FICHA; si la matriz mezcla familias, DECLARA la '
-            + 'elección y justifica la correspondencia — jamás afirmes que un instrumento «se ancla» en un '
-            + 'modelo de otra familia sin justificarlo.\n\n'
+            + 'fuentes, no vuelvas a enunciarla con otras palabras en otro párrafo.\n\n'
             + '== REGLAS DE SÍNTESIS CIENTÍFICA (LA DIFERENCIA ENTRE UNA MATRIZ Y UN MARCO TEÓRICO) ==\n'
             + '(A) ORGANIZA POR EJES TEMÁTICOS, JAMÁS POR AUTORES. El protagonista de cada párrafo es una '
             + 'IDEA (un hallazgo del conjunto de la evidencia, una convergencia, una controversia), nunca un '
