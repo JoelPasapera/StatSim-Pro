@@ -40,6 +40,7 @@ const RedactorTeorico = {
               <button id="redRedactarTodo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">📄 Redactar marco teórico completo</button>
               <button id="redProbar" class="btn btn-outline" style="padding:0.4rem 1rem;">✍️ Probar solo una sección</button>
               <button id="redDescargarWord" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar Word (.docx)</button>
+              <button id="redDescargarPDF" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar PDF</button>
               <button id="redCopiar" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">📋 Copiar texto</button>
             </div>
             <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
@@ -105,6 +106,8 @@ const RedactorTeorico = {
         if (btnTodo) btnTodo.addEventListener('click', () => this._onRedactarTodo());
         const btnWord = document.getElementById('redDescargarWord');
         if (btnWord) btnWord.addEventListener('click', () => this._onDescargarWord());
+        const btnPDF = document.getElementById('redDescargarPDF');
+        if (btnPDF) btnPDF.addEventListener('click', () => this._onDescargarPDF());
         const btnCopiar = document.getElementById('redCopiar');
         if (btnCopiar) btnCopiar.addEventListener('click', () => this._onCopiar());
         this.actualizarInfoFuentes();
@@ -828,6 +831,7 @@ const RedactorTeorico = {
         let ficha = [];
         try { ficha = await IAAsistente.extraerFichaInstrumentos(fuentes); } catch (e) { console.warn('[Redactor] sin ficha de instrumentos:', e && e.message); }
         this._fichaInstrumentos = ficha;
+        if (typeof IAAsistente !== 'undefined') IAAsistente._rescatesGroq = 0;
         const fichaNota = ficha.length
             ? ' FICHA DE INSTRUMENTOS (verificada de la matriz — nombra cada instrumento EXACTAMENTE con su constructo): '
               + ficha.map(i => `${i.nombre}${i.sigla ? ' (' + i.sigla + ')' : ''} → ${i.constructo}${i.familia ? ' [familia: ' + i.familia + ']' : ''}`).join('; ') + '.'
@@ -881,6 +885,7 @@ const RedactorTeorico = {
         const t = btn ? btn.textContent : '';
         if (btn) btn.disabled = true;
         if (btnWord) btnWord.style.display = 'none';
+        const btnPDFh = document.getElementById('redDescargarPDF'); if (btnPDFh) btnPDFh.style.display = 'none';
         if (res) { res.style.display = 'none'; res.textContent = ''; }
         const _t0 = performance.now();
         // Canales: los del Worker del REDACTOR (Gemini), con fallback al de Groq.
@@ -1065,11 +1070,13 @@ const RedactorTeorico = {
             + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
             + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} etiqueta(s) de instrumento corregida(s) según la ficha de la matriz` : '')
             + (costura.trenes > 0 ? ` · ⚠️ ${costura.trenes} tren(es) de citas A→B→C sin jerarquizar detectado(s)` : '')
+            + ((typeof IAAsistente !== 'undefined' && IAAsistente._rescatesGroq) ? ` · 🛟 ${IAAsistente._rescatesGroq} parte(s) rescatada(s) por Groq` : '')
             + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)${this._ultimoSaneo.corruptos ? `, ${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados` : ''}${this._ultimoSaneo.refsRec ? `, ${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s)` : ''}${(this._ultimoSaneo.posiblesDuplicados || []).length ? ` · ⚠️ ${this._ultimoSaneo.posiblesDuplicados.length} posible(s) duplicado(s) en la lista (misma obra en dos idiomas/fuentes) — detalles en consola` : ''}` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
         if (btnWord) btnWord.style.display = '';
+        const btnPDFs = document.getElementById('redDescargarPDF'); if (btnPDFs) btnPDFs.style.display = '';
         const btnCop = document.getElementById('redCopiar');
         if (btnCop) btnCop.style.display = '';
         if (btn) { btn.disabled = false; btn.textContent = t; }
@@ -1146,6 +1153,7 @@ const RedactorTeorico = {
         const res = document.getElementById('redResultado');
         if (res) { res.style.display = ''; res.textContent = this._renderTexto(d.secciones); }
         const bW = document.getElementById('redDescargarWord'); if (bW) bW.style.display = '';
+        const bP = document.getElementById('redDescargarPDF'); if (bP) bP.style.display = '';
         const bC = document.getElementById('redCopiar'); if (bC) bC.style.display = '';
         const est = document.getElementById('redEstado');
         const min = Math.max(1, Math.round((Date.now() - (d.t || Date.now())) / 60000));
@@ -1419,6 +1427,63 @@ const RedactorTeorico = {
         <h1 style="text-align:center; font-size:12pt; margin:24pt 0 12pt;">Referencias</h1>
         ${refs}
         </body></html>`;
+    },
+    // ============ PDF: mismo documento, jsPDF bajo demanda (patrón ExcelJS) ============
+    _cargarJsPDF() {
+        if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+        const urls = [
+            'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+            'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js'
+        ];
+        return urls.reduce((p, u) => p.catch(() => new Promise((res, rej) => {
+            const sc = document.createElement('script');
+            sc.src = u; sc.onload = res; sc.onerror = rej; document.head.appendChild(sc);
+        })), Promise.reject());
+    },
+    async _onDescargarPDF() {
+        if (!this._documento) return;
+        const estado = document.getElementById('redEstado');
+        try { await this._cargarJsPDF(); } catch (e) {
+            if (estado) estado.textContent = '❌ No se pudo cargar el generador de PDF (¿CDN bloqueado?). Usa Descargar Word.';
+            return;
+        }
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
+        const M = 72, ANCHO = 612 - M * 2, PIE = 720, LINEA = 23;
+        let y = M;
+        const salto = (n = LINEA) => { y += n; if (y > PIE) { pdf.addPage(); y = M; } };
+        const parrafo = (texto, francesa = false) => {
+            const lineas = pdf.splitTextToSize(String(texto), ANCHO - (francesa ? 36 : 0));
+            lineas.forEach((ln, i) => {
+                if (y > PIE) { pdf.addPage(); y = M; }
+                pdf.text(ln, M + (francesa && i > 0 ? 36 : 0), y);
+                y += LINEA;
+            });
+        };
+        pdf.setFontSize(12);
+        const d = this._documento;
+        let capAct = '';
+        for (const s of d.secciones) {
+            if ((s.capitulo || 'II') !== capAct) {
+                capAct = s.capitulo || 'II';
+                pdf.setFont('times', 'bold');
+                pdf.text(capAct === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO', 306, y, { align: 'center' });
+                salto(LINEA * 1.4);
+            }
+            pdf.setFont('times', 'bold');
+            pdf.text(String(s.titulo || '').toUpperCase(), 306, y, { align: 'center' });
+            salto(LINEA * 1.2);
+            pdf.setFont('times', 'normal');
+            for (const par of String(s.texto || '').split(/\n{2,}/)) { parrafo(par.trim()); salto(6); }
+            salto(10);
+        }
+        pdf.addPage(); y = M;
+        pdf.setFont('times', 'bold');
+        pdf.text('REFERENCIAS', 306, y, { align: 'center' }); salto(LINEA * 1.3);
+        pdf.setFont('times', 'normal');
+        const refs = d.citadas.slice().sort((a, b) => String(a.ref).localeCompare(String(b.ref), 'es'));
+        for (const f of refs) { parrafo(String(f.ref), true); salto(4); }
+        pdf.save('marco_teorico_APA.pdf');
     },
     _onDescargarWord() {
         if (!this._documento) return;
