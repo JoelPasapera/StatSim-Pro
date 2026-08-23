@@ -178,44 +178,6 @@ const RedactorTeorico = {
     // ========== VALIDADOR-REPARADOR DE CITAS (puerta única) ==========
     // La cita es lo único que el lector ve: si huele a revista, correo o cifra,
     // se reconstruye (autores → referencia → título) antes de dejarla citar.
-    // ============ REFERENCIAS: la lista final también se sanea ============
-    // La cita estaba protegida; la LISTA imprimía f.ref crudo de la matriz:
-    // revista fundida en los autores, «[PDF]», años-como-iniciales, un segundo
-    // bloque de autores tras el año… Un jurado metodológico lo caza al vuelo.
-    _esRefSucia(ref) {
-        const r = String(ref || '');
-        if (!r.trim()) return true;
-        if (/\[(PDF|HTML|B|BOOK|CITATION)\]/i.test(r)) return true;
-        if (/[\p{L}][-–]\s+[A-ZÀ-Ž]/u.test(r)) return true;                    // «Ziegler- High Ability…»
-        if (/\by\s+\d{4}\s*\.?\s*\(/.test(r)) return true;                  // «…S. y 2025.(2025)»
-        if (/@/.test(r)) return true;
-        if (/\((?:19|20)\d{2}[a-z]?\)\.\s*[A-ZÀ-Ž][\p{L}’'-]+(?:\s+[A-ZÀ-Ž][\p{L}’'-]+)?,\s*[A-ZÀ-Ž]\./u.test(r)) return true; // 2º bloque de autores tras el año
-        if (/(https?:\/\/\S+).*https?:\/\//.test(r)) return true;             // URLs dobles
-        return false;
-    },
-    _tituloOracion(s) {
-        const x = String(s || '').trim();
-        if (!x || /[a-zà-ÿ]/.test(x)) return x;
-        return x.toLowerCase().replace(/(^|[:.?!]\s+)(\p{L})/gu, (m, p, c) => p + c.toUpperCase());
-    },
-    _refReconstruir(f) {
-        const orig = String(f.ref || '');
-        const anio = f.anio || 's. f.';
-        let head = '';
-        const iAnio = orig.search(/\(\s*(?:19|20)\d{2}[a-z]?\s*\)|\(\s*s\.\s*f\.\s*\)/);
-        if (iAnio > 0) {
-            const cand = orig.slice(0, iAnio).trim().replace(/[.,;\s]+$/, '');
-            if (cand && !this._esRefSucia(cand + ' (2000). x.') && !/\d/.test(cand) && cand.length <= 220) head = cand + ' ';
-        }
-        if (!head && Array.isArray(f.autores) && f.autores.length)
-            head = f.autores.slice(0, 7).join(', ').replace(/, ([^,]+)$/, ' y $1') + ' ';
-        const titulo = this._tituloOracion(f.titulo || '').replace(/[.\s]+$/, '');
-        const doi = String(f.doi || '').trim();
-        const urlM = !doi && (orig.match(/https?:\/\/\S+/) || [])[0];
-        const cola = doi ? ` https://doi.org/${doi.replace(/^https?:\/\/(dx\.)?doi\.org\//i, '')}` : (urlM ? ' ' + urlM.replace(/[).,;]+$/, '') : '');
-        const cuerpo = head ? `${head}(${anio}). ${titulo}.${cola}` : `${titulo}. (${anio}).${cola}`;
-        return cuerpo.replace(/\s{2,}/g, ' ').trim();
-    },
     _esCitaSucia(cita) {
         const inner = String(cita || '').replace(/^\(|\)$/g, '').trim();
         if (!inner) return true;
@@ -250,7 +212,7 @@ const RedactorTeorico = {
     },
     _sanearFuentes(lista) {
         if (!Array.isArray(lista)) return lista;
-        let reparadas = 0, irreparables = 0, corruptos = 0, refsRec = 0;
+        let reparadas = 0, irreparables = 0, corruptos = 0;
         for (const f of lista) {
             if (!f || f._citaOK) continue;
             // Texto envenenado del scraping (surrogates rotos, controles) → limpiar TODO
@@ -273,8 +235,6 @@ const RedactorTeorico = {
                 if (nueva && !this._esCitaSucia(nueva)) { f.cita = nueva; reparadas++; if (f.doi) f._autoresPendientes = true; }
                 else irreparables++;
             }
-            // La REFERENCIA de la lista final: si huele rota, se reconstruye limpia
-            if (this._esRefSucia(f.ref)) { f.ref = this._refReconstruir(f); refsRec++; }
             f._citaOK = true;
         }
         // Filas gemelas por DOI + pseudo-registros que NUNCA deben competir por
@@ -288,30 +248,10 @@ const RedactorTeorico = {
             if (doisVistos.has(d)) { dupDoi++; return false; }
             doisVistos.add(d); return true;
         });
-        // Duplicados-traducción (misma obra en dos idiomas/fuentes, DOIs hermanos):
-        // se REPORTAN, no se borran — decidir cuál va es del tesista.
-        const porAutorAnio = new Map();
-        for (const f of filtrada) {
-            const ap = ((f.autores && f.autores[0]) || String(f.cita || '').replace(/^\(/, '').split(/[,y]/)[0] || '').trim().toLowerCase();
-            if (!ap || !f.anio) continue;
-            const k = ap + '|' + f.anio;
-            if (!porAutorAnio.has(k)) porAutorAnio.set(k, []);
-            porAutorAnio.get(k).push(f);
-        }
-        const posiblesDuplicados = [];
-        for (const grupo of porAutorAnio.values()) {
-            for (let a = 0; a < grupo.length; a++) for (let b = a + 1; b < grupo.length; b++) {
-                const dA = String(grupo[a].doi || '').toLowerCase(), dB = String(grupo[b].doi || '').toLowerCase();
-                const stem = d => d.replace(/[0-9a-z]$/, '');
-                const tj = (x, y) => { const A = new Set(this._normTexto(x).split(/\s+/).filter(w => w.length > 3)); const B = new Set(this._normTexto(y).split(/\s+/).filter(w => w.length > 3)); let i = 0; for (const w of A) if (B.has(w)) i++; return i / (Math.min(A.size, B.size) || 1); };
-                if ((dA && dB && dA !== dB && stem(dA) === stem(dB)) || tj(grupo[a].titulo, grupo[b].titulo) > 0.5)
-                    posiblesDuplicados.push(`${grupo[a].cita} ↔ ${grupo[b].cita}`);
-            }
-        }
         if ((dupDoi || excluidas) && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
-        if (reparadas || irreparables || dupDoi || excluidas || corruptos || refsRec || posiblesDuplicados.length) {
-            this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas, corruptos, refsRec, posiblesDuplicados };
-            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : '') + (corruptos ? `, ${corruptos} campo(s) con caracteres corruptos limpiados` : '') + (refsRec ? `, ${refsRec} referencia(s) APA reconstruida(s)` : '') + (posiblesDuplicados.length ? `; ⚠️ posibles duplicados: ${posiblesDuplicados.join(' · ')}` : ''));
+        if (reparadas || irreparables || dupDoi || excluidas || corruptos) {
+            this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas, corruptos };
+            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : '') + (corruptos ? `, ${corruptos} campo(s) con caracteres corruptos limpiados` : ''));
         }
         return filtrada;
     },
@@ -692,9 +632,7 @@ const RedactorTeorico = {
                 + 'estudio por estudio): agrupa hallazgos convergentes y señala discrepancias y vacíos. '
                 + 'Responde implícitamente, en este orden: dónde COINCIDEN los estudios, dónde DISCREPAN, y '
                 + 'POR QUÉ podrían discrepar (medidas distintas, poblaciones, diseños); el lector debe llegar '
-                + 'al final sintiendo que la investigación propuesta es la consecuencia lógica del recorrido. '
-                + 'Si la evidencia es heterogénea (positiva, negativa y nula), conviértelo en argumento de defensa: '
-                + 'la falta de homogeneidad JUSTIFICA contrastar empíricamente la relación en la población específica.' });
+                + 'al final sintiendo que la investigación propuesta es la consecuencia lógica del recorrido.' });
         plan.push({ titulo: 'Antecedentes', capitulo: 'II', afinidad: '', partes: 'auto',
             instrucciones: 'Redacta los antecedentes como una SÍNTESIS POR EJES TEMÁTICOS, no como un desfile '
                 + 'de estudios. Agrupa las fuentes según lo que sus hallazgos evidencian (relaciones halladas, '
@@ -726,9 +664,7 @@ const RedactorTeorico = {
                     + `.` });
         }
         plan.push({ titulo: 'Definición conceptual de las variables', capitulo: 'II', afinidad: variables.map(v => v.nombre).join(' '), partes: 1,
-            instrucciones: 'CIERRA el marco explicitando la CADENA completa por variable: definición → modelo '
-                + 'adoptado → dimensiones → instrumento (de la FICHA, con su familia) → conexión explícita con '
-                + 'el objetivo y las hipótesis. Para CADA variable de estudio, presenta su definición conceptual formal con la cita '
+            instrucciones: 'Para CADA variable de estudio, presenta su definición conceptual formal con la cita '
                 + 'del autor correspondiente (una definición principal y, si las fuentes lo permiten, una alternativa). '
                 + 'La definición final de cada variable debe corresponder EXACTAMENTE al modelo o aproximación '
                 + 'adoptado en las bases teóricas (coherencia de delimitación conceptual).' });
@@ -830,7 +766,7 @@ const RedactorTeorico = {
         this._fichaInstrumentos = ficha;
         const fichaNota = ficha.length
             ? ' FICHA DE INSTRUMENTOS (verificada de la matriz — nombra cada instrumento EXACTAMENTE con su constructo): '
-              + ficha.map(i => `${i.nombre}${i.sigla ? ' (' + i.sigla + ')' : ''} → ${i.constructo}${i.familia ? ' [familia: ' + i.familia + ']' : ''}`).join('; ') + '.'
+              + ficha.map(i => `${i.nombre}${i.sigla ? ' (' + i.sigla + ')' : ''} → ${i.constructo}`).join('; ') + '.'
             : '';
         // Techo por llamada: lo define el asistente (configurable en un lugar).
         const MAX = (IAAsistente.MAX_FUENTES_SECCION && IAAsistente.MAX_FUENTES_SECCION > 0)
@@ -998,7 +934,7 @@ const RedactorTeorico = {
         }
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
-        const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0, corrConocidas: 0, trenes: 0 };
+        const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0, corrConocidas: 0 };
         for (const sec of plan) {
             const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
             const partes = delSec.map(r => this._coserParte(this._corregirInstrumentos(this._limpiarTexto(r.texto), costura), costura));
@@ -1064,8 +1000,7 @@ const RedactorTeorico = {
             + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
             + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
             + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} etiqueta(s) de instrumento corregida(s) según la ficha de la matriz` : '')
-            + (costura.trenes > 0 ? ` · ⚠️ ${costura.trenes} tren(es) de citas A→B→C sin jerarquizar detectado(s)` : '')
-            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)${this._ultimoSaneo.corruptos ? `, ${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados` : ''}${this._ultimoSaneo.refsRec ? `, ${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s)` : ''}${(this._ultimoSaneo.posiblesDuplicados || []).length ? ` · ⚠️ ${this._ultimoSaneo.posiblesDuplicados.length} posible(s) duplicado(s) en la lista (misma obra en dos idiomas/fuentes) — detalles en consola` : ''}` : '')
+            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)${this._ultimoSaneo.corruptos ? `, ${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados` : ''}` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
@@ -1264,10 +1199,6 @@ const RedactorTeorico = {
     },
     _coserFrases(texto, ctx, esApertura) {
         let frases = this._frases(texto);
-        // Trenes «Autor (año)… Autor (año)…»: ≥4 seguidas = falta de jerarquización
-        const esNarrativa = fr => /^(?:[A-ZÀ-Ž][\p{L}’'-]+(?:\s+(?:y\s+[A-ZÀ-Ž][\p{L}’'-]+|et\s+al\.))?)\s*\((?:19|20)\d{2}[a-z]?\)/u.test(fr);
-        let seguidas = 0;
-        for (const fr of frases) { if (esNarrativa(fr)) { seguidas++; if (seguidas === 4) ctx.trenes++; } else seguidas = 0; }
         if (!frases.length) return texto;
         // 1) Abridores-molde: la misma huella de 5 palabras abriendo varias partes
         const h = esApertura ? this._huellaApertura(frases[0]) : ''; // el molde solo abre PARTES
