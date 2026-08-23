@@ -155,7 +155,9 @@ const RedactorTeorico = {
     _sanearAutor(a) {
         let s = String(a || '').trim();
         if (!s) return '';
+        s = s.replace(/^[\s\-–—]+|[\s\-–—]+$/g, '');      // guiones colgantes («Orgambídez Ramos -»)
         if (/[@]|https?:\/\//i.test(s)) return '';        // correos y URLs jamás son autores
+        if (/^[\w.-]+\.(com|org|net|edu|gov|io|es|mx|pe|co|cl|ar|br)$/i.test(s)) return ''; // «gmail.com» no es un autor
         // ' - ' con espacios NUNCA forma parte de un apellido real (los compuestos
         // van sin espacios: García-Álvarez). Se corta SIEMPRE y se queda lo de la izquierda.
         s = s.split(/\s+[-–—]\s+/)[0].trim();
@@ -181,6 +183,9 @@ const RedactorTeorico = {
         if (!inner) return true;
         const sinAnio = inner.replace(/,\s*(?:19|20)\d{2}[a-z]?$/, '').replace(/,\s*s\.\s*f\.$/, '');
         if (/[@]|https?:|\s[-–—]\s|\d/.test(sinAnio)) return true;
+        if (/[-–—]$/.test(sinAnio.trim())) return true;                 // guion colgante antes del año
+        if (/\b[\w-]+\.(com|org|net|edu|gov|io)\b/i.test(sinAnio)) return true; // dominios promovidos a autor
+        if (/\[(HTML|PDF|B|BOOK|CITATION)\]|supplemental material/i.test(inner)) return true; // basura de scraping
         return sinAnio.split(/\s+y\s+|;\s*|,\s*|\s+et al\.?/).some(tok =>
             tok && (this._PALABRAS_REVISTA.test(tok.trim()) || this._FRASES_REVISTA.test(tok.trim())));
     },
@@ -200,6 +205,8 @@ const RedactorTeorico = {
         let reparadas = 0, irreparables = 0;
         for (const f of lista) {
             if (!f || f._citaOK) continue;
+            // Prefijos de scraping de Scholar en el título («[HTML] Interventions…»)
+            if (f.titulo) f.titulo = String(f.titulo).replace(/^\s*\[(HTML|PDF|B|BOOK|CITATION|CITAS)\]\s*/i, '').trim();
             if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._sanearAutor(a)).filter(Boolean);
             // Año perdido pero presente en la referencia → rescatarlo (mata los «s. f.» falsos)
             if (!f.anio) { const m = String(f.ref || '').match(/\((?:19|20)\d{2}[a-z]?\)/); if (m) f.anio = m[0].replace(/[()]/g, ''); }
@@ -211,18 +218,21 @@ const RedactorTeorico = {
             }
             f._citaOK = true;
         }
-        // Filas gemelas por DOI: el mismo artículo dos veces parte al autor en dos citas distintas
-        const doisVistos = new Set(); let dupDoi = 0;
+        // Filas gemelas por DOI + pseudo-registros que NUNCA deben competir por
+        // relevancia: material suplementario, erratas, portadas… (aguas arriba).
+        const BASURA = /^(supplemental material|supplementary material|correction to|corrigendum|erratum|retraction|retracted|editorial board|table of contents|front matter|issue information|copyright page)/i;
+        const doisVistos = new Set(); let dupDoi = 0, excluidas = 0;
         const filtrada = lista.filter(f => {
+            if (BASURA.test(String(f && f.titulo || '')) || BASURA.test(String(f && f.ref || ''))) { excluidas++; return false; }
             const d = String(f && f.doi || '').trim().toLowerCase();
             if (!d) return true;
             if (doisVistos.has(d)) { dupDoi++; return false; }
             doisVistos.add(d); return true;
         });
-        if (dupDoi && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
-        if (reparadas || irreparables || dupDoi) {
-            this._ultimoSaneo = { reparadas, irreparables, dupDoi };
-            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : ''));
+        if ((dupDoi || excluidas) && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
+        if (reparadas || irreparables || dupDoi || excluidas) {
+            this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas };
+            if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : ''));
         }
         return filtrada;
     },
@@ -818,9 +828,24 @@ const RedactorTeorico = {
                         titulo: tarea.titulo, instrucciones: tarea.instrucciones,
                         problema, variablesTexto, fuentes: tarea.fuentes, keyHint: canal
                     });
-                    const proc = this._procesarParte(tarea, bruto);
-                    resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
-                        fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
+                    // Centinela de truncado (MAX_TOKENS) inyectado por el cliente IA:
+                    // sin él, una sección cortada a media frase pasaba en silencio.
+                    const truncada = /\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/.test(bruto);
+                    const brutoLimpio = truncada ? bruto.replace(/\s*\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/, '') : bruto;
+                    if (truncada) {
+                        resultados[i] = { seccion: tarea.seccion, texto: '[No se pudo generar esta parte: la respuesta llegó truncada por límite de tokens.]', reintentable: true, codigo: 'TRUNCADA' };
+                    } else {
+                        const proc = this._procesarParte(tarea, brutoLimpio);
+                        const varsFaltan = /Definición conceptual/i.test(tarea.seccion)
+                            ? this._leerVariables().map(v => v.nombre).filter(n => n && !this._normTexto(proc.texto).includes(this._normTexto(n)))
+                            : [];
+                        if (varsFaltan.length) {
+                            resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: la definición no cubrió «${varsFaltan[0]}».]`, reintentable: true, codigo: 'INCOMPLETA' };
+                        } else {
+                            resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
+                                fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
+                        }
+                    }
                 } catch (e) {
                     conError++;
                     resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]`,
@@ -863,7 +888,9 @@ const RedactorTeorico = {
                             titulo: tarea.titulo, instrucciones: tarea.instrucciones,
                             problema, variablesTexto, fuentes: tarea.fuentes, keyHint: canal
                         });
-                        const proc = this._procesarParte(tarea, bruto);
+                        // En el rescate se acepta el texto aunque venga truncado: mejor algo que nada.
+                        const brutoLimpio = bruto.replace(/\s*\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/, '');
+                        const proc = this._procesarParte(tarea, brutoLimpio);
                         resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
                             fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
                         conError--;
@@ -878,10 +905,10 @@ const RedactorTeorico = {
         }
         // Unir las partes de cada sección en el ORDEN del plan.
         const secciones = [];
-        const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0 };
+        const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0, corrConocidas: 0 };
         for (const sec of plan) {
             const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
-            const partes = delSec.map(r => this._coserParte(this._limpiarTexto(r.texto), costura));
+            const partes = delSec.map(r => this._coserParte(this._corregirConocidos(this._limpiarTexto(r.texto), costura), costura));
             const usadasSec = new Set(); delSec.forEach(r => (r.fuentesUsadas || []).forEach(f => usadasSec.add(f)));
             secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n'),
                 fuentesUsadas: [...usadasSec] });
@@ -942,6 +969,8 @@ const RedactorTeorico = {
             + (marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} marcador(es) inválido(s) eliminados (alucinación de fuente cazada)` : '')
             + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
             + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
+            + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} lapsus de instrumento corregido(s)` : '')
+            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
             + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
@@ -1096,14 +1125,40 @@ const RedactorTeorico = {
         const out = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ž¿¡«“(])/).map(s => s.replace(/\u0001/g, '.'));
         return out;
     },
+    // Lapsus conocidos del modelo que un jurado caza al vuelo: se corrigen en frío.
+    _CORRECCIONES_CONOCIDAS: [
+        [/inventario de coeficiente intelectual (de )?Bar-?On/gi, 'Inventario de Inteligencia Emocional de Bar-On'],
+        [/test de coeficiente intelectual (de )?Bar-?On/gi, 'Inventario de Inteligencia Emocional de Bar-On'],
+    ],
+    _corregirConocidos(texto, ctx) {
+        let t = String(texto || '');
+        for (const [re, sub] of this._CORRECCIONES_CONOCIDAS) {
+            t = t.replace(re, () => { ctx.corrConocidas++; return sub; });
+        }
+        return t;
+    },
     _huellaApertura(frase) {
         return this._normTexto(frase).split(/\s+/).slice(0, 5).join(' ');
     },
     _coserParte(texto, ctx) {
+        // REGRESIÓN CAZADA (modelo 5): coser por frases y re-unir con espacios
+        // aplanaba los párrafos en un muro de texto. Los párrafos son sagrados:
+        // se cose DENTRO de cada uno y se re-unen con \n\n intactos.
+        const parrafos = String(texto || '').split(/\r?\n\s*\r?\n/);
+        const out = [];
+        for (let i = 0; i < parrafos.length; i++) {
+            const p = parrafos[i];
+            if (!p.trim()) continue;
+            const c = this._coserFrases(p, ctx, i === 0 && out.length === 0);
+            if (c.trim()) out.push(c);
+        }
+        return out.length ? out.join('\n\n') : texto; // jamás vaciar una parte entera
+    },
+    _coserFrases(texto, ctx, esApertura) {
         let frases = this._frases(texto);
         if (!frases.length) return texto;
         // 1) Abridores-molde: la misma huella de 5 palabras abriendo varias partes
-        const h = this._huellaApertura(frases[0]);
+        const h = esApertura ? this._huellaApertura(frases[0]) : ''; // el molde solo abre PARTES
         if (h && h.split(' ').length >= 4) {
             const visto = ctx.aperturas.get(h) || 0;
             ctx.aperturas.set(h, visto + 1);
