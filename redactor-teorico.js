@@ -739,6 +739,16 @@ const RedactorTeorico = {
         // plano; una copia congela lo que esta redacción usará, sin carreras.
         fuentes = fuentes.map(f => ({ ...f, autores: (f.autores || []).slice(), fuentesAPI: (f.fuentesAPI || []).slice() }));
         const avisoReparando = this._reparandoDOI ? ' (la reparación de resúmenes por DOI seguía en curso: se redactó con la instantánea del momento).' : '';
+        // FICHA DE INSTRUMENTOS: la verdad extraída de la matriz, para inyectar
+        // y verificar. Si la extracción falla, el sistema degrada con gracia.
+        if (estado) estado.textContent = '🧭 Leyendo la matriz: ficha de instrumentos…';
+        let ficha = [];
+        try { ficha = await IAAsistente.extraerFichaInstrumentos(fuentes); } catch (e) { console.warn('[Redactor] sin ficha de instrumentos:', e && e.message); }
+        this._fichaInstrumentos = ficha;
+        const fichaNota = ficha.length
+            ? ' FICHA DE INSTRUMENTOS (verificada de la matriz — nombra cada instrumento EXACTAMENTE con su constructo): '
+              + ficha.map(i => `${i.nombre}${i.sigla ? ' (' + i.sigla + ')' : ''} → ${i.constructo}`).join('; ') + '.'
+            : '';
         // Techo por llamada: lo define el asistente (configurable en un lugar).
         const MAX = (IAAsistente.MAX_FUENTES_SECCION && IAAsistente.MAX_FUENTES_SECCION > 0)
             ? IAAsistente.MAX_FUENTES_SECCION : 32;
@@ -775,7 +785,7 @@ const RedactorTeorico = {
                 tareas.push({
                     seccion: sec.titulo,
                     titulo: nPartes > 1 ? `${sec.titulo} (parte ${p + 1} de ${nPartes})` : sec.titulo,
-                    instrucciones: sec.instrucciones + notaOMS + (nPartes > 1
+                    instrucciones: sec.instrucciones + notaOMS + fichaNota + (nPartes > 1
                         ? ` Esta es la PARTE ${p + 1} de ${nPartes}: construye los ejes únicamente con las fuentes que se te dan aquí (otras partes cubren las demás); no escribas introducción ni cierre generales de la sección.`
                           + (p > 0 ? ' APERTURA DE CONTINUACIÓN: el lector viene de las partes anteriores — PROHIBIDO reintroducir el tema, definir de nuevo los conceptos o abrir con «La relación entre X e Y…»: entra DIRECTO al primer eje o estudio, como si continuaras el párrafo anterior.' : '')
                           + (p < nPartes - 1 ? ' PROHIBIDO enunciar vacíos de evidencia en esta parte: se reservan para el cierre de la sección.'
@@ -908,7 +918,7 @@ const RedactorTeorico = {
         const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0, corrConocidas: 0 };
         for (const sec of plan) {
             const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
-            const partes = delSec.map(r => this._coserParte(this._corregirConocidos(this._limpiarTexto(r.texto), costura), costura));
+            const partes = delSec.map(r => this._coserParte(this._corregirInstrumentos(this._limpiarTexto(r.texto), costura), costura));
             const usadasSec = new Set(); delSec.forEach(r => (r.fuentesUsadas || []).forEach(f => usadasSec.add(f)));
             secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n'),
                 fuentesUsadas: [...usadasSec] });
@@ -929,7 +939,8 @@ const RedactorTeorico = {
         this._documento = { secciones, fuentes, citadas, problema,
             meta: { plantilla: 'P2-marcadores', fecha: new Date().toISOString(), canales,
                 marcadores: { invalidos: marcInvalidosTotal, partesSinMarcadores: partesSinMarc, partesConMarcadores: partesConMarc },
-                costura: { aperturas: costura.quitAperturas, comodin: costura.quitComodin } } };
+                costura: { aperturas: costura.quitAperturas, comodin: costura.quitComodin },
+                fichaInstrumentos: ficha } };
         const min = ((performance.now() - _t0) / 60000).toFixed(1);
         const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
@@ -969,7 +980,7 @@ const RedactorTeorico = {
             + (marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} marcador(es) inválido(s) eliminados (alucinación de fuente cazada)` : '')
             + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
             + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
-            + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} lapsus de instrumento corregido(s)` : '')
+            + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} etiqueta(s) de instrumento corregida(s) según la ficha de la matriz` : '')
             + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)` : '')
             + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
             + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
@@ -1125,15 +1136,28 @@ const RedactorTeorico = {
         const out = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ž¿¡«“(])/).map(s => s.replace(/\u0001/g, '.'));
         return out;
     },
-    // Lapsus conocidos del modelo que un jurado caza al vuelo: se corrigen en frío.
-    _CORRECCIONES_CONOCIDAS: [
-        [/inventario de coeficiente intelectual (de )?Bar-?On/gi, 'Inventario de Inteligencia Emocional de Bar-On'],
-        [/test de coeficiente intelectual (de )?Bar-?On/gi, 'Inventario de Inteligencia Emocional de Bar-On'],
-    ],
-    _corregirConocidos(texto, ctx) {
+    // ===== VERIFICADOR DE INSTRUMENTOS (dinámico, sin listas a mano) =====
+    // La ficha nace de la matriz en cada redacción. La contradicción que se
+    // corrige es PRECISA: la etiqueta «inventario/test/escala de <constructoB>»
+    // pegada a un instrumento cuyo constructo real (según la ficha) es A. Las
+    // frases comparativas legítimas («se comparó el EQ-i con medidas de CI»)
+    // no llevan esa etiqueta y quedan intactas.
+    _escRe(s) { return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); },
+    _corregirInstrumentos(texto, ctx) {
         let t = String(texto || '');
-        for (const [re, sub] of this._CORRECCIONES_CONOCIDAS) {
-            t = t.replace(re, () => { ctx.corrConocidas++; return sub; });
+        const ficha = this._fichaInstrumentos || [];
+        if (!ficha.length) return t;
+        for (const ins of ficha) {
+            if (!ins.constructo) continue;
+            // Aliases: el texto suele decir «Bar-On» a secas, no «Inventario de Bar-On».
+            const base = String(ins.nombre || '').replace(/^(inventario|test|escala|cuestionario)\s+de\s+/i, '').trim();
+            const aliases = [...new Set([ins.nombre, base, ins.sigla].filter(x => x && x.length >= 3))].map(x => this._escRe(x));
+            if (!aliases.length) continue;
+            // Contradicción precisa: etiqueta «inventario/test/escala/cuestionario de <X≠constructo real>»
+            // pegada al instrumento — X puede ser CUALQUIER cosa (lookahead negado sobre el correcto).
+            const re = new RegExp(
+                `\\b(inventario|test|escala|cuestionario)(\\s+de)\\s+(?!${this._escRe(ins.constructo)}\\b)([a-záéíóúüñ][a-záéíóúüñ\\s-]{2,40}?)((?:\\s+de)?\\s+(?:${aliases.join('|')}))`, 'gi');
+            t = t.replace(re, (m, g1, g2, gX, g4) => { ctx.corrConocidas++; return `${g1}${g2} ${ins.constructo}${g4}`; });
         }
         return t;
     },
