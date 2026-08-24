@@ -792,6 +792,8 @@ const RedactorTeorico = {
         ok('marcadores: simple+grupo+inválido', r.texto.includes('(Uno, 2020)') && r.texto.includes('(Dos y Tres, 2021; Cuatro et al., 2022)') && !r.texto.includes('[F') && r.invalidos === 1 && r.usadas.size === 3);
         r = this._reemplazarMarcadores('Consecutivos [F1] [F2].', fs);
         ok('marcadores: consecutivos se funden', r.texto.includes('(Uno, 2020; Dos y Tres, 2021)'));
+        r = this._reemplazarMarcadores('Convergen (F2, F3) aquí.', fs);
+        ok('DIALECTO paréntesis (F2, F3) → cita APA', r.texto === 'Convergen (Dos y Tres, 2021; Cuatro et al., 2022) aquí.');
         ok('cita compuesta: de la Cruz', this._citaDesdeRef('de la Cruz, J. (2020). Título.', '').startsWith('(de la Cruz'));
         ok('cita compuesta: van Dijk', this._citaDesdeRef('van Dijk, K. (2019). Obra.', '').startsWith('(van Dijk'));
         ok('saneador: revista pegada', this._sanearAutor('Tituaña - Revista Científica RES NON VERBA') === 'Tituaña');
@@ -1032,7 +1034,7 @@ const RedactorTeorico = {
             marcInvalidosTotal += r.marcInvalidos || 0;
             if (r.sinMarcadores === true) partesSinMarc++; else if (r.fuentesUsadas) partesConMarc++;
         });
-        const residuales = (textoReal.match(/\[F\s*\d/g) || []).length;
+        const residuales = (textoReal.match(/[\[(]F\s*\d/g) || []).length;
         const citadas = partesConMarc > 0 ? [...usadasGlobal] : this._fuentesCitadas(textoReal, fuentes);
         const sospechosas = this._citasSospechosas(textoReal, fuentes);
         this._documento = { secciones, fuentes, citadas, problema,
@@ -1338,8 +1340,12 @@ const RedactorTeorico = {
         let t = String(texto || '');
         const usadas = new Set(); let invalidos = 0, grupos = 0;
         const interior = f => String(f.cita || '').replace(/^\(|\)$/g, '').trim();
+        // DIALECTOS de marcador (el rescate Groq escribe «(F16, F19, F5)» con
+        // paréntesis y hasta con «y»): se normalizan a corchetes ANTES de convertir.
+        // Una cita APA real jamás matchea (lleva letras y año).
+        t = t.replace(/\(\s*(F\s*\d+(?:\s*(?:[,;]|y)\s*F?\s*\d+)*)\s*\)/g, '[$1]');
         t = t.replace(/\]\s*\[(?=F?\s*\d)/g, ', ');
-        t = t.replace(/\[\s*F\s*\d+(?:\s*[,;]\s*F?\s*\d+)*\s*\]/g, (m) => {
+        t = t.replace(/\[\s*F\s*\d+(?:\s*(?:[,;]|y)\s*F?\s*\d+)*\s*\]/g, (m) => {
             grupos++;
             const nums = (m.match(/\d+/g) || []).map(Number);
             const partes = []; const vistos = new Set();
@@ -1370,7 +1376,8 @@ const RedactorTeorico = {
             }
             return partes.length ? '(' + partes.join('; ') + ')' : '';
         });
-        t = t.replace(/\[\s*F[\d\s,;F]*\]?/g, () => { invalidos++; return ''; });
+        t = t.replace(/\[\s*F[\d\s,;yF]*\]?/g, () => { invalidos++; return ''; });
+        t = t.replace(/\(\s*F\d[\d\s,;yF]*\)?/g, () => { invalidos++; return ''; });
         // «Furnham y Robinson (2022) (Furnham y Robinson, 2022)»: narrativa + marcador
         // adyacente del mismo estudio → el paréntesis sobra.
         t = t.replace(/([\p{Lu}][\p{L}’' .-]{1,50}?(?:\s+y\s+[\p{Lu}][\p{L}’' .-]{1,40}|\s+et\s+al\.)?)\s*\(((?:19|20)\d{2}[a-z]?)\)\s*\(\s*\1,\s*\2\s*\)/gu, '$1 ($2)');
