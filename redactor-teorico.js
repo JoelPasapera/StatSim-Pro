@@ -942,7 +942,7 @@ const RedactorTeorico = {
                         if (varsFaltan.length) {
                             resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: la definición no cubrió «${varsFaltan[0]}».]`, reintentable: true, codigo: 'INCOMPLETA' };
                         } else {
-                            resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
+                            resultados[i] = { seccion: tarea.seccion, proveedor: (typeof IAAsistente !== 'undefined' && IAAsistente._ultimoProveedor) || 'gemini', texto: proc.texto,
                                 fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
                         }
                     }
@@ -998,7 +998,7 @@ const RedactorTeorico = {
                         // En el rescate se acepta el texto aunque venga truncado: mejor algo que nada.
                         const brutoLimpio = bruto.replace(/\s*\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/, '');
                         const proc = this._procesarParte(tarea, brutoLimpio);
-                        resultados[i] = { seccion: tarea.seccion, texto: proc.texto,
+                        resultados[i] = { seccion: tarea.seccion, proveedor: (typeof IAAsistente !== 'undefined' && IAAsistente._ultimoProveedor) || 'gemini', texto: proc.texto,
                             fuentesUsadas: proc.fuentesUsadas, marcInvalidos: proc.invalidos, sinMarcadores: proc.sinMarcadores };
                         conError--;
                     } catch (e) {
@@ -1075,19 +1075,51 @@ const RedactorTeorico = {
         }
         const avisoOMS = fuentes.some(f => this._esOMS(f)) ? ''
             : ' ⚠️ La matriz no contiene fuentes de la OMS/ONU: rehaz la búsqueda en el Buscador (ya integra IRIS de la OMS y ReliefWeb/Biblioteca Digital de la ONU) e importa la matriz actualizada.';
-        if (estado) estado.textContent = `✓ Documento redactado en ${min} min: ${secciones.length} secciones, `
-            + `~${palabras.toLocaleString('es')} palabras, ${citadas.length} fuentes citadas de ${fuentes.length}`
-            + (partesConMarc > 0 ? ` (conteo exacto por marcadores${partesSinMarc ? `; ${partesSinMarc} parte(s) en modo compatibilidad` : ''})` : '')
-            + (marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} marcador(es) inválido(s) eliminados (alucinación de fuente cazada)` : '')
-            + (residuales > 0 ? ` ❌ ${residuales} marcador(es) [F#] SIN convertir — señal de redactor-teorico.js ANTIGUO en caché: verifica la subida, sube el ?v= en index.html y recarga con Ctrl+F5.` : '')
-            + ((costura.quitAperturas + costura.quitComodin) > 0 ? ` 🧵 Costura: ${costura.quitAperturas} apertura(s) repetida(s) y ${costura.quitComodin} frase(s) duplicada(s) eliminadas.` : '')
-            + (costura.corrConocidas > 0 ? ` · ${costura.corrConocidas} etiqueta(s) de instrumento corregida(s) según la ficha de la matriz` : '')
-            + (costura.trenes > 0 ? ` · ⚠️ ${costura.trenes} tren(es) de citas A→B→C sin jerarquizar detectado(s)` : '')
-            + ((typeof IAAsistente !== 'undefined' && IAAsistente._rescatesGroq) ? ` · 🛟 ${IAAsistente._rescatesGroq} parte(s) rescatada(s) por Groq` : '')
-            + (this._ultimoSaneo && (this._ultimoSaneo.excluidas || this._ultimoSaneo.reparadas) ? ` · saneo de matriz: ${this._ultimoSaneo.reparadas || 0} cita(s) reparada(s), ${this._ultimoSaneo.excluidas || 0} pseudo-registro(s) excluido(s)${this._ultimoSaneo.corruptos ? `, ${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados` : ''}${this._ultimoSaneo.refsRec ? `, ${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s)` : ''}${(this._ultimoSaneo.posiblesDuplicados || []).length ? ` · ⚠️ ${this._ultimoSaneo.posiblesDuplicados.length} posible(s) duplicado(s) en la lista (misma obra en dos idiomas/fuentes) — detalles en consola` : ''}` : '')
-            + (conError ? ` (${conError} parte(s) con error — código(s): ${JSON.stringify(this._ultimoDiagnostico)})` : '')
-            + (sospechosas.length ? ` ⚠️ ${sospechosas.length} cita(s) del texto NO están en tu matriz — revísalas: ${sospechosas.slice(0, 3).join(' · ')}${sospechosas.length > 3 ? ' …(lista completa en consola)' : ''}.` : '')
-            + `. Descárgalo en Word y verifica cada cita contra la fuente original.` + avisoOMS + avisoReparando;
+        // ===== PANEL DE DIAGNÓSTICO (petición del dueño: ordenado y visual) =====
+        const esc = x => String(x == null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        // Errores FINALES desde la verdad (banners), no con contador sube-baja (adiós «-3»).
+        const muertasFinal = resultados.filter(r => r && /^\[No se pudo generar/.test(String(r.texto || ''))).length;
+        const provPorSec = new Map();
+        resultados.forEach(r => {
+            if (!r || /^\[No se pudo generar/.test(String(r.texto || ''))) return;
+            if (!provPorSec.has(r.seccion)) provPorSec.set(r.seccion, new Set());
+            provPorSec.get(r.seccion).add(r.proveedor || 'gemini');
+        });
+        let partesGem = 0, partesGrq = 0;
+        resultados.forEach(r => { if (r && !/^\[No se pudo/.test(String(r.texto || ''))) { if (r.proveedor === 'groq') partesGrq++; else partesGem++; } });
+        const chip = (txt, icono) => `<span style="display:inline-block;background:#eef2f7;border:1px solid #d6dee8;border-radius:999px;padding:1px 9px;margin:2px 3px 0 0;font-size:.88em;">${icono} ${esc(txt)}</span>`;
+        const chipsSec = secciones.map(sec => {
+            const ps = provPorSec.get(sec.titulo) || new Set();
+            const icono = ps.has('groq') ? (ps.has('gemini') ? '✦🛟' : '🛟') : '✦';
+            return chip(sec.titulo, icono);
+        }).join('');
+        const fila = (icono, etiqueta, contenido) => `<div style="margin:3px 0;"><b>${icono} ${etiqueta}:</b> ${contenido}</div>`;
+        const alertas = [];
+        if (residuales > 0) alertas.push(`❌ ${residuales} marcador(es) F# SIN convertir — redactor ANTIGUO en caché: sube ?v= y Ctrl+F5.`);
+        if (muertasFinal > 0) alertas.push(`${muertasFinal} parte(s) con error — código(s): ${esc(JSON.stringify(this._ultimoDiagnostico))}`);
+        if (sospechosas.length) alertas.push(`${sospechosas.length} cita(s) NO están en tu matriz: ${esc(sospechosas.slice(0, 3).join(' · '))}${sospechosas.length > 3 ? ' … (consola)' : ''}`);
+        if ((this._ultimoSaneo.posiblesDuplicados || []).length) alertas.push(`${this._ultimoSaneo.posiblesDuplicados.length} posible(s) referencia(s) duplicada(s) (misma obra, dos idiomas/fuentes) — consola`);
+        if (costura.trenes > 0) alertas.push(`${costura.trenes} tren(es) de citas A→B→C sin jerarquizar`);
+        if (avisoOMS) alertas.push(esc(avisoOMS.replace(/^\s*⚠️\s*/, '')));
+        if (avisoReparando) alertas.push(esc(avisoReparando.replace(/^[\s(.]+|[).]+$/g, '')));
+        const saneoBits = [];
+        if (this._ultimoSaneo.reparadas) saneoBits.push(`${this._ultimoSaneo.reparadas} cita(s) reparada(s)`);
+        if (this._ultimoSaneo.refsRec) saneoBits.push(`${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s)`);
+        if (this._ultimoSaneo.excluidas) saneoBits.push(`${this._ultimoSaneo.excluidas} pseudo-registro(s) excluido(s)`);
+        if (this._ultimoSaneo.corruptos) saneoBits.push(`${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados`);
+        const costuraBits = [];
+        if (costura.quitAperturas) costuraBits.push(`${costura.quitAperturas} apertura(s) repetida(s)`);
+        if (costura.quitComodin) costuraBits.push(`${costura.quitComodin} frase(s) duplicada(s)`);
+        if (costura.corrConocidas) costuraBits.push(`${costura.corrConocidas} etiqueta(s) de instrumento corregida(s)`);
+        if (estado) estado.innerHTML = `<div style="text-align:left;border:1px solid #d0d7de;border-radius:10px;padding:10px 14px;background:#f8fafc;line-height:1.6;">`
+            + `<div style="font-weight:700;color:#116329;">✓ Documento redactado en ${min} min</div>`
+            + fila('📄', 'Documento', `${secciones.length} secciones · ~${palabras.toLocaleString('es')} palabras · <b>${citadas.length}</b> de ${fuentes.length} fuentes citadas${partesConMarc > 0 ? ' (conteo exacto por marcadores)' : ''}${partesSinMarc ? ` · ${partesSinMarc} parte(s) en modo compatibilidad` : ''}${marcInvalidosTotal > 0 ? ` · ${marcInvalidosTotal} alucinación(es) de fuente cazada(s)` : ''}`)
+            + fila('🤖', 'Motores', `✦ Gemini ${partesGem} parte(s)${partesGrq ? ` · 🛟 Groq ${partesGrq} rescate(s)` : ''}<br>${chipsSec}`)
+            + (costuraBits.length ? fila('🧵', 'Costura', costuraBits.join(' · ')) : '')
+            + (saneoBits.length ? fila('🩺', 'Saneo de matriz', saneoBits.join(' · ')) : '')
+            + (alertas.length ? `<div style="margin-top:6px;padding:6px 10px;border-left:3px solid #d4a72c;background:#fff8e5;border-radius:0 6px 6px 0;">${alertas.map(a => `<div style="margin:2px 0;">⚠️ ${a}</div>`).join('')}</div>` : '')
+            + `<div style="margin-top:6px;color:#57606a;">📥 Descárgalo en <b>Word</b> o <b>PDF</b> y verifica cada cita contra la fuente original.</div>`
+            + `</div>`;
         if (btnWord) btnWord.style.display = '';
         const btnPDFs = document.getElementById('redDescargarPDF'); if (btnPDFs) btnPDFs.style.display = '';
         const btnCop = document.getElementById('redCopiar');
