@@ -100,7 +100,7 @@ const IAAsistente = {
         if (!r.ok || data.error) {
             const codigo = data.codigo || (r.status === 429 ? 'CUOTA_GEMINI' : r.status === 413 ? 'CUERPO_EXCEDE' : 'HTTP_' + r.status);
             const err = new Error(this._mensajePorCodigo(codigo, data)
-                + (data.pista ? ' · Gemini dijo: «' + String(data.pista).slice(0, 180) + '»' : ''));
+                + (data.pista ? ' · Detalle del proveedor: «' + String(data.pista).slice(0, 180) + '»' : ''));
             err.codigo = codigo;
             err.httpStatus = r.status;
             err.diag = data.diag;               // solo llega si el Worker está en TEST_MODE
@@ -264,6 +264,32 @@ const IAAsistente = {
     // El error combinado conserva el código PRIMARIO de Gemini para que el
     // flujo del redactor (encogido en 4xx, etc.) siga funcionando igual.
     _rescatesGroq: 0,
+    // Groq free: 8K tokens/MINUTO por clave — una petición de 25 fuentes (~9-10K
+    // tokens) supera el presupuesto del minuto ENTERO y da 413 con las 23 claves.
+    // El respaldo recorta el LISTADO de fuentes (nunca la TAREA ni el problema)
+    // hasta caber; los marcadores [F#] de las recortadas caen como inválidos y
+    // el sistema los caza — degradación honesta, no muerte.
+    _LIM_CHARS_RESPALDO: 24000,
+    _recortarParaRespaldo(mensajes) {
+        const total = mensajes.reduce((a, m) => a + String(m.content || '').length, 0);
+        if (total <= this._LIM_CHARS_RESPALDO) return mensajes;
+        return mensajes.map(m => {
+            if (m.role !== 'user') return m;
+            let c = String(m.content || '');
+            const exceso = total - this._LIM_CHARS_RESPALDO;
+            const iTarea = c.lastIndexOf('\nTAREA:');
+            if (iTarea > 0) {
+                const cabeza = c.slice(0, iTarea), cola = c.slice(iTarea);
+                let corte = cabeza.length - exceso - 80;
+                const ancla = cabeza.lastIndexOf('\n[F', Math.max(0, corte));
+                const cabezaR = ancla > 200 ? cabeza.slice(0, ancla) : cabeza.slice(0, Math.max(200, corte));
+                c = cabezaR + '\n(…lista de fuentes recortada por el límite de tokens del respaldo…)' + cola;
+            } else {
+                c = c.slice(0, Math.max(200, c.length - exceso - 80)) + '\n(…recortado por el límite del respaldo…)';
+            }
+            return { ...m, content: c };
+        });
+    },
     async _chatConRespaldo(mensajes, opciones = {}) {
         try {
             return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
@@ -271,7 +297,8 @@ const IAAsistente = {
             if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
             try {
                 // Rescate con el modelo grande (elección del dueño): más músculo para prosa académica.
-                const texto = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b' }, 1);
+                const mensajesG = this._recortarParaRespaldo(mensajes);
+                const texto = await this.chatConReintento(mensajesG, { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b' }, 1);
                 this._rescatesGroq++;
                 return texto;
             } catch (e2) {
