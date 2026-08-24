@@ -270,24 +270,58 @@ const IAAsistente = {
     // hasta caber; los marcadores [F#] de las recortadas caen como inválidos y
     // el sistema los caza — degradación honesta, no muerte.
     _LIM_CHARS_RESPALDO: 24000,
+    // COMPRESIÓN, no amputación: TODAS las fuentes viajan al respaldo (cita y
+    // título íntegros → todos los [F#] siguen válidos). Lo que se comprime es el
+    // CUERPO de cada resumen: frase de apertura + las frases CON CIFRAS (r=, β,
+    // N=, p<, %…) — el jugo que las reglas de magnitudes exigen. Problema,
+    // variables, TAREA y reglas: intocables.
+    _comprimirResumen(txt, tope) {
+        const t = String(txt || '').trim();
+        if (t.length <= tope) return t;
+        const frases = t.split(/(?<=[.!?])\s+/);
+        const esCifra = f => /[rβdR²]\s*=|N\s*=|p\s*[<≤=]|%|OR\s*=|IC\s*95|CI\s*95|α\s*=/i.test(f);
+        const partes = [frases[0] ? frases[0].slice(0, Math.max(90, Math.floor(tope * 0.45))) : ''];
+        // (?:\.(?=\d)|[^.!?]) permite el punto DECIMAL (r=.43) y para solo en fin de frase
+        const ctxCifra = /(?:\.(?=\d)|[^.!?]){0,25}(?:[rβdR²]\s*=|N\s*=|p\s*[<≤=]|%|OR\s*=|IC\s*95|CI\s*95|α\s*=)(?:\.(?=\d)|[^.!?]){0,110}/i;
+        for (const f of frases.slice(1)) {
+            if (partes.length >= 3) break;
+            if (esCifra(f)) {
+                const mm = f.match(ctxCifra);   // ventana CENTRADA en la cifra (el regex ya acota el tamaño)
+                partes.push((mm ? mm[0] : f.slice(0, 140)).trim());
+            }
+        }
+        let out = partes.filter(Boolean).join(' … ');
+        return out.length > tope ? out.slice(0, tope - 1) + '…' : out;
+    },
     _recortarParaRespaldo(mensajes) {
         const total = mensajes.reduce((a, m) => a + String(m.content || '').length, 0);
         if (total <= this._LIM_CHARS_RESPALDO) return mensajes;
         return mensajes.map(m => {
             if (m.role !== 'user') return m;
-            let c = String(m.content || '');
-            const exceso = total - this._LIM_CHARS_RESPALDO;
-            const iTarea = c.lastIndexOf('\nTAREA:');
-            if (iTarea > 0) {
-                const cabeza = c.slice(0, iTarea), cola = c.slice(iTarea);
-                let corte = cabeza.length - exceso - 80;
-                const ancla = cabeza.lastIndexOf('\n[F', Math.max(0, corte));
-                const cabezaR = ancla > 200 ? cabeza.slice(0, ancla) : cabeza.slice(0, Math.max(200, corte));
-                c = cabezaR + '\n(…lista de fuentes recortada por el límite de tokens del respaldo…)' + cola;
-            } else {
-                c = c.slice(0, Math.max(200, c.length - exceso - 80)) + '\n(…recortado por el límite del respaldo…)';
+            const c = String(m.content || '');
+            const bloques = c.split(/\n(?=\[F\d+\] )/);          // [cabecera, bloque F1, F2, …, últimoBloque+TAREA]
+            if (bloques.length < 3) return m;                       // sin listado reconocible: no tocar
+            const ultimo = bloques[bloques.length - 1];
+            const iTarea = ultimo.lastIndexOf('\nTAREA:');
+            const colaTarea = iTarea >= 0 ? ultimo.slice(iTarea) : '';
+            if (iTarea >= 0) bloques[bloques.length - 1] = ultimo.slice(0, iTarea);
+            const fijo = bloques[0].length + colaTarea.length + 200;
+            const presupuesto = Math.max(2000, this._LIM_CHARS_RESPALDO - fijo);
+            const nBloques = bloques.length - 1;
+            // Dos rondas de tope por resumen: normal y, si aún no cabe, mínima —
+            // pero SIEMPRE con las N fuentes completas en cita y título.
+            for (const tope of [Math.max(120, Math.floor(presupuesto / nBloques) - 130), 90]) {
+                const comprimidos = bloques.slice(1).map(b => {
+                    const iRes = b.indexOf('RESUMEN: ');
+                    if (iRes < 0) return b;
+                    const cab = b.slice(0, iRes + 9);
+                    return cab + this._comprimirResumen(b.slice(iRes + 9), tope);
+                });
+                const cuerpo = bloques[0] + '\n' + comprimidos.join('\n') + colaTarea;
+                if (cuerpo.length <= this._LIM_CHARS_RESPALDO - 100 || tope === 90)
+                    return { ...m, content: cuerpo };
             }
-            return { ...m, content: c };
+            return m;
         });
     },
     async _chatConRespaldo(mensajes, opciones = {}) {
