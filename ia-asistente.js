@@ -103,6 +103,7 @@ const IAAsistente = {
                 + (data.pista ? ' · Detalle del proveedor: «' + String(data.pista).slice(0, 180) + '»' : ''));
             err.codigo = codigo;
             err.httpStatus = r.status;
+            if (data.retry) err.retry = data.retry;   // segundos sugeridos por el Worker (Retry-After)
             err.diag = data.diag;               // solo llega si el Worker está en TEST_MODE
             err.reintentable = this._esReintentable(codigo);
             throw err;
@@ -328,6 +329,16 @@ const IAAsistente = {
         try {
             return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
         } catch (e1) {
+            // Tormenta de cuota-por-minuto: esperar a que RUEDE la ventana y dar a
+            // Gemini UNA oportunidad más vale oro — cura el patrón «corridas seguidas»
+            // aunque el redactor viejo siga en caché sin su propia espera.
+            if (/^CUOTA/.test(e1.codigo || '')) {
+                const esperaS = Math.min(60, Math.max(12, e1.retry || 15));
+                if (typeof console !== 'undefined') console.warn(`[IA] Cuota Gemini agotada: esperando ${esperaS} s a que ruede la ventana…`);
+                await new Promise(r => setTimeout(r, (this._ESPERA_CUOTA_RESPALDO_MS ?? esperaS * 1000)));
+                try { return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 1); }
+                catch (e1b) { e1 = e1b; }
+            }
             if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
             try {
                 // Rescate con el modelo grande (elección del dueño): más músculo para prosa académica.
