@@ -958,6 +958,13 @@ const RedactorTeorico = {
         // Las definitivas (bloqueo de seguridad) ya no se reintentan en vano.
         const fallidas = [];
         resultados.forEach((r, i) => { if (r && /^\[No se pudo generar/.test(r.texto) && (r.reintentable !== false || r.codigo === 'GEMINI_4XX')) fallidas.push(i); });
+        // Tormenta de cuota-por-minuto: si hay fallos CUOTA_*, esperar a que la
+        // ventana ruede antes del rescate vale más que reintentar en caliente.
+        const hayCuota = fallidas.some(i => /^CUOTA/.test(String((resultados[i] || {}).codigo || '')));
+        if (hayCuota && fallidas.length) {
+            if (estado) estado.textContent = `⏳ Cuota por minuto agotada en ${fallidas.length} parte(s): esperando ${Math.round((this._ESPERA_CUOTA_MS ?? 20000) / 1000)} s a que ruede la ventana antes del rescate…`;
+            await new Promise(r => setTimeout(r, this._ESPERA_CUOTA_MS ?? 20000));
+        }
         // GEMINI_4XX no es transitorio, pero un lote más pequeño a veces sí pasa:
         // se reintenta UNA vez con la mitad de fuentes (mínimo 6).
         if (fallidas.length) {
@@ -1006,7 +1013,11 @@ const RedactorTeorico = {
         const costura = { aperturas: new Map(), citas: new Map(), quitAperturas: 0, quitComodin: 0, corrConocidas: 0, trenes: 0 };
         for (const sec of plan) {
             const delSec = resultados.filter(r => r && r.seccion === sec.titulo);
-            const partes = delSec.map(r => this._coserParte(this._corregirInstrumentos(this._limpiarTexto(r.texto), costura), costura));
+            // Los banners de error son SAGRADOS: el cosedor los mutilaba (huella
+            // repetida → primera frase fuera → «Reintenta en ~1 min…» huérfano).
+            const partes = delSec.map(r => /^\[No se pudo generar/.test(String(r.texto || ''))
+                ? r.texto
+                : this._coserParte(this._corregirInstrumentos(this._limpiarTexto(r.texto), costura), costura));
             const usadasSec = new Set(); delSec.forEach(r => (r.fuentesUsadas || []).forEach(f => usadasSec.add(f)));
             secciones.push({ titulo: sec.titulo, capitulo: sec.capitulo || 'II', texto: partes.join('\n\n'),
                 fuentesUsadas: [...usadasSec] });
@@ -1360,6 +1371,9 @@ const RedactorTeorico = {
             return partes.length ? '(' + partes.join('; ') + ')' : '';
         });
         t = t.replace(/\[\s*F[\d\s,;F]*\]?/g, () => { invalidos++; return ''; });
+        // «Furnham y Robinson (2022) (Furnham y Robinson, 2022)»: narrativa + marcador
+        // adyacente del mismo estudio → el paréntesis sobra.
+        t = t.replace(/([\p{Lu}][\p{L}’' .-]{1,50}?(?:\s+y\s+[\p{Lu}][\p{L}’' .-]{1,40}|\s+et\s+al\.)?)\s*\(((?:19|20)\d{2}[a-z]?)\)\s*\(\s*\1,\s*\2\s*\)/gu, '$1 ($2)');
         t = t.replace(/ {2,}/g, ' ').replace(/\s+([.,;:])/g, '$1');
         return { texto: t, usadas, invalidos, grupos, sinMarcadores: grupos === 0 };
     },
