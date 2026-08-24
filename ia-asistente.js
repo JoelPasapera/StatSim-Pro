@@ -270,7 +270,11 @@ const IAAsistente = {
     // El respaldo recorta el LISTADO de fuentes (nunca la TAREA ni el problema)
     // hasta caber; los marcadores [F#] de las recortadas caen como inválidos y
     // el sistema los caza — degradación honesta, no muerte.
-    _LIM_CHARS_RESPALDO: 24000,
+    // MATEMÁTICA DEL 413 (aprendida a golpes): el pre-flight de Groq cuenta
+    // prompt + max_tokens contra los 8K TPM. Español académico tokeniza a ~3
+    // chars/token ⇒ entrada ≤ 14K chars (~4.6K tok) + salida ≤ 2800 = ~7.4K < 8K.
+    _LIM_CHARS_RESPALDO: 14000,
+    _MAX_TOKENS_RESPALDO: 2800,
     // COMPRESIÓN, no amputación: TODAS las fuentes viajan al respaldo (cita y
     // título íntegros → todos los [F#] siguen válidos). Lo que se comprime es el
     // CUERPO de cada resumen: frase de apertura + las frases CON CIFRAS (r=, β,
@@ -343,7 +347,9 @@ const IAAsistente = {
             try {
                 // Rescate con el modelo grande (elección del dueño): más músculo para prosa académica.
                 const mensajesG = this._recortarParaRespaldo(mensajes);
-                const texto = await this.chatConReintento(mensajesG, { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b' }, 1);
+                const opG = { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b',
+                    max_tokens: Math.min(this._MAX_TOKENS_RESPALDO, opciones.max_tokens || this._MAX_TOKENS_RESPALDO) };
+                const texto = await this.chatConReintento(mensajesG, opG, 1);
                 this._rescatesGroq++;
                 return texto;
             } catch (e2) {
