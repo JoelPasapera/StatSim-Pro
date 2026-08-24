@@ -331,7 +331,9 @@ const IAAsistente = {
     },
     async _chatConRespaldo(mensajes, opciones = {}) {
         try {
-            return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
+            const tG = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
+            this._ultimoProveedor = 'gemini';
+            return tG;
         } catch (e1) {
             // Tormenta de cuota-por-minuto: esperar a que RUEDE la ventana y dar a
             // Gemini UNA oportunidad más vale oro — cura el patrón «corridas seguidas»
@@ -340,7 +342,7 @@ const IAAsistente = {
                 const esperaS = Math.min(60, Math.max(12, e1.retry || 15));
                 if (typeof console !== 'undefined') console.warn(`[IA] Cuota Gemini agotada: esperando ${esperaS} s a que ruede la ventana…`);
                 await new Promise(r => setTimeout(r, (this._ESPERA_CUOTA_RESPALDO_MS ?? esperaS * 1000)));
-                try { return await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 1); }
+                try { const tG3 = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 1); this._ultimoProveedor = 'gemini'; return tG3; }
                 catch (e1b) { e1 = e1b; }
             }
             if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
@@ -351,6 +353,7 @@ const IAAsistente = {
                     max_tokens: Math.min(this._MAX_TOKENS_RESPALDO, opciones.max_tokens || this._MAX_TOKENS_RESPALDO) };
                 const texto = await this.chatConReintento(mensajesG, opG, 1);
                 this._rescatesGroq++;
+                this._ultimoProveedor = 'groq';
                 return texto;
             } catch (e2) {
                 const err = new Error(`Gemini y Groq fallaron — Gemini [${e1.codigo || '?'}]: ${e1.message} · Groq [${e2.codigo || '?'}]: ${e2.message}`);
