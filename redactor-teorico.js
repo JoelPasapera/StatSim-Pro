@@ -13,7 +13,7 @@
 // y reescribir con su propia voz antes de usarlo en la tesis.
 // ========================================
 const RedactorTeorico = {
-    _VERSION: 'F2-marcadores',
+    _VERSION: 'F6-tormentas',
     _textos: {}, // secciones redactadas: { clave: { titulo, texto, fuentesUsadas } }
     montar() {
         if (this._montado) return; // guardia: montar() dos veces duplicaría listeners
@@ -68,7 +68,7 @@ const RedactorTeorico = {
         if (btnVar) btnVar.addEventListener('click', () => this._onIdentificarVariables());
         const btnProbar = document.getElementById('redProbar');
         if (btnProbar) btnProbar.addEventListener('click', () => this._onProbarSeccion());
-        console.info('[Redactor] versión F2-marcadores activa · verificación: RedactorTeorico.autotest()');
+        console.info('[Redactor] versión ' + this._VERSION + ' activa · verificación: RedactorTeorico.autotest()');
         const rec = document.getElementById('redRecuperar');
         if (rec) {
             rec.addEventListener('click', (ev) => { ev.preventDefault(); this._recuperarUltimo(); });
@@ -947,8 +947,8 @@ const RedactorTeorico = {
                 } catch (e) {
                     conError++;
                     resultados[i] = { seccion: tarea.seccion, texto: `[No se pudo generar esta parte: ${e.message}]`,
-                        reintentable: e.reintentable !== false, codigo: e.codigo || 'DESCONOCIDO' };
-                    if (typeof console !== 'undefined') console.warn(`[Redactor] sección "${tarea.titulo}" falló:`, e.codigo || '?', '·', e.message);
+                        reintentable: e.reintentable !== false, codigo: e.codigo || 'DESCONOCIDO', codigoRespaldo: e.codigoRespaldo };
+                    if (typeof console !== 'undefined') console.warn(`[Redactor] sección "${tarea.titulo}" falló:`, (e.codigo || '?') + (e.codigoRespaldo ? '→' + e.codigoRespaldo : ''), '·', e.message);
                 }
                 completadas++; prog();
             }
@@ -1044,7 +1044,7 @@ const RedactorTeorico = {
         const palabras = textoReal.split(/\s+/).filter(Boolean).length;
         // Diagnóstico agrupado por código de error (para depurar de un vistazo).
         this._ultimoDiagnostico = {};
-        resultados.forEach(r => { if (r && r.codigo) this._ultimoDiagnostico[r.codigo] = (this._ultimoDiagnostico[r.codigo] || 0) + 1; });
+        resultados.forEach(r => { if (r && r.codigo) { const k = r.codigo + (r.codigoRespaldo ? '→' + r.codigoRespaldo : ''); this._ultimoDiagnostico[k] = (this._ultimoDiagnostico[k] || 0) + 1; } });
         if (marcInvalidosTotal > 0) this._ultimoDiagnostico.MARCADORES_INVALIDOS = marcInvalidosTotal;
         if (sospechosas.length) {
             this._ultimoDiagnostico.CITAS_SOSPECHOSAS = sospechosas.length;
