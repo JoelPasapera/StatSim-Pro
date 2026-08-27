@@ -36,8 +36,10 @@ const RedactorTeorico = {
               <p class="help-text" style="margin:0.5rem 0 0.2rem;">🎯 <b>Filtrar por relevancia:</b> 
                 <select id="redFiltroRel" style="padding:0.15rem 0.4rem;">
                   <option value="0">Todas las fuentes</option>
-                  <option value="2">Media y alta</option>
-                  <option value="3">Solo alta</option>
+                  <option value="2">≥ 2</option>
+                  <option value="3">≥ 3</option>
+                  <option value="4">≥ 4</option>
+                  <option value="5">≥ 5</option>
                 </select> <span id="redFiltroRelInfo" class="help-text"></span></p>
               <p class="help-text" style="margin:0.4rem 0 0;"><b>Usar la matriz generada</b>: redacta con lo que tengas ahora en el Buscador (respetando el filtro de relevancia). <b>Subir archivo</b>: usa una matriz exportada antes — Excel (.xlsx), CSV español (;) o CSV internacional (,) — sin repetir la búsqueda.</p>
               <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
@@ -122,7 +124,7 @@ const RedactorTeorico = {
             this._filtroRel = parseInt(selRel.value, 10) || 0;
             const guard = this._filtroRel; this._filtroRel = 0;
             const todas = this._fuentes(); const tot = todas.length;
-            const sinDato = todas.filter(f => this._rangoRelevancia(f) === 0).length;
+            const sinDato = todas.filter(f => this._valorRelevancia(f) === null).length;
             this._filtroRel = guard;
             const pasan = this._fuentes().length;
             const info = document.getElementById('redFiltroRelInfo');
@@ -271,18 +273,17 @@ const RedactorTeorico = {
             .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
             .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
     },
-    // Relevancia normalizada a rango 1-3 (alta=3): acepta «Alta/Media/Baja»,
-    // números 1-5, porcentajes… 0 = sin dato (SIEMPRE pasa: no se pierde en silencio).
-    _rangoRelevancia(f) {
+    // Relevancia en su escala ORIGINAL 1-5 (espejo exacto del filtro del Buscador:
+    // «mayor o igual que N»). Texto de cortesía: Alta=5, Media=3, Baja=1.
+    // null = sin dato → SIEMPRE pasa: nada se pierde en silencio.
+    _valorRelevancia(f) {
         const v = String((f && f.relevancia) || '').toLowerCase().trim();
-        if (!v) return 0;
-        if (/alta|high/.test(v)) return 3;
-        if (/media|medium|moderada/.test(v)) return 2;
+        if (!v) return null;
+        if (/alta|high/.test(v)) return 5;
+        if (/media|medium|moderada/.test(v)) return 3;
         if (/baja|low/.test(v)) return 1;
         const n = parseFloat(v.replace(',', '.'));
-        if (!isFinite(n)) return 0;
-        if (n > 5) return n >= 75 ? 3 : n >= 50 ? 2 : 1;
-        return n >= 4 ? 3 : n >= 3 ? 2 : 1;
+        return isFinite(n) ? n : null;
     },
     _sanearFuentes(lista) {
         if (!Array.isArray(lista)) return lista;
@@ -353,7 +354,7 @@ const RedactorTeorico = {
         if ((dupDoi || excluidas) && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
         // 🎯 Filtro por relevancia: también sobre matrices IMPORTADAS.
         const rk = this._filtroRel || 0;
-        if (rk > 0) return filtrada.filter(f => { const r = this._rangoRelevancia(f); return r === 0 || r >= rk; });
+        if (rk > 0) return filtrada.filter(f => { const r = this._valorRelevancia(f); return r === null || r >= rk; });
         if (reparadas || irreparables || dupDoi || excluidas || corruptos || refsRec || posiblesDuplicados.length) {
             this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas, corruptos, refsRec, posiblesDuplicados };
             if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : '') + (corruptos ? `, ${corruptos} campo(s) con caracteres corruptos limpiados` : '') + (refsRec ? `, ${refsRec} referencia(s) APA reconstruida(s)` : '') + (posiblesDuplicados.length ? `; ⚠️ posibles duplicados: ${posiblesDuplicados.join(' · ')}` : ''));
