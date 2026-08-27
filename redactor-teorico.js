@@ -13,7 +13,7 @@
 // y reescribir con su propia voz antes de usarlo en la tesis.
 // ========================================
 const RedactorTeorico = {
-    _VERSION: 'F6-tormentas',
+    _VERSION: 'F7-coherencia',
     _textos: {}, // secciones redactadas: { clave: { titulo, texto, fuentesUsadas } }
     montar() {
         if (this._montado) return; // guardia: montar() dos veces duplicaría listeners
@@ -41,6 +41,7 @@ const RedactorTeorico = {
               <button id="redProbar" class="btn btn-outline" style="padding:0.4rem 1rem;">✍️ Probar solo una sección</button>
               <button id="redDescargarWord" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar Word (.docx)</button>
               <button id="redDescargarPDF" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar PDF</button>
+              <button id="redPaseF3" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">🧪 Pase de coherencia (F3)</button>
               <button id="redCopiar" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">📋 Copiar texto</button>
             </div>
             <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
@@ -108,6 +109,8 @@ const RedactorTeorico = {
         if (btnWord) btnWord.addEventListener('click', () => this._onDescargarWord());
         const btnPDF = document.getElementById('redDescargarPDF');
         if (btnPDF) btnPDF.addEventListener('click', () => this._onDescargarPDF());
+        const btnF3 = document.getElementById('redPaseF3');
+        if (btnF3) btnF3.addEventListener('click', () => this._onPaseF3());
         const btnCopiar = document.getElementById('redCopiar');
         if (btnCopiar) btnCopiar.addEventListener('click', () => this._onCopiar());
         this.actualizarInfoFuentes();
@@ -265,6 +268,12 @@ const RedactorTeorico = {
                 }
             }
             if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._limpiarUnicode(a));
+            // Entidades/etiquetas HTML del scraping y CITA AJENA incrustada como título
+            // («Ferrándiz García, C. et al.(2025). Inteligencia…» dentro de titulo).
+            if (f.titulo) {
+                f.titulo = String(f.titulo).replace(/&lt;\/?\w+&gt;|<\/?\w+>/g, '').replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+                    .replace(/^\s*[A-ZÀ-Ž][\p{L}’' .-]+,\s*[A-ZÀ-Ž]\.[^()]{0,60}\(\s*(?:19|20)\d{2}[a-z]?\s*\)\.\s*/u, '').trim();
+            }
             // Prefijos de scraping de Scholar en el título («[HTML] Interventions…»)
             if (f.titulo) f.titulo = String(f.titulo).replace(/^\s*\[(HTML|PDF|B|BOOK|CITATION|CITAS)\]\s*/i, '').trim();
             if (Array.isArray(f.autores)) f.autores = f.autores.map(a => this._sanearAutor(a)).filter(Boolean);
@@ -888,6 +897,7 @@ const RedactorTeorico = {
         if (btn) btn.disabled = true;
         if (btnWord) btnWord.style.display = 'none';
         const btnPDFh = document.getElementById('redDescargarPDF'); if (btnPDFh) btnPDFh.style.display = 'none';
+        const btnF3h = document.getElementById('redPaseF3'); if (btnF3h) btnF3h.style.display = 'none';
         if (res) { res.style.display = 'none'; res.textContent = ''; }
         const _t0 = performance.now();
         // Canales: los del Worker del REDACTOR (Gemini), con fallback al de Groq.
@@ -1036,7 +1046,7 @@ const RedactorTeorico = {
         });
         const residuales = (textoReal.match(/[\[(]F\s*\d/g) || []).length;
         const citadas = partesConMarc > 0 ? [...usadasGlobal] : this._fuentesCitadas(textoReal, fuentes);
-        const sospechosas = this._citasSospechosas(textoReal, fuentes);
+        const sospechosas = [...this._citasSospechosas(textoReal, fuentes), ...this._fantasmasNarrativos(textoReal, fuentes)];
         this._documento = { secciones, fuentes, citadas, problema,
             meta: { plantilla: 'P2-marcadores', fecha: new Date().toISOString(), canales,
                 marcadores: { invalidos: marcInvalidosTotal, partesSinMarcadores: partesSinMarc, partesConMarcadores: partesConMarc },
@@ -1100,11 +1110,16 @@ const RedactorTeorico = {
         if (sospechosas.length) alertas.push(`${sospechosas.length} cita(s) NO están en tu matriz: ${esc(sospechosas.slice(0, 3).join(' · '))}${sospechosas.length > 3 ? ' … (consola)' : ''}`);
         if ((this._ultimoSaneo.posiblesDuplicados || []).length) alertas.push(`${this._ultimoSaneo.posiblesDuplicados.length} posible(s) referencia(s) duplicada(s) (misma obra, dos idiomas/fuentes) — consola`);
         if (costura.trenes > 0) alertas.push(`${costura.trenes} tren(es) de citas A→B→C sin jerarquizar`);
+        for (const a of this._detectarContradiccionPosicionamiento(secciones, variables)) alertas.push(a);
+        const muletillas = this._muletillasDoc(textoReal);
+        if (muletillas.length) alertas.push(`🧬 plantilla repetida: ${muletillas.map(([k, n]) => `«${esc(k)}…»×${n}`).join(' · ')} — varía la retórica (la F3 reescribirá)`);
+        const vacios = this._declaracionesVacio(textoReal);
+        if (vacios > 2) alertas.push(`${vacios} declaraciones de vacío — deja la maestra (Estado) y la de cierre`);
         if (avisoOMS) alertas.push(esc(avisoOMS.replace(/^\s*⚠️\s*/, '')));
         if (avisoReparando) alertas.push(esc(avisoReparando.replace(/^[\s(.]+|[).]+$/g, '')));
         const saneoBits = [];
         if (this._ultimoSaneo.reparadas) saneoBits.push(`${this._ultimoSaneo.reparadas} cita(s) reparada(s)`);
-        if (this._ultimoSaneo.refsRec) saneoBits.push(`${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s)`);
+        if (this._ultimoSaneo.refsRec) saneoBits.push(`${this._ultimoSaneo.refsRec} referencia(s) APA reconstruida(s) (sin revista — Crossref llega en F3)`);
         if (this._ultimoSaneo.excluidas) saneoBits.push(`${this._ultimoSaneo.excluidas} pseudo-registro(s) excluido(s)`);
         if (this._ultimoSaneo.corruptos) saneoBits.push(`${this._ultimoSaneo.corruptos} campo(s) corruptos limpiados`);
         const costuraBits = [];
@@ -1122,6 +1137,7 @@ const RedactorTeorico = {
             + `</div>`;
         if (btnWord) btnWord.style.display = '';
         const btnPDFs = document.getElementById('redDescargarPDF'); if (btnPDFs) btnPDFs.style.display = '';
+        const btnF3s = document.getElementById('redPaseF3'); if (btnF3s) btnF3s.style.display = '';
         const btnCop = document.getElementById('redCopiar');
         if (btnCop) btnCop.style.display = '';
         if (btn) { btn.disabled = false; btn.textContent = t; }
@@ -1157,6 +1173,7 @@ const RedactorTeorico = {
         }
     },
     _limpiarTexto(t) {
+        t = String(t || '').replace(/\*([^*\n]{1,80})\*/g, '$1');   // *énfasis* markdown residual
         return String(t || '')
             .replace(/^#+\s*/gm, '')
             .replace(/\*\*(.+?)\*\*/g, '$1')
@@ -1199,6 +1216,7 @@ const RedactorTeorico = {
         if (res) { res.style.display = ''; res.textContent = this._renderTexto(d.secciones); }
         const bW = document.getElementById('redDescargarWord'); if (bW) bW.style.display = '';
         const bP = document.getElementById('redDescargarPDF'); if (bP) bP.style.display = '';
+        const bF3 = document.getElementById('redPaseF3'); if (bF3) bF3.style.display = '';
         const bC = document.getElementById('redCopiar'); if (bC) bC.style.display = '';
         const est = document.getElementById('redEstado');
         const min = Math.max(1, Math.round((Date.now() - (d.t || Date.now())) / 60000));
@@ -1210,6 +1228,55 @@ const RedactorTeorico = {
     // ¿Qué citas del TEXTO no existen en la MATRIZ? La pregunta académicamente
     // letal que nadie hace: el modelo puede inventar (Autor, año) con total fluidez.
     // v0 heurística (F1.5 del plan); la versión exacta llega con los marcadores (F2).
+    // El detector clásico solo cazaba «(Apellido, año)». Una alucinación
+    // NARRATIVA — «García (2020) demostró…» con García inexistente — pasaba
+    // de largo. Índice compacto propio + mismas normalizaciones.
+    _fantasmasNarrativos(texto, fuentes) {
+        const t = String(texto || '');
+        if (!t || !fuentes.length) return [];
+        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const claves = new Set();
+        const reg = (ap, y) => { const a = norm(ap).replace(/\bet al\.?/g, '').trim(), yy = norm(y); if (a && yy) claves.add(a + '|' + yy); };
+        for (const f of fuentes) {
+            const inner = String(f.cita || '').replace(/^\(|\)$/g, '');
+            const y = (inner.match(/(\d{4}[a-z]?|s\.\s*f\.)\s*$/) || [])[1] || String(f.anio || '');
+            for (const tr of inner.replace(/,?\s*(\d{4}[a-z]?|s\.\s*f\.)\s*$/, '').split(/\s+(?:y|&|and)\s+|,\s*/)) {
+                reg(tr, y); reg(tr, f.anio);
+                const toks = tr.trim().split(/\s+/); if (toks.length > 1) { reg(toks[0], y); reg(toks[toks.length - 1], y); }
+            }
+            for (const a of (f.autores || [])) { reg(String(a).split(',')[0], y); reg(String(a).split(',')[0], f.anio); }
+            for (const m of String(f.cita || '').matchAll(/\[([A-Z\u00c0-\u017d]{2,})\]/g)) { reg(m[1], y); reg(m[1], f.anio); }
+        }
+        const out = [], vistos = new Set();
+        for (const m of t.matchAll(/\b([A-Z\u00c0-\u017d][\p{L}\u2019'-]+(?:\s+(?:y|&)\s+[A-Z\u00c0-\u017d][\p{L}\u2019'-]+|\s+et\s+al\.)?)\s+\((\d{4}[a-z]?|s\.\s*f\.)\)/gu)) {
+            const ap = m[1], anio = m[2];
+            const toks = norm(ap).replace(/\bet al\.?/g, '').trim().split(/\s+/).filter(Boolean);
+            let ok = false;
+            for (const c of new Set([toks.join(' '), toks[0], toks[toks.length - 1]]))
+                if (claves.has(c + '|' + norm(anio))) { ok = true; break; }
+            if (ok) continue;
+            const etiqueta = `${ap} (${anio}) [narrativa]`;
+            if (!vistos.has(etiqueta)) { vistos.add(etiqueta); out.push(etiqueta); }
+            if (out.length >= 6) break;
+        }
+        return out;
+    },
+    // Muletillas de plantilla: el MISMO arranque de frase (4 tokens) repetido ≥3
+    // veces en el documento delata molde clonado entre secciones.
+    _muletillasDoc(texto) {
+        const cuenta = new Map();
+        for (const fr of this._frases(String(texto || ''))) {
+            if (/^[(\[]/.test(fr.trim())) continue;
+            const toks = fr.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\s]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 3);
+            if (toks.length < 3) continue;   // 3 tokens: «los hallazgos de» — el 4º suele ser el autor y camufla el molde
+            const k = toks.join(' ');
+            cuenta.set(k, (cuenta.get(k) || 0) + 1);
+        }
+        return [...cuenta].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    },
+    _declaracionesVacio(texto) {
+        return (String(texto || '').match(/(persiste|subsiste|se evidencia|exhibe|se identifica)[^.]{0,90}?(vac[ií]o|laguna|escasez)/gi) || []).length;
+    },
     _citasSospechosas(texto, fuentes) {
         const t = String(texto || '');
         if (!t || !fuentes.length) return [];
@@ -1267,7 +1334,7 @@ const RedactorTeorico = {
     // Cada parte se redacta a ciegas de las demás; los tics convergentes (mismo abridor,
     // misma conclusión-comodín) solo se cazan aquí, con el documento entero delante.
     _frases(texto) {
-        const MASCARA = [[/et al\./g, 'et al\u0001'], [/s\.\s*f\./g, 's\u0001f\u0001'], [/p\.\s*ej\./g, 'p\u0001ej\u0001'], [/vs\./g, 'vs\u0001'], [/cols\./g, 'cols\u0001']];
+        const MASCARA = [[/et al\./g, 'et al\u0001'], [/s\.\s*f\./g, 's\u0001f\u0001'], [/p\.\s*ej\./g, 'p\u0001ej\u0001'], [/vs\./g, 'vs\u0001'], [/cols\./g, 'cols\u0001'], [/cf\./g, 'cf\u0001'], [/fig\./gi, 'fig\u0001'], [/núm\./g, 'núm\u0001'], [/Vol\./g, 'Vol\u0001']];
         let t = String(texto || '');
         for (const [re, sub] of MASCARA) t = t.replace(re, sub);
         const out = t.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ž¿¡«“(])/).map(s => s.replace(/\u0001/g, '.'));
@@ -1280,6 +1347,26 @@ const RedactorTeorico = {
     // frases comparativas legítimas («se comparó el EQ-i con medidas de CI»)
     // no llevan esa etiqueta y quedan intactas.
     _escRe(s) { return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); },
+    // La mina del jurado: una sección adopta Bar-On para el instrumento y otra
+    // adopta Salovey-Mayer para EL MISMO. Se detecta y se grita en el panel;
+    // la reescritura coherente es trabajo de la F3.
+    _FAMILIAS_RE: /(Bar-?On|Salovey y Mayer|Mayer y Salovey|Goleman|Boyatzis|Wechsler|Cattell|CHC|Gardner|Sternberg)/gi,
+    _detectarContradiccionPosicionamiento(secciones, variables) {
+        const alertas = [];
+        for (const v of (variables || [])) {
+            const fams = new Set();
+            for (const s of (secciones || [])) {
+                if (!String(s.titulo || '').toLowerCase().includes(String(v.nombre || '').toLowerCase())) continue;
+                const m = String(s.texto || '').match(/se adopta[^.]{0,200}/gi) || [];
+                for (const frase of m) {
+                    const fs = frase.match(this._FAMILIAS_RE) || [];
+                    for (const f of fs) fams.add(f.replace(/-/g, '').replace(/Mayer y Salovey/i, 'Salovey y Mayer'));
+                }
+            }
+            if (fams.size > 1) alertas.push(`Posicionamiento CONTRADICTORIO en «${v.nombre}»: ${[...fams].join(' vs ')} — unifica el modelo adoptado antes de sustentar`);
+        }
+        return alertas;
+    },
     _corregirInstrumentos(texto, ctx) {
         let t = String(texto || '');
         const ficha = this._fichaInstrumentos || [];
@@ -1410,9 +1497,16 @@ const RedactorTeorico = {
         });
         t = t.replace(/\[\s*F[\d\s,;yF]*\]?/g, () => { invalidos++; return ''; });
         t = t.replace(/\(\s*F\d[\d\s,;yF]*\)?/g, () => { invalidos++; return ''; });
+        // Dialecto DESNUDO del rescate: «los hallazgos de F30» sin corchete alguno.
+        t = t.replace(/\bF(\d{1,3})\b/g, (m, n) => {
+            const f = fsel[+n - 1];
+            if (f && f.cita) { usadas.add(+n - 1); return f.cita; }
+            invalidos++; return '';
+        });
         // «Furnham y Robinson (2022) (Furnham y Robinson, 2022)»: narrativa + marcador
         // adyacente del mismo estudio → el paréntesis sobra.
         t = t.replace(/([\p{Lu}][\p{L}’' .-]{1,50}?(?:\s+y\s+[\p{Lu}][\p{L}’' .-]{1,40}|\s+et\s+al\.)?)\s*\(((?:19|20)\d{2}[a-z]?)\)\s*\(\s*\1,\s*\2\s*\)/gu, '$1 ($2)');
+        t = t.replace(/\*([^*\n]{1,80})\*/g, '$1');   // *énfasis* markdown residual (el «*flow*» del doc 7)
         t = t.replace(/ {2,}/g, ' ').replace(/\s+([.,;:])/g, '$1');
         return { texto: t, usadas, invalidos, grupos, sinMarcadores: grupos === 0 };
     },
@@ -1481,7 +1575,177 @@ const RedactorTeorico = {
         ${refs}
         </body></html>`;
     },
+    // ============ F3: PASE DE COHERENCIA (modelo solo donde hace falta) ============
+    // Los radares construyen la lista de objetivos; el modelo reescribe SOLO esos
+    // párrafos; la firma de citas garantiza que NINGUNA cita nace ni muere.
+    _firmaCitas(texto) {
+        // Canónica: ÚLTIMO apellido significativo + año, con CONTEO (multiset).
+        // Así «Navarro Saldaña y Flores Oyarzo (2022)» ≡ «(Navarro Saldaña y Flores
+        // Oyarzo, 2022)», y perder UNA de dos citas con clave compartida se detecta
+        // por el conteo. Colisión residual (mismo apellido+año intercambiados): asumida.
+        const t = String(texto || '');
+        const canon = seg => {
+            const limpio = String(seg || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\bet al\.?/g, '').replace(/[.,]+$/g, '').trim();
+            const toks = limpio.split(/\s+/).filter(x => x && !['y', '&', 'and', 'de', 'la', 'del', 'los'].includes(x));
+            return toks.length ? toks[toks.length - 1] : '';
+        };
+        const firma = new Map();
+        const suma = k => { if (k && !k.startsWith('|')) firma.set(k, (firma.get(k) || 0) + 1); };
+        for (const m of t.matchAll(/\(([^()]{2,160}?)\)/g)) {
+            for (const seg of m[1].split(';')) {
+                const mm = seg.match(/^\s*(.{2,120}?),\s*((?:19|20)\d{2}[a-z]?|s\.\s*f\.)\s*$/);
+                if (mm) suma(canon(mm[1]) + '|' + mm[2].replace(/\s+/g, ''));
+            }
+        }
+        for (const m of t.matchAll(/\b([A-Z\u00c0-\u017d][\p{L}\u2019'-]+(?:\s+(?:y|&)\s+[A-Z\u00c0-\u017d][\p{L}\u2019'-]+|\s+et\s+al\.)?)\s+\(((?:19|20)\d{2}[a-z]?|s\.\s*f\.)\)/gu))
+            suma(canon(m[1]) + '|' + m[2].replace(/\s+/g, ''));
+        return firma;
+    },
+    _mismaFirma(a, b) {
+        if (a.size !== b.size) return false;
+        for (const [k, n] of a) if (b.get(k) !== n) return false;
+        return true;
+    },
+    _esNarrativaFr(fr) { return /^(?:[A-Z\u00c0-\u017d][\p{L}\u2019'-]+(?:\s+(?:y\s+[A-Z\u00c0-\u017d][\p{L}\u2019'-]+|et\s+al\.))?)\s*\((?:19|20)\d{2}[a-z]?\)/u.test(fr); },
+    _objetivosF3() {
+        const doc = this._documento;
+        if (!doc || !doc.secciones) return [];
+        const textoTotal = doc.secciones.map(s => s.texto).join('\n\n');
+        const muletillas = new Set(this._muletillasDoc(textoTotal).map(([k]) => k));
+        const variables = this._leerVariables();
+        const ficha = (doc.meta && doc.meta.fichaInstrumentos) || this._fichaInstrumentos || [];
+        const contradic = this._detectarContradiccionPosicionamiento(doc.secciones, variables);
+        const famObjetivo = {};
+        for (const v of variables) {
+            if (!contradic.some(a => a.includes(v.nombre))) continue;
+            const toksV = String(v.nombre).toLowerCase().split(/\s+/);
+            const insV = ficha.find(i => i.familia && toksV.some(tk => tk.length > 4 && String(i.constructo || '').includes(tk)));
+            if (insV) famObjetivo[v.nombre] = { familia: insV.familia, sigla: insV.sigla || insV.nombre };
+            else {
+                for (const sec of doc.secciones) {
+                    if (!sec.titulo.toLowerCase().includes(v.nombre.toLowerCase())) continue;
+                    const m = (sec.texto.match(/se adopta[^.]{0,200}/i) || [''])[0].match(this._FAMILIAS_RE);
+                    if (m) { famObjetivo[v.nombre] = { familia: m[0], sigla: '' }; break; }
+                }
+            }
+        }
+        const objetivos = [];
+        const vistasMuletilla = new Set();
+        doc.secciones.forEach((sec, iSec) => {
+            const parrs = String(sec.texto || '').split(/\n{2,}/);
+            const esEstado = /Estado de la cuesti/i.test(sec.titulo);
+            const esDef = /Definici\u00f3n conceptual/i.test(sec.titulo);
+            let vaciosEstado = [];
+            if (esEstado) parrs.forEach((p, i) => { if (this._declaracionesVacio(p) > 0) vaciosEstado.push(i); });
+            const maestraIdx = vaciosEstado.length ? vaciosEstado[vaciosEstado.length - 1] : -1;
+            parrs.forEach((p, iParr) => {
+                if (/^\[No se pudo generar/.test(p.trim()) || p.trim().length < 120) return;
+                // POSICIONAMIENTO (prioridad m\u00e1xima)
+                for (const v of variables) {
+                    const fo = famObjetivo[v.nombre];
+                    if (!fo || !sec.titulo.toLowerCase().includes(v.nombre.toLowerCase())) continue;
+                    if (/se adopta/i.test(p)) {
+                        const fams = p.match(this._FAMILIAS_RE) || [];
+                        if (fams.some(f => f.replace(/-/g, '') !== String(fo.familia).replace(/-/g, ''))) {
+                            objetivos.push({ iSec, iParr, tipo: 'POSICIONAMIENTO', prioridad: 0, texto: p,
+                                instruccion: `Unifica el posicionamiento: el modelo adoptado para \u00ab${v.nombre}\u00bb es \u00ab${fo.familia}\u00bb${fo.sigla ? ` (en correspondencia con el instrumento ${fo.sigla})` : ''}. Reescribe para que la adopci\u00f3n declare SOLO esa familia, justificando la correspondencia; las dem\u00e1s familias pueden mencionarse \u00fanicamente como alternativas descartadas.` });
+                            return;
+                        }
+                    }
+                }
+                // TREN de citas (\u22654 narrativas seguidas)
+                let run = 0, hayTren = false;
+                for (const fr of this._frases(p)) { if (this._esNarrativaFr(fr)) { run++; if (run >= 4) hayTren = true; } else run = 0; }
+                if (hayTren) {
+                    objetivos.push({ iSec, iParr, tipo: 'TREN', prioridad: 1, texto: p,
+                        instruccion: 'Este p\u00e1rrafo encadena 4+ frases \u00abAutor (a\u00f1o) hall\u00f3\u2026\u00bb. Reag\u00fapalo por IDEAS con frases-tema propias y los estudios como respaldo dentro (narrativas o parent\u00e9ticas), variando la ret\u00f3rica.' });
+                    return;
+                }
+                // VAC\u00cdO no-maestro
+                if (this._declaracionesVacio(p) > 0 && !(esEstado && iParr === maestraIdx) && !(esDef && iParr === parrs.length - 1)) {
+                    objetivos.push({ iSec, iParr, tipo: 'VACIO', prioridad: 2, texto: p,
+                        instruccion: 'Elimina la declaraci\u00f3n de vac\u00edo/laguna/escasez de este p\u00e1rrafo (el vac\u00edo maestro vive en el Estado de la cuesti\u00f3n): cierra la idea con una s\u00edntesis del aporte, sin anunciar carencias.' });
+                    return;
+                }
+                // MULETILLA (2\u00aa+ aparici\u00f3n del mismo arranque)
+                for (const fr of this._frases(p)) {
+                    const k = fr.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\p{L}\s]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 3).join(' ');
+                    if (k.split(' ').length === 3 && muletillas.has(k)) {
+                        if (!vistasMuletilla.has(k)) { vistasMuletilla.add(k); break; }
+                        objetivos.push({ iSec, iParr, tipo: 'MULETILLA', prioridad: 3, texto: p,
+                            instruccion: `El arranque \u00ab${k}\u2026\u00bb ya se us\u00f3 antes en el documento: reescribe la(s) frase(s) que lo repiten con otra estructura ret\u00f3rica, manteniendo el contenido.` });
+                        return;
+                    }
+                }
+            });
+        });
+        objetivos.sort((a, b) => a.prioridad - b.prioridad);
+        return objetivos.slice(0, 14);
+    },
+    async _onPaseF3() {
+        if (!this._documento) return;
+        const estado = document.getElementById('redEstado');
+        const btn = document.getElementById('redPaseF3');
+        const objetivos = this._objetivosF3();
+        if (!objetivos.length) { if (estado) estado.textContent = '\u2728 F3: los radares est\u00e1n limpios \u2014 nada que pulir.'; return; }
+        if (btn) { btn.disabled = true; btn.textContent = '\ud83e\uddea Puliendo\u2026'; }
+        const porSec = new Map();
+        objetivos.forEach(o => { if (!porSec.has(o.iSec)) porSec.set(o.iSec, []); porSec.get(o.iSec).push(o); });
+        let aplicados = 0, rechazados = 0, fallos = 0;
+        const antes = { trenes: 0, muletillas: this._muletillasDoc(this._documento.secciones.map(s => s.texto).join('\n\n')).length, vacios: this._declaracionesVacio(this._documento.secciones.map(s => s.texto).join('\n\n')) };
+        let hechas = 0;
+        for (const [iSec, items] of porSec) {
+            const sec = this._documento.secciones[iSec];
+            if (estado) estado.textContent = `\ud83e\uddea F3: puliendo \u00ab${sec.titulo}\u00bb (${++hechas}/${porSec.size} secciones, ${items.length} pasaje(s))\u2026`;
+            let reescritos = [];
+            try { reescritos = await IAAsistente.pulirPasajes(sec.titulo, items.map(o => ({ i: o.iParr, tipo: o.tipo, instruccion: o.instruccion, texto: o.texto })), { keyHint: (hechas - 1) % 10 }); }
+            catch (e) { fallos += items.length; console.warn('[F3] secci\u00f3n fall\u00f3:', sec.titulo, e && e.codigo, e && e.message); continue; }
+            const parrs = String(sec.texto || '').split(/\n{2,}/);
+            for (const r of reescritos) {
+                const orig = parrs[r.i];
+                if (typeof orig !== 'string') { rechazados++; continue; }
+                const nuevo = this._limpiarTexto(r.texto);
+                const ratio = nuevo.length / Math.max(1, orig.length);
+                const seguro = this._mismaFirma(this._firmaCitas(orig), this._firmaCitas(nuevo))
+                    && !/[\[(]F\d|\bF\d/.test(nuevo) && !/^\[No se pudo/.test(nuevo) && ratio > 0.5 && ratio < 1.7;
+                if (seguro) { parrs[r.i] = nuevo; aplicados++; } else { rechazados++; }
+            }
+            sec.texto = parrs.join('\n\n');
+        }
+        const textoNuevo = this._documento.secciones.map(s => `${s.titulo}\n\n${s.texto}`).join('\n\n\n');
+        const res = document.getElementById('redResultado');
+        if (res) res.textContent = textoNuevo;
+        this._documento.meta.f3 = { fecha: new Date().toISOString(), aplicados, rechazados, fallos };
+        try { this._guardarUltimo(); } catch (e) {}
+        const todo = this._documento.secciones.map(s => s.texto).join('\n\n');
+        const despues = { muletillas: this._muletillasDoc(todo).length, vacios: this._declaracionesVacio(todo) };
+        const contradicPost = this._detectarContradiccionPosicionamiento(this._documento.secciones, this._leerVariables()).length;
+        if (estado) estado.innerHTML = `<div style="text-align:left;border:1px solid #d0d7de;border-radius:10px;padding:10px 14px;background:#f8fafc;line-height:1.6;">`
+            + `<div style="font-weight:700;color:#116329;">\ud83e\uddea Pase de coherencia F3 completado</div>`
+            + `<div><b>\u270d\ufe0f Pulido:</b> ${aplicados} pasaje(s) reescrito(s) \u00b7 ${rechazados} rechazado(s) por seguridad de citas${fallos ? ` \u00b7 ${fallos} sin respuesta del modelo` : ''}</div>`
+            + `<div><b>\ud83d\udcc9 Radares:</b> muletillas ${antes.muletillas}\u2192${despues.muletillas} \u00b7 vac\u00edos ${antes.vacios}\u2192${despues.vacios} \u00b7 posicionamiento contradictorio: ${contradicPost ? '\u26a0\ufe0f a\u00fan presente' : '\u2705 unificado'}</div>`
+            + `<div style="margin-top:4px;color:#57606a;">\ud83d\udce5 Vuelve a descargar Word/PDF para llevarte la versi\u00f3n pulida. Ninguna cita naci\u00f3 ni muri\u00f3: garantizado por firma.</div></div>`;
+        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddea Pase de coherencia (F3)'; }
+    },
     // ============ PDF: mismo documento, jsPDF bajo demanda (patrón ExcelJS) ============
+    // jsPDF con fuentes core = WinAnsi/Latin-1: ı, ć, α, β, guiones tipográficos…
+    // producen glifos rotos y LÍNEAS DECAPITADAS. Transliteración fiel solo-PDF
+    // (el Word conserva todo perfecto).
+    _paraPDF(s) {
+        return String(s == null ? '' : s)
+            .replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-')
+            .replace(/[\u2018\u2019\u201A]/g, "'").replace(/[\u201C\u201D\u201E]/g, '"')
+            .replace(/\u2026/g, '...').replace(/[\u00A0\u202F\u2009]/g, ' ')
+            .replace(/ı/g, 'i').replace(/İ/g, 'I')
+            .replace(/[ćč]/g, 'c').replace(/[ĆČ]/g, 'C')
+            .replace(/[şș]/g, 's').replace(/[ŞȘ]/g, 'S')
+            .replace(/[ğ]/g, 'g').replace(/[łŀ]/g, 'l').replace(/[ŁĿ]/g, 'L')
+            .replace(/[đ]/g, 'd').replace(/[Đ]/g, 'D').replace(/[ž]/g, 'z').replace(/[Ž]/g, 'Z')
+            .replace(/α/g, 'alfa').replace(/β/g, 'beta').replace(/λ/g, 'lambda').replace(/χ/g, 'chi')
+            .replace(/≈/g, '~').replace(/≤/g, '<=').replace(/≥/g, '>=')
+            .replace(/[→↔]/g, '-').replace(/[«»]/g, '"')
+            .replace(/[^\u0000-\u00FF]/g, '');
+    },
     _cargarJsPDF() {
         if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
         const urls = [
@@ -1505,13 +1769,23 @@ const RedactorTeorico = {
         const M = 72, ANCHO = 612 - M * 2, PIE = 720, LINEA = 23;
         let y = M;
         const salto = (n = LINEA) => { y += n; if (y > PIE) { pdf.addPage(); y = M; } };
-        const parrafo = (texto, francesa = false) => {
-            const lineas = pdf.splitTextToSize(String(texto), ANCHO - (francesa ? 36 : 0));
-            lineas.forEach((ln, i) => {
+        const parrafo = (texto, francesa = false, sangriaInicial = false) => {
+            const limpio = this._paraPDF(texto);
+            let lineas;
+            if (sangriaInicial) {
+                // Sangría APA de 1ª línea (0.5in): la primera se parte a ancho reducido
+                // y el resto refluye a ancho completo.
+                const primera = pdf.splitTextToSize(limpio, ANCHO - 36)[0] || '';
+                const resto = limpio.slice(primera.length).trim();
+                lineas = [{ tx: primera, x: M + 36 }, ...pdf.splitTextToSize(resto, ANCHO).map(tx => ({ tx, x: M }))];
+            } else {
+                lineas = pdf.splitTextToSize(limpio, ANCHO - (francesa ? 36 : 0)).map((tx, i) => ({ tx, x: M + (francesa && i > 0 ? 36 : 0) }));
+            }
+            for (const ln of lineas) {
                 if (y > PIE) { pdf.addPage(); y = M; }
-                pdf.text(ln, M + (francesa && i > 0 ? 36 : 0), y);
+                if (ln.tx) pdf.text(ln.tx, ln.x, y);
                 y += LINEA;
-            });
+            }
         };
         pdf.setFontSize(12);
         const d = this._documento;
@@ -1519,15 +1793,17 @@ const RedactorTeorico = {
         for (const s of d.secciones) {
             if ((s.capitulo || 'II') !== capAct) {
                 capAct = s.capitulo || 'II';
+                if (y > PIE - 60) { pdf.addPage(); y = M; }   // encabezado jamás huérfano al pie
                 pdf.setFont('times', 'bold');
                 pdf.text(capAct === 'I' ? 'CAPÍTULO I: INTRODUCCIÓN' : 'CAPÍTULO II: MARCO TEÓRICO', 306, y, { align: 'center' });
                 salto(LINEA * 1.4);
             }
+            if (y > PIE - 60) { pdf.addPage(); y = M; }
             pdf.setFont('times', 'bold');
-            pdf.text(String(s.titulo || '').toUpperCase(), 306, y, { align: 'center' });
+            pdf.text(this._paraPDF(String(s.titulo || '').toUpperCase()), 306, y, { align: 'center' });
             salto(LINEA * 1.2);
             pdf.setFont('times', 'normal');
-            for (const par of String(s.texto || '').split(/\n{2,}/)) { parrafo(par.trim()); salto(6); }
+            for (const par of String(s.texto || '').split(/\n{2,}/)) { parrafo(par.trim(), false, true); salto(6); }
             salto(10);
         }
         pdf.addPage(); y = M;
@@ -1536,6 +1812,9 @@ const RedactorTeorico = {
         pdf.setFont('times', 'normal');
         const refs = d.citadas.slice().sort((a, b) => String(a.ref).localeCompare(String(b.ref), 'es'));
         for (const f of refs) { parrafo(String(f.ref), true); salto(4); }
+        // Números de página (APA: esquina superior derecha)
+        const nPag = pdf.internal.getNumberOfPages();
+        for (let p = 1; p <= nPag; p++) { pdf.setPage(p); pdf.setFont('times', 'normal'); pdf.setFontSize(11); pdf.text(String(p), 612 - M, 40, { align: 'right' }); pdf.setFontSize(12); }
         pdf.save('marco_teorico_APA.pdf');
     },
     _onDescargarWord() {
