@@ -159,8 +159,12 @@ const IAAsistente = {
                 // Error definitivo (bloqueo de seguridad, truncado, 4xx): no insistir.
                 if (e && e.reintentable === false) throw e;
             }
-            // Espera creciente con jitter: alivia cuota y rate-limit temporales.
-            const espera = Math.min(400 * Math.pow(2, i), 4000) + Math.random() * 300;
+            // Espera creciente con jitter — y CUOTA-consciente: 4 s de backoff ante
+            // una ventana de 60 s era reintentar a ciegas; el Retry-After del Worker manda.
+            const esCuota = /^CUOTA/.test((ultimoError && ultimoError.codigo) || '');
+            const espera = esCuota
+                ? (this._ESPERA_CUOTA_LOOP_MS ?? Math.min(Math.max((ultimoError && ultimoError.retry) || 12, 8), 20) * 1000)
+                : Math.min(400 * Math.pow(2, i), 4000) + Math.random() * 300;
             if (i < intentos - 1) await new Promise(r => setTimeout(r, espera));
         }
         throw ultimoError || new Error('La IA no respondió tras varios intentos.');
@@ -304,13 +308,22 @@ const IAAsistente = {
         return mensajes.map(m => {
             if (m.role !== 'user') return m;
             const c = String(m.content || '');
+            const extra = total - c.length;                         // system + demás mensajes: TAMBIÉN cuentan tokens
             const bloques = c.split(/\n(?=\[F\d+\] )/);          // [cabecera, bloque F1, F2, …, últimoBloque+TAREA]
-            if (bloques.length < 3) return m;                       // sin listado reconocible: no tocar
+            if (bloques.length < 3) {
+                // Sin listado [F#] (p. ej. el corpus de la FICHA, hasta 42K):
+                // poda genérica de cola en frontera de línea — los resúmenes del
+                // corpus son muestreo re-derivable, no contenido de tesis.
+                const tope = this._LIM_CHARS_RESPALDO - extra - 400;
+                if (c.length <= tope) return m;
+                const corte = c.lastIndexOf('\n', tope);
+                return { ...m, content: c.slice(0, corte > 500 ? corte : tope) + '\n(…corpus recortado por el límite del respaldo…)' };
+            }
             const ultimo = bloques[bloques.length - 1];
             const iTarea = ultimo.lastIndexOf('\nTAREA:');
             const colaTarea = iTarea >= 0 ? ultimo.slice(iTarea) : '';
             if (iTarea >= 0) bloques[bloques.length - 1] = ultimo.slice(0, iTarea);
-            const fijo = bloques[0].length + colaTarea.length + 200;
+            const fijo = extra + bloques[0].length + colaTarea.length + 200;
             const presupuesto = Math.max(2000, this._LIM_CHARS_RESPALDO - fijo);
             const nBloques = bloques.length - 1;
             // Dos rondas de tope por resumen: normal y, si aún no cabe, mínima —
@@ -323,7 +336,7 @@ const IAAsistente = {
                     return cab + this._comprimirResumen(b.slice(iRes + 9), tope);
                 });
                 const cuerpo = bloques[0] + '\n' + comprimidos.join('\n') + colaTarea;
-                if (cuerpo.length <= this._LIM_CHARS_RESPALDO - 100 || tope === 90)
+                if (extra + cuerpo.length <= this._LIM_CHARS_RESPALDO - 100 || tope === 90)
                     return { ...m, content: cuerpo };
             }
             return m;
@@ -369,6 +382,38 @@ const IAAsistente = {
             .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
             .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
             .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    },
+    // ===== F3: pulido quirúrgico de párrafos señalados por los radares =====
+    // El modelo SOLO reescribe los párrafos objetivo; la seguridad (citas
+    // idénticas, sin F#, longitud) la valida el redactor MECÁNICAMENTE.
+    async pulirPasajes(seccionTitulo, items, opciones = {}) {
+        if (!items || !items.length) return [];
+        // Tandas de 4: más objetivos en una llamada arriesga truncar el JSON.
+        if (items.length > 4) {
+            const todo = [];
+            for (let k = 0; k < items.length; k += 4)
+                todo.push(...await this.pulirPasajes(seccionTitulo, items.slice(k, k + 4), opciones));
+            return todo;
+        }
+        const P = x => this._limpiarParaModelo(x);
+        const system = 'Eres un editor de estilo académico de élite. Reescribes párrafos puntuales de un marco '
+            + 'teórico bajo REGLAS DURAS: (1) conserva EXACTAMENTE las mismas citas — mismos apellidos y años, '
+            + 'ni añadas, ni quites, ni cambies ninguna (puedes alternar entre forma narrativa «Autor (año)» y '
+            + 'parentética «(Autor, año)»); (2) no inventes ni alteres datos, cifras o afirmaciones; '
+            + '(3) PROHIBIDO cualquier marcador tipo F seguido de número; (4) longitud similar al original '
+            + '(±30 %); (5) devuelve ÚNICAMENTE JSON válido: {"reescritos":[{"i":N,"texto":"..."}]} con los '
+            + 'mismos índices recibidos. Si un párrafo no puede mejorarse cumpliendo las reglas, devuélvelo igual.';
+        const user = `SECCIÓN: ${P(seccionTitulo)}\n\nPÁRRAFOS A PULIR (cada uno con su tarea):\n\n`
+            + items.map(it => `[${it.i}] TAREA (${it.tipo}): ${P(it.instruccion)}\nPÁRRAFO ORIGINAL:\n${P(it.texto)}`).join('\n\n---\n\n');
+        const texto = await this._chatConRespaldo(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.5, max_tokens: 2600, response_format: { type: 'json_object' }, ...opciones });
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').replace(/\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/, '').trim()); }
+        catch (e) { const m = texto.match(/\{[\s\S]*\}/); data = m ? JSON.parse(m[0]) : null; }
+        const arr = (data && Array.isArray(data.reescritos)) ? data.reescritos : [];
+        return arr.filter(r => r && Number.isInteger(r.i) && typeof r.texto === 'string' && r.texto.trim().length > 40)
+            .map(r => ({ i: r.i, texto: r.texto.trim() }));
     },
     async extraerFichaInstrumentos(fuentes) {
         const conResumen = (fuentes || []).filter(f => f && (f.resumen || '').length > 40).slice(0, 60);
@@ -486,7 +531,13 @@ const IAAsistente = {
             + '(12) ALINEACIÓN MODELO↔INSTRUMENTO: si adoptas un modelo teórico y anclas un instrumento, ambos '
             + 'deben pertenecer a la MISMA familia según la FICHA; si la matriz mezcla familias, DECLARA la '
             + 'elección y justifica la correspondencia — jamás afirmes que un instrumento «se ancla» en un '
-            + 'modelo de otra familia sin justificarlo.\n\n'
+            + 'modelo de otra familia sin justificarlo. El posicionamiento se decide UNA sola vez y se repite '
+            + 'IDÉNTICO en todas las secciones. '
+            + '(13) PROHIBIDO el formato markdown: sin asteriscos de énfasis, sin listas con guiones o '
+            + 'números, sin encabezados — prosa corrida pura. '
+            + '(14) EXTENSIÓN: apunta a 550-850 palabras por parte, en párrafos de 4 a 7 frases; ni '
+            + 'telegramas ni muros. '
+            + 'Dos secciones no pueden adoptar familias distintas para el mismo instrumento.\n\n'
             + '== REGLAS DE SÍNTESIS CIENTÍFICA (LA DIFERENCIA ENTRE UNA MATRIZ Y UN MARCO TEÓRICO) ==\n'
             + '(A) ORGANIZA POR EJES TEMÁTICOS, JAMÁS POR AUTORES. El protagonista de cada párrafo es una '
             + 'IDEA (un hallazgo del conjunto de la evidencia, una convergencia, una controversia), nunca un '
