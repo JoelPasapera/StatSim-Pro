@@ -33,6 +33,12 @@ const RedactorTeorico = {
                 <input type="file" id="redArchivo" accept=".xlsx,.csv" style="display:none;">
                 <button id="redQuitarImport" class="btn btn-outline" style="padding:0.25rem 0.7rem; display:none;">✕ Quitar matriz importada</button>
               </div>
+              <p class="help-text" style="margin:0.5rem 0 0.2rem;">🎯 <b>Filtrar por relevancia:</b> 
+                <select id="redFiltroRel" style="padding:0.15rem 0.4rem;">
+                  <option value="0">Todas las fuentes</option>
+                  <option value="2">Media y alta</option>
+                  <option value="3">Solo alta</option>
+                </select> <span id="redFiltroRelInfo" class="help-text"></span></p>
               <p class="help-text" style="margin:0.4rem 0 0;"><b>Usar la matriz generada</b>: redacta con lo que tengas ahora en el Buscador (respetando el filtro de relevancia). <b>Subir archivo</b>: usa una matriz exportada antes — Excel (.xlsx), CSV español (;) o CSV internacional (,) — sin repetir la búsqueda.</p>
               <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
             </div>
@@ -111,6 +117,17 @@ const RedactorTeorico = {
         if (btnPDF) btnPDF.addEventListener('click', () => this._onDescargarPDF());
         const btnF3 = document.getElementById('redPaseF3');
         if (btnF3) btnF3.addEventListener('click', () => this._onPaseF3());
+        const selRel = document.getElementById('redFiltroRel');
+        if (selRel) selRel.addEventListener('change', () => {
+            this._filtroRel = parseInt(selRel.value, 10) || 0;
+            const guard = this._filtroRel; this._filtroRel = 0;
+            const todas = this._fuentes(); const tot = todas.length;
+            const sinDato = todas.filter(f => this._rangoRelevancia(f) === 0).length;
+            this._filtroRel = guard;
+            const pasan = this._fuentes().length;
+            const info = document.getElementById('redFiltroRelInfo');
+            if (info) info.textContent = guard === 0 ? '' : `→ ${pasan} de ${tot} fuente(s) pasan el filtro${sinDato ? ` (${sinDato} sin dato de relevancia, incluidas)` : ''}.`;
+        });
         const btnCopiar = document.getElementById('redCopiar');
         if (btnCopiar) btnCopiar.addEventListener('click', () => this._onCopiar());
         this.actualizarInfoFuentes();
@@ -254,6 +271,19 @@ const RedactorTeorico = {
             .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
             .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
     },
+    // Relevancia normalizada a rango 1-3 (alta=3): acepta «Alta/Media/Baja»,
+    // números 1-5, porcentajes… 0 = sin dato (SIEMPRE pasa: no se pierde en silencio).
+    _rangoRelevancia(f) {
+        const v = String((f && f.relevancia) || '').toLowerCase().trim();
+        if (!v) return 0;
+        if (/alta|high/.test(v)) return 3;
+        if (/media|medium|moderada/.test(v)) return 2;
+        if (/baja|low/.test(v)) return 1;
+        const n = parseFloat(v.replace(',', '.'));
+        if (!isFinite(n)) return 0;
+        if (n > 5) return n >= 75 ? 3 : n >= 50 ? 2 : 1;
+        return n >= 4 ? 3 : n >= 3 ? 2 : 1;
+    },
     _sanearFuentes(lista) {
         if (!Array.isArray(lista)) return lista;
         let reparadas = 0, irreparables = 0, corruptos = 0, refsRec = 0;
@@ -321,6 +351,9 @@ const RedactorTeorico = {
             }
         }
         if ((dupDoi || excluidas) && lista === this._fuentesImportadas) this._fuentesImportadas = filtrada;
+        // 🎯 Filtro por relevancia: también sobre matrices IMPORTADAS.
+        const rk = this._filtroRel || 0;
+        if (rk > 0) return filtrada.filter(f => { const r = this._rangoRelevancia(f); return r === 0 || r >= rk; });
         if (reparadas || irreparables || dupDoi || excluidas || corruptos || refsRec || posiblesDuplicados.length) {
             this._ultimoSaneo = { reparadas, irreparables, dupDoi, excluidas, corruptos, refsRec, posiblesDuplicados };
             if (typeof console !== 'undefined') console.info(`[Redactor] citas saneadas: ${reparadas} reparadas` + (irreparables ? `, ${irreparables} irreparables (revisar matriz)` : '') + (dupDoi ? `, ${dupDoi} fila(s) gemela(s) por DOI fundida(s)` : '') + (excluidas ? `, ${excluidas} pseudo-registro(s) basura excluido(s)` : '') + (corruptos ? `, ${corruptos} campo(s) con caracteres corruptos limpiados` : '') + (refsRec ? `, ${refsRec} referencia(s) APA reconstruida(s)` : '') + (posiblesDuplicados.length ? `; ⚠️ posibles duplicados: ${posiblesDuplicados.join(' · ')}` : ''));
@@ -496,6 +529,7 @@ const RedactorTeorico = {
         const iConclusiones = col('conclusiones');
         const iLink = col('link/doi', 'link', 'doi');
         const iAutor = col('autor', 'autores', 'autor(es)');
+        const iRel = col('relevancia', 'nivel de relevancia', 'relevance', 'prioridad');
         if (iTitulo < 0 || iRef < 0) {
             throw new Error('El archivo no parece una matriz exportada por la app (faltan las columnas «Título» y «Referencia (APA)»).');
         }
@@ -569,6 +603,7 @@ const RedactorTeorico = {
             ref: (Antecedentes.citaAPA ? Antecedentes.citaAPA(o) : ''),
             titulo: o.titulo || '',
             anio: o.anio || '',
+            relevancia: iRel >= 0 ? String(f[iRel] ?? '').trim() : '',
             resumen: o.resumen || o.abstract || ''
         })));
     },
@@ -1232,9 +1267,9 @@ const RedactorTeorico = {
     // NARRATIVA — «García (2020) demostró…» con García inexistente — pasaba
     // de largo. Índice compacto propio + mismas normalizaciones.
     _fantasmasNarrativos(texto, fuentes) {
-        const t = String(texto || '');
+        const t = String(texto || '').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u202f]/g, ' ');   // el patrón token exige guion ASCII
         if (!t || !fuentes.length) return [];
-        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u202f]/g, ' ').trim();
         const claves = new Set();
         const reg = (ap, y) => { const a = norm(ap).replace(/\bet al\.?/g, '').trim(), yy = norm(y); if (a && yy) claves.add(a + '|' + yy); };
         for (const f of fuentes) {
@@ -1280,7 +1315,7 @@ const RedactorTeorico = {
     _citasSospechosas(texto, fuentes) {
         const t = String(texto || '');
         if (!t || !fuentes.length) return [];
-        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+        const norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[\u2010-\u2015\u2212]/g, '-').replace(/[\u00a0\u202f]/g, ' ').trim();
         // Índice de la matriz: apellido|año para cada apellido de la cita corta, cada
         // autor, y cada SIGLA entre corchetes («Organización Mundial de la Salud [OMS]»
         // debe validar también «(OMS, 2023)» — sin esto, falso positivo garantizado).
