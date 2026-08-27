@@ -1126,8 +1126,13 @@ const RedactorTeorico = {
         // Errores FINALES desde la verdad (banners), no con contador sube-baja (adiós «-3»).
         const muertasFinal = resultados.filter(r => r && /^\[No se pudo generar/.test(String(r.texto || ''))).length;
         const provPorSec = new Map();
+        const muertasPorSec = new Map();
         resultados.forEach(r => {
-            if (!r || /^\[No se pudo generar/.test(String(r.texto || ''))) return;
+            if (!r) return;
+            if (/^\[No se pudo generar/.test(String(r.texto || ''))) {
+                muertasPorSec.set(r.seccion, (muertasPorSec.get(r.seccion) || 0) + 1);
+                return;
+            }
             if (!provPorSec.has(r.seccion)) provPorSec.set(r.seccion, new Set());
             provPorSec.get(r.seccion).add(r.proveedor || 'gemini');
         });
@@ -1136,7 +1141,8 @@ const RedactorTeorico = {
         const chip = (txt, icono) => `<span style="display:inline-block;background:#eef2f7;border:1px solid #d6dee8;border-radius:999px;padding:1px 9px;margin:2px 3px 0 0;font-size:.88em;">${icono} ${esc(txt)}</span>`;
         const chipsSec = secciones.map(sec => {
             const ps = provPorSec.get(sec.titulo) || new Set();
-            const icono = ps.has('groq') ? (ps.has('gemini') ? '✦🛟' : '🛟') : '✦';
+            const base = ps.size === 0 ? '❌' : ps.has('groq') ? (ps.has('gemini') ? '✦🛟' : '🛟') : '✦';
+            const icono = base + (ps.size > 0 && muertasPorSec.get(sec.titulo) ? '❌' : '');
             return chip(sec.titulo, icono);
         }).join('');
         const fila = (icono, etiqueta, contenido) => `<div style="margin:3px 0;"><b>${icono} ${etiqueta}:</b> ${contenido}</div>`;
@@ -1300,6 +1306,7 @@ const RedactorTeorico = {
     // Muletillas de plantilla: el MISMO arranque de frase (4 tokens) repetido ≥3
     // veces en el documento delata molde clonado entre secciones.
     _muletillasDoc(texto) {
+        texto = String(texto || '').replace(/\[No se pudo generar[^\]]*\]/g, ' ');
         const cuenta = new Map();
         for (const fr of this._frases(String(texto || ''))) {
             if (/^[(\[]/.test(fr.trim())) continue;
@@ -1311,6 +1318,7 @@ const RedactorTeorico = {
         return [...cuenta].filter(([, n]) => n >= 3).sort((a, b) => b[1] - a[1]).slice(0, 3);
     },
     _declaracionesVacio(texto) {
+        texto = String(texto || '').replace(/\[No se pudo generar[^\]]*\]/g, ' ');
         return (String(texto || '').match(/(persiste|subsiste|se evidencia|exhibe|se identifica)[^.]{0,90}?(vac[ií]o|laguna|escasez)/gi) || []).length;
     },
     _citasSospechosas(texto, fuentes) {
