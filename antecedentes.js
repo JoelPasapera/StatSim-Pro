@@ -706,8 +706,9 @@ const Antecedentes = {
                 <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
                   style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
               </div>
-              <div id="antVariantesZona" style="display:none; margin:0 0 0.6rem;">
-                <textarea id="antVariantes" class="input" rows="5" style="resize:vertical;"
+              <div id="antVariantesZona" style="margin:0 0 0.6rem;">
+                <label for="antVariantes" class="help-text" style="display:block; margin:0 0 0.2rem;">🔀 <b>Variantes de búsqueda</b> (opcional — escribe las TUYAS, una por línea; si lo dejas vacío, 🚀 generará automáticamente el Nº configurado):</label>
+                <textarea id="antVariantes" class="input" rows="5" style="resize:vertical;" placeholder="p. ej.:&#10;inteligencia emocional adolescentes rendimiento&#10;emotional intelligence academic achievement teens"
                   placeholder="Aquí aparecerán las variantes generadas, una por línea. Puedes editarlas, borrar las que no quieras o añadir las tuyas."></textarea>
                 <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-top:0.5rem;">
                   <button id="antGenerarVariantes" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🔀 Regenerar variantes</button>
@@ -1052,8 +1053,17 @@ const Antecedentes = {
     // caja ya tiene variantes (generadas o editadas a mano), busca directamente.
     async _onIntensiva() {
         const caja = document.getElementById('antVariantes');
+        const estado = document.getElementById('antVariantesEstado');
         if (!caja) return;
-        if (!caja.value.trim()) await this._onGenerarVariantes();
+        // Variantes PROPIAS del usuario: se normalizan (trim + dedup, sin vacías)
+        // y se usan tal cual — la IA ni se entera.
+        const propias = [...new Set(caja.value.split('\n').map(s => s.trim()).filter(Boolean))];
+        if (propias.length) {
+            caja.value = propias.join('\n');
+            if (estado) estado.textContent = `✓ Usando tus ${propias.length} variante(s) personalizadas (sin llamar a la IA).`;
+        } else {
+            await this._onGenerarVariantes();
+        }
         if (caja.value.trim()) await this._onBuscarIntensivo();
     },
 
