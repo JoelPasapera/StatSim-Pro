@@ -59,7 +59,14 @@ const Antecedentes = {
         ['es', 'español'], ['en', 'inglés'], ['pt', 'portugués'],
         ['fr', 'francés'], ['de', 'alemán'], ['zh-CN', 'chino']
     ],
-    _PRESUPUESTO_CONSULTAS: 30,
+    // Tope de consultas de la intensiva: protege de esperas largas y de los
+    // rate-limits de las fuentes. Configurable en la interfaz (10-200).
+    _PRESUPUESTO_CONSULTAS: 60,
+    _topeConsultas() {
+        const el = document.getElementById('antTopeConsultas');
+        const n = el ? parseInt(el.value, 10) : NaN;
+        return isFinite(n) ? Math.min(200, Math.max(10, n)) : this._PRESUPUESTO_CONSULTAS;
+    },
     _idiomasSeleccionados() {
         const cont = document.getElementById('antIdiomas');
         if (!cont) return [['es', 'español']];
@@ -70,10 +77,11 @@ const Antecedentes = {
     // Con variantes × idiomas manda el tope de 30 consultas: se recortan
     // variantes, nunca idiomas (esos los eligió el usuario a mano).
     _planPresupuesto(nVariantes, nIdiomas) {
+        const tope = this._topeConsultas();
         const total = nVariantes * nIdiomas;
-        if (total <= this._PRESUPUESTO_CONSULTAS) return { variantes: nVariantes, total, recortado: false };
-        const v = Math.max(1, Math.floor(this._PRESUPUESTO_CONSULTAS / nIdiomas));
-        return { variantes: v, total: v * nIdiomas, recortado: true };
+        if (total <= tope) return { variantes: nVariantes, total, recortado: false, tope };
+        const v = Math.max(1, Math.floor(tope / nIdiomas));
+        return { variantes: v, total: v * nIdiomas, recortado: true, tope };
     },
     // Traducción con caché de sesión: la misma frase al mismo idioma no se
     // retraduce (ahorra red y respeta el límite diario de MyMemory).
@@ -702,6 +710,9 @@ const Antecedentes = {
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.2rem 0 0.6rem;">
                 <button id="antBuscar" class="btn btn-primary">🔎 Búsqueda individual</button>
                 <button id="antIntensivaBtn" class="btn btn-primary">🚀 Búsqueda intensiva con variantes</button>
+                <label for="antTopeConsultas" style="font-size:0.85em; color:var(--color-text-soft, #666);">Tope consultas:</label>
+                <input type="number" id="antTopeConsultas" class="input" value="60" min="10" max="200" step="10"
+                       style="width:5rem; padding:0.3rem 0.5rem;" title="Máximo de consultas (variantes × idiomas) de la búsqueda intensiva.">
                 <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
                 <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
                   style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
@@ -844,18 +855,25 @@ const Antecedentes = {
             const coste = document.getElementById('antIdiomasCoste');
             if (!coste) return;
             const nIdi = this._idiomasSeleccionados().length;
-            const nVar = parseInt((document.getElementById('antNumVariantes') || {}).value || '5', 10) || 5;
+            // Si el usuario ya escribió sus variantes, ESAS mandan en el cálculo.
+            const propias = ((document.getElementById('antVariantes') || {}).value || '').split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 2).length;
+            const nVar = propias || parseInt((document.getElementById('antNumVariantes') || {}).value || '5', 10) || 5;
             const plan = this._planPresupuesto(nVar, nIdi);
             coste.textContent = `Individual: ${nIdi} consulta${nIdi === 1 ? '' : 's'} · Intensiva: `
                 + `${plan.recortado ? `${plan.variantes} de ${nVar}` : nVar} variantes × ${nIdi} idioma${nIdi === 1 ? '' : 's'} `
-                + `= ${plan.total} consultas (tope ${this._PRESUPUESTO_CONSULTAS})`;
+                + `= ${plan.total} consultas (tope ${plan.tope})`
+                + (plan.recortado ? ` ⚠️ se recortarán variantes: sube el tope para buscarlas todas` : '');
         };
+        const cajaVar = document.getElementById('antVariantes');
+        if (cajaVar) cajaVar.addEventListener('input', actualizarCosteIdiomas);
         const zonaIdiomas = document.getElementById('antIdiomas');
         if (zonaIdiomas) zonaIdiomas.addEventListener('change', () => { actualizarAvisoScopus(); actualizarCosteIdiomas(); });
         const elUsarScopus = document.getElementById('antUsarScopus');
         if (elUsarScopus) elUsarScopus.addEventListener('change', actualizarAvisoScopus);
         const elNumVar = document.getElementById('antNumVariantes');
         if (elNumVar) elNumVar.addEventListener('input', actualizarCosteIdiomas);
+        const elTope = document.getElementById('antTopeConsultas');
+        if (elTope) elTope.addEventListener('input', actualizarCosteIdiomas);
         actualizarAvisoScopus();
         actualizarCosteIdiomas();
     },
@@ -1057,10 +1075,15 @@ const Antecedentes = {
         if (!caja) return;
         // Variantes PROPIAS del usuario: se normalizan (trim + dedup, sin vacías)
         // y se usan tal cual — la IA ni se entera.
-        const propias = [...new Set(caja.value.split('\n').map(s => s.trim()).filter(Boolean))];
+        // MISMO criterio que el ejecutor (>2 caracteres): así una línea de 1-2
+        // letras no pasa aquí para morir en silencio después.
+        const brutas = caja.value.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const propias = [...new Set(brutas.filter(s => s.length > 2))];
+        const cortas = brutas.length - propias.length;
         if (propias.length) {
             caja.value = propias.join('\n');
-            if (estado) estado.textContent = `✓ Usando tus ${propias.length} variante(s) personalizadas (sin llamar a la IA).`;
+            if (estado) estado.textContent = `✓ Usando tus ${propias.length} variante(s) personalizadas (sin llamar a la IA)`
+                + (cortas ? ` · ⚠️ ${cortas} línea(s) descartada(s) por ser repetidas o demasiado cortas.` : '.');
         } else {
             await this._onGenerarVariantes();
         }
@@ -1093,7 +1116,13 @@ const Antecedentes = {
         }
         // PRESUPUESTO: variantes × idiomas con tope de 30 consultas totales.
         const plan = this._planPresupuesto(consultas.length, idiomas.length);
-        if (plan.recortado) consultas = consultas.slice(0, plan.variantes);
+        if (plan.recortado) {
+            const est = document.getElementById('antVariantesEstado');
+            const msg = `⚠️ Tope de ${plan.tope} consultas: se usarán ${plan.variantes} de tus ${consultas.length} variantes (×${idiomas.length} idioma(s)). Sube «Tope consultas» para buscarlas todas.`;
+            if (est) est.textContent = msg;
+            console.warn('[Buscador]', msg);
+            consultas = consultas.slice(0, plan.variantes);
+        }
 
         const textoBtn = btn ? btn.textContent : '';
         if (btn) { btn.disabled = true; }
