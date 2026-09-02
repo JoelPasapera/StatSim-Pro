@@ -329,6 +329,13 @@
                             <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
                         </div>
                         <div class="form-group">
+                        <div class="form-group">
+                            <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                                <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
+                                Correlaciones exactas
+                            </label>
+                            <span class="help-text">La muestra reproduce EXACTAMENTE las correlaciones objetivo de la tabla III (r = 0.40 sale 0.40). Desactívalo para que haya error de muestreo, como en datos reales.</span>
+                        </div>
                             <label for="generarPercentiles" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <input type="checkbox" id="generarPercentiles" style="width: auto; margin: 0;">
                                 Generar percentiles (PC_)
