@@ -91,6 +91,9 @@ class GeneradorDatos {
         // Percentiles opcionales (columnas PC_)
         const chkPC = document.getElementById('generarPercentiles');
         this.configuracion.generarPercentiles = !!(chkPC && chkPC.checked);
+        const chkCE = document.getElementById('correlacionesExactas');
+        // Por defecto ACTIVADO: si el usuario pide r = 0.40, la muestra entrega 0.40.
+        this.configuracion.correlacionesExactas = chkCE ? !!chkCE.checked : true;
 
         // Pruebas aplicadas (cada fila es una ESCALA; se agrupan por prueba)
         this.configuracion.pruebas = this.recolectarPruebas();
@@ -420,13 +423,17 @@ class GeneradorDatos {
 
         const n = this.configuracion.tamanoMuestra;
         const datos = [];
+        // Matriz de drivers con correlación muestral EXACTA (si procede).
+        const exactas = hayCorrelaciones && this.configuracion.correlacionesExactas !== false;
+        const matrizDrivers = exactas ? this.generarMatrizDrivers(n) : null;
 
         // Generar datos para cada participante
         for (let i = 0; i < n; i++) {
             const participante = { ID: i + 1 };
 
             // Valores normales correlacionados (driver) por variable, si aplica
-            const drivers = hayCorrelaciones ? this.generarVectorCorrelacionado() : {};
+            const drivers = matrizDrivers ? this._driversDeFila(matrizDrivers[i])
+                : (hayCorrelaciones ? this.generarVectorCorrelacionado() : {});
 
             // Generar datos sociodemográficos según su distribución
             this.configuracion.sociodemograficos.forEach(socio => {
@@ -901,6 +908,72 @@ class GeneradorDatos {
 
     // Genera el vector de valores normales correlacionados (uno por variable
     // correlacionable) para un participante: y = L·z con z ~ N(0,1) i.i.d.
+    // ================== CORRELACIONES EXACTAS EN LA MUESTRA ==================
+    // Sin esto, la correlación OBSERVADA fluctúa alrededor de la pedida por el
+    // error de muestreo (con n = 250 y r = 0.40, ±0.05 es lo normal). Aquí se
+    // genera la matriz de drivers de TODA la muestra y se «blanquea»:
+    //   1. estandarizar columnas → media 0, DE 1
+    //   2. Cholesky de la correlación MUESTRAL C = S·Sᵀ  →  W = Z·(S⁻¹)ᵀ
+    //      (W queda con correlación muestral EXACTAMENTE identidad)
+    //   3. Z* = W·Lᵀ con L = Cholesky de la matriz OBJETIVO
+    // Resultado: la correlación muestral de los drivers es exactamente la pedida.
+    _estandarizarColumnas(Z) {
+        const n = Z.length, m = Z[0].length;
+        for (let j = 0; j < m; j++) {
+            let s = 0; for (let i = 0; i < n; i++) s += Z[i][j];
+            const media = s / n;
+            let v = 0; for (let i = 0; i < n; i++) v += (Z[i][j] - media) ** 2;
+            const de = Math.sqrt(v / n) || 1e-9;
+            for (let i = 0; i < n; i++) Z[i][j] = (Z[i][j] - media) / de;
+        }
+        return Z;
+    }
+    _correlacionMuestral(Z) {
+        const n = Z.length, m = Z[0].length;
+        const C = Array.from({ length: m }, () => new Array(m).fill(0));
+        for (let a = 0; a < m; a++) for (let b = 0; b < m; b++) {
+            let s = 0; for (let i = 0; i < n; i++) s += Z[i][a] * Z[i][b];
+            C[a][b] = s / n;
+        }
+        return C;
+    }
+    _inversaTriangularInferior(S) {
+        const m = S.length;
+        const inv = Array.from({ length: m }, () => new Array(m).fill(0));
+        for (let i = 0; i < m; i++) {
+            inv[i][i] = 1 / (S[i][i] || 1e-9);
+            for (let j = 0; j < i; j++) {
+                let s = 0;
+                for (let k = j; k < i; k++) s += S[i][k] * inv[k][j];
+                inv[i][j] = -s / (S[i][i] || 1e-9);
+            }
+        }
+        return inv;
+    }
+    generarMatrizDrivers(n) {
+        const m = this.correlVariables.length;
+        if (!m || n < 3) return null;
+        let Z = Array.from({ length: n }, () => Array.from({ length: m }, () => this.generarNormalEstandar()));
+        this._estandarizarColumnas(Z);
+        const S = this.descomposicionCholesky(this._correlacionMuestral(Z));
+        const Sinv = this._inversaTriangularInferior(S);
+        // W = Z·(S⁻¹)ᵀ  →  Z* = W·Lᵀ  (L = factor objetivo, ya calculado)
+        const L = this.correlL;
+        const salida = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const w = new Array(m).fill(0);
+            for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += Z[i][k] * Sinv[a][k]; w[a] = s; }
+            const y = new Array(m).fill(0);
+            for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; y[a] = s; }
+            salida[i] = y;
+        }
+        return salida;
+    }
+    _driversDeFila(fila) {
+        const drivers = {};
+        this.correlVariables.forEach((v, i) => { drivers[v.tipo + ':' + v.clave] = fila[i]; });
+        return drivers;
+    }
     generarVectorCorrelacionado() {
         const m = this.correlVariables.length;
         const z = [];
