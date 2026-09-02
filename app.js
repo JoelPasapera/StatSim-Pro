@@ -2176,11 +2176,45 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
+const MARCA_TODO = { general: '###GENERAL###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
+// Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
+const CAMPOS_GENERAL = [
+    { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
+    { id: 'semilla', clave: 'Semilla' },
+    { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true }
+];
+function csvDeGeneral() {
+    let csv = 'Campo,Valor\n';
+    CAMPOS_GENERAL.forEach(c => {
+        const el = document.getElementById(c.id);
+        const v = el ? (c.checkbox ? (el.checked ? 'si' : 'no') : (el.value || '')) : '';
+        csv += `${c.clave},${v}\n`;
+    });
+    return csv;
+}
+// Aplica el bloque general. Devuelve cuántos campos se restauraron.
+function aplicarCSVGeneral(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return 0;
+    let n = 0;
+    for (const linea of lineas.slice(1)) {
+        const [clave, ...resto] = linea.split(',');
+        const valor = resto.join(',').trim();
+        const campo = CAMPOS_GENERAL.find(c => c.clave.toLowerCase() === String(clave).trim().toLowerCase());
+        if (!campo) continue;
+        const el = document.getElementById(campo.id);
+        if (!el) continue;
+        if (campo.checkbox) el.checked = /^(si|sí|true|1)$/i.test(valor);
+        else el.value = valor;
+        n++;
+    }
+    return n;
+}
 function exportarConfigTodo() {
     try {
         const partes = [];
         // Se reutilizan los MISMOS generadores de cada tabla (una sola fuente de verdad).
+        const csvG = csvDeGeneral();
         const csvP = csvDeTabla('#bodyPruebas .fila-prueba', 'pruebas');
         const csvS = csvDeTabla('#bodySocio .fila-socio', 'socio');
         const csvC = csvDeCorrelaciones();
@@ -2189,9 +2223,9 @@ function exportarConfigTodo() {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
-        mostrarToast(`Configuración completa exportada: ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es)`, 'success');
+        mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es)`, 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
     }
@@ -2214,15 +2248,18 @@ function importarConfigTodo(e) {
                 const b = fin ? texto.indexOf(fin, desde) : -1;
                 return texto.slice(desde, b < 0 ? undefined : b).trim();
             };
+            // Archivos antiguos SIN ###GENERAL### siguen funcionando: el bloque sale vacío.
+            const csvG = bloque(MARCA_TODO.general, MARCA_TODO.pruebas);
             const csvP = bloque(MARCA_TODO.pruebas, MARCA_TODO.socio);
             const csvS = bloque(MARCA_TODO.socio, MARCA_TODO.corr);
             const csvC = bloque(MARCA_TODO.corr, null);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
+            const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
             const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
             const rS = csvS ? aplicarCSVSocio(csvS) : 0;
             const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
-            mostrarToast(`Configuración completa importada: ${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es)` + (rC.omitidas ? ` · ${rC.omitidas} correlación(es) omitida(s)` : ''), 'success');
+            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es)` + (rC.omitidas ? ` · ${rC.omitidas} correlación(es) omitida(s)` : ''), 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
