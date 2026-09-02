@@ -48,8 +48,9 @@ const EtiquetasVariables = {
     // ----------------------------------------
     // QUÉ COLUMNAS PUEDE RENOMBRAR EL USUARIO.
     // Cambia MODO_RENOMBRADO para ajustarlo al instante:
-    //   'total' → solo puntajes de escala (prefijo Total_), NO ítems individuales
-    //   'todos' → todas las columnas numéricas del dataset
+    //   'puntajes' → solo puntajes de escala (prefijos General_, Dimension_ y
+    //                Total_ de bases antiguas), NO ítems individuales
+    //   'todos'    → todas las columnas numéricas del dataset
     // (Para un criterio nuevo, agrega otra entrada en _FILTROS_RENOMBRADO y apunta el modo a ella.)
     MODO_RENOMBRADO: 'puntajes',
     _FILTROS_RENOMBRADO: {
