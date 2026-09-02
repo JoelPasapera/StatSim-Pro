@@ -58,6 +58,19 @@ function configurarGenerador() {
         document.getElementById('importSocioInput').click();
     });
     document.getElementById('btnExportarSocio').addEventListener('click', exportarConfigSocio);
+    // Correlaciones (tabla III) y maestros: mismo patrón que las tablas I y II.
+    const _bIC = document.getElementById('btnImportarCorrelaciones');
+    if (_bIC) _bIC.addEventListener('click', () => document.getElementById('importCorrelacionesInput').click());
+    const _bEC = document.getElementById('btnExportarCorrelaciones');
+    if (_bEC) _bEC.addEventListener('click', exportarConfigCorrelaciones);
+    const _iC = document.getElementById('importCorrelacionesInput');
+    if (_iC) _iC.addEventListener('change', importarConfigCorrelaciones);
+    const _bIT = document.getElementById('btnImportarTodo');
+    if (_bIT) _bIT.addEventListener('click', () => document.getElementById('importTodoInput').click());
+    const _bET = document.getElementById('btnExportarTodo');
+    if (_bET) _bET.addEventListener('click', exportarConfigTodo);
+    const _iT = document.getElementById('importTodoInput');
+    if (_iT) _iT.addEventListener('change', importarConfigTodo);
     document.getElementById('importSocioInput').addEventListener('change', importarConfigSocio);
     // Delegación de eventos para botones de eliminar
     document.getElementById('bodyPruebas').addEventListener('click', function (e) {
@@ -1995,6 +2008,229 @@ function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
 // IMPORTAR/EXPORTAR CONFIGURACIONES
 // ========================================
 // PRUEBAS APLICADAS
+
+
+// ---- Ayudantes compartidos por los exportadores/importadores (fuente única) ----
+// Generan el MISMO CSV que los botones individuales de cada tabla.
+function csvDeTabla(selectorFilas, tipo) {
+    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    if (tipo === 'pruebas') {
+        let csv = 'Prueba,Escala,Tipo,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
+        document.querySelectorAll(selectorFilas).forEach(fila => {
+            const inputs = fila.querySelectorAll('input');
+            const selectTipo = fila.querySelector('[aria-label="Tipo de escala"]');
+            const selectDist = fila.querySelector('[aria-label="Distribución"]');
+            csv += `${esc(inputs[0].value.trim())},${esc(inputs[1].value.trim())},${selectTipo ? selectTipo.value : 'dimension'},`
+                + `${inputs[2].value || ''},${selectDist ? selectDist.value : 'normal'},${inputs[3].value || ''},`
+                + `${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6].value || ''},${inputs[7] ? (inputs[7].value || '') : ''}\n`;
+        });
+        return csv;
+    }
+    let csv = 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales\n';
+    document.querySelectorAll(selectorFilas).forEach(fila => {
+        const inputs = fila.querySelectorAll('input');
+        const select = fila.querySelector('select');
+        csv += `${esc(inputs[0].value.trim())},${select ? select.value : 'normal'},${inputs[1].value || ''},`
+            + `${inputs[2].value || ''},${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''}\n`;
+    });
+    return csv;
+}
+// Aplica un CSV de PRUEBAS a la tabla I (misma compatibilidad de formatos que
+// el importador individual: nuevo con Tipo, intermedio y antiguo). Devuelve nº de filas.
+function aplicarCSVPruebas(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return 0;
+    const enc = lineas[0].toLowerCase();
+    const tienePruebaEscala = enc.includes('escala');
+    const tieneTipo = enc.includes('tipo');
+    const tieneDistribucion = enc.includes('distribucion');
+    const tbody = document.getElementById('bodyPruebas');
+    if (tbody) tbody.innerHTML = '';
+    let n = 0;
+    for (const linea of lineas.slice(1)) {
+        const v = parsearLineaCSV(linea.trim());
+        if (v.length < 4) continue;
+        if (tienePruebaEscala) {
+            const off = tieneTipo ? 1 : 0;
+            agregarFilaPruebaConDatos({
+                prueba: v[0] || '', nombre: v[1] || '',
+                tipo: tieneTipo ? (v[2] || 'dimension') : 'dimension',
+                numItems: v[2 + off] || '', distribucion: v[3 + off] || 'normal',
+                media: v[4 + off] || '', de: v[5 + off] || '',
+                min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || ''
+            });
+        } else if (tieneDistribucion) {
+            agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
+                distribucion: v[2] || 'normal', media: v[3] || '', de: v[4] || '', min: v[5] || '', max: v[6] || '', alfa: v[7] || '' });
+        } else {
+            agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
+                distribucion: 'normal', media: v[2] || '', de: v[3] || '', min: v[4] || '', max: v[5] || '', alfa: v[6] || '' });
+        }
+        n++;
+    }
+    return n;
+}
+// Aplica un CSV de SOCIODEMOGRÁFICOS a la tabla II. Devuelve nº de filas.
+function aplicarCSVSocio(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return 0;
+    const tieneDistribucion = lineas[0].toLowerCase().includes('distribucion');
+    const tbody = document.getElementById('bodySocio');
+    if (tbody) tbody.innerHTML = '';
+    let n = 0;
+    for (const linea of lineas.slice(1)) {
+        const v = parsearLineaCSV(linea.trim());
+        if (v.length < 3) continue;
+        const d = tieneDistribucion ? 1 : 0;
+        agregarFilaSocioConDatos({
+            categoria: v[0] || '', distribucion: tieneDistribucion ? (v[1] || 'normal') : 'normal',
+            promedio: v[1 + d] || '', de: v[2 + d] || '', min: v[3 + d] || '', max: v[4 + d] || '', decimales: v[5 + d] || '2'
+        });
+        n++;
+    }
+    return n;
+}
+
+// ============================================================================
+// CORRELACIONES: importar / exportar (mismo patrón que Pruebas y Sociodemográficos)
+// ============================================================================
+function exportarConfigCorrelaciones() {
+    try {
+        const filas = document.querySelectorAll('#bodyCorrelaciones .fila-correlacion');
+        if (filas.length === 0) {
+            mostrarToast('No hay correlaciones para exportar', 'warning');
+            return;
+        }
+        descargarArchivo(csvDeCorrelaciones(), 'configuracion_correlaciones.csv', 'text/csv');
+        mostrarToast('Correlaciones exportadas exitosamente', 'success');
+    } catch (error) {
+        mostrarToast('Error al exportar: ' + error.message, 'error');
+    }
+}
+// CSV de correlaciones (reutilizado por el exportador maestro).
+function csvDeCorrelaciones() {
+    let csv = 'VariableA,VariableB,Correlacion\n';
+    document.querySelectorAll('#bodyCorrelaciones .fila-correlacion').forEach(fila => {
+        const selA = fila.querySelector('[aria-label="Variable A"]');
+        const selB = fila.querySelector('[aria-label="Variable B"]');
+        const inpR = fila.querySelector('[aria-label="Correlación objetivo"]');
+        const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+        csv += `${esc(selA ? selA.value : '')},${esc(selB ? selB.value : '')},${inpR ? inpR.value : ''}\n`;
+    });
+    return csv;
+}
+// Aplica filas de correlación desde texto CSV. Devuelve cuántas entraron.
+// Las variables deben EXISTIR ya en las tablas I/II (los <select> se llenan de
+// ahí): por eso el maestro importa correlaciones al final.
+function aplicarCSVCorrelaciones(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return { aplicadas: 0, omitidas: 0 };
+    const tbody = document.getElementById('bodyCorrelaciones');
+    if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0, omitidas = 0;
+    for (const linea of lineas.slice(1)) {
+        const partes = linea.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
+        const [varA, varB, r] = partes;
+        if (!varA || !varB) { omitidas++; continue; }
+        agregarFilaCorrelacion();
+        const fila = tbody ? tbody.lastElementChild : null;
+        if (!fila) { omitidas++; continue; }
+        const selA = fila.querySelector('[aria-label="Variable A"]');
+        const selB = fila.querySelector('[aria-label="Variable B"]');
+        const inpR = fila.querySelector('[aria-label="Correlación objetivo"]');
+        const existe = (sel, val) => sel && Array.from(sel.options).some(o => o.value === val);
+        if (!existe(selA, varA) || !existe(selB, varB)) { fila.remove(); omitidas++; continue; }
+        selA.value = varA; selB.value = varB;
+        if (inpR) inpR.value = (r === undefined || r === '') ? '' : r;
+        aplicadas++;
+    }
+    return { aplicadas, omitidas };
+}
+function importarConfigCorrelaciones(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (event) {
+        try {
+            const encabezado = String(event.target.result).split(/\r?\n/)[0].toLowerCase();
+            if (!encabezado.includes('variablea') || !encabezado.includes('correlacion')) {
+                mostrarToast('Formato incorrecto. Encabezados esperados: VariableA,VariableB,Correlacion', 'error');
+                return;
+            }
+            const res = aplicarCSVCorrelaciones(event.target.result);
+            if (res.aplicadas === 0) {
+                mostrarToast('Ninguna correlación se pudo aplicar: define primero esas variables en las tablas I y II', 'warning');
+            } else {
+                mostrarToast(`${res.aplicadas} correlación(es) importada(s)` + (res.omitidas ? ` · ${res.omitidas} omitida(s): variables inexistentes` : ''), res.omitidas ? 'warning' : 'success');
+            }
+        } catch (error) {
+            mostrarToast('Error al importar: ' + error.message, 'error');
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
+// ============================================================================
+// MAESTRO: las TRES configuraciones en un solo archivo
+// Formato: bloques separados por marcadores ###SECCION### — legible, editable
+// a mano y compatible con los CSV sueltos de cada tabla.
+// ============================================================================
+const MARCA_TODO = { pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
+function exportarConfigTodo() {
+    try {
+        const partes = [];
+        // Se reutilizan los MISMOS generadores de cada tabla (una sola fuente de verdad).
+        const csvP = csvDeTabla('#bodyPruebas .fila-prueba', 'pruebas');
+        const csvS = csvDeTabla('#bodySocio .fila-socio', 'socio');
+        const csvC = csvDeCorrelaciones();
+        const nFilas = s => Math.max(0, String(s).trim().split(/\r?\n/).length - 1);
+        if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0) {
+            mostrarToast('No hay nada configurado para exportar', 'warning');
+            return;
+        }
+        partes.push(MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
+        descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
+        mostrarToast(`Configuración completa exportada: ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es)`, 'success');
+    } catch (error) {
+        mostrarToast('Error al exportar: ' + error.message, 'error');
+    }
+}
+function importarConfigTodo(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function (event) {
+        try {
+            const texto = String(event.target.result);
+            if (!texto.includes(MARCA_TODO.pruebas)) {
+                mostrarToast('Este archivo no es una configuración completa. Usa el botón «Importar CSV» de cada tabla, o exporta primero con «Exportar TODO».', 'error');
+                return;
+            }
+            const bloque = (ini, fin) => {
+                const a = texto.indexOf(ini);
+                if (a < 0) return '';
+                const desde = a + ini.length;
+                const b = fin ? texto.indexOf(fin, desde) : -1;
+                return texto.slice(desde, b < 0 ? undefined : b).trim();
+            };
+            const csvP = bloque(MARCA_TODO.pruebas, MARCA_TODO.socio);
+            const csvS = bloque(MARCA_TODO.socio, MARCA_TODO.corr);
+            const csvC = bloque(MARCA_TODO.corr, null);
+            // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
+            // (sus desplegables se llenan a partir de las anteriores).
+            const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
+            const rS = csvS ? aplicarCSVSocio(csvS) : 0;
+            const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
+            mostrarToast(`Configuración completa importada: ${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es)` + (rC.omitidas ? ` · ${rC.omitidas} correlación(es) omitida(s)` : ''), 'success');
+        } catch (error) {
+            mostrarToast('Error al importar: ' + error.message, 'error');
+        }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+}
+
 function exportarConfigPruebas() {
     try {
         const filas = document.querySelectorAll('#bodyPruebas .fila-prueba');
