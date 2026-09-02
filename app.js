@@ -2181,7 +2181,8 @@ const MARCA_TODO = { general: '###GENERAL###', pruebas: '###PRUEBAS###', socio: 
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
     { id: 'semilla', clave: 'Semilla' },
-    { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true }
+    { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true },
+    { id: 'correlacionesExactas', clave: 'CorrelacionesExactas', checkbox: true }
 ];
 function csvDeGeneral() {
     let csv = 'Campo,Valor\n';
