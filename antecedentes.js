@@ -59,8 +59,9 @@ const Antecedentes = {
         ['es', 'español'], ['en', 'inglés'], ['pt', 'portugués'],
         ['fr', 'francés'], ['de', 'alemán'], ['zh-CN', 'chino']
     ],
-    // Tope de consultas de la intensiva: protege de esperas largas y de los
-    // rate-limits de las fuentes. Configurable en la interfaz (10-200).
+    // Máximo de BÚSQUEDAS de la intensiva (variantes × idiomas) — no de
+    // artículos: protege de esperas largas y de los rate-limits de las
+    // fuentes. Configurable en la interfaz (10-200).
     _PRESUPUESTO_CONSULTAS: 60,
     _topeConsultas() {
         const el = document.getElementById('antTopeConsultas');
@@ -710,9 +711,9 @@ const Antecedentes = {
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.2rem 0 0.6rem;">
                 <button id="antBuscar" class="btn btn-primary">🔎 Búsqueda individual</button>
                 <button id="antIntensivaBtn" class="btn btn-primary">🚀 Búsqueda intensiva con variantes</button>
-                <label for="antTopeConsultas" style="font-size:0.85em; color:var(--color-text-soft, #666);">Tope consultas:</label>
+                <label for="antTopeConsultas" style="font-size:0.85em; color:var(--color-text-soft, #666);">Máx. búsquedas (variantes × idiomas):</label>
                 <input type="number" id="antTopeConsultas" class="input" value="60" min="10" max="200" step="10"
-                       style="width:5rem; padding:0.3rem 0.5rem;" title="Máximo de consultas (variantes × idiomas) de la búsqueda intensiva.">
+                       style="width:5rem; padding:0.3rem 0.5rem;" title="Número máximo de BÚSQUEDAS que se lanzan (variantes × idiomas). No limita cuántos artículos encuentras: limita cuántas búsquedas se ejecutan.">
                 <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
                 <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
                   style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
@@ -861,8 +862,8 @@ const Antecedentes = {
             const plan = this._planPresupuesto(nVar, nIdi);
             coste.textContent = `Individual: ${nIdi} consulta${nIdi === 1 ? '' : 's'} · Intensiva: `
                 + `${plan.recortado ? `${plan.variantes} de ${nVar}` : nVar} variantes × ${nIdi} idioma${nIdi === 1 ? '' : 's'} `
-                + `= ${plan.total} consultas (tope ${plan.tope})`
-                + (plan.recortado ? ` ⚠️ se recortarán variantes: sube el tope para buscarlas todas` : '');
+                + `= ${plan.total} búsquedas (máx. ${plan.tope})`
+                + (plan.recortado ? ` ⚠️ se recortarán variantes: sube «Máx. búsquedas» para lanzarlas todas` : '');
         };
         const cajaVar = document.getElementById('antVariantes');
         if (cajaVar) cajaVar.addEventListener('input', actualizarCosteIdiomas);
@@ -1118,7 +1119,7 @@ const Antecedentes = {
         const plan = this._planPresupuesto(consultas.length, idiomas.length);
         if (plan.recortado) {
             const est = document.getElementById('antVariantesEstado');
-            const msg = `⚠️ Tope de ${plan.tope} consultas: se usarán ${plan.variantes} de tus ${consultas.length} variantes (×${idiomas.length} idioma(s)). Sube «Tope consultas» para buscarlas todas.`;
+            const msg = `⚠️ Máximo de ${plan.tope} búsquedas: se usarán ${plan.variantes} de tus ${consultas.length} variantes (×${idiomas.length} idioma(s)). Sube «Máx. búsquedas» para lanzarlas todas.`;
             if (est) est.textContent = msg;
             console.warn('[Buscador]', msg);
             consultas = consultas.slice(0, plan.variantes);
