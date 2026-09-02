@@ -289,6 +289,31 @@
                     <div class="ana-hero-video"></div>
                 </div>
 
+                <!-- Barra global: mueve las TRES configuraciones de una vez.
+                     Vive fuera de las tablas porque no pertenece a ninguna. -->
+                <div class="card" style="padding:0.9rem 1.1rem;">
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <div style="flex:1 1 260px; min-width:220px;">
+                            <strong style="display:block;">⚙️ Configuración completa del Simulador</strong>
+                            <span class="help-text">Guarda o restaura de una sola vez TODO el Simulador: configuración general (muestra, semilla, percentiles) y las tres tablas de abajo.</span>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button id="btnImportarTodo" type="button" class="btn btn-primary" title="Importar de una vez las tres configuraciones (pruebas + sociodemográficos + correlaciones)">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar TODO
+                            </button>
+                            <button id="btnExportarTodo" type="button" class="btn btn-primary" title="Exportar de una vez las tres configuraciones en un solo archivo">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar TODO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Configuración General -->
                 <div class="card" id="cardConfigGeneral">
                     <h3 class="card-title">Configuración General</h3>
@@ -309,31 +334,6 @@
                                 Generar percentiles (PC_)
                             </label>
                             <span class="help-text">Añade una columna PC_ por escala: posición relativa (0–100) de cada persona en la muestra. Útil para baremos; desactívalo si no lo necesitas.</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Barra global: mueve las TRES configuraciones de una vez.
-                     Vive fuera de las tablas porque no pertenece a ninguna. -->
-                <div class="card" style="padding:0.9rem 1.1rem;">
-                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
-                        <div style="flex:1 1 260px; min-width:220px;">
-                            <strong style="display:block;">⚙️ Configuración completa del Simulador</strong>
-                            <span class="help-text">Guarda o restaura de una sola vez las tres tablas de abajo: pruebas, datos sociodemográficos y correlaciones objetivo.</span>
-                        </div>
-                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                            <button id="btnImportarTodo" type="button" class="btn btn-primary" title="Importar de una vez las tres configuraciones (pruebas + sociodemográficos + correlaciones)">
-                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                                Importar TODO
-                            </button>
-                            <button id="btnExportarTodo" type="button" class="btn btn-primary" title="Exportar de una vez las tres configuraciones en un solo archivo">
-                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                                </svg>
-                                Exportar TODO
-                            </button>
                         </div>
                     </div>
                 </div>
