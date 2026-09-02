@@ -318,6 +318,18 @@
                     <div class="card-header">
                         <h3 class="card-title">I. Pruebas Aplicadas</h3>
                         <div style="display: flex; gap: 10px;">
+                            <button id="btnImportarTodo" type="button" class="btn btn-primary" title="Importar de una vez las tres configuraciones (pruebas + sociodemográficos + correlaciones)">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar TODO
+                            </button>
+                            <button id="btnExportarTodo" type="button" class="btn btn-primary" title="Exportar de una vez las tres configuraciones en un solo archivo">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar TODO
+                            </button>
                             <button id="btnImportarPruebas" class="btn btn-outline"
                                 title="Importar configuración desde CSV">
                                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -643,12 +655,26 @@
                 <div class="card">
                     <div class="card-header">
                         <h3 class="card-title">III. Correlaciones Objetivo (opcional)</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="btnImportarCorrelaciones" type="button" class="btn btn-outline" title="Importar correlaciones desde CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar CSV
+                            </button>
+                            <button id="btnExportarCorrelaciones" type="button" class="btn btn-outline" title="Exportar correlaciones a CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar CSV
+                            </button>
                         <button id="btnAgregarCorrelacion" type="button" class="btn btn-secondary">
                             <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
                                 <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                             </svg>
                             Agregar Correlación
                         </button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table" id="tablaCorrelaciones">
@@ -1249,6 +1275,8 @@
     <!-- Inputs ocultos para importar CSV -->
     <input type="file" id="importPruebasInput" accept=".csv" style="display: none;">
     <input type="file" id="importSocioInput" accept=".csv" style="display: none;">
+    <input type="file" id="importCorrelacionesInput" accept=".csv" style="display: none;">
+    <input type="file" id="importTodoInput" accept=".csv" style="display: none;">
 
     <!-- Vendorizado: lo requiere graficas.js, debe cargarse antes -->
     <script src="statviz.js?v=1"></script>
