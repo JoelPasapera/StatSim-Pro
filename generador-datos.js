@@ -96,6 +96,16 @@ class GeneradorDatos {
         this.configuracion.correlacionesExactas = chkCE ? !!chkCE.checked : true;
         const selIF = document.getElementById('indiceFiabilidad');
         this.configuracion.indiceFiabilidad = selIF ? selIF.value : 'alfa';
+        // Imperfecciones realistas (opcionales; 0 = base perfecta, como hasta ahora)
+        const leerPct = (id, tope) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : 0; return isFinite(v) ? Math.max(0, Math.min(tope, v)) : 0; };
+        this.configuracion.realismo = {
+            pctPerdidos: leerPct('pctPerdidos', 30),
+            mecanismoPerdidos: ((document.getElementById('mecanismoPerdidos') || {}).value) || 'MCAR',
+            pctDescuidados: leerPct('pctDescuidados', 20),
+            tipoDescuidado: ((document.getElementById('tipoDescuidado') || {}).value) || 'mixto',
+            marcarDescuidados: !!((document.getElementById('marcarDescuidados') || {}).checked),
+            pctDigitacion: leerPct('pctDigitacion', 10)
+        };
 
         // Pruebas aplicadas (cada fila es una ESCALA; se agrupan por prueba)
         this.configuracion.variablesPorTest = this.recolectarTests();
@@ -526,6 +536,9 @@ class GeneradorDatos {
         // PERCENTILES (post-proceso, OPCIONAL): posición relativa (0-100) de cada
         // persona dentro de la muestra generada, para el puntaje directo de cada
         // escala. Rango medio: PC = (inferiores + 0.5·empates) / N · 100.
+        // Imperfecciones realistas (si se pidieron), antes de los percentiles.
+        this.resumenImperfecciones = this.aplicarImperfecciones(datos);
+
         if (this.configuracion.generarPercentiles) {
             const columnasPercentil = [];
         // mismo orden que los totales: primero dimensiones, luego generales
@@ -535,10 +548,11 @@ class GeneradorDatos {
             if (g.escalas.length >= 2) columnasPercentil.push({ sigla: g.sigla, col: `General_${g.sigla}` });
         });
         columnasPercentil.forEach(({ sigla, col }) => {
-            const valores = datos.map(d => d[col]).slice().sort((a, b) => a - b);
+            const valores = datos.map(d => d[col]).filter(v => typeof v === 'number' && isFinite(v)).sort((a, b) => a - b);
             const n = valores.length;
             datos.forEach(d => {
                 const v = d[col];
+                if (!(typeof v === 'number' && isFinite(v)) || n === 0) { d[`PC_${sigla}`] = NaN; return; }
                 // búsqueda binaria de límites inferior y superior
                 let lo = 0, hi = n;
                 while (lo < hi) { const m = (lo + hi) >> 1; if (valores[m] < v) lo = m + 1; else hi = m; }
@@ -907,6 +921,108 @@ class GeneradorDatos {
      */
     nombreGeneral(grupo) {
         return grupo.variable ? `${grupo.variable} — ${grupo.nombre}` : `Puntaje general — ${grupo.nombre}`;
+    }
+
+    // ============ IMPERFECCIONES REALISTAS (opcionales) ============
+    // Una base real nunca es perfecta. Estas tres capas se aplican DESPUÉS de
+    // generar y los totales se recalculan para que todo siga siendo coherente:
+    //  · Valores perdidos por ítem (MCAR: al azar; MAR: más probables en quienes
+    //    puntúan bajo en una variable observada). Total con regla del 80 %: si
+    //    falta ≤20 % de los ítems se prorratea; si falta más, el total se pierde.
+    //  · Respuestas descuidadas: «línea recta» (mismo valor en todos los ítems)
+    //    o aleatorias. Su total se recalcula a partir de esos ítems.
+    //  · Errores de digitación: un ítem con un valor imposible (fuera de rango),
+    //    el atípico más común en bases reales y el primero que hay que limpiar.
+    _itemsDe(p) { const out = []; for (let j = 1; j <= p.numItems; j++) out.push(`${p.nombreCorto}${j}`); return out; }
+    _recalcularTotales(d, grupos) {
+        const cfg = this.configuracion;
+        (cfg.pruebas || []).forEach(p => {
+            if (p.numItems < 1) return;
+            const items = this._itemsDe(p).map(k => d[k]).filter(v => typeof v === 'number' && isFinite(v));
+            const col = this.columnaDeEscala(p);
+            if (items.length === 0) { d[col] = NaN; return; }
+            if (items.length < p.numItems) {
+                if (items.length < 0.8 * p.numItems) { d[col] = NaN; return; }
+                const prorrateo = items.reduce((s, v) => s + v, 0) / items.length * p.numItems;   // regla del 80 %
+                d[col] = Math.round(prorrateo * 100) / 100;
+            } else {
+                d[col] = Math.round(items.reduce((s, v) => s + v, 0) * 100) / 100;
+            }
+        });
+        (grupos || []).forEach(g => {
+            if (g.escalas.length < 2) return;
+            const vals = g.escalas.map(s => d[`Dimension_${s}`]);
+            d[`General_${g.sigla}`] = vals.every(v => typeof v === 'number' && isFinite(v))
+                ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : NaN;
+        });
+    }
+    aplicarImperfecciones(datos) {
+        const r = this.configuracion.realismo || {};
+        const cfg = this.configuracion, grupos = cfg.gruposPruebas || [];
+        const n = datos.length;
+        if (!n || !(r.pctPerdidos > 0 || r.pctDescuidados > 0 || r.pctDigitacion > 0)) return { perdidos: 0, descuidados: 0, digitacion: 0 };
+        const pruebasConItems = (cfg.pruebas || []).filter(p => p.numItems >= 2);
+        const tocados = new Set();
+        let nPerdidos = 0, nDescuidados = 0, nDigitacion = 0;
+        // --- Respuestas descuidadas ---
+        if (r.pctDescuidados > 0 && pruebasConItems.length) {
+            const k = Math.round(n * r.pctDescuidados / 100);
+            const orden = datos.map((_, i) => i).sort(() => this.aleatorio() - 0.5).slice(0, k);
+            orden.forEach(i => {
+                const d = datos[i];
+                let tipo = r.tipoDescuidado;
+                if (tipo === 'mixto') tipo = this.aleatorio() < 0.5 ? 'linea' : 'aleatorio';
+                pruebasConItems.forEach(p => {
+                    const min = isFinite(p.minimo) ? p.minimo : Math.floor(p.media / p.numItems - p.desviacion);
+                    const max = isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + p.desviacion);
+                    const fijo = min + Math.floor(this.aleatorio() * (max - min + 1));
+                    this._itemsDe(p).forEach(kk => {
+                        d[kk] = tipo === 'linea' ? fijo : (min + Math.floor(this.aleatorio() * (max - min + 1)));
+                    });
+                });
+                if (r.marcarDescuidados) d['Respuesta_descuidada'] = 1;
+                tocados.add(i); nDescuidados++;
+            });
+            if (r.marcarDescuidados) datos.forEach(d => { if (d['Respuesta_descuidada'] !== 1) d['Respuesta_descuidada'] = 0; });
+        }
+        // --- Errores de digitación (atípicos) ---
+        if (r.pctDigitacion > 0 && pruebasConItems.length) {
+            const k = Math.round(n * r.pctDigitacion / 100);
+            for (let c = 0; c < k; c++) {
+                const i = Math.floor(this.aleatorio() * n), d = datos[i];
+                const p = pruebasConItems[Math.floor(this.aleatorio() * pruebasConItems.length)];
+                const items = this._itemsDe(p), kk = items[Math.floor(this.aleatorio() * items.length)];
+                const max = isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + 2 * p.desviacion);
+                const v = d[kk];
+                // dígito repetido («44» por «4») o un cero de más («50» por «5»)
+                d[kk] = (typeof v === 'number' && isFinite(v) && this.aleatorio() < 0.5) ? Number(String(Math.round(v)) + String(Math.round(v))) : max * 10;
+                tocados.add(i); nDigitacion++;
+            }
+        }
+        // --- Valores perdidos ---
+        if (r.pctPerdidos > 0 && pruebasConItems.length) {
+            const p0 = r.pctPerdidos / 100;
+            // MAR: referencia observada = primer sociodemográfico numérico o, si no hay, el primer total
+            let ref = null;
+            const socioNum = (cfg.sociodemograficos || []).find(s => s.distribucion === 'normal' || s.distribucion === 'asimetrica');
+            if (socioNum) ref = socioNum.categoriaCorta;
+            else if (cfg.pruebas && cfg.pruebas.length) ref = this.columnaDeEscala(cfg.pruebas[0]);
+            let rangos = null;
+            if (r.mecanismoPerdidos === 'MAR' && ref) {
+                const vals = datos.map((d, i) => [d[ref], i]).filter(x => typeof x[0] === 'number' && isFinite(x[0])).sort((a, b) => a[0] - b[0]);
+                rangos = new Array(n).fill(0.5);
+                vals.forEach(([, i], pos) => { rangos[i] = vals.length > 1 ? pos / (vals.length - 1) : 0.5; });
+            }
+            datos.forEach((d, i) => {
+                // MAR: quienes puntúan bajo en la referencia pierden hasta el doble; los altos casi nada
+                const pi = rangos ? Math.max(0, Math.min(1, p0 * (1.8 - 1.6 * rangos[i]))) : p0;
+                pruebasConItems.forEach(p => this._itemsDe(p).forEach(kk => {
+                    if (this.aleatorio() < pi) { d[kk] = NaN; nPerdidos++; tocados.add(i); }
+                }));
+            });
+        }
+        tocados.forEach(i => this._recalcularTotales(datos[i], grupos));
+        return { perdidos: nPerdidos, descuidados: nDescuidados, digitacion: nDigitacion };
     }
 
     // ============ DIAGNÓSTICO DE LA MATRIZ DE CORRELACIONES ============
@@ -1297,6 +1413,7 @@ class GeneradorDatos {
             if (sep === ';' && typeof v === 'number' && !Number.isInteger(v)) {
                 v = String(v).replace('.', ',');
             }
+            if (typeof v === 'number' && !isFinite(v)) v = '';   // valor perdido → celda vacía
             v = String(v ?? '');
             // Escapar si contiene el separador, comillas o saltos de línea.
             if (v.includes(sep) || v.includes('"') || v.includes('\n')) {
