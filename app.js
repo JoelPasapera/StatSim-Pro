@@ -65,6 +65,15 @@ function configurarGenerador() {
     if (_bEC) _bEC.addEventListener('click', exportarConfigCorrelaciones);
     const _iC = document.getElementById('importCorrelacionesInput');
     if (_iC) _iC.addEventListener('change', importarConfigCorrelaciones);
+    // La etiqueta de la columna objetivo sigue al índice elegido (α ↔ ω).
+    const _selIF = document.getElementById('indiceFiabilidad');
+    const _sincronizarEtiquetaFiabilidad = () => {
+        const simbolo = (_selIF && _selIF.value === 'omega') ? 'ω' : 'α';
+        const th = document.getElementById('thFiabilidad');
+        if (th) th.firstChild ? th.firstChild.nodeValue = simbolo + ' objetivo' : th.textContent = simbolo + ' objetivo';
+        document.querySelectorAll('.etiquetaFiabilidad').forEach(el => { el.textContent = simbolo; });
+    };
+    if (_selIF) { _selIF.addEventListener('change', _sincronizarEtiquetaFiabilidad); _sincronizarEtiquetaFiabilidad(); }
     const _bIT = document.getElementById('btnImportarTodo');
     if (_bIT) _bIT.addEventListener('click', () => document.getElementById('importTodoInput').click());
     const _bET = document.getElementById('btnExportarTodo');
@@ -2182,7 +2191,8 @@ const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
     { id: 'semilla', clave: 'Semilla' },
     { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true },
-    { id: 'correlacionesExactas', clave: 'CorrelacionesExactas', checkbox: true }
+    { id: 'correlacionesExactas', clave: 'CorrelacionesExactas', checkbox: true },
+    { id: 'indiceFiabilidad', clave: 'IndiceFiabilidad' }
 ];
 function csvDeGeneral() {
     let csv = 'Campo,Valor\n';
