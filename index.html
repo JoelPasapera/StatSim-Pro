@@ -329,6 +329,37 @@
                             <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
                         </div>
                         <div class="form-group">
+                        <div class="form-group" style="grid-column: 1 / -1; border-top: 1px solid var(--color-border, #2a3550); padding-top: 0.8rem; margin-top: 0.4rem;">
+                            <strong>Imperfecciones realistas (opcional)</strong>
+                            <span class="help-text" style="display:block; margin-bottom:0.6rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia (como hasta ahora). Los totales se recalculan de forma coherente: si a una escala le falta más del 20 % de sus ítems, su total queda vacío; si falta menos, se prorratea.</span>
+                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;">
+                                <div>
+                                    <label for="pctPerdidos">Valores perdidos (% de celdas)</label>
+                                    <input type="number" id="pctPerdidos" class="input" value="0" min="0" max="30" step="1" title="Porcentaje de respuestas a ítems que quedan vacías.">
+                                    <select id="mecanismoPerdidos" class="input" style="margin-top:0.35rem;" title="MCAR: al azar. MAR: más frecuentes en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala).">
+                                        <option value="MCAR" selected>MCAR — completamente al azar</option>
+                                        <option value="MAR">MAR — dependen de una variable observada</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="pctDescuidados">Respuestas descuidadas (% de personas)</label>
+                                    <input type="number" id="pctDescuidados" class="input" value="0" min="0" max="20" step="1" title="Participantes que responden sin atender: línea recta (mismo valor en todos los ítems) o al azar.">
+                                    <select id="tipoDescuidado" class="input" style="margin-top:0.35rem;">
+                                        <option value="mixto" selected>Mixto (mitad línea recta, mitad al azar)</option>
+                                        <option value="linea">Solo línea recta</option>
+                                        <option value="aleatorio">Solo respuestas al azar</option>
+                                    </select>
+                                    <label for="marcarDescuidados" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer;">
+                                        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columna marcadora (para corregir el ejercicio)
+                                    </label>
+                                </div>
+                                <div>
+                                    <label for="pctDigitacion">Errores de digitación (% de personas)</label>
+                                    <input type="number" id="pctDigitacion" class="input" value="0" min="0" max="10" step="1" title="Un ítem con un valor imposible (p. ej. 44 en una escala de 1 a 5): el atípico más común en bases reales.">
+                                    <span class="help-text">Producen valores fuera de rango que el análisis debe detectar y limpiar.</span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="form-group">
                             <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
                             <select id="indiceFiabilidad" class="input">
@@ -384,28 +415,6 @@
                         </div>
                     </div>
 
-                    <div class="orden-guia" role="note" aria-label="Orden para completar los datos">
-                        <span class="orden-guia-titulo">Completa en este orden:</span>
-                        <span class="orden-paso"><span class="orden-num">1</span> Prueba</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">2</span> Escala</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">3</span> N° de ítems</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">4</span> Mín por ítem</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">5</span> Máx por ítem</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">6</span> <span class="etiquetaFiabilidad">α</span> objetivo <em>(opcional)</em></span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">7</span> Media</span>
-                        <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">8</span> Desviación estándar</span>
-                        <span class="orden-nota">Cada fila es UNA escala o dimensión. Las filas que comparten Prueba se agrupan, y el
-                            <strong>puntaje general de cada test se calcula automáticamente</strong> como el promedio de sus dimensiones
-                            (columna con prefijo <em>General_</em>, redondeada a entero); no hay que configurarlo a mano.
-                            Cada campo se desbloquea al completar el anterior.</span>
-                    </div>
                     <datalist id="listaPruebas"></datalist>
 
                     <div style="margin:0 0 1.1rem; padding:0.85rem 1rem; border:1px solid var(--color-border, #2a3550); border-radius:10px;">
@@ -431,6 +440,28 @@
                         </div>
                     </div>
 
+                    <div class="orden-guia" role="note" aria-label="Orden para completar los datos">
+                        <span class="orden-guia-titulo">Completa en este orden:</span>
+                        <span class="orden-paso"><span class="orden-num">1</span> Prueba</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">2</span> Escala</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">3</span> N° de ítems</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">4</span> Mín por ítem</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">5</span> Máx por ítem</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">6</span> <span class="etiquetaFiabilidad">α</span> objetivo <em>(opcional)</em></span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">7</span> Media</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">8</span> Desviación estándar</span>
+                        <span class="orden-nota">Cada fila es UNA escala o dimensión. Las filas que comparten Prueba se agrupan, y el
+                            <strong>puntaje general de cada test se calcula automáticamente</strong> como el promedio de sus dimensiones
+                            (columna con prefijo <em>General_</em>, redondeada a entero); no hay que configurarlo a mano.
+                            Cada campo se desbloquea al completar el anterior.</span>
+                    </div>
                     <div class="table-container">
                         <table class="table" id="tablaPruebas">
                             <thead>
