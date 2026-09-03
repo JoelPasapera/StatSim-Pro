@@ -98,6 +98,7 @@ class GeneradorDatos {
         this.configuracion.indiceFiabilidad = selIF ? selIF.value : 'alfa';
 
         // Pruebas aplicadas (cada fila es una ESCALA; se agrupan por prueba)
+        this.configuracion.variablesPorTest = this.recolectarTests();
         this.configuracion.pruebas = this.recolectarPruebas();
         if (this.configuracion.pruebas.length === 0) {
             throw new Error('Debe agregar al menos una escala');
@@ -167,6 +168,17 @@ class GeneradorDatos {
         return correlaciones;
     }
 
+    // Cuadro superior: qué tests existen y qué variable psicológica mide cada uno.
+    recolectarTests() {
+        const mapa = {};
+        document.querySelectorAll('#bodyTests .fila-test').forEach(fila => {
+            const nombre = (fila.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
+            const variable = (fila.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
+            if (nombre.trim()) mapa[nombre.trim()] = variable.trim();
+        });
+        return mapa;
+    }
+
     recolectarPruebas() {
         const pruebas = [];
         const nombresCortosUsados = new Set();
@@ -174,20 +186,21 @@ class GeneradorDatos {
 
         filas.forEach((fila, index) => {
             const inputs = fila.querySelectorAll('input');
-            const selectTipo = fila.querySelector('[aria-label="Tipo de escala"]');
+            const selPrueba = fila.querySelector('[aria-label="Nombre de la prueba"]');
             const selectDist = fila.querySelector('[aria-label="Distribución"]');
-            const tipo = selectTipo ? selectTipo.value : 'dimension';
-            const esGeneral = tipo === 'general';
+            // Cada fila es SIEMPRE una dimensión: el puntaje general del test se
+            // calcula solo (promedio de sus dimensiones), no se configura a mano.
+            const tipo = 'dimension';
+            const esGeneral = false;
             const distribucion = selectDist ? selectDist.value : 'normal';
-            const prueba = inputs[0].value.trim();      // test al que pertenece la escala
-            const nombre = inputs[1].value.trim();      // nombre de la ESCALA (cada fila = una escala)
-            // Escala general: es UNA sola columna de datos → no lleva N° de ítems ni α
-            const numItems = esGeneral ? 1 : parseInt(inputs[2].value);
-            const media = parseFloat(inputs[3].value);
-            const desviacion = parseFloat(inputs[4].value);
-            const minimo = parseFloat(inputs[5].value);
-            const maximo = parseFloat(inputs[6].value);
-            const alfa = esGeneral ? NaN : (inputs[7] ? parseFloat(inputs[7].value) : NaN);
+            const prueba = selPrueba ? selPrueba.value.trim() : '';   // test elegido en el cuadro superior
+            const nombre = inputs[0].value.trim();      // nombre de la ESCALA (cada fila = una escala)
+            const numItems = parseInt(inputs[1].value);
+            const media = parseFloat(inputs[2].value);
+            const desviacion = parseFloat(inputs[3].value);
+            const minimo = parseFloat(inputs[4].value);
+            const maximo = parseFloat(inputs[5].value);
+            const alfa = inputs[6] ? parseFloat(inputs[6].value) : NaN;
 
             if (nombre && !isNaN(numItems) && !isNaN(media) && !isNaN(desviacion)) {
                 if (numItems < 1) {
@@ -249,9 +262,10 @@ class GeneradorDatos {
             mapa[`PC_${e.nombreCorto}`] = `Percentil — ${e.nombre}`;
         });
         (this.configuracion && this.configuracion.gruposPruebas || []).forEach(g => {
-            if (!g.tieneGeneral && g.escalas.length >= 2) {
-                mapa[`General_${g.sigla}`] = `Puntaje general — ${g.nombre}`;
-                mapa[`PC_${g.sigla}`] = `Percentil — ${g.nombre}`;
+            if (g.escalas.length >= 2) {
+                const etiqueta = g.variable ? `${g.variable} — ${g.nombre}` : `Puntaje general — ${g.nombre}`;
+                mapa[`General_${g.sigla}`] = etiqueta;
+                mapa[`PC_${g.sigla}`] = `Percentil — ${etiqueta}`;
             }
         });
         return mapa;
@@ -294,13 +308,8 @@ class GeneradorDatos {
     agruparPruebas(escalas) {
         const usados = new Set(escalas.map(e => e.nombreCorto));
         const porNombre = new Map();
-        const generales = new Set();
         escalas.forEach(e => {
             if (!e.prueba) return;
-            if (e.tipo === 'general') {
-                generales.add(e.prueba);
-                return; // la general no entra en la suma de dimensiones
-            }
             if (!porNombre.has(e.prueba)) porNombre.set(e.prueba, []);
             porNombre.get(e.prueba).push(e.nombreCorto);
         });
@@ -310,7 +319,7 @@ class GeneradorDatos {
                 nombre: nombrePrueba,
                 sigla: this.generarNombreCortoUnico(nombrePrueba, usados),
                 escalas: siglasEscalas,
-                tieneGeneral: generales.has(nombrePrueba)
+                variable: ((this.configuracion && this.configuracion.variablesPorTest) || {})[nombrePrueba] || ''
             });
         });
         return grupos;
@@ -499,11 +508,14 @@ class GeneradorDatos {
 
             // Suma automática (pruebas SIN Escala general y con 2+ dimensiones):
             // también va al final, junto a los puntajes generales.
+            // Puntaje GENERAL del test: promedio de sus dimensiones, redondeado
+            // a entero (decisión del dueño). Con una sola dimensión no se emite:
+            // sería una copia exacta de esa columna.
             (this.configuracion.gruposPruebas || []).forEach(grupo => {
-                if (grupo.tieneGeneral || grupo.escalas.length < 2) return;
+                if (grupo.escalas.length < 2) return;
                 let suma = 0;
                 grupo.escalas.forEach(sigla => { suma += participante[`Dimension_${sigla}`]; });
-                participante[`General_${grupo.sigla}`] = Math.round(suma * 100) / 100;
+                participante[`General_${grupo.sigla}`] = Math.round(suma / grupo.escalas.length);
             });
 
             datos.push(participante);
@@ -518,7 +530,7 @@ class GeneradorDatos {
         this.configuracion.pruebas.forEach(e => { if (e.tipo !== 'general') columnasPercentil.push({ sigla: e.nombreCorto, col: this.columnaDeEscala(e) }); });
         this.configuracion.pruebas.forEach(e => { if (e.tipo === 'general') columnasPercentil.push({ sigla: e.nombreCorto, col: this.columnaDeEscala(e) }); });
         (this.configuracion.gruposPruebas || []).forEach(g => {
-            if (!g.tieneGeneral && g.escalas.length >= 2) columnasPercentil.push({ sigla: g.sigla, col: `General_${g.sigla}` });
+            if (g.escalas.length >= 2) columnasPercentil.push({ sigla: g.sigla, col: `General_${g.sigla}` });
         });
         columnasPercentil.forEach(({ sigla, col }) => {
             const valores = datos.map(d => d[col]).slice().sort((a, b) => a - b);
@@ -1182,27 +1194,8 @@ class GeneradorDatos {
             advertencias.push('Tamaño muestral muy grande: Puede ser poco realista');
         }
 
-        // Toda prueba debe tener exactamente UNA Escala general (tipo "General"):
-        // aunque un test no tenga varias dimensiones, siempre tiene un puntaje
-        // general, así que la fila General es obligatoria.
-        const pruebasNombres = new Set();
-        const generalesPorPrueba = new Map();
-        (this.configuracion.pruebas || []).forEach(e => {
-            if (!e.prueba) return;
-            pruebasNombres.add(e.prueba);
-            if (e.tipo === 'general') {
-                generalesPorPrueba.set(e.prueba, (generalesPorPrueba.get(e.prueba) || 0) + 1);
-            }
-        });
-        pruebasNombres.forEach(nombrePrueba => {
-            const cuenta = generalesPorPrueba.get(nombrePrueba) || 0;
-            if (cuenta === 0) {
-                errores.push(`Prueba "${nombrePrueba}": le falta su Escala general. Agrega una fila con Tipo = "General" ` +
-                    `(nombre = la variable que mide el test, con su Mín/Máx, Media y DE).`);
-            } else if (cuenta > 1) {
-                errores.push(`Prueba "${nombrePrueba}": tiene ${cuenta} Escalas generales; solo puede haber UNA por prueba`);
-            }
-        });
+        // Ya no se exige una fila «General»: el puntaje general de cada test se
+        // deriva automáticamente como PROMEDIO de sus dimensiones.
 
         // Validar pruebas
         this.configuracion.pruebas.forEach(prueba => {
