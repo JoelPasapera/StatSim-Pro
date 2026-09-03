@@ -322,6 +322,8 @@ function generarBaseDatos() {
                 // Almacenar datos generados globalmente para los gráficos
                 window.datosGenerados = datos;
                 mostrarPreview(datos);
+                mostrarDiagnosticoCorrelaciones();
+                mostrarInformePedidoObtenido(datos);
                 habilitarDescargaCSV();
                 habilitarUsarGenerados();
                 mostrarToast('¡Base de datos generada exitosamente!', 'success');
@@ -335,6 +337,50 @@ function generarBaseDatos() {
     } catch (error) {
         mostrarToast(error.message, 'error');
         console.error(error);
+    }
+}
+// ---- Diagnóstico visible de correlaciones incompatibles ----
+function mostrarDiagnosticoCorrelaciones() {
+    const cont = document.getElementById('diagnosticoCorrelaciones');
+    if (!cont) return;
+    const dg = generadorDatos.diagnosticoCorrelaciones;
+    if (!dg || !dg.imposible) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const tri = dg.triadas.slice(0, 4).map(t =>
+        `<li>${t.variables.map(esc).join(' · ')} — correlaciones pedidas ${t.correlaciones.map(x => x.toFixed(2)).join(', ')}</li>`).join('');
+    const aj = dg.ajustes.slice(0, 8).map(a =>
+        `<li>${esc(a.a)} ↔ ${esc(a.b)}: <strong>${a.pedido.toFixed(2)} → ${a.ajustado.toFixed(2)}</strong></li>`).join('');
+    cont.innerHTML = `
+        <h3 class="card-title">⚠️ Correlaciones incompatibles entre sí</h3>
+        <p class="help-text">La combinación pedida no puede existir en ninguna muestra real (la matriz no es definida positiva).
+        Se usó la <strong>matriz válida más cercana</strong>; revisa qué cambió y ajusta tus objetivos si lo necesitas.</p>
+        ${tri ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Tríada(s) en conflicto:</strong></p><ul class="help-text">${tri}</ul>` : ''}
+        ${aj ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Correlaciones ajustadas:</strong></p><ul class="help-text">${aj}</ul>` : ''}`;
+    cont.style.display = '';
+    mostrarToast('⚠ Algunas correlaciones pedidas eran incompatibles y se ajustaron: revisa el aviso bajo la vista previa', 'warning', 9000);
+}
+// ---- Informe pedido vs obtenido ----
+let ultimoInforme = [];
+function mostrarInformePedidoObtenido(datos) {
+    const cont = document.getElementById('informePedidoObtenido');
+    const body = document.getElementById('bodyInforme');
+    if (!cont || !body) return;
+    ultimoInforme = generadorDatos.informePedidoObtenido(datos) || [];
+    if (!ultimoInforme.length) { cont.style.display = 'none'; return; }
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    body.innerHTML = ultimoInforme.map(f => `<tr>
+        <td>${esc(f.tipo)}</td><td>${esc(f.variable)}</td><td>${esc(f.pedido)}</td><td>${esc(f.obtenido)}</td>
+        <td>${f.ok ? '<span style="color:#2ea043;">✓ coincide</span>' : '<span style="color:#d4a72c;">⚠ se desvía</span>'}</td></tr>`).join('');
+    cont.style.display = '';
+    const btn = document.getElementById('btnDescargarInforme');
+    if (btn && !btn._listo) {
+        btn._listo = true;
+        btn.addEventListener('click', () => {
+            const esc2 = v => (String(v).includes(',') ? `"${v}"` : String(v));
+            const csv = 'Parametro,Variable,Pedido,Obtenido,Estado\n'
+                + ultimoInforme.map(f => `${esc2(f.tipo)},${esc2(f.variable)},${f.pedido},${f.obtenido},${f.ok ? 'coincide' : 'se desvia'}`).join('\n') + '\n';
+            descargarArchivo(csv, 'informe_pedido_vs_obtenido.csv', 'text/csv');
+        });
     }
 }
 function mostrarPreview(datos) {
