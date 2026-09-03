@@ -316,73 +316,82 @@
 
                 <!-- Configuración General -->
                 <div class="card" id="cardConfigGeneral">
-                    <h3 class="card-title">Configuración General</h3>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label for="tamanoMuestra">Tamaño Muestral (N)</label>
-                            <input type="number" id="tamanoMuestra" class="input" min="2" max="100000" value="100" placeholder="Ej: 100">
-                            <span class="help-text">Número de participantes/unidades de análisis</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="semilla">Semilla (opcional)</label>
-                            <input type="number" id="semilla" class="input" step="1" placeholder="Ej: 42">
-                            <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
-                        </div>
-                        <div class="form-group">
-                        <div class="form-group" style="grid-column: 1 / -1; border-top: 1px solid var(--color-border, #2a3550); padding-top: 0.8rem; margin-top: 0.4rem;">
-                            <strong>Imperfecciones realistas (opcional)</strong>
-                            <span class="help-text" style="display:block; margin-bottom:0.6rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia (como hasta ahora). Los totales se recalculan de forma coherente: si a una escala le falta más del 20 % de sus ítems, su total queda vacío; si falta menos, se prorratea.</span>
-                            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;">
-                                <div>
-                                    <label for="pctPerdidos">Valores perdidos (% de celdas)</label>
-                                    <input type="number" id="pctPerdidos" class="input" value="0" min="0" max="30" step="1" title="Porcentaje de respuestas a ítems que quedan vacías.">
-                                    <select id="mecanismoPerdidos" class="input" style="margin-top:0.35rem;" title="MCAR: al azar. MAR: más frecuentes en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala).">
-                                        <option value="MCAR" selected>MCAR — completamente al azar</option>
-                                        <option value="MAR">MAR — dependen de una variable observada</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label for="pctDescuidados">Respuestas descuidadas (% de personas)</label>
-                                    <input type="number" id="pctDescuidados" class="input" value="0" min="0" max="20" step="1" title="Participantes que responden sin atender: línea recta (mismo valor en todos los ítems) o al azar.">
-                                    <select id="tipoDescuidado" class="input" style="margin-top:0.35rem;">
-                                        <option value="mixto" selected>Mixto (mitad línea recta, mitad al azar)</option>
-                                        <option value="linea">Solo línea recta</option>
-                                        <option value="aleatorio">Solo respuestas al azar</option>
-                                    </select>
-                                    <label for="marcarDescuidados" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer;">
-                                        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columna marcadora (para corregir el ejercicio)
-                                    </label>
-                                </div>
-                                <div>
-                                    <label for="pctDigitacion">Errores de digitación (% de personas)</label>
-                                    <input type="number" id="pctDigitacion" class="input" value="0" min="0" max="10" step="1" title="Un ítem con un valor imposible (p. ej. 44 en una escala de 1 a 5): el atípico más común en bases reales.">
-                                    <span class="help-text">Producen valores fuera de rango que el análisis debe detectar y limpiar.</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
-                            <select id="indiceFiabilidad" class="input">
-                                <option value="alfa" selected>α de Cronbach</option>
-                                <option value="omega">ω de McDonald</option>
-                            </select>
-                            <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
-                        </div>
-                        <div class="form-group">
-                            <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
-                                Correlaciones exactas
-                            </label>
-                            <span class="help-text">La muestra reproduce EXACTAMENTE las correlaciones objetivo de la tabla III (r = 0.40 sale 0.40). Desactívalo para que haya error de muestreo, como en datos reales.</span>
-                        </div>
-                            <label for="generarPercentiles" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                                <input type="checkbox" id="generarPercentiles" style="width: auto; margin: 0;">
-                                Generar percentiles (PC_)
-                            </label>
-                            <span class="help-text">Añade una columna PC_ por escala: posición relativa (0–100) de cada persona en la muestra. Útil para baremos; desactívalo si no lo necesitas.</span>
-                        </div>
-                    </div>
-                </div>
+    <h3 class="card-title">Configuración General</h3>
+    <!-- Fila 1: parámetros básicos (3 columnas fluidas) -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-lg);">
+        <div class="form-group">
+        <label for="tamanoMuestra">Tamaño Muestral (N)</label>
+        <input type="number" id="tamanoMuestra" class="input" min="2" max="100000" value="100" placeholder="Ej: 100">
+        <span class="help-text">Número de participantes/unidades de análisis</span>
+        </div>
+        <div class="form-group">
+        <label for="semilla">Semilla (opcional)</label>
+        <input type="number" id="semilla" class="input" step="1" placeholder="Ej: 42">
+        <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
+        </div>
+        <div class="form-group">
+        <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
+        <select id="indiceFiabilidad" class="input">
+        <option value="alfa" selected>α de Cronbach</option>
+        <option value="omega">ω de McDonald</option>
+        </select>
+        <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
+        </div>
+    </div>
+    <!-- Fila 2: opciones de generación (tarjetas emparejadas) -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
+        <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
+        <div class="form-group" style="margin:0;">
+        <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
+        Correlaciones exactas
+        </label>
+        <span class="help-text">La muestra reproduce EXACTAMENTE las correlaciones objetivo de la tabla III (r = 0.40 sale 0.40). Desactívalo para que haya error de muestreo, como en datos reales.</span>
+        </div>
+        </div>
+        <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
+        <div class="form-group" style="margin:0;">
+        <label for="generarPercentiles" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="generarPercentiles" style="width: auto; margin: 0;">
+        Generar percentiles (PC_)
+        </label>
+        <span class="help-text">Añade una columna PC_ por escala: posición relativa (0–100) de cada persona en la muestra. Útil para baremos; desactívalo si no lo necesitas.</span>
+        </div>
+        </div>
+    </div>
+    <!-- Fila 3: imperfecciones realistas (ancho completo, rejilla interna de 3) -->
+    <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.9rem 1rem; margin-top: var(--spacing-md);">
+        <strong>Imperfecciones realistas (opcional)</strong>
+        <span class="help-text" style="display:block; margin-bottom:0.6rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia (como hasta ahora). Los totales se recalculan de forma coherente: si a una escala le falta más del 20 % de sus ítems, su total queda vacío; si falta menos, se prorratea.</span>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;">
+        <div>
+        <label for="pctPerdidos">Valores perdidos (% de celdas)</label>
+        <input type="number" id="pctPerdidos" class="input" value="0" min="0" max="30" step="1" title="Porcentaje de respuestas a ítems que quedan vacías.">
+        <select id="mecanismoPerdidos" class="input" style="margin-top:0.35rem;" title="MCAR: al azar. MAR: más frecuentes en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala).">
+        <option value="MCAR" selected>MCAR — completamente al azar</option>
+        <option value="MAR">MAR — dependen de una variable observada</option>
+        </select>
+        </div>
+        <div>
+        <label for="pctDescuidados">Respuestas descuidadas (% de personas)</label>
+        <input type="number" id="pctDescuidados" class="input" value="0" min="0" max="20" step="1" title="Participantes que responden sin atender: línea recta (mismo valor en todos los ítems) o al azar.">
+        <select id="tipoDescuidado" class="input" style="margin-top:0.35rem;">
+        <option value="mixto" selected>Mixto (mitad línea recta, mitad al azar)</option>
+        <option value="linea">Solo línea recta</option>
+        <option value="aleatorio">Solo respuestas al azar</option>
+        </select>
+        <label for="marcarDescuidados" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer;">
+        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columna marcadora (para corregir el ejercicio)
+        </label>
+        </div>
+        <div>
+        <label for="pctDigitacion">Errores de digitación (% de personas)</label>
+        <input type="number" id="pctDigitacion" class="input" value="0" min="0" max="10" step="1" title="Un ítem con un valor imposible (p. ej. 44 en una escala de 1 a 5): el atípico más común en bases reales.">
+        <span class="help-text">Producen valores fuera de rango que el análisis debe detectar y limpiar.</span>
+        </div>
+        </div>
+    </div>
+</div>
 
                 <!-- Tabla I: Pruebas Aplicadas -->
                 <div class="card">
