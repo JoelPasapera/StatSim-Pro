@@ -475,6 +475,7 @@
                                     <th>Mín por Ítem</th>
                                     <th>Máx por Ítem</th>
                                     <th id="thFiabilidad" title="Fiabilidad objetivo de cada escala. Indica qué proporción de la puntuación refleja el constructo y no el error de medida: con 0.85, en torno al 85 % de la varianza del total es señal y el 15 % restante, ruido. El α de Cronbach asume que todos los ítems miden con la misma precisión; el ω de McDonald no lo exige y pondera cada ítem según su carga, por lo que se considera la estimación preferible cuando esa igualdad no está garantizada. Deje el campo vacío o en 0 para obtener ítems independientes entre sí." style="cursor:help; text-decoration:underline dotted;">α objetivo</th>
+                                    <th title="Cuántos ítems de la escala se puntúan al revés (los últimos). Se guardan reflejados, como en una base real: quien analice debe recodificarlos antes de sumar o calcular la fiabilidad." style="cursor:help; text-decoration:underline dotted;">Ítems inv.</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -570,6 +571,9 @@
                             </li>
                             <li>
                                 <strong><span class="etiquetaFiabilidad">α</span> objetivo (opcional):</strong> fiabilidad deseada de la escala (0–0.99): la proporción de la puntuación total que refleja el constructo y no el error de medida. Con un valor (Ej: 0.85) los ítems comparten un factor común y la escala alcanzará aproximadamente esa fiabilidad en el índice elegido arriba —α de Cronbach u ω de McDonald—; el generador se autocalibra para que el valor observado coincida con el solicitado. Vacío o 0 = ítems independientes.</li>
+                            <li>
+                                <strong>Ítems invertidos (opcional):</strong> número de ítems de la escala que se puntúan al revés (serán los últimos). La base los entrega <em>sin recodificar</em>, tal como llegan de un cuestionario real: antes de sumar o de calcular la fiabilidad hay que reflejarlos (mín + máx − valor). El diccionario del Analizador los marca como «INVERTIDO».
+                            </li>
                             <li>
                                 <strong>Distribución:</strong> forma del puntaje directo de la escala. <em>Normal</em> =
                                 campana (necesaria para análisis paramétricos como Pearson); <em>Uniforme</em> = plana;
