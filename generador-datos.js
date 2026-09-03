@@ -212,6 +212,8 @@ class GeneradorDatos {
             const minimo = parseFloat(inputs[4].value);
             const maximo = parseFloat(inputs[5].value);
             const alfa = inputs[6] ? parseFloat(inputs[6].value) : NaN;
+            const invertidosRaw = inputs[7] ? parseInt(inputs[7].value, 10) : 0;
+            const invertidos = Number.isFinite(invertidosRaw) ? Math.max(0, invertidosRaw) : 0;
 
             if (nombre && !isNaN(numItems) && !isNaN(media) && !isNaN(desviacion)) {
                 if (numItems < 1) {
@@ -237,6 +239,7 @@ class GeneradorDatos {
                 }
 
                 pruebas.push({
+                    invertidos: Math.min(invertidos, Math.max(0, numItems - 1)),   // últimos ítems de la escala, puntuados al revés
                     prueba: prueba || null,             // agrupa escalas bajo el mismo test
                     tipo: tipo,                         // 'dimension' | 'general'
                     nombre: nombre,
@@ -269,6 +272,7 @@ class GeneradorDatos {
         const mapa = {};
         const escalas = (this.configuracion && this.configuracion.pruebas) || [];
         escalas.forEach(e => {
+            if ((e.invertidos || 0) > 0) for (let j = e.numItems - e.invertidos + 1; j <= e.numItems; j++) mapa[`${e.nombreCorto}${j}`] = `${e.nombre} — ítem ${j} (INVERTIDO: recodificar)`;
             mapa[this.columnaDeEscala(e)] = e.nombre;
             mapa[`PC_${e.nombreCorto}`] = `Percentil — ${e.nombre}`;
         });
@@ -494,7 +498,8 @@ class GeneradorDatos {
                 if (prueba.tipo !== 'general') {
                     puntajes.items.forEach((puntaje, idx) => {
                         const nombreColumna = `${prueba.nombreCorto}${idx + 1}`;
-                        participante[nombreColumna] = puntaje;
+                        // Ítem invertido → se guarda reflejado (respuesta bruta, sin recodificar)
+                        participante[nombreColumna] = this._esInvertido(prueba, idx + 1) ? this._reflejar(prueba, puntaje) : puntaje;
                     });
                 }
 
@@ -623,7 +628,7 @@ class GeneradorDatos {
         const sumaVar = vars.reduce((a, b) => a + b, 0);
         return (k / (k - 1)) * (1 - sumaVar / vT);
     }
-    _simularIndice(prueba, objetivoInterno, indice, nSim = 220) {
+    _simularIndice(prueba, objetivoInterno, indice, nSim = 400) {
         const k = prueba.numItems;
         const cols = Array.from({ length: k }, () => new Array(nSim));
         for (let i = 0; i < nSim; i++) {
@@ -641,7 +646,7 @@ class GeneradorDatos {
             if (indice !== 'omega') return objetivo;
         }
         let lo = 0.01, hi = 0.985, mejor = objetivo;
-        for (let it = 0; it < 11; it++) {
+        for (let it = 0; it < 12; it++) {
             const mid = (lo + hi) / 2;
             const obs = this._simularIndice(prueba, mid, indice);
             if (obs === null || !isFinite(obs)) break;
@@ -923,6 +928,74 @@ class GeneradorDatos {
         return grupo.variable ? `${grupo.variable} — ${grupo.nombre}` : `Puntaje general — ${grupo.nombre}`;
     }
 
+    // ============ AUTOTEST INTERNO ============
+    // Verificación en segundos, sin tocar la interfaz. Desde la consola:
+    //     GeneradorDatos.autotest()
+    // Cada línea comprueba una propiedad que se rompió alguna vez y ya no debe
+    // romperse: correlaciones exactas, fiabilidad autocalibrada, General derivado,
+    // relleno intra-test, reparto sobre el General, matrices imposibles,
+    // ítems invertidos, valores perdidos y exportación limpia.
+    static autotest(opciones = {}) {
+        const n = opciones.n || 300, res = [];
+        const ok = (nombre, cond, detalle = '') => { res.push({ nombre, ok: !!cond, detalle }); };
+        const esNum = v => typeof v === 'number' && isFinite(v);
+        const corr = (x, y) => { const pares = x.map((v, i) => [v, y[i]]).filter(q => esNum(q[0]) && esNum(q[1])); const a = pares.map(q => q[0]), b = pares.map(q => q[1]);
+            const m = a.length, ma = a.reduce((s, v) => s + v, 0) / m, mb = b.reduce((s, v) => s + v, 0) / m; let sab = 0, saa = 0, sbb = 0;
+            for (let i = 0; i < m; i++) { const da = a[i] - ma, db = b[i] - mb; sab += da * db; saa += da * da; sbb += db * db; } return sab / Math.sqrt(saa * sbb); };
+        const escala = (nombre, corto, prueba, k, media, de, alfa, extra = {}) => ({ nombre, nombreCorto: corto, prueba, tipo: 'dimension', numItems: k, media, desviacion: de, minimo: 1, maximo: 5, alfa, distribucion: 'normal', invertidos: 0, ...extra });
+        const cfgBase = (extra = {}) => ({ tamanoMuestra: n, semilla: 2026, generarPercentiles: true, correlacionesExactas: true, indiceFiabilidad: 'alfa',
+            variablesPorTest: { 'EQ-i': { variable: 'Inteligencia emocional', rIntra: 0.40 } },
+            pruebas: [escala('Percepción', 'PE', 'EQ-i', 8, 24, 4, 0.80), escala('Comprensión', 'CE', 'EQ-i', 8, 24, 4, 0.85), escala('Regulación', 'RE', 'EQ-i', 8, 24, 4, 0.75),
+                      escala('Estrés', 'ST', 'PSS', 10, 20, 6, 0.80, { minimo: 0, maximo: 4 })],
+            sociodemograficos: [{ categoria: 'Edad', categoriaCorta: 'Edad', distribucion: 'normal', promedio: 16, desviacion: 1.5, minimo: 12, maximo: 20, decimales: 0 }],
+            correlaciones: [], diferenciasGrupo: [], gruposPruebas: [], realismo: { pctPerdidos: 0, pctDescuidados: 0, pctDigitacion: 0 }, ...extra });
+        const generar = cfg => { const g = new GeneradorDatos(); g.configuracion = JSON.parse(JSON.stringify(cfg)); g.configuracion.gruposPruebas = g.agruparPruebas(g.configuracion.pruebas); return { g, d: g.generarBaseDatos() }; };
+        const col = (d, k) => d.map(x => x[k]);
+        try {
+            // 1-2) correlación exacta + fiabilidad calibrada
+            const { g: g1, d: d1 } = generar(cfgBase({ correlaciones: [{ a: 'Percepción', b: 'Estrés', r: -0.40 }, { a: 'Inteligencia emocional — EQ-i', b: 'Estrés', r: -0.30 }] }));
+            const rPE = corr(col(d1, 'Dimension_PE'), col(d1, 'Dimension_ST'));
+            ok('correlación exacta pedida −0.40', Math.abs(rPE + 0.40) < 0.012, rPE.toFixed(3));
+            const gCol = Object.keys(d1[0]).find(k => k.startsWith('General_'));
+            const rG = corr(col(d1, gCol), col(d1, 'Dimension_ST'));
+            ok('correlación sobre el General derivado −0.30', Math.abs(rG + 0.30) < 0.02, rG.toFixed(3));
+            const rIn = corr(col(d1, 'Dimension_CE'), col(d1, 'Dimension_RE'));
+            ok('relleno intra-test 0.40', Math.abs(rIn - 0.40) < 0.02, rIn.toFixed(3));
+            const inf = g1.informePedidoObtenido(d1);
+            const fiab = inf.filter(f => f.tipo === 'α');
+            ok('fiabilidad autocalibrada (α) dentro de ±0.04 (≈2 EE)', fiab.length >= 3 && fiab.every(f => f.ok), fiab.map(f => `${f.pedido}→${f.obtenido}`).join(' '));
+            ok('General = promedio ENTERO de las dimensiones', d1.every(x => !esNum(x[gCol]) || x[gCol] === Math.round((x.Dimension_PE + x.Dimension_CE + x.Dimension_RE) / 3)));
+            // 3) matriz imposible detectada y corregida
+            const { g: g2 } = generar(cfgBase({ correlaciones: [{ a: 'Percepción', b: 'Comprensión', r: 0.95 }, { a: 'Comprensión', b: 'Regulación', r: 0.95 }, { a: 'Percepción', b: 'Regulación', r: -0.90 }] }));
+            ok('matriz imposible detectada, con tríada y matriz válida', g2.diagnosticoCorrelaciones.imposible && g2.diagnosticoCorrelaciones.triadas.length === 1 && g2._esDefinidaPositiva(g2.diagnosticoCorrelaciones.R));
+            // 4) ítems invertidos: reflejados en bruto, total correcto tras recodificar
+            const cfgInv = cfgBase(); cfgInv.pruebas[0].invertidos = 3; cfgInv.pruebas[0].media = 30;   // media de ítem 3.75: la reflexión desplaza la suma
+            const { g: g3, d: d3 } = generar(cfgInv);
+            const p0 = g3.configuracion.pruebas[0];
+            const sumaRecod = x => { let s = 0; for (let j = 1; j <= 8; j++) s += g3._recodificar(p0, j, x[`PE${j}`]); return s; };
+            ok('ítems invertidos: total = suma de ítems RECODIFICADOS', d3.every(x => Math.abs(sumaRecod(x) - x.Dimension_PE) < 0.01));
+            const sumaBruta = x => { let s = 0; for (let j = 1; j <= 8; j++) s += x[`PE${j}`]; return s; };
+            ok('ítems invertidos: la suma BRUTA no coincide (hay que recodificar)', d3.filter(x => Math.abs(sumaBruta(x) - x.Dimension_PE) > 0.5).length > d3.length * 0.8);
+            const rInv = corr(col(d3, 'PE1'), col(d3, 'PE8'));
+            ok('ítem invertido correlaciona NEGATIVO en bruto con uno directo', rInv < -0.05, rInv.toFixed(3));
+            // 5) valores perdidos: regla del 80 % y exportación limpia
+            const { g: g4, d: d4 } = generar(cfgBase({ realismo: { pctPerdidos: 8, mecanismoPerdidos: 'MCAR', pctDescuidados: 0, pctDigitacion: 0 } }));
+            const faltan = x => { let f = 0; for (let j = 1; j <= 8; j++) if (!esNum(x[`PE${j}`])) f++; return f; };
+            ok('regla del 80 %: total vacío solo si faltan >20 % de los ítems', d4.every(x => (faltan(x) >= 2) === !esNum(x.Dimension_PE)));
+            ok('exportación: perdidos como celda vacía, nunca NaN', !/NaN/.test(g4.exportarCSV(',')));
+            ok('percentil vacío cuando el total falta', d4.filter(x => !esNum(x.Dimension_PE)).every(x => !esNum(x.PC_PE)));
+        } catch (e) {
+            ok('el autotest no lanza excepciones', false, e && e.message);
+        }
+        const verdes = res.filter(r => r.ok).length;
+        const resumen = `${verdes}/${res.length} en verde`;
+        if (typeof console !== 'undefined') {
+            res.forEach(r => console[r.ok ? 'log' : 'error'](`${r.ok ? '✓' : '✗'} ${r.nombre}${r.detalle ? ' · ' + r.detalle : ''}`));
+            console.log(`[GeneradorDatos.autotest] ${resumen}`);
+        }
+        return { resumen, resultados: res };
+    }
+
     // ============ IMPERFECCIONES REALISTAS (opcionales) ============
     // Una base real nunca es perfecta. Estas tres capas se aplican DESPUÉS de
     // generar y los totales se recalculan para que todo siga siendo coherente:
@@ -933,12 +1006,23 @@ class GeneradorDatos {
     //    o aleatorias. Su total se recalcula a partir de esos ítems.
     //  · Errores de digitación: un ítem con un valor imposible (fuera de rango),
     //    el atípico más común en bases reales y el primero que hay que limpiar.
+    // ÍTEMS INVERTIDOS: los últimos «invertidos» ítems de la escala se guardan
+    // reflejados (min+max−valor en Likert; alrededor de la media de ítem si es
+    // continua). El total sigue siendo el correcto: quien analice debe RECODIFICAR
+    // esos ítems antes de sumar o de calcular fiabilidad, como en una base real.
+    _esInvertido(p, idx1) { return (p.invertidos || 0) > 0 && idx1 > p.numItems - (p.invertidos || 0); }
+    _reflejar(p, v) {
+        if (!(typeof v === 'number' && isFinite(v))) return v;
+        const centro2 = (isFinite(p.minimo) && isFinite(p.maximo)) ? (p.minimo + p.maximo) : 2 * (p.media / p.numItems);
+        return Math.round((centro2 - v) * 100) / 100;
+    }
+    _recodificar(p, idx1, v) { return this._esInvertido(p, idx1) ? this._reflejar(p, v) : v; }
     _itemsDe(p) { const out = []; for (let j = 1; j <= p.numItems; j++) out.push(`${p.nombreCorto}${j}`); return out; }
     _recalcularTotales(d, grupos) {
         const cfg = this.configuracion;
         (cfg.pruebas || []).forEach(p => {
             if (p.numItems < 1) return;
-            const items = this._itemsDe(p).map(k => d[k]).filter(v => typeof v === 'number' && isFinite(v));
+            const items = this._itemsDe(p).map((k, j) => this._recodificar(p, j + 1, d[k])).filter(v => typeof v === 'number' && isFinite(v));
             const col = this.columnaDeEscala(p);
             if (items.length === 0) { d[col] = NaN; return; }
             if (items.length < p.numItems) {
@@ -1134,11 +1218,14 @@ class GeneradorDatos {
         (cfg.pruebas || []).forEach(p => {
             if (!(p.alfa > 0 && p.alfa < 1) || p.numItems < 2) return;
             const cols = [];
-            for (let j = 1; j <= p.numItems; j++) { const c = col(`${p.nombreCorto}${j}`); if (c.length) cols.push(c); }
+            // Solo casos con todos los ítems presentes, y RECODIFICANDO los invertidos
+            const completos = datos.filter(d => this._itemsDe(p).every(k => typeof d[k] === 'number' && isFinite(d[k])));
+            if (completos.length < 10) return;
+            for (let j = 1; j <= p.numItems; j++) cols.push(completos.map(d => this._recodificar(p, j, d[`${p.nombreCorto}${j}`])));
             if (cols.length < 2) return;
             const obs = this._indiceObservado(cols, indice);
             if (obs === null || !isFinite(obs)) return;
-            filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.03 });
+            filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });   // ±0.04 ≈ 2 EE de α con n≈300
         });
         // 3) Correlaciones objetivo (incluidas las de generales derivados)
         (cfg.correlaciones || []).forEach(({ a, b, r }) => {
@@ -1207,19 +1294,30 @@ class GeneradorDatos {
             return v;
         };
         const sumaDE = info => info.de.reduce((s, x) => s + x, 0);
+        // Reparto exacto: corr(G,Y) = Σ DE_i·r_iY / √Var(G). Las parejas ya
+        // fijadas explícitamente se DESCUENTAN y el resto se reparte entre las
+        // dimensiones libres, de modo que el objetivo sobre el General se cumpla.
+        const esExplicita = (i, j) => explicitas.has(i < j ? `${i}|${j}` : `${j}|${i}`);
+        const repartir = (pares, objetivoCov) => {
+            // pares: [{i, j, peso}] ; objetivoCov = Σ peso·r_ij deseado
+            let fijado = 0, pesoLibre = 0;
+            pares.forEach(p => { if (esExplicita(p.i, p.j)) fijado += p.peso * R[p.i][p.j]; else pesoLibre += p.peso; });
+            if (pesoLibre <= 0) return;
+            const rho = (objetivoCov - fijado) / pesoLibre;
+            pares.forEach(p => { if (!esExplicita(p.i, p.j)) fijar(p.i, p.j, rho, false); });
+        };
         (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
             const gA = infoGeneral[a], gB = infoGeneral[b];
             const iA = indicePorNombre[a], iB = indicePorNombre[b];
             const rF = Math.max(-0.99, Math.min(0.99, r));
             if (gA && gB && a !== b) {
-                const rho = rF * Math.sqrt(varianzaG(gA) * varianzaG(gB)) / (sumaDE(gA) * sumaDE(gB));
-                gA.idx.forEach(i => gB.idx.forEach(j => fijar(i, j, rho, false)));
+                const pares = [];
+                gA.idx.forEach((i, ai) => gB.idx.forEach((j, bj) => pares.push({ i, j, peso: gA.de[ai] * gB.de[bj] })));
+                repartir(pares, rF * Math.sqrt(varianzaG(gA) * varianzaG(gB)));
             } else if (gA && iB !== undefined) {
-                const rho = rF * Math.sqrt(varianzaG(gA)) / sumaDE(gA);
-                gA.idx.forEach(i => fijar(i, iB, rho, false));
+                repartir(gA.idx.map((i, ai) => ({ i, j: iB, peso: gA.de[ai] })), rF * Math.sqrt(varianzaG(gA)));
             } else if (gB && iA !== undefined) {
-                const rho = rF * Math.sqrt(varianzaG(gB)) / sumaDE(gB);
-                gB.idx.forEach(j => fijar(iA, j, rho, false));
+                repartir(gB.idx.map((j, bj) => ({ i: iA, j, peso: gB.de[bj] })), rF * Math.sqrt(varianzaG(gB)));
             }
         });
         this.matrizForzada = false;
