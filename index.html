@@ -330,6 +330,14 @@
                         </div>
                         <div class="form-group">
                         <div class="form-group">
+                            <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
+                            <select id="indiceFiabilidad" class="input">
+                                <option value="alfa" selected>α de Cronbach</option>
+                                <option value="omega">ω de McDonald</option>
+                            </select>
+                            <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
+                        </div>
+                        <div class="form-group">
                             <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                                 <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
                                 Correlaciones exactas
@@ -388,7 +396,7 @@
                         <span class="orden-flecha" aria-hidden="true">→</span>
                         <span class="orden-paso"><span class="orden-num">5</span> Máx por ítem</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
-                        <span class="orden-paso"><span class="orden-num">6</span> α objetivo <em>(opcional)</em></span>
+                        <span class="orden-paso"><span class="orden-num">6</span> <span class="etiquetaFiabilidad">α</span> objetivo <em>(opcional)</em></span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
                         <span class="orden-paso"><span class="orden-num">7</span> Media</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
@@ -413,7 +421,7 @@
                                     <th>Desviación Estándar (DE)</th>
                                     <th>Mín por Ítem</th>
                                     <th>Máx por Ítem</th>
-                                    <th>α objetivo</th>
+                                    <th id="thFiabilidad" title="Fiabilidad objetivo de cada escala. Indica qué proporción de la puntuación refleja el constructo y no el error de medida: con 0.85, en torno al 85 % de la varianza del total es señal y el 15 % restante, ruido. El α de Cronbach asume que todos los ítems miden con la misma precisión; el ω de McDonald no lo exige y pondera cada ítem según su carga, por lo que se considera la estimación preferible cuando esa igualdad no está garantizada. Deje el campo vacío o en 0 para obtener ítems independientes entre sí." style="cursor:help; text-decoration:underline dotted;">α objetivo</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -508,10 +516,7 @@
                                 <em>N° de ítems × Mín</em> hasta <em>N° de ítems × Máx</em>.
                             </li>
                             <li>
-                                <strong>α objetivo (opcional):</strong> consistencia interna deseada de la escala
-                                (0–0.99). Con un valor (Ej: 0.85) los ítems comparten un factor común y la escala tendrá
-                                aproximadamente esa fiabilidad. Vacío o 0 = ítems independientes.
-                            </li>
+                                <strong><span class="etiquetaFiabilidad">α</span> objetivo (opcional):</strong> fiabilidad deseada de la escala (0–0.99): la proporción de la puntuación total que refleja el constructo y no el error de medida. Con un valor (Ej: 0.85) los ítems comparten un factor común y la escala alcanzará aproximadamente esa fiabilidad en el índice elegido arriba —α de Cronbach u ω de McDonald—; el generador se autocalibra para que el valor observado coincida con el solicitado. Vacío o 0 = ítems independientes.</li>
                             <li>
                                 <strong>Distribución:</strong> forma del puntaje directo de la escala. <em>Normal</em> =
                                 campana (necesaria para análisis paramétricos como Pearson); <em>Uniforme</em> = plana;
