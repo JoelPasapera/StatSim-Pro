@@ -94,6 +94,8 @@ class GeneradorDatos {
         const chkCE = document.getElementById('correlacionesExactas');
         // Por defecto ACTIVADO: si el usuario pide r = 0.40, la muestra entrega 0.40.
         this.configuracion.correlacionesExactas = chkCE ? !!chkCE.checked : true;
+        const selIF = document.getElementById('indiceFiabilidad');
+        this.configuracion.indiceFiabilidad = selIF ? selIF.value : 'alfa';
 
         // Pruebas aplicadas (cada fila es una ESCALA; se agrupan por prueba)
         this.configuracion.pruebas = this.recolectarPruebas();
@@ -426,6 +428,10 @@ class GeneradorDatos {
         // Matriz de drivers con correlación muestral EXACTA (si procede).
         const exactas = hayCorrelaciones && this.configuracion.correlacionesExactas !== false;
         const matrizDrivers = exactas ? this.generarMatrizDrivers(n) : null;
+        // Fiabilidad autocalibrada: una vez por escala (no por participante).
+        const indiceFiab = this.configuracion.indiceFiabilidad || 'alfa';
+        const objetivoInterno = new Map();
+        this.configuracion.pruebas.forEach(p => objetivoInterno.set(p, this.calibrarFiabilidad(p, indiceFiab)));
 
         // Generar datos para cada participante
         for (let i = 0; i < n; i++) {
@@ -456,9 +462,10 @@ class GeneradorDatos {
                     prueba.desviacion,
                     prueba.minimo,
                     prueba.maximo,
-                    prueba.alfa,
+                    objetivoInterno.has(prueba) ? objetivoInterno.get(prueba) : prueba.alfa,
                     driverEscala !== undefined ? driverEscala : null,
-                    prueba.distribucion
+                    prueba.distribucion,
+                    indiceFiab
                 );
 
                 // Ítems (la Escala general es una sola columna de datos: no
@@ -534,7 +541,89 @@ class GeneradorDatos {
         return datos;
     }
 
-    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal') {
+    // ============ AUTOCALIBRACIÓN DE LA FIABILIDAD ============
+    // El redondeo de los ítems Likert desplaza la fiabilidad OBSERVADA respecto
+    // de la pedida (p. ej. 0.70 salía 0.76). Aquí se busca por bisección el
+    // valor interno que hace que el índice observado ≈ el objetivo del usuario.
+    _indiceObservado(cols, indice) {
+        const k = cols.length, n = cols[0].length;
+        if (k < 2 || n < 3) return null;
+        const media = c => c.reduce((a, b) => a + b, 0) / n;
+        const varianza = c => { const m = media(c); return c.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1); };
+        const total = new Array(n).fill(0);
+        for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) total[i] += cols[j][i];
+        const vT = varianza(total);
+        if (!(vT > 0)) return null;
+        const vars = cols.map(varianza);
+        if (indice === 'omega' && k >= 3) {
+            // Ejes principales iterados (1 factor) sobre R y métrica de covarianzas:
+            // réplica compacta del estimador de fiabilidad.js, para calibrar
+            // contra el MISMO número que verá el usuario en el Analizador.
+            const des = vars.map(v => Math.sqrt(v) || 1e-9);
+            const R = Array.from({ length: k }, (_, a) => Array.from({ length: k }, (_, b) => {
+                const ma = media(cols[a]), mb = media(cols[b]);
+                let s = 0;
+                for (let i = 0; i < n; i++) s += (cols[a][i] - ma) * (cols[b][i] - mb);
+                return (s / (n - 1)) / (des[a] * des[b]);
+            }));
+            let h2 = R.map((fila, i) => Math.max(...fila.map((r, j) => i === j ? 0 : Math.abs(r))));
+            let cargas = null;
+            for (let iter = 0; iter < 25; iter++) {
+                const Rr = R.map((fila, i) => fila.map((r, j) => i === j ? h2[i] : r));
+                let v = new Array(k).fill(1 / Math.sqrt(k)), lam = 0;
+                for (let p = 0; p < 40; p++) {
+                    const w = Rr.map(fila => fila.reduce((s, r, j) => s + r * v[j], 0));
+                    const norma = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
+                    if (!(norma > 0)) return null;
+                    v = w.map(x => x / norma); lam = norma;
+                }
+                if (!(lam > 0)) return null;
+                const signo = v.reduce((s, x) => s + x, 0) >= 0 ? 1 : -1;
+                const nuevas = v.map(x => Math.sqrt(lam) * x * signo);
+                const cambio = Math.max(...nuevas.map((c, i) => Math.abs(c * c - h2[i])));
+                h2 = nuevas.map(c => Math.min(c * c, 0.999));
+                cargas = nuevas;
+                if (cambio < 1e-6) break;
+            }
+            if (!cargas) return null;
+            const lCov = cargas.map((l, i) => Math.max(l, 0) * des[i]);
+            const thCov = cargas.map((l, i) => (1 - Math.min(l * l, 0.999)) * vars[i]);
+            const sl = lCov.reduce((s, x) => s + x, 0);
+            const st = thCov.reduce((s, x) => s + x, 0);
+            return (sl * sl) / ((sl * sl) + st);
+        }
+        const sumaVar = vars.reduce((a, b) => a + b, 0);
+        return (k / (k - 1)) * (1 - sumaVar / vT);
+    }
+    _simularIndice(prueba, objetivoInterno, indice, nSim = 220) {
+        const k = prueba.numItems;
+        const cols = Array.from({ length: k }, () => new Array(nSim));
+        for (let i = 0; i < nSim; i++) {
+            const p = this.generarPuntajesPrueba(k, prueba.media, prueba.desviacion, prueba.minimo,
+                prueba.maximo, objetivoInterno, null, prueba.distribucion, indice);
+            for (let j = 0; j < k; j++) cols[j][i] = p.items[j];
+        }
+        return this._indiceObservado(cols, indice);
+    }
+    calibrarFiabilidad(prueba, indice) {
+        const objetivo = prueba.alfa;
+        if (!(objetivo > 0 && objetivo < 1) || prueba.numItems < 2) return objetivo;
+        // Sin redondeo (escala continua) la relación ya es exacta: no se calibra.
+        if (prueba.minimo === null || prueba.maximo === null) {
+            if (indice !== 'omega') return objetivo;
+        }
+        let lo = 0.01, hi = 0.985, mejor = objetivo;
+        for (let it = 0; it < 11; it++) {
+            const mid = (lo + hi) / 2;
+            const obs = this._simularIndice(prueba, mid, indice);
+            if (obs === null || !isFinite(obs)) break;
+            mejor = mid;
+            if (obs < objetivo) lo = mid; else hi = mid;
+        }
+        return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
+    }
+
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa') {
         // ENFOQUE "TOTAL AUTORITATIVO":
         // El puntaje TOTAL es la cantidad que importa para los análisis (es lo
         // que se correlaciona y se somete a la prueba de normalidad), así que se
@@ -557,6 +646,18 @@ class GeneradorDatos {
         // (2) Estructura inter-ítem para que el α de Cronbach observado se acerque
         // al α objetivo: λ es la carga factorial (Spearman-Brown invertida).
         let lambda = 0;
+        // MODELO CONGENÉRICO (ω): el total se reparte con PESOS DESIGUALES, de
+        // modo que cada ítem carga distinto en el factor común — que es
+        // justamente el supuesto que ω respeta y α no (tau-equivalencia).
+        // Con pesos iguales (modo α) ω y α coinciden, como manda la teoría.
+        const congenerico = (indiceFiabilidad === 'omega' && k >= 3);
+        let pesos = null;
+        if (congenerico) {
+            const brutos = [];
+            for (let i = 0; i < k; i++) brutos.push(1 + 0.9 * (i / (k - 1) - 0.5));   // 0.55 … 1.45
+            const suma = brutos.reduce((s, x) => s + x, 0);
+            pesos = brutos.map(x => x / suma);                                        // Σ pesos = 1
+        }
         if (alfaObjetivo > 0 && alfaObjetivo < 1 && k >= 2) {
             const rMedia = alfaObjetivo / (k - alfaObjetivo * (k - 1));
             lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
@@ -577,7 +678,8 @@ class GeneradorDatos {
             // EXACTAMENTE el total objetivo (forma y M/DE intactas). 2 decimales.
             const items = new Array(k);
             for (let i = 0; i < k; i++) {
-                items[i] = Math.round((totalObjetivo / k + desviacionPorItem * (g[i] - gMedia)) * 100) / 100;
+                const cuota = pesos ? pesos[i] * totalObjetivo : totalObjetivo / k;
+                items[i] = Math.round((cuota + desviacionPorItem * (g[i] - gMedia)) * 100) / 100;
             }
             const total = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
             return { items: items, total: total, factorUtilizado: base };
@@ -599,7 +701,8 @@ class GeneradorDatos {
         const dispersionItem = Math.max(desviacionPorItem, 0.6);
         const items = new Array(k);
         for (let i = 0; i < k; i++) {
-            let v = Math.round(mediaPorItem + dispersionItem * (g[i] - gMedia));
+            const cuota = pesos ? pesos[i] * totalObjetivo : mediaPorItem;
+            let v = Math.round(cuota + dispersionItem * (g[i] - gMedia));
             v = Math.max(minItem, Math.min(maxItem, v));
             items[i] = v;
         }
