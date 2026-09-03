@@ -342,6 +342,10 @@
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
         <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
         <div class="form-group" style="margin:0;">
+        <div class="orden-guia" role="note" aria-label="Guía de correlaciones exactas" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Fuerza que la correlación <em>observada</em> en la muestra coincida exactamente con la <em>objetivo</em> fijada en la tabla III (si pides r = 0.40, obtienes 0.40), en lugar de fluctuar por azar como haría cualquier muestra real (con n = 250 y r = 0.40, la desviación típica de ese azar ronda ±0.05). Actívalo cuando diseñes un caso con parámetros conocidos —una base para enseñar un análisis o comprobar un procedimiento—; desactívalo cuando quieras que los estudiantes experimenten el error de muestreo o que la simulación se comporte como datos recogidos en campo. Afecta a las correlaciones entre dimensiones, sociodemográficas numéricas y puntajes generales; no altera medias, desviaciones ni fiabilidad.</span>
+        </div>
         <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
         Correlaciones exactas
@@ -351,6 +355,10 @@
         </div>
         <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
         <div class="form-group" style="margin:0;">
+        <div class="orden-guia" role="note" aria-label="Guía de percentiles" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Añade a la base una columna <em>PC_</em> por cada escala y por cada puntaje General con la posición relativa (0–100) de cada persona dentro de la muestra generada, calculada por rango medio: porcentaje de casos con puntaje inferior más la mitad de los empates. Un PC de 75 significa que la persona supera aproximadamente al 75 % de la muestra. Sirve para construir y explicar baremos, para ilustrar la diferencia entre puntaje directo y puntaje normativo, y para clasificar niveles (bajo, medio, alto) sin depender de la escala original. Si un total queda vacío por valores perdidos, su percentil también queda vacío. Desactívalo si solo necesitas los puntajes directos: la base será más ligera.</span>
+        </div>
         <label for="generarPercentiles" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
         <input type="checkbox" id="generarPercentiles" style="width: auto; margin: 0;">
         Generar percentiles (PC_)
@@ -361,6 +369,18 @@
     </div>
     <!-- Fila 3: imperfecciones realistas (ancho completo, rejilla interna de 3) -->
     <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.9rem 1rem; margin-top: var(--spacing-md);">
+        <div class="orden-guia" role="note" aria-label="Guía de las imperfecciones realistas">
+            <span class="orden-guia-titulo">Qué hace cada control:</span>
+            <span class="orden-paso"><span class="orden-num">1</span> Valores perdidos</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">2</span> Respuestas descuidadas</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">3</span> Errores de digitación</span>
+            <span class="orden-nota"><strong>1 · Valores perdidos:</strong> deja vacío el porcentaje indicado de respuestas a ítems, como ocurre cuando un participante omite preguntas. <em>MCAR</em> los reparte completamente al azar; <em>MAR</em> los concentra en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala), reproduciendo el patrón habitual de que ciertos perfiles omiten más. Sirve para practicar el diagnóstico del mecanismo de pérdida y las estrategias de tratamiento (eliminación, imputación). Regla del 80 %: si a una escala le falta más del 20 % de sus ítems, su total —y con él el General y el percentil— queda vacío; si falta menos, el total se prorratea.
+            <strong>2 · Respuestas descuidadas:</strong> convierte al porcentaje indicado de personas en respondientes inatentos, con dos patrones típicos: <em>línea recta</em> (marcan el mismo valor en todos los ítems) o <em>al azar</em>. Sus totales se recalculan a partir de esas respuestas, de modo que los análisis de consistencia y los índices de atención los delatan como en una muestra real. Sirve para entrenar la limpieza de datos previa al análisis. La casilla <em>columna marcadora</em> añade una variable que identifica a esos casos: apagada para que el ejercicio sea genuino, encendida para que el docente pueda corregirlo.
+            <strong>3 · Errores de digitación:</strong> introduce, en el porcentaje indicado de personas, un ítem con un valor imposible (por ejemplo «44» donde solo cabe 1–5, o «50» por «5»), el atípico más frecuente en bases transcritas a mano. El total arrastra el error. Sirve para practicar la detección de valores fuera de rango y su corrección antes de analizar.
+            Con los tres controles en 0 la base sale limpia, como hasta ahora; todo lo inyectado se resume tras generar.</span>
+        </div>
         <strong>Imperfecciones realistas (opcional)</strong>
         <span class="help-text" style="display:block; margin-bottom:0.6rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia (como hasta ahora). Los totales se recalculan de forma coherente: si a una escala le falta más del 20 % de sus ítems, su total queda vacío; si falta menos, se prorratea.</span>
         <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;">
