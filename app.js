@@ -38,6 +38,19 @@ function configurarNavegacion() {
 // ========================================
 function configurarGenerador() {
     // Botón agregar prueba
+    const _btnTest = document.getElementById('btnAgregarTest');
+    if (_btnTest) _btnTest.addEventListener('click', agregarFilaTest);
+    // Fila inicial del cuadro de tests + delegación para borrar.
+    const _bodyTests = document.getElementById('bodyTests');
+    if (_bodyTests) {
+        if (!_bodyTests.querySelector('.fila-test')) agregarFilaTestConDatos({});
+        _bodyTests.addEventListener('click', ev => {
+            const btn = ev.target.closest('.btn-delete');
+            if (!btn) return;
+            btn.closest('tr').remove();
+            refrescarSelectoresDePrueba();
+        });
+    }
     document.getElementById('btnAgregarPrueba').addEventListener('click', agregarFilaPrueba);
     // Botón agregar sociodemográfico
     document.getElementById('btnAgregarSocio').addEventListener('click', agregarFilaSocio);
@@ -2024,14 +2037,14 @@ function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
 function csvDeTabla(selectorFilas, tipo) {
     const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
     if (tipo === 'pruebas') {
-        let csv = 'Prueba,Escala,Tipo,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
+        let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
         document.querySelectorAll(selectorFilas).forEach(fila => {
             const inputs = fila.querySelectorAll('input');
-            const selectTipo = fila.querySelector('[aria-label="Tipo de escala"]');
+            const selPrueba = fila.querySelector('[aria-label="Nombre de la prueba"]');
             const selectDist = fila.querySelector('[aria-label="Distribución"]');
-            csv += `${esc(inputs[0].value.trim())},${esc(inputs[1].value.trim())},${selectTipo ? selectTipo.value : 'dimension'},`
-                + `${inputs[2].value || ''},${selectDist ? selectDist.value : 'normal'},${inputs[3].value || ''},`
-                + `${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6].value || ''},${inputs[7] ? (inputs[7].value || '') : ''}\n`;
+            csv += `${esc(selPrueba ? selPrueba.value.trim() : '')},${esc(inputs[0].value.trim())},`
+                + `${inputs[1].value || ''},${selectDist ? selectDist.value : 'normal'},${inputs[2].value || ''},`
+                + `${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6] ? (inputs[6].value || '') : ''}\n`;
         });
         return csv;
     }
@@ -2051,7 +2064,7 @@ function aplicarCSVPruebas(csv) {
     if (lineas.length < 2) return 0;
     const enc = lineas[0].toLowerCase();
     const tienePruebaEscala = enc.includes('escala');
-    const tieneTipo = enc.includes('tipo');
+    const tieneTipo = enc.includes('tipo');          // formato antiguo: la columna se ignora
     const tieneDistribucion = enc.includes('distribucion');
     const tbody = document.getElementById('bodyPruebas');
     if (tbody) tbody.innerHTML = '';
@@ -2061,9 +2074,11 @@ function aplicarCSVPruebas(csv) {
         if (v.length < 4) continue;
         if (tienePruebaEscala) {
             const off = tieneTipo ? 1 : 0;
+            // Las filas «General» de bases antiguas se descartan: el puntaje
+            // general ahora se calcula solo (promedio de las dimensiones).
+            if (tieneTipo && String(v[2] || '').toLowerCase() === 'general') continue;
             agregarFilaPruebaConDatos({
                 prueba: v[0] || '', nombre: v[1] || '',
-                tipo: tieneTipo ? (v[2] || 'dimension') : 'dimension',
                 numItems: v[2 + off] || '', distribucion: v[3 + off] || 'normal',
                 media: v[4 + off] || '', de: v[5 + off] || '',
                 min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || ''
@@ -2117,6 +2132,29 @@ function exportarConfigCorrelaciones() {
     }
 }
 // CSV de correlaciones (reutilizado por el exportador maestro).
+function csvDeTests() {
+    let csv = 'Prueba,Variable\n';
+    testsDefinidos().forEach(t => {
+        const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+        csv += `${esc(t.prueba)},${esc(t.variable)}\n`;
+    });
+    return csv;
+}
+function aplicarCSVTests(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return 0;
+    const tbody = document.getElementById('bodyTests');
+    if (tbody) tbody.innerHTML = '';
+    let n = 0;
+    for (const linea of lineas.slice(1)) {
+        const v = parsearLineaCSV(linea);
+        if (!v[0]) continue;
+        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '' });
+        n++;
+    }
+    refrescarSelectoresDePrueba();
+    return n;
+}
 function csvDeCorrelaciones() {
     let csv = 'VariableA,VariableB,Correlacion\n';
     document.querySelectorAll('#bodyCorrelaciones .fila-correlacion').forEach(fila => {
@@ -2185,7 +2223,7 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { general: '###GENERAL###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
+const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
 // Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
@@ -2226,6 +2264,7 @@ function exportarConfigTodo() {
         const partes = [];
         // Se reutilizan los MISMOS generadores de cada tabla (una sola fuente de verdad).
         const csvG = csvDeGeneral();
+        const csvT = csvDeTests();
         const csvP = csvDeTabla('#bodyPruebas .fila-prueba', 'pruebas');
         const csvS = csvDeTabla('#bodySocio .fila-socio', 'socio');
         const csvC = csvDeCorrelaciones();
@@ -2234,7 +2273,7 @@ function exportarConfigTodo() {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
         mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es)`, 'success');
     } catch (error) {
@@ -2260,13 +2299,15 @@ function importarConfigTodo(e) {
                 return texto.slice(desde, b < 0 ? undefined : b).trim();
             };
             // Archivos antiguos SIN ###GENERAL### siguen funcionando: el bloque sale vacío.
-            const csvG = bloque(MARCA_TODO.general, MARCA_TODO.pruebas);
+            const csvG = bloque(MARCA_TODO.general, texto.includes(MARCA_TODO.tests) ? MARCA_TODO.tests : MARCA_TODO.pruebas);
+            const csvT = bloque(MARCA_TODO.tests, MARCA_TODO.pruebas);
             const csvP = bloque(MARCA_TODO.pruebas, MARCA_TODO.socio);
             const csvS = bloque(MARCA_TODO.socio, MARCA_TODO.corr);
             const csvC = bloque(MARCA_TODO.corr, null);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
+            const rT = csvT ? aplicarCSVTests(csvT) : 0;   // los tests van ANTES que las escalas
             const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
             const rS = csvS ? aplicarCSVSocio(csvS) : 0;
             const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
@@ -2399,6 +2440,51 @@ function importarConfigPruebas(e) {
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
+// ===================== CUADRO DE PRUEBAS (TESTS) =====================
+// Define qué tests existen y qué variable psicológica mide cada uno. Alimenta
+// el desplegable «Prueba (test)» de la tabla de escalas.
+function agregarFilaTestConDatos(datos = {}) {
+    const tbody = document.getElementById('bodyTests');
+    if (!tbody) return;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-test';
+    fila.innerHTML = `
+        <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre del test"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${datos.variable || ''}" aria-label="Variable psicológica"></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar test">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </td>`;
+    tbody.appendChild(fila);
+    fila.querySelector('[aria-label="Nombre del test"]').addEventListener('input', refrescarSelectoresDePrueba);
+    refrescarSelectoresDePrueba();
+}
+function agregarFilaTest() { agregarFilaTestConDatos({}); }
+// Nombres de test definidos arriba (sin vacíos ni repetidos).
+function testsDefinidos() {
+    const out = [];
+    document.querySelectorAll('#bodyTests .fila-test').forEach(f => {
+        const nombre = (f.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
+        const variable = (f.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
+        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim() });
+    });
+    return out;
+}
+// Repuebla los desplegables de la tabla de escalas conservando la selección.
+function refrescarSelectoresDePrueba() {
+    const tests = testsDefinidos();
+    document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la prueba"]').forEach(sel => {
+        if (!sel || sel.tagName !== 'SELECT') return;
+        const actual = sel.value;
+        sel.innerHTML = '<option value="">— elige un test —</option>'
+            + tests.map(t => `<option value="${t.prueba}"${t.prueba === actual ? ' selected' : ''}>${t.prueba}</option>`).join('');
+        if (actual && !tests.some(t => t.prueba === actual)) sel.value = '';
+    });
+}
+
 function agregarFilaPruebaConDatos(datos) {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = document.createElement('tr');
@@ -2406,14 +2492,8 @@ function agregarFilaPruebaConDatos(datos) {
     const dist = datos.distribucion || 'normal';
     const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
     nuevaFila.innerHTML = `
-        <td><input type="text" class="input input-sm" placeholder="Ej: WAIS-IV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre de la prueba" list="listaPruebas"></td>
+        <td><select class="input input-sm" aria-label="Nombre de la prueba"></select></td>
         <td><input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo" maxlength="100" value="${datos.nombre}" aria-label="Nombre de la escala"></td>
-        <td>
-            <select class="input input-sm" aria-label="Tipo de escala">
-                <option value="dimension"${(datos.tipo || 'dimension') === 'dimension' ? ' selected' : ''}>Dimensión</option>
-                <option value="general"${datos.tipo === 'general' ? ' selected' : ''}>General</option>
-            </select>
-        </td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 60" min="1" value="${datos.numItems}" aria-label="Número de ítems"></td>
         <td>
             <select class="input input-sm" aria-label="Distribución">
@@ -2434,6 +2514,17 @@ function agregarFilaPruebaConDatos(datos) {
         </td>
     `;
     tbody.appendChild(nuevaFila);
+    // El desplegable se puebla con los tests del cuadro superior y se
+    // preselecciona el que traiga el dato (importación/restauración).
+    refrescarSelectoresDePrueba();
+    const sel = nuevaFila.querySelector('[aria-label="Nombre de la prueba"]');
+    if (sel && datos.prueba) {
+        if (!Array.from(sel.options).some(o => o.value === datos.prueba)) {
+            agregarFilaTestConDatos({ prueba: datos.prueba, variable: '' });   // test implícito de un CSV antiguo
+            refrescarSelectoresDePrueba();
+        }
+        sel.value = datos.prueba;
+    }
     actualizarLimitesPrueba(nuevaFila);
 }
 // SOCIODEMOGRÁFICOS
