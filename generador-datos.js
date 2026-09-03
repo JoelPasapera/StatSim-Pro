@@ -909,6 +909,134 @@ class GeneradorDatos {
         return grupo.variable ? `${grupo.variable} — ${grupo.nombre}` : `Puntaje general — ${grupo.nombre}`;
     }
 
+    // ============ DIAGNÓSTICO DE LA MATRIZ DE CORRELACIONES ============
+    // Una petición como r(A,B)=0.9, r(B,C)=0.9, r(A,C)=−0.5 es imposible: ninguna
+    // muestra real puede tenerla. Antes se forzaba en silencio (distorsionando
+    // TODO). Ahora: (1) se detectan las tríadas incompatibles, (2) se sustituye
+    // por la matriz válida más cercana (recorte de autovalores) y (3) se informa
+    // exactamente cuánto se movió cada correlación.
+    _esDefinidaPositiva(R) {
+        const n = R.length, L = Array.from({ length: n }, () => new Array(n).fill(0));
+        for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) {
+            let s = 0;
+            for (let k = 0; k < j; k++) s += L[i][k] * L[j][k];
+            if (i === j) { const d = R[i][i] - s; if (d <= 1e-10) return false; L[i][i] = Math.sqrt(d); }
+            else L[i][j] = (R[i][j] - s) / L[j][j];
+        }
+        return true;
+    }
+    _triadasIncompatibles(R, nombres) {
+        const out = [], n = R.length;
+        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) for (let k = j + 1; k < n; k++) {
+            const a = R[i][j], b = R[i][k], c = R[j][k];
+            if (!a || !b || !c) continue;
+            const det = 1 + 2 * a * b * c - a * a - b * b - c * c;
+            if (det < -1e-9) out.push({ variables: [nombres[i], nombres[j], nombres[k]], correlaciones: [a, b, c], det });
+        }
+        return out;
+    }
+    // Autovalores/autovectores de una matriz simétrica (Jacobi cíclico).
+    _jacobi(A) {
+        const n = A.length, M = A.map(f => f.slice()), V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
+        for (let sweep = 0; sweep < 60; sweep++) {
+            let off = 0;
+            for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += M[p][q] * M[p][q];
+            if (off < 1e-14) break;
+            for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
+                if (Math.abs(M[p][q]) < 1e-14) continue;
+                const theta = (M[q][q] - M[p][p]) / (2 * M[p][q]);
+                const tt = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+                const c = 1 / Math.sqrt(tt * tt + 1), s = tt * c;
+                for (let k = 0; k < n; k++) { const mkp = M[k][p], mkq = M[k][q]; M[k][p] = c * mkp - s * mkq; M[k][q] = s * mkp + c * mkq; }
+                for (let k = 0; k < n; k++) { const mpk = M[p][k], mqk = M[q][k]; M[p][k] = c * mpk - s * mqk; M[q][k] = s * mpk + c * mqk; }
+                for (let k = 0; k < n; k++) { const vkp = V[k][p], vkq = V[k][q]; V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
+            }
+        }
+        return { valores: M.map((f, i) => f[i]), vectores: V };
+    }
+    _matrizValidaMasCercana(R) {
+        const n = R.length, { valores, vectores } = this._jacobi(R);
+        const piso = 1e-3;
+        const S = Array.from({ length: n }, () => new Array(n).fill(0));
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+            let s = 0;
+            for (let k = 0; k < n; k++) s += vectores[i][k] * Math.max(valores[k], piso) * vectores[j][k];
+            S[i][j] = s;
+        }
+        const d = S.map((f, i) => Math.sqrt(f[i]));
+        return S.map((f, i) => f.map((x, j) => (i === j ? 1 : x / (d[i] * d[j]))));
+    }
+    diagnosticarMatriz(R, nombres) {
+        if (this._esDefinidaPositiva(R)) return { imposible: false, triadas: [], ajustes: [], R };
+        const triadas = this._triadasIncompatibles(R, nombres);
+        const Rv = this._matrizValidaMasCercana(R);
+        const ajustes = [];
+        for (let i = 0; i < R.length; i++) for (let j = i + 1; j < R.length; j++)
+            if (Math.abs(Rv[i][j] - R[i][j]) > 0.005) ajustes.push({ a: nombres[i], b: nombres[j], pedido: R[i][j], ajustado: Rv[i][j] });
+        ajustes.sort((x, y) => Math.abs(y.ajustado - y.pedido) - Math.abs(x.ajustado - x.pedido));
+        return { imposible: true, triadas, ajustes, R: Rv };
+    }
+
+    // ============ INFORME PEDIDO vs OBTENIDO ============
+    // Cierra el ciclo «lo que se pide es lo que se entrega»: mide en la base
+    // generada cada parámetro solicitado y lo pone al lado del valor real.
+    _corr(x, y) {
+        const n = x.length; let mx = 0, my = 0;
+        for (let i = 0; i < n; i++) { mx += x[i]; my += y[i]; }
+        mx /= n; my /= n;
+        let sxy = 0, sxx = 0, syy = 0;
+        for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
+        return (sxx > 0 && syy > 0) ? sxy / Math.sqrt(sxx * syy) : NaN;
+    }
+    informePedidoObtenido(datos) {
+        const filas = [];
+        if (!datos || !datos.length) return filas;
+        const cfg = this.configuracion;
+        const col = k => datos.map(d => d[k]).filter(v => typeof v === 'number' && isFinite(v));
+        const num = (v, dec = 2) => (isFinite(v) ? Number(v).toFixed(dec) : '—');
+        // Columna de cada variable correlacionable (dimensión, general derivado o socio)
+        const grupos = cfg.gruposPruebas || [];
+        const columnaDe = nombre => {
+            const p = (cfg.pruebas || []).find(x => x.nombre === nombre);
+            if (p) return this.columnaDeEscala(p);
+            const g = grupos.find(x => this.nombreGeneral(x) === nombre && x.escalas.length >= 2);
+            if (g) return `General_${g.sigla}`;
+            const s = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
+            return s ? s.categoriaCorta : null;
+        };
+        // 1) Media y DE de cada escala
+        (cfg.pruebas || []).forEach(p => {
+            const v = col(this.columnaDeEscala(p));
+            if (v.length < 3) return;
+            const m = v.reduce((a, b) => a + b, 0) / v.length;
+            const de = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1));
+            filas.push({ tipo: 'Media', variable: p.nombre, pedido: num(p.media), obtenido: num(m), ok: Math.abs(m - p.media) <= Math.max(0.5, 0.1 * p.desviacion) });
+            filas.push({ tipo: 'DE', variable: p.nombre, pedido: num(p.desviacion), obtenido: num(de), ok: Math.abs(de - p.desviacion) <= Math.max(0.3, 0.15 * p.desviacion) });
+        });
+        // 2) Fiabilidad de cada escala con objetivo (α u ω, según el índice elegido)
+        const indice = cfg.indiceFiabilidad || 'alfa';
+        (cfg.pruebas || []).forEach(p => {
+            if (!(p.alfa > 0 && p.alfa < 1) || p.numItems < 2) return;
+            const cols = [];
+            for (let j = 1; j <= p.numItems; j++) { const c = col(`${p.nombreCorto}${j}`); if (c.length) cols.push(c); }
+            if (cols.length < 2) return;
+            const obs = this._indiceObservado(cols, indice);
+            if (obs === null || !isFinite(obs)) return;
+            filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.03 });
+        });
+        // 3) Correlaciones objetivo (incluidas las de generales derivados)
+        (cfg.correlaciones || []).forEach(({ a, b, r }) => {
+            const ca = columnaDe(a), cb = columnaDe(b);
+            if (!ca || !cb) return;
+            const x = datos.map(d => d[ca]), y = datos.map(d => d[cb]);
+            const pares = x.map((v, i) => [v, y[i]]).filter(([u, w]) => isFinite(u) && isFinite(w));
+            if (pares.length < 3) return;
+            const obs = this._corr(pares.map(q => q[0]), pares.map(q => q[1]));
+            filas.push({ tipo: 'r', variable: `${a} ↔ ${b}`, pedido: num(r), obtenido: num(obs, 3), ok: Math.abs(obs - r) <= 0.03 });
+        });
+        return filas;
+    }
+
     prepararCorrelaciones() {
         const variables = [];
 
@@ -980,9 +1108,10 @@ class GeneradorDatos {
         });
         this.matrizForzada = false;
         this.correlVariables = variables;
-        this.correlR = R;
-        this.correlL = m > 0 ? this.descomposicionCholesky(R) : [];
-        if (this.matrizForzada) console.warn('[Generador] Las correlaciones pedidas no son compatibles entre sí (matriz no definida positiva): se forzaron y las observadas se desviarán.');
+        this.diagnosticoCorrelaciones = m > 0 ? this.diagnosticarMatriz(R, variables.map(v => v.nombre)) : { imposible: false, triadas: [], ajustes: [], R };
+        this.correlR = this.diagnosticoCorrelaciones.R;
+        this.correlL = m > 0 ? this.descomposicionCholesky(this.correlR) : [];
+        if (this.diagnosticoCorrelaciones.imposible) console.warn('[Generador] Correlaciones incompatibles: se usó la matriz válida más cercana.', this.diagnosticoCorrelaciones);
     }
 
     /**
