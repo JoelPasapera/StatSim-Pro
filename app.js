@@ -2100,14 +2100,14 @@ function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
 function csvDeTabla(selectorFilas, tipo) {
     const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
     if (tipo === 'pruebas') {
-        let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
+        let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos\n';
         document.querySelectorAll(selectorFilas).forEach(fila => {
             const inputs = fila.querySelectorAll('input');
             const selPrueba = fila.querySelector('[aria-label="Nombre de la prueba"]');
             const selectDist = fila.querySelector('[aria-label="Distribución"]');
             csv += `${esc(selPrueba ? selPrueba.value.trim() : '')},${esc(inputs[0].value.trim())},`
                 + `${inputs[1].value || ''},${selectDist ? selectDist.value : 'normal'},${inputs[2].value || ''},`
-                + `${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6] ? (inputs[6].value || '') : ''}\n`;
+                + `${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6] ? (inputs[6].value || '') : ''},${inputs[7] ? (inputs[7].value || '') : ''}\n`;
         });
         return csv;
     }
@@ -2144,7 +2144,8 @@ function aplicarCSVPruebas(csv) {
                 prueba: v[0] || '', nombre: v[1] || '',
                 numItems: v[2 + off] || '', distribucion: v[3 + off] || 'normal',
                 media: v[4 + off] || '', de: v[5 + off] || '',
-                min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || ''
+                min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || '',
+                invertidos: v[9 + off] || ''
             });
         } else if (tieneDistribucion) {
             agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
@@ -2576,6 +2577,7 @@ function agregarFilaPruebaConDatos(datos) {
         <td><input type="number" class="input input-sm" placeholder="Ej: 0" step="1" value="${datos.min}" aria-label="Mínimo por ítem"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 5" step="1" value="${datos.max}" aria-label="Máximo por ítem"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 0.85" step="0.01" min="0" max="0.99" value="${datos.alfa || ''}" aria-label="Alfa de Cronbach objetivo"></td>
+        <td><input type="number" class="input input-sm" placeholder="0" step="1" min="0" value="${datos.invertidos || ''}" aria-label="Ítems invertidos" title="Cuántos ítems de esta escala se puntúan al revés (se guardan reflejados, como en una base real: hay que recodificarlos antes de sumar). Son los ÚLTIMOS de la escala."></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
