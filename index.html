@@ -802,6 +802,26 @@
                     </button>
                 </div>
 
+                <!-- Diagnóstico de correlaciones incompatibles (solo aparece si hubo ajuste) -->
+                <div id="diagnosticoCorrelaciones" class="card" style="display: none; border-left: 4px solid #d4a72c;"></div>
+
+                <!-- Informe pedido vs obtenido: cierra el ciclo «lo que se pide es lo que se entrega» -->
+                <div id="informePedidoObtenido" class="card" style="display: none;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
+                        <div>
+                            <h3 class="card-title" style="margin:0;">Verificación: pedido vs. obtenido</h3>
+                            <span class="help-text">Cada parámetro configurado, medido sobre la base recién generada. Útil como evidencia en el anexo metodológico.</span>
+                        </div>
+                        <button id="btnDescargarInforme" type="button" class="btn btn-outline">⬇ Descargar informe (CSV)</button>
+                    </div>
+                    <div class="table-container" style="margin-top:0.8rem;">
+                        <table class="table" id="tablaInforme">
+                            <thead><tr><th>Parámetro</th><th>Variable</th><th>Pedido</th><th>Obtenido</th><th>Estado</th></tr></thead>
+                            <tbody id="bodyInforme"></tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- Preview de Datos Generados -->
                 <div id="previewContainer" class="card" style="display: none;">
                     <h3 class="card-title">Vista Previa de Datos Generados</h3>
