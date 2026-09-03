@@ -326,7 +326,12 @@ function generarBaseDatos() {
                 mostrarInformePedidoObtenido(datos);
                 habilitarDescargaCSV();
                 habilitarUsarGenerados();
-                mostrarToast('¡Base de datos generada exitosamente!', 'success');
+                const ri = generadorDatos.resumenImperfecciones || {};
+                const partesRi = [];
+                if (ri.perdidos) partesRi.push(`${ri.perdidos} valores perdidos`);
+                if (ri.descuidados) partesRi.push(`${ri.descuidados} respondientes descuidados`);
+                if (ri.digitacion) partesRi.push(`${ri.digitacion} errores de digitación`);
+                mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}` : '¡Base de datos generada exitosamente!', 'success', partesRi.length ? 8000 : undefined);
             } catch (error) {
                 mostrarToast(error.message, 'error');
                 console.error(error);
@@ -2288,7 +2293,13 @@ const CAMPOS_GENERAL = [
     { id: 'semilla', clave: 'Semilla' },
     { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true },
     { id: 'correlacionesExactas', clave: 'CorrelacionesExactas', checkbox: true },
-    { id: 'indiceFiabilidad', clave: 'IndiceFiabilidad' }
+    { id: 'indiceFiabilidad', clave: 'IndiceFiabilidad' },
+    { id: 'pctPerdidos', clave: 'PctPerdidos' },
+    { id: 'mecanismoPerdidos', clave: 'MecanismoPerdidos' },
+    { id: 'pctDescuidados', clave: 'PctDescuidados' },
+    { id: 'tipoDescuidado', clave: 'TipoDescuidado' },
+    { id: 'marcarDescuidados', clave: 'MarcarDescuidados', checkbox: true },
+    { id: 'pctDigitacion', clave: 'PctDigitacion' }
 ];
 function csvDeGeneral() {
     let csv = 'Campo,Valor\n';
