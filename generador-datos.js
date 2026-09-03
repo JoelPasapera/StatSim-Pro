@@ -174,7 +174,8 @@ class GeneradorDatos {
         document.querySelectorAll('#bodyTests .fila-test').forEach(fila => {
             const nombre = (fila.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
             const variable = (fila.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
-            if (nombre.trim()) mapa[nombre.trim()] = variable.trim();
+            const rIn = parseFloat((fila.querySelector('[aria-label="Correlación entre dimensiones"]') || {}).value);
+            if (nombre.trim()) mapa[nombre.trim()] = { variable: variable.trim(), rIntra: isFinite(rIn) ? Math.max(-0.99, Math.min(0.99, rIn)) : 0.40 };
         });
         return mapa;
     }
@@ -319,7 +320,8 @@ class GeneradorDatos {
                 nombre: nombrePrueba,
                 sigla: this.generarNombreCortoUnico(nombrePrueba, usados),
                 escalas: siglasEscalas,
-                variable: ((this.configuracion && this.configuracion.variablesPorTest) || {})[nombrePrueba] || ''
+                variable: (((this.configuracion && this.configuracion.variablesPorTest) || {})[nombrePrueba] || {}).variable || '',
+                rIntra: (((this.configuracion && this.configuracion.variablesPorTest) || {})[nombrePrueba] || {}).rIntra
             });
         });
         return grupos;
@@ -883,6 +885,7 @@ class GeneradorDatos {
                 if (i === j) {
                     const d = A[i][i] - suma;
                     if (d <= 0) noDefinidaPositiva = true;
+                    if (d < 1e-9) this.matrizForzada = true;   // pedido imposible: se fuerza
                     L[i][j] = Math.sqrt(Math.max(d, 1e-9));
                 } else {
                     L[i][j] = (A[i][j] - suma) / (L[j][j] || 1e-9);
@@ -902,6 +905,10 @@ class GeneradorDatos {
      * (corr(F,Total)), de modo que la correlación OBSERVADA entre totales se
      * acerque a la pedida.
      */
+    nombreGeneral(grupo) {
+        return grupo.variable ? `${grupo.variable} — ${grupo.nombre}` : `Puntaje general — ${grupo.nombre}`;
+    }
+
     prepararCorrelaciones() {
         const variables = [];
 
@@ -921,21 +928,61 @@ class GeneradorDatos {
         const m = variables.length;
         const R = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
 
-        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
-            const i = indicePorNombre[a];
-            const j = indicePorNombre[b];
+        const grupos = this.configuracion.gruposPruebas || [];
+        const porSigla = {};
+        this.configuracion.pruebas.forEach(p => { porSigla[p.nombreCorto] = p; });
+        const explicitas = new Set();
+        const fijar = (i, j, r, explicita) => {
             if (i === undefined || j === undefined || i === j) return;
-            // El TOTAL de cada escala se gobierna directamente por el driver
-            // correlacionado (modelo "total autoritativo"), de modo que la
-            // correlación OBSERVADA entre totales ≈ la pedida, sin desatenuar y
-            // sin depender de α.
-            const rFactor = Math.max(-0.99, Math.min(0.99, r));
-            R[i][j] = rFactor;
-            R[j][i] = rFactor;
+            const k = i < j ? `${i}|${j}` : `${j}|${i}`;
+            if (explicitas.has(k)) return;
+            if (explicita) explicitas.add(k);
+            const rF = Math.max(-0.99, Math.min(0.99, r));
+            R[i][j] = rF; R[j][i] = rF;
+        };
+        const infoGeneral = {};
+        grupos.forEach(g => {
+            if (g.escalas.length < 2) return;
+            const idx = g.escalas.map(s => indicePorNombre[(porSigla[s] || {}).nombre]).filter(i => i !== undefined);
+            if (idx.length < 2) return;
+            const de = idx.map(i => (porSigla[variables[i].clave] || {}).desviacion || 1);
+            infoGeneral[this.nombreGeneral(g)] = { idx, de, rIntra: (g.rIntra === undefined ? 0.40 : g.rIntra) };
         });
-
+        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+            const i = indicePorNombre[a], j = indicePorNombre[b];
+            if (i !== undefined && j !== undefined) fijar(i, j, r, true);
+        });
+        Object.values(infoGeneral).forEach(info => {
+            for (let a = 0; a < info.idx.length; a++) for (let b = a + 1; b < info.idx.length; b++)
+                fijar(info.idx[a], info.idx[b], info.rIntra, false);
+        });
+        const varianzaG = info => {
+            let v = 0;
+            for (let a = 0; a < info.idx.length; a++) for (let b = 0; b < info.idx.length; b++)
+                v += info.de[a] * info.de[b] * (a === b ? 1 : R[info.idx[a]][info.idx[b]]);
+            return v;
+        };
+        const sumaDE = info => info.de.reduce((s, x) => s + x, 0);
+        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+            const gA = infoGeneral[a], gB = infoGeneral[b];
+            const iA = indicePorNombre[a], iB = indicePorNombre[b];
+            const rF = Math.max(-0.99, Math.min(0.99, r));
+            if (gA && gB && a !== b) {
+                const rho = rF * Math.sqrt(varianzaG(gA) * varianzaG(gB)) / (sumaDE(gA) * sumaDE(gB));
+                gA.idx.forEach(i => gB.idx.forEach(j => fijar(i, j, rho, false)));
+            } else if (gA && iB !== undefined) {
+                const rho = rF * Math.sqrt(varianzaG(gA)) / sumaDE(gA);
+                gA.idx.forEach(i => fijar(i, iB, rho, false));
+            } else if (gB && iA !== undefined) {
+                const rho = rF * Math.sqrt(varianzaG(gB)) / sumaDE(gB);
+                gB.idx.forEach(j => fijar(iA, j, rho, false));
+            }
+        });
+        this.matrizForzada = false;
         this.correlVariables = variables;
+        this.correlR = R;
         this.correlL = m > 0 ? this.descomposicionCholesky(R) : [];
+        if (this.matrizForzada) console.warn('[Generador] Las correlaciones pedidas no son compatibles entre sí (matriz no definida positiva): se forzaron y las observadas se desviarán.');
     }
 
     /**
