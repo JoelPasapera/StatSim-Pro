@@ -203,6 +203,18 @@ function obtenerVariablesCorrelacionables() {
         const nombre = inputEscala ? inputEscala.value.trim() : '';
         if (nombre) nombres.push(nombre);
     });
+    // Puntajes GENERALES derivados (tests con ≥2 dimensiones): correlacionables
+    // porque el generador reparte la correlación pedida entre sus dimensiones.
+    const filasPorTest = {};
+    document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
+        const sel = fila.querySelector('[aria-label="Nombre de la prueba"]');
+        const p = sel ? sel.value.trim() : '';
+        if (p) filasPorTest[p] = (filasPorTest[p] || 0) + 1;
+    });
+    (typeof testsDefinidos === 'function' ? testsDefinidos() : []).forEach(t => {
+        if ((filasPorTest[t.prueba] || 0) >= 2)
+            nombres.push(t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`);
+    });
     document.querySelectorAll('#bodySocio .fila-socio').forEach(fila => {
         const select = fila.querySelector('select');
         const dist = select ? select.value : 'normal';
@@ -2133,10 +2145,10 @@ function exportarConfigCorrelaciones() {
 }
 // CSV de correlaciones (reutilizado por el exportador maestro).
 function csvDeTests() {
-    let csv = 'Prueba,Variable\n';
+    let csv = 'Prueba,Variable,CorrDimensiones\n';
     testsDefinidos().forEach(t => {
         const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
-        csv += `${esc(t.prueba)},${esc(t.variable)}\n`;
+        csv += `${esc(t.prueba)},${esc(t.variable)},${t.rIntra}\n`;
     });
     return csv;
 }
@@ -2149,7 +2161,7 @@ function aplicarCSVTests(csv) {
     for (const linea of lineas.slice(1)) {
         const v = parsearLineaCSV(linea);
         if (!v[0]) continue;
-        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '' });
+        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '', rIntra: v[2] !== undefined ? v[2] : '' });
         n++;
     }
     refrescarSelectoresDePrueba();
@@ -2451,6 +2463,7 @@ function agregarFilaTestConDatos(datos = {}) {
     fila.innerHTML = `
         <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre del test"></td>
         <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${datos.variable || ''}" aria-label="Variable psicológica"></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" value="${datos.rIntra !== undefined && datos.rIntra !== '' ? datos.rIntra : '0.40'}" aria-label="Correlación entre dimensiones" title="Correlación esperada entre las dimensiones de este test (las subescalas de un mismo instrumento suelen correlacionar entre 0.30 y 0.60). Una pareja fijada en la tabla III prevalece sobre este valor."></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar test">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -2469,7 +2482,8 @@ function testsDefinidos() {
     document.querySelectorAll('#bodyTests .fila-test').forEach(f => {
         const nombre = (f.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
         const variable = (f.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
-        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim() });
+        const rIntra = (f.querySelector('[aria-label="Correlación entre dimensiones"]') || {}).value || '';
+        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim(), rIntra: rIntra.trim() });
     });
     return out;
 }
