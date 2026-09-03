@@ -401,12 +401,35 @@
                         <span class="orden-paso"><span class="orden-num">7</span> Media</span>
                         <span class="orden-flecha" aria-hidden="true">→</span>
                         <span class="orden-paso"><span class="orden-num">8</span> Desviación estándar</span>
-                        <span class="orden-nota">Cada fila es UNA escala. Las filas con la misma Prueba se agrupan. En <strong>Tipo</strong> elige
-                            <em>Dimensión</em> (subescala con ítems) o <em>General</em> (escala general del test: sin N° de ítems ni α; su Mín/Máx
-                            son de la escala completa). <strong>Toda prueba debe incluir UNA fila General</strong> — es su puntaje general.
+                        <span class="orden-nota">Cada fila es UNA escala o dimensión. Las filas que comparten Prueba se agrupan, y el
+                            <strong>puntaje general de cada test se calcula automáticamente</strong> como el promedio de sus dimensiones
+                            (columna con prefijo <em>General_</em>, redondeada a entero); no hay que configurarlo a mano.
                             Cada campo se desbloquea al completar el anterior.</span>
                     </div>
                     <datalist id="listaPruebas"></datalist>
+
+                    <div style="margin:0 0 1.1rem; padding:0.85rem 1rem; border:1px solid var(--color-border, #2a3550); border-radius:10px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                            <div>
+                                <strong>Pruebas del estudio</strong>
+                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide y la correlación esperada entre sus dimensiones. Estos nombres alimentan el desplegable «Prueba (test)» de la tabla de abajo, y el puntaje General de cada test aparece como variable correlacionable en la tabla III.</span>
+                            </div>
+                            <button id="btnAgregarTest" type="button" class="btn btn-secondary">+ Agregar Prueba</button>
+                        </div>
+                        <div class="table-container">
+                            <table class="table" id="tablaTests">
+                                <thead>
+                                    <tr>
+                                        <th>Prueba (test)</th>
+                                        <th>Variable psicológica que mide</th>
+                                        <th title="Correlación esperada entre las dimensiones del test (típicamente 0.30–0.60). Da coherencia al puntaje General y permite correlacionarlo con otras variables." style="cursor:help; text-decoration:underline dotted;">r entre dimensiones</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bodyTests"></tbody>
+                            </table>
+                        </div>
+                    </div>
 
                     <div class="table-container">
                         <table class="table" id="tablaPruebas">
@@ -414,7 +437,6 @@
                                 <tr>
                                     <th>Prueba (test)</th>
                                     <th>Escala / Dimensión</th>
-                                    <th>Tipo</th>
                                     <th>N° de Ítems</th>
                                     <th>Distribución</th>
                                     <th>Media (M)</th>
@@ -485,10 +507,10 @@
                         <p class="leyenda-titulo">Guía de cada campo:</p>
                         <ol>
                             <li>
-                                <strong>Prueba (test):</strong> nombre del instrumento psicométrico completo
-                                (Ej: "WAIS-IV", "TMMS-24"). Escribe el mismo nombre en varias filas para agrupar sus
-                                escalas bajo el mismo test. Toda prueba debe tener su <em>Escala general</em> (una fila
-                                con Tipo = "General") y, si el test las tiene, sus dimensiones.
+                                <strong>Prueba (test):</strong> se elige del desplegable, que se alimenta del cuadro
+                                <em>Pruebas del estudio</em> situado sobre la tabla (donde se declara cada instrumento y la
+                                variable psicológica que mide). Varias filas con la misma prueba quedan agrupadas como sus
+                                dimensiones, y el sistema añade sola la columna <em>General_</em> con el promedio de todas ellas.
                             </li>
                             <li>
                                 <strong>Escala / Dimensión:</strong> nombre de la subescala o dimensión de esa prueba
