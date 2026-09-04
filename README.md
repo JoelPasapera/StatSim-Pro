@@ -6,7 +6,7 @@ StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investiga
 
 **Suite estadística y metodológica completa para tesis de psicología y ciencias sociales — 100 % en tu navegador.**
 
-De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas, ejecuta análisis con rigor de SPSS, explora tus resultados en gráficos interactivos con análisis automático, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
+De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas —con la fiabilidad y las correlaciones que tú pides, verificadas una a una—, ejecuta análisis con rigor de SPSS, explora tus resultados en gráficos interactivos con análisis automático, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
 
 > Implementado 100 % en el navegador. Sin frameworks, sin backend, sin instalación — y desde esta versión, **sin librerías de gráficos externas**: la visualización también es motor propio. ¡Pruébalo aquí 👇!
 
@@ -18,7 +18,7 @@ De la simulación de datos a la redacción del marco teórico: genera bases de d
 
 - Estudiantes de psicología, educación, sociología y ciencias de la salud que desarrollan su tesis
 - Investigadores que necesitan análisis rápidos sin licencias de software propietario
-- Docentes que buscan herramientas accesibles para enseñar estadística y metodología
+- Docentes que buscan herramientas accesibles para enseñar estadística y metodología — y que necesitan **bases de datos didácticas con parámetros conocidos** (o con imperfecciones deliberadas para practicar la limpieza)
 
 > *"Construido para resolver un problema que vivía todos los días: perder horas en SPSS sin entender qué hacía. Ahora el análisis y la interpretación están en un solo clic."*
 
@@ -65,6 +65,17 @@ Los resultados arrojados por **StatSim Pro** fueron comparados directamente con 
 
 Además de la comparación con SPSS, cada módulo estadístico se verifica contra **casos con solución conocida** (valores de tabla, ejemplos resueltos a mano y recuperación exacta de coeficientes sintéticos), incluyendo estudios de calibración por simulación (p. ej., 300 réplicas normales para confirmar la tasa nominal de falsos positivos de Lilliefors ≈ 5 %).
 
+### 🧪 Verificación integrada (autotest)
+
+El proyecto lleva sus propias pruebas dentro del código, ejecutables desde la consola del navegador (F12):
+
+```js
+GeneradorDatos.autotest()    // 12 comprobaciones del simulador
+RedactorTeorico.autotest()   // 11 comprobaciones del redactor
+```
+
+Cada comprobación corresponde a un fallo que ocurrió de verdad durante el desarrollo y que ya no debe repetirse: correlaciones exactas, fiabilidad autocalibrada, puntaje general derivado, matrices de correlación imposibles, ítems invertidos, valores perdidos, exportación limpia, conversión de citas… Con semilla fija, para que el resultado sea reproducible y no dependa del azar.
+
 ---
 
 ## 📚 Motor estadístico implementado desde cero
@@ -80,10 +91,11 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 - **Levene** — Homogeneidad de varianzas (centrado en la media, como SPSS)
 - **Chi-cuadrado** — Independencia con V de Cramér
 - **Regresión** — Lineal simple y **múltiple (OLS matricial)** con B, EE, β estandarizados, t, p, IC 95 %, R², R² ajustado, F del modelo y **VIF** por predictor
-- **Fiabilidad** — Alfa de Cronbach por escala y dimensiones
+- **Fiabilidad** — **Alfa de Cronbach** (bruto con IC 95 % por el procedimiento de Feldt, y estandarizado), **omega total de McDonald** (solución unifactorial por ejes principales iterados), **lambda 2 de Guttman** y **correlación media inter-ítem** con su rango
 - **Comparaciones múltiples** — Corrección de Holm
 - **Potencia post-hoc** — Aproximación de Fisher para correlaciones
 - **p-valores** — Beta y gamma incompletas regularizadas por fracción continua de Lentz (Numerical Recipes)
+- **Álgebra matricial propia** — Descomposición de **Cholesky** (generación de datos correlacionados), rotación de **Jacobi** para autovalores y autovectores (corrección de matrices no definidas positivas) e inversión triangular
 
 ---
 
@@ -102,19 +114,43 @@ Desde esta versión, StatSim Pro **ya no depende de D3.js**: los gráficos se di
 
 ### 🎲 Generador de bases de datos (Simulador)
 
-- ✅ Simulación de datos controlados con media y desviación estándar objetivo
-- ✅ Soporte para múltiples pruebas psicométricas con ítems, dimensiones y puntajes de escala
+Un simulador psicométrico que entrega **exactamente lo que le pides**, y que además puede ensuciar los datos a propósito para que la limpieza sea parte del aprendizaje.
+
+**Estructura del instrumento**
+
+- ✅ **Cuadro de pruebas**: declara cada test, la **variable psicológica que mide** y la **correlación esperada entre sus dimensiones**; ese cuadro alimenta el desplegable de la tabla de escalas
+- ✅ Cada fila es **una dimensión** (ítems, media, DE, mínimo y máximo por ítem); el **puntaje general de cada test se calcula solo** como promedio de sus dimensiones (columna `General_`), sin configurarlo a mano
 - ✅ Variables sociodemográficas personalizables (sexo, edad, carrera, etc.)
-- ✅ Generación siguiendo distribución normal, con **reglas de coherencia** entre ítems y totales (fuente única de fórmulas compartida con la validación)
-- ✅ Guía de coherencia en vivo que avisa de configuraciones contradictorias
-- ✅ Correlación objetivo entre escalas para simular relaciones realistas
-- ✅ Exportación a CSV (con BOM, compatible con Excel) y vista previa
+- ✅ **Percentiles** opcionales (`PC_`) por escala y por puntaje general, calculados por rango medio
+- ✅ Guía de coherencia en vivo que avisa de configuraciones contradictorias, con desbloqueo progresivo de campos
+
+**Control psicométrico real**
+
+- ✅ **Fiabilidad objetivo por escala**: elige el coeficiente —**α de Cronbach** u **ω de McDonald**— y el generador **se autocalibra** para que el valor observado coincida con el pedido (el redondeo de los ítems Likert desviaba el resultado; ahora se corrige por bisección midiendo con el mismo estimador que usa el Analizador)
+- ✅ **Ítems invertidos**: indica cuántos ítems de la escala se puntúan al revés. La base los entrega **sin recodificar**, como llegan de un cuestionario real: quien no los refleje antes de sumar verá caer la fiabilidad, igual que en la vida real
+- ✅ **Correlaciones objetivo** entre dimensiones, sociodemográficas numéricas y **puntajes generales derivados** (la correlación pedida sobre un General se reparte matemáticamente entre sus dimensiones)
+- ✅ **Correlaciones exactas** (activable): la muestra reproduce *exactamente* la correlación pedida (si pides r = 0.40, obtienes 0.40) en lugar de fluctuar por error de muestreo. Desactívalo para que los datos se comporten como una muestra recogida en campo
+- ✅ **Estructura factorial coherente**: las dimensiones de un mismo test correlacionan entre sí como en un instrumento real, y cualquier pareja que fijes explícitamente siempre prevalece
+- ✅ **Detección de correlaciones imposibles**: si la combinación pedida no puede existir en ninguna muestra (matriz no definida positiva), se identifican las **tríadas en conflicto**, se sustituye por la **matriz válida más cercana** y se informa cuánto se movió cada correlación — en lugar de forzarla en silencio
+
+**Realismo opcional (para enseñar limpieza de datos)**
+
+- ✅ **Valores perdidos** con mecanismo **MCAR** (al azar) o **MAR** (más frecuentes en quienes puntúan bajo en una variable observada), con **regla del 80 %**: si a una escala le falta más del 20 % de sus ítems su total queda vacío; si falta menos, se prorratea
+- ✅ **Respuestas descuidadas**: participantes de *línea recta* (mismo valor en todos los ítems) o de respuesta al azar, con columna marcadora opcional para que el docente pueda corregir el ejercicio
+- ✅ **Errores de digitación**: valores imposibles fuera de rango, el atípico más común en bases transcritas a mano
+
+**Verificación y flujo de trabajo**
+
+- ✅ **Informe «pedido vs. obtenido»**: tras generar, una tabla contrasta cada parámetro configurado (media, DE, α/ω y todas las correlaciones) con su valor medido en la base, con estado ✓/⚠ y descarga en CSV — la evidencia que respalda la simulación en el anexo metodológico
+- ✅ **Importar / Exportar por tabla** y botones **maestros** que guardan o restauran **toda la configuración del simulador** en un solo archivo (parámetros generales, pruebas, escalas, sociodemográficos y correlaciones)
+- ✅ Exportación a CSV (con BOM, compatible con Excel) y vista previa; los valores perdidos salen como celda vacía
 
 ### 🔬 Analizador estadístico
 
 - ✅ Carga de CSV propio o de los datos generados, con vista previa (N y variables)
-- ✅ **Etiquetas de variables**: renombra puntajes de escala (`General_IE` → “Inteligencia emocional”) y toda la app y el Word usan el nombre legible
+- ✅ **Etiquetas de variables**: renombra puntajes de escala (`General_IE` → “Inteligencia emocional”) y toda la app y el Word usan el nombre legible. Las columnas se reconocen por prefijo (`General_`, `Dimension_`, `Total_`), de modo que una base exportada conserva su estructura aunque vuelva desde un CSV externo
 - ✅ Configuración de la investigación (título, unidad de análisis, contexto) y de dimensiones por variable
+- ✅ **Fiabilidad y consistencia interna**: α de Cronbach con IC 95 %, α estandarizada, **ω total de McDonald**, λ₂ de Guttman y correlación media inter-ítem, con interpretación por umbrales
 - ✅ **Correlación bivariada** (Pearson/Spearman elegido automáticamente según normalidad; bilateral o unilateral) con IC 95 %, interpretación de fuerza y dirección
 - ✅ **Comparación entre grupos con protocolo automático**: la app evalúa normalidad por grupo + Levene y elige sola — t de Student, **t de Welch** o U de Mann-Whitney (2 grupos); ANOVA o Kruskal-Wallis (3+), con **post-hoc por pares y corrección de Holm** — explicando siempre *por qué* eligió esa prueba, con tamaños del efecto (d, r, η², ε²) y su magnitud
 - ✅ **Asociación de categóricas** (Chi² con V de Cramér)
@@ -154,6 +190,8 @@ Desde esta versión, StatSim Pro **ya no depende de D3.js**: los gráficos se di
 
 - ✅ Búsqueda simultánea en **Scopus** (rotación de múltiples claves API), **PubMed**, **SciELO**, **ALICIA (Concytec)**, **Google Scholar**, **OpenAlex** y **Crossref**
 - ✅ **Búsqueda intensiva con IA**: generación de criterios de inclusión/exclusión, expansión de la consulta en variantes (ES/EN) y paginación profunda
+- ✅ **Variantes propias**: escribe tus propias variantes de búsqueda (una por línea) y se usarán tal cual, sin pasar por la IA; deja la caja vacía y se generan automáticamente
+- ✅ **Tope de búsquedas configurable** (variantes × idiomas): decide cuántas búsquedas se lanzan, con aviso en vivo del coste y advertencia explícita si alguna variante quedaría fuera
 - ✅ **Análisis de relevancia con IA** (escala 1–5 con justificación) vía Cloudflare Worker con **rotación de hasta 10 claves gratuitas de Groq en paralelo**, JSON estricto y reintentos con enfriamiento automático
 - ✅ Filtro por umbral de relevancia que gobierna matriz, exportaciones y redacción
 - ✅ **Enriquecimiento automático por DOI en cascada**: OpenAlex → Crossref → Semantic Scholar → Europe PMC → **Scopus Abstract Retrieval** → Unpaywall (rescata resúmenes que las APIs abiertas no traen, p. ej. Elsevier), con recuperación de autores y año
@@ -166,32 +204,36 @@ Desde esta versión, StatSim Pro **ya no depende de D3.js**: los gráficos se di
 
 - ✅ **Identificación de variables** de estudio a partir del problema (la IA propone, tú confirmas)
 - ✅ **Documento completo de 9 secciones**: Planteamiento del problema, Estado de la cuestión, Antecedentes (en partes para cubrir todas las fuentes), Bases teóricas y Modelos teóricos por variable, Justificación y Definición conceptual de las variables — redactadas **en paralelo** por múltiples claves de IA
-- ✅ **Regla de oro inviolable: toda idea lleva cita** — cada párrafo debe contener al menos una cita (parentética o narrativa) construida por la app desde la matriz; los textuales solo pueden ser literales de los resúmenes
-- ✅ Selección de fuentes por afinidad temática con reparto rotatorio (las 50 fuentes se distribuyen por el documento)
-- ✅ Importación de la matriz exportada (Excel/CSV) con **reparación automática por DOI** de resúmenes y autores rotos, prefiriendo la columna Autor
-- ✅ Reintento automático de secciones que fallan por límites de cuota
-- ✅ **Word .docx en formato APA 7**: Times New Roman 12, doble espacio, sangrías, títulos centrados, nota de verificación y **Referencias finales solo de las fuentes realmente citadas**, en orden alfabético con sangría francesa
-- ✅ Botón de copiado íntegro al portapapeles
+- ✅ **Regla de oro inviolable: toda idea lleva cita** — el modelo escribe con marcadores de evidencia y la app los convierte en **citas APA reales** tomadas de tu matriz, contando exactamente qué fuentes se usaron
+- ✅ **Caza de citas inventadas**: cualquier referencia que no exista en la matriz se detecta y se reporta, tanto en forma parentética como narrativa
+- ✅ **Ficha de instrumentos** extraída de tu propia matriz (nombre, sigla, constructo y familia teórica) que se inyecta en todas las secciones para que ningún test se describa midiendo lo que no mide, y que además detecta **posicionamientos teóricos contradictorios** entre secciones
+- ✅ **Filtro por relevancia** (≥ 2 … ≥ 5) aplicable también a una matriz **ya descargada** que vuelvas a importar
+- ✅ **Saneado de la matriz en una sola puerta**: caracteres corruptos del scraping, autores contaminados con nombres de revista, **referencias APA reconstruidas** cuando llegan rotas y **posibles duplicados reportados —nunca borrados—** para que decidas tú
+- ✅ **Cadena de respaldo ante límites de cuota**: reintentos con espera respetando la ventana del proveedor y **cambio automático a un segundo motor de IA**, comprimiendo el material sin omitir ninguna fuente ni perder las cifras de los resúmenes
+- ✅ **Pase de coherencia**: un botón revisa el documento y reescribe solo los pasajes que lo necesitan (cadenas de citas sin jerarquizar, muletillas repetidas, declaraciones de vacío duplicadas, modelo teórico contradictorio), con una **garantía mecánica**: si la reescritura altera las citas del párrafo, se rechaza
+- ✅ **Panel de diagnóstico** al terminar: secciones, palabras, fuentes citadas, **qué motor escribió cada sección**, costura del texto, saneado de la matriz y alertas accionables
+- ✅ **Word .docx y PDF en formato APA 7**: Times New Roman 12, doble espacio, sangrías, títulos centrados, numeración de páginas y **Referencias finales solo de las fuentes realmente citadas**, en orden alfabético con sangría francesa
+- ✅ Botón de copiado íntegro al portapapeles y recuperación del último documento generado
 - ✅ Aviso honesto permanente: es un **borrador asistido** — verifica cada cita contra la fuente original y reescríbelo con tu voz
 
 ### 🔒 Privacidad y arquitectura
 
 - ✅ **100 % del procesamiento estadístico ocurre en tu navegador**: tus datos nunca salen de tu equipo
 - ✅ Sin backend propio ni base de datos; despliegue estático en GitHub Pages
-- ✅ Vanilla JavaScript modular (sin frameworks) con **motor de visualización propio** (`statviz.js`, sin D3 ni otras librerías de gráficos); ExcelJS y html-docx-js desde CDN solo para exportaciones
-- ✅ Las llamadas a IA (solo en el buscador/redactor) envían únicamente títulos y resúmenes de artículos públicos a través de un Worker propio; las claves nunca se exponen en el cliente
+- ✅ Vanilla JavaScript modular (sin frameworks) con **motor de visualización propio** (`statviz.js`, sin D3 ni otras librerías de gráficos); ExcelJS, html-docx-js y jsPDF desde CDN solo para exportaciones
+- ✅ Las llamadas a IA (solo en el buscador/redactor) envían únicamente títulos y resúmenes de artículos públicos a través de Workers propios; las claves nunca se exponen en el cliente
 
 ---
 
 ## 🚀 Uso
 
 1. Abre la demo: [joelpasapera.github.io/StatSim-Pro](https://joelpasapera.github.io/StatSim-Pro)
-2. **Simulador** → genera una base de datos realista (o salta este paso si tienes la tuya)
-3. **Analizador** → carga tu CSV o usa los datos generados; etiqueta tus variables; elige el análisis (correlación, comparación de grupos, chi², multivariado) y ejecuta
+2. **Simulador** → declara tus pruebas y dimensiones, fija la fiabilidad y las correlaciones objetivo, y genera la base (o salta este paso si tienes la tuya). Revisa el **informe pedido vs. obtenido** y, si vas a enseñar limpieza de datos, activa las **imperfecciones realistas**
+3. **Analizador** → carga tu CSV o usa los datos generados; etiqueta tus variables; elige el análisis (fiabilidad, correlación, comparación de grupos, chi², multivariado) y ejecuta
 4. **Explora el dashboard**: selecciona variables con las casillas, pasa el cursor por la matriz y los diagramas de caja, investiga los atípicos y lee el análisis automático bajo cada gráfico
 5. Exporta el **capítulo de resultados en Word APA** con un clic
-6. **Buscador** → busca antecedentes, analiza relevancia con IA, llena la matriz y expórtala
-7. **Redactor** → importa la matriz, identifica variables y genera el **marco teórico completo en Word APA**
+6. **Buscador** → busca antecedentes (con tus propias variantes si quieres), analiza relevancia con IA, llena la matriz y expórtala
+7. **Redactor** → importa la matriz, filtra por relevancia, identifica variables, genera el **marco teórico completo**, pásale el **pase de coherencia** y descárgalo en **Word o PDF APA**
 
 Para uso local: clona el repositorio y abre `index.html` (o sirve la carpeta con cualquier servidor estático).
 
@@ -208,8 +250,9 @@ python -m http.server 8000   # o cualquier servidor estático
 | Módulo | Responsabilidad |
 |---|---|
 | `index.html`, `app.js`, `style.css` | Interfaz, navegación y orquestación |
-| `generador-datos.js`, `guia-coherencia.js` | Simulación de datos y reglas de coherencia (fuente única) |
-| `analizador-estadistico.js` | Motor estadístico central (normalidad, correlaciones, fiabilidad, Holm…) |
+| `generador-datos.js`, `guia-coherencia.js` | Simulación de datos: estructura del instrumento, fiabilidad autocalibrada, correlaciones exactas, imperfecciones realistas, informe pedido vs. obtenido y autotest |
+| `analizador-estadistico.js` | Motor estadístico central (normalidad, correlaciones, Holm…) |
+| `fiabilidad.js` | Consistencia interna: α con IC de Feldt, ω de McDonald, λ₂ de Guttman, inter-ítem |
 | `comparacion-grupos.js` | Protocolo automático t/Welch/U/ANOVA/Kruskal-Wallis + post-hoc |
 | `regresion-multiple.js` | Matriz multi-variable y regresión múltiple OLS (VIF, crudo vs. ajustado) |
 | `statviz.js` | **Motor de visualización propio** (escalas, ejes, selecciones, curvas, histogramas, pack, geo) — reemplaza a D3 |
@@ -219,15 +262,17 @@ python -m http.server 8000   # o cualquier servidor estático
 | `criba-correlaciones.js`, `criba-sociodemografica.js`, `analisis-dimensiones.js` | Objetivos específicos y hallazgos por sociodemográficos |
 | `etiquetas-variables.js`, `matriz-consistencia.js` | Nombres legibles y matriz de consistencia |
 | `exportador-word.js` | Capítulo de resultados .docx APA 7 con pedagogía |
-| `antecedentes.js` + `scopus/pubmed/scielo/alicia/scholar-directo.js`, `proxies-cors.js` | Buscador multi-fuente y enriquecimiento por DOI |
-| `ia-asistente.js` | Cliente del Worker de IA (criterios, relevancia, redacción) |
-| `redactor-teorico.js` | Marco teórico completo con citas y Word APA |
+| `antecedentes.js` + `scopus/pubmed/scielo/alicia/scholar-directo.js`, `proxies-cors.js` | Buscador multi-fuente, variantes propias y enriquecimiento por DOI |
+| `ia-asistente.js` | Cliente de los Workers de IA (criterios, relevancia, redacción, pase de coherencia) con respaldo entre proveedores |
+| `redactor-teorico.js` | Marco teórico completo con citas verificadas, pase de coherencia y exportación Word/PDF APA |
 
 ---
 
 ## ⚠️ Nota de responsabilidad académica
 
 StatSim Pro automatiza cálculos y borradores, no el criterio del investigador. Los textos generados con IA son **borradores de trabajo**, y los análisis automáticos bajo los gráficos son **lecturas descriptivas preliminares**: contrasta cada cita con la fuente original, confirma los supuestos con las pruebas formales y reescribe con tu propia voz antes de incorporar cualquier resultado a tu tesis.
+
+Las bases generadas por el **Simulador son datos sintéticos**: sirven para diseñar, enseñar y poner a prueba un procedimiento de análisis, nunca para sustituir datos reales ni para sostener conclusiones sustantivas sobre una población.
 
 ---
 
