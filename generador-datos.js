@@ -10,6 +10,24 @@ const TAMANO_MUESTRAL_MAXIMO = 100000;
 // correlación intermedia (_rhoIntermedia) debe usar exactamente este valor.
 const SIGMA_FORMA_ASIMETRICA = 0.6;
 
+// (B5) Heterogeneidad de los ítems de cada escala. Cada nivel fija:
+//  · medias: amplitud de las medias de ítem como fracción del espacio libre
+//    (Likert: distancia de la media de ítem al tope más cercano; continua:
+//    la DE de un ítem), repartidas en escalera y barajadas por la semilla;
+//  · cargas: dispersión de los pesos con que cada ítem participa del total
+//    (1 ± cargas), es decir, cargas factoriales desiguales (modelo congenérico);
+//  · cruzadas / proporcionCruzadas: carga cruzada estandarizada que reciben
+//    algunos ítems (esa proporción de los de la escala) desde OTRA dimensión
+//    del mismo test.
+// «ninguna» reproduce el comportamiento anterior: ítems paralelos (en modo ω
+// se mantiene el modelo congenérico de siempre, con dispersión 0.45).
+const PERFILES_HETEROGENEIDAD = {
+    ninguna:  { medias: 0,   cargas: 0,   cruzadas: 0,    proporcionCruzadas: 0 },
+    leve:     { medias: 0.3, cargas: 0.3, cruzadas: 0.15, proporcionCruzadas: 0.20 },
+    moderada: { medias: 0.5, cargas: 0.5, cruzadas: 0.25, proporcionCruzadas: 0.25 },
+    alta:     { medias: 0.7, cargas: 0.7, cruzadas: 0.35, proporcionCruzadas: 0.34 }
+};
+
 // ========================================
 // REGLAS DE COHERENCIA (fuente única)
 // Las usan la guía en vivo de la interfaz (guia-coherencia.js) y el respaldo
@@ -101,6 +119,9 @@ class GeneradorDatos {
         this.configuracion.correlacionesExactas = chkCE ? !!chkCE.checked : true;
         const selIF = document.getElementById('indiceFiabilidad');
         this.configuracion.indiceFiabilidad = selIF ? selIF.value : 'alfa';
+        // (B5) Heterogeneidad de los ítems; sin el selector en la página, ítems paralelos como antes
+        const selHet = document.getElementById('heterogeneidadItems');
+        this.configuracion.heterogeneidadItems = (selHet && PERFILES_HETEROGENEIDAD[selHet.value]) ? selHet.value : 'ninguna';
         // Imperfecciones realistas (opcionales; 0 = base perfecta, como hasta ahora)
         const leerPct = (id, tope) => { const el = document.getElementById(id); const v = el ? parseFloat(el.value) : 0; return isFinite(v) ? Math.max(0, Math.min(tope, v)) : 0; };
         this.configuracion.realismo = {
@@ -485,6 +506,11 @@ class GeneradorDatos {
         }
         avisar(0.06, 'Estructura de correlación lista');
 
+        // (B5) Perfil de ítems de cada escala (medias, pesos, cargas cruzadas),
+        // derivado de la semilla UNA vez: lo usan la calibración de la
+        // fiabilidad y la generación, que así reparten igual.
+        this.perfilesItems = this._perfilesDeItems();
+
         const n = this.configuracion.tamanoMuestra;
         const pruebas = this.configuracion.pruebas;
         const socios = this.configuracion.sociodemograficos;
@@ -569,22 +595,34 @@ class GeneradorDatos {
                 );
             });
 
-            // Pruebas: ítems (invertidos guardados reflejados) y total
-            pruebas.forEach(prueba => {
+            // Pruebas. Primero el TOTAL continuo de todas (las cargas cruzadas
+            // de una dimensión necesitan el z de las otras del mismo test) y
+            // después el reparto de cada total en ítems.
+            const basesPrueba = new Array(pruebas.length), totalesPrueba = new Array(pruebas.length);
+            const zDim = {};
+            pruebas.forEach((prueba, idx) => {
                 const claveEscala = 'escala:' + prueba.nombreCorto;
                 const driverEscala = drivers[claveEscala];
                 const formaYaAplicada = !!(this.driversEnValor && this.driversEnValor.has(claveEscala));
-                const puntajes = this.generarPuntajesPrueba(
+                const baseZ = driverEscala !== undefined ? driverEscala : this.generarNormalEstandar();
+                const total = this._totalObjetivo(prueba.media, prueba.desviacion * factorDEPrueba.get(prueba), baseZ,
+                    formaYaAplicada ? 'normal' : prueba.distribucion, despPrueba.get(prueba)[i]);
+                basesPrueba[idx] = baseZ;
+                totalesPrueba[idx] = total;
+                zDim[prueba.nombreCorto] = prueba.desviacion > 0 ? (total - prueba.media) / prueba.desviacion : 0;
+            });
+            pruebas.forEach((prueba, idx) => {
+                const puntajes = this._repartirEnItems(
                     prueba.numItems,
+                    totalesPrueba[idx],
                     prueba.media,
                     prueba.desviacion * factorDEPrueba.get(prueba),
                     prueba.minimo,
                     prueba.maximo,
                     objetivoInterno.has(prueba) ? objetivoInterno.get(prueba) : prueba.alfa,
-                    driverEscala !== undefined ? driverEscala : null,
-                    formaYaAplicada ? 'normal' : prueba.distribucion,
-                    indiceFiab,
-                    despPrueba.get(prueba)[i]
+                    this.perfilesItems.get(prueba) || null,
+                    zDim,
+                    basesPrueba[idx]
                 );
                 // Ítems (la Escala general es una sola columna de datos: no
                 // tiene ítems, solo su Total_)
@@ -726,20 +764,55 @@ class GeneradorDatos {
         // grupo (códigos sorteados) que tendrá la base: la varianza entre grupos
         // se reparte por igual entre los ítems y sube la fiabilidad observada.
         const deIntra = prueba.desviacion * this._factorDE(prueba.nombre);
+        // (B5) Mismo perfil de ítems que tendrá la base; las otras dimensiones
+        // (cargas cruzadas) se simulan con su correlación objetivo con esta.
+        const perfil = this.perfilesItems ? (this.perfilesItems.get(prueba) || null) : null;
+        const zOtras = (perfil && perfil.cruzadas.length) ? this._zOtrasSimuladas(prueba, perfil) : null;
         for (let i = 0; i < nSim; i++) {
             const p = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo,
                 prueba.maximo, objetivoInterno, null, prueba.distribucion, indice,
-                this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion));
+                this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfil, zOtras);
             for (let j = 0; j < k; j++) cols[j][i] = p.items[j];
         }
         return this._indiceObservado(cols, indice);
     }
+    // Función (base → {sigla: z}) que simula el z de las otras dimensiones de un
+    // test a partir del de esta, con la correlación OBJETIVO entre ambas (la de
+    // la matriz preparada si existe; si no, el r intra-test del cuadro).
+    _zOtrasSimuladas(prueba, perfil) {
+        const siglas = [...new Set(perfil.cruzadas.map(c => c.sigla))];
+        const rCon = {};
+        siglas.forEach(sigla => {
+            let r = null;
+            if (this.correlR && this.correlVariables && this.correlVariables.length) {
+                const ia = this.correlVariables.findIndex(v => v.tipo === 'escala' && v.clave === prueba.nombreCorto);
+                const ib = this.correlVariables.findIndex(v => v.tipo === 'escala' && v.clave === sigla);
+                if (ia >= 0 && ib >= 0) r = this.correlR[ia][ib];
+            }
+            if (r === null) {
+                const g = (this.configuracion.gruposPruebas || []).find(x => x.escalas.includes(prueba.nombreCorto));
+                r = g && g.rIntra !== undefined ? g.rIntra : 0.40;
+            }
+            rCon[sigla] = Math.max(-0.99, Math.min(0.99, r));
+        });
+        return (base) => {
+            const z = {};
+            siglas.forEach(sigla => { const r = rCon[sigla]; z[sigla] = r * base + Math.sqrt(1 - r * r) * this.generarNormalEstandar(); });
+            return z;
+        };
+    }
     calibrarFiabilidad(prueba, indice) {
         const objetivo = prueba.alfa;
         if (!(objetivo > 0 && objetivo < 1) || prueba.numItems < 2) return objetivo;
-        // Sin redondeo (escala continua) la relación ya es exacta: no se calibra.
+        // Sin redondeo (escala continua), con ítems paralelos y sin diferencias
+        // por grupo la relación ya es exacta: no se calibra. Con perfil
+        // heterogéneo (B5) o con diferencias por grupo (la varianza entre grupos
+        // se reparte por igual entre los ítems y sube la fiabilidad) siempre.
+        const perfil = this.perfilesItems ? this.perfilesItems.get(prueba) : null;
+        const heterogeneo = !!(perfil && (perfil.cruzadas.length || perfil.delta.some(d => d !== 0) || perfil.peso.some(w => Math.abs(w - 1 / prueba.numItems) > 1e-9)));
+        const conGrupos = !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(prueba.nombre) || []).length);
         if (prueba.minimo === null || prueba.maximo === null) {
-            if (indice !== 'omega') return objetivo;
+            if (indice !== 'omega' && !heterogeneo && !conGrupos) return objetivo;
         }
         let lo = 0.01, hi = 0.985, mejor = objetivo;
         for (let it = 0; it < 12; it++) {
@@ -752,7 +825,7 @@ class GeneradorDatos {
         return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
     }
 
-    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa', desplazamiento = 0) {
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa', desplazamiento = 0, perfil = null, zOtras = null) {
         // ENFOQUE "TOTAL AUTORITATIVO":
         // El puntaje TOTAL es la cantidad que importa para los análisis (es lo
         // que se correlaciona y se somete a la prueba de normalidad), así que se
@@ -763,9 +836,6 @@ class GeneradorDatos {
         //     forma del total (sin que el teorema del límite central lo borre);
         //   · la correlación objetivo entre escalas funciona aunque α = 0
         //     (el total se gobierna por el "driver" correlacionado).
-        const k = numItems;
-        const modoLikert = (minItem !== null && maxItem !== null);
-
         // (1) TOTAL autoritativo con la forma pedida. Si llega un driver de
         // correlación se usa como base estandarizada; si no, una normal nueva.
         const base = factor !== null ? factor : this.generarNormalEstandar();
@@ -773,44 +843,74 @@ class GeneradorDatos {
         // el reparto entero en ítems ya lo incorpora y el redondeo por persona
         // se promedia en vez de acumularse como sesgo.
         const totalObjetivo = this._totalObjetivo(mediaTotal, desviacionTotal, base, distribucion, desplazamiento);
+        // (2) Reparto del total en ítems (indiceFiabilidad se conserva por
+        // compatibilidad de la firma: el modelo congenérico del modo ω vive ahora
+        // en el perfil de ítems, ver _perfilesDeItems).
+        return this._repartirEnItems(numItems, totalObjetivo, mediaTotal, desviacionTotal, minItem, maxItem, alfaObjetivo, perfil, zOtras, base);
+    }
 
-        // (2) Estructura inter-ítem para que el α de Cronbach observado se acerque
-        // al α objetivo: λ es la carga factorial (Spearman-Brown invertida).
+    /**
+     * Reparte un total ya generado en k ítems. Modelo (B5):
+     *     ítem_i = M/k + δ_i + w_i·(T − M) + ruido_i + cruz_i
+     *  · δ_i: desplazamiento de la media del ítem (Σδ = 0)  → ítems «fáciles/difíciles»;
+     *  · w_i: peso del ítem en el total (Σw = 1)            → cargas desiguales;
+     *  · ruido_i: desviaciones centradas (Σ = 0) cuya escala gobierna la
+     *    fiabilidad (λ se calibra para que α/ω observado sea el pedido);
+     *  · cruz_i: carga cruzada desde otra dimensión del mismo test, centrada
+     *    (Σ = 0) para que el total no cambie.
+     * Con perfil nulo (o de nivel «ninguna») los ítems son paralelos: δ = 0 y
+     * w = 1/k, como antes. La suma de los ítems es SIEMPRE el total.
+     */
+    _repartirEnItems(numItems, totalObjetivo, mediaTotal, desviacionTotal, minItem, maxItem, alfaObjetivo, perfil, zOtras, base) {
+        const k = numItems;
+        const modoLikert = (minItem !== null && maxItem !== null);
+
+        // Estructura inter-ítem para que el α de Cronbach observado se acerque al
+        // objetivo: λ es la carga factorial (Spearman-Brown invertida); su único
+        // efecto es fijar la escala del ruido de ítem (a mayor λ, menos ruido).
         let lambda = 0;
-        // MODELO CONGENÉRICO (ω): el total se reparte con PESOS DESIGUALES, de
-        // modo que cada ítem carga distinto en el factor común — que es
-        // justamente el supuesto que ω respeta y α no (tau-equivalencia).
-        // Con pesos iguales (modo α) ω y α coinciden, como manda la teoría.
-        const congenerico = (indiceFiabilidad === 'omega' && k >= 3);
-        let pesos = null;
-        if (congenerico) {
-            const brutos = [];
-            for (let i = 0; i < k; i++) brutos.push(1 + 0.9 * (i / (k - 1) - 0.5));   // 0.55 … 1.45
-            const suma = brutos.reduce((s, x) => s + x, 0);
-            pesos = brutos.map(x => x / suma);                                        // Σ pesos = 1
-        }
         if (alfaObjetivo > 0 && alfaObjetivo < 1 && k >= 2) {
             const rMedia = alfaObjetivo / (k - alfaObjetivo * (k - 1));
             lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
         }
         const desviacionPorItem = desviacionTotal / Math.sqrt(k * (1 + (k - 1) * lambda * lambda));
         const unicidad = Math.sqrt(1 - lambda * lambda);
-        const Fitem = this.generarNormalEstandar(); // factor común propio de la escala
 
-        // Desviaciones de ítem (centradas a suma 0): comparten Fitem (correlación
-        // interna) más ruido idiosincrático. No afectan al nivel del total.
+        // Desviaciones de ítem centradas a suma 0: ruido idiosincrático. (Un
+        // factor común sumado por igual a todos los ítems se cancela al centrar,
+        // así que no se genera.) No afectan al nivel del total.
         const g = new Array(k);
         let gSuma = 0;
-        for (let i = 0; i < k; i++) { g[i] = lambda * Fitem + unicidad * this.generarNormalEstandar(); gSuma += g[i]; }
+        for (let i = 0; i < k; i++) { g[i] = unicidad * this.generarNormalEstandar(); gSuma += g[i]; }
         const gMedia = gSuma / k;
 
+        // Perfil de ítems (B5)
+        const delta = perfil ? perfil.delta : null;
+        const peso = perfil ? perfil.peso : null;
+        let cruz = null;
+        if (perfil && perfil.cruzadas.length && zOtras) {
+            const z = typeof zOtras === 'function' ? zOtras(base) : zOtras;
+            // DE del ítem sin el término cruzado: la carga cruzada c se expresa en
+            // unidades estandarizadas del ítem (≈ carga secundaria c en el AFE).
+            const sigmaItem = Math.sqrt((desviacionTotal * desviacionTotal) / (k * k) + desviacionPorItem * desviacionPorItem * unicidad * unicidad * (1 - 1 / k));
+            cruz = new Float64Array(k);
+            let suma = 0;
+            perfil.cruzadas.forEach(({ item, sigla, c }) => {
+                const zb = z[sigla];
+                if (typeof zb === 'number' && isFinite(zb)) { cruz[item] += c * sigmaItem * zb; suma += c * sigmaItem * zb; }
+            });
+            const media = suma / k;
+            for (let i = 0; i < k; i++) cruz[i] -= media;    // suma 0: el total no cambia
+        }
+        const mediaItem = mediaTotal / k, desvioTotal = totalObjetivo - mediaTotal;
+        const cuota = i => mediaItem + (delta ? delta[i] : 0) + (peso ? peso[i] : 1 / k) * desvioTotal;
+
         if (!modoLikert) {
-            // MEDIDA CONTINUA: ítem = total/k + desviación centrada → la suma es
+            // MEDIDA CONTINUA: ítem = cuota + desviación centrada → la suma es
             // EXACTAMENTE el total objetivo (forma y M/DE intactas). 2 decimales.
             const items = new Array(k);
             for (let i = 0; i < k; i++) {
-                const cuota = pesos ? pesos[i] * totalObjetivo : totalObjetivo / k;
-                items[i] = Math.round((cuota + desviacionPorItem * (g[i] - gMedia)) * 100) / 100;
+                items[i] = Math.round((cuota(i) + desviacionPorItem * (g[i] - gMedia) + (cruz ? cruz[i] : 0)) * 100) / 100;
             }
             const total = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
             return { items: items, total: total, factorUtilizado: base };
@@ -822,8 +922,6 @@ class GeneradorDatos {
         // conserva la forma normal.
         const totalEntero = this._totalEnteroLikert(k, minItem, maxItem, totalObjetivo);
 
-        // Ítems base con estructura inter-ítem (truncados como Likert real)...
-        const mediaPorItem = totalObjetivo / k;
         // Dispersión por ítem: nunca por debajo de ~media unidad Likert, para que
         // los ítems SIEMPRE varíen (evita que un total entero exacto colapse en
         // ítems idénticos). No afecta al total: la suma se reajusta luego al total
@@ -832,8 +930,7 @@ class GeneradorDatos {
         const dispersionItem = Math.max(desviacionPorItem, 0.6);
         const items = new Array(k);
         for (let i = 0; i < k; i++) {
-            const cuota = pesos ? pesos[i] * totalObjetivo : mediaPorItem;
-            let v = Math.round(cuota + dispersionItem * (g[i] - gMedia));
+            let v = Math.round(cuota(i) + dispersionItem * (g[i] - gMedia) + (cruz ? cruz[i] : 0));
             v = Math.max(minItem, Math.min(maxItem, v));
             items[i] = v;
         }
@@ -851,6 +948,54 @@ class GeneradorDatos {
         }
         const total = items.reduce((a, b) => a + b, 0);
         return { items: items, total: total, factorUtilizado: base };
+    }
+
+    // ============ PERFILES DE ÍTEMS (B5) ============
+    // Un perfil por escala, derivado de la semilla: {delta, peso, cruzadas}.
+    //  · delta[i] (Σ = 0): medias de ítem en escalera dentro del espacio libre
+    //    (Likert) o de una DE de ítem (continua), barajadas;
+    //  · peso[i] (Σ = 1): 1 ± cargas en escalera, barajados y normalizados;
+    //  · cruzadas: [{item, sigla, c}] para una proporción de los ítems, cada uno
+    //    con OTRA dimensión del mismo test elegida al azar.
+    _perfilesDeItems() {
+        const cfg = this.configuracion;
+        const nivel = PERFILES_HETEROGENEIDAD[cfg.heterogeneidadItems] || PERFILES_HETEROGENEIDAD.ninguna;
+        const indice = cfg.indiceFiabilidad || 'alfa';
+        const grupos = cfg.gruposPruebas || [];
+        const perfiles = new Map();
+        (cfg.pruebas || []).forEach(p => {
+            const k = p.numItems;
+            const perfil = { delta: new Float64Array(k), peso: new Float64Array(k).fill(k > 0 ? 1 / k : 0), cruzadas: [] };
+            if (k >= 2) {
+                const escalera = i => 2 * i / (k - 1) - 1;                 // −1 … +1, Σ = 0
+                // Medias: espacio libre hasta el tope más cercano (Likert) o una DE de ítem (continua)
+                const likert = p.minimo !== null && p.maximo !== null;
+                const mediaItem = p.media / k;
+                const espacio = likert ? Math.max(0, Math.min(mediaItem - p.minimo, p.maximo - mediaItem)) : p.desviacion / Math.sqrt(k);
+                if (nivel.medias > 0 && espacio > 0) {
+                    const orden = this._muestraSinReemplazo(k, k);
+                    for (let i = 0; i < k; i++) perfil.delta[i] = nivel.medias * espacio * escalera(orden[i]);
+                }
+                // Cargas: en modo ω sin heterogeneidad se conserva el modelo congenérico de siempre (0.45)
+                const dispersion = Math.min(0.9, nivel.cargas > 0 ? nivel.cargas : ((indice === 'omega' && k >= 3) ? 0.45 : 0));
+                if (dispersion > 0) {
+                    const orden = this._muestraSinReemplazo(k, k);
+                    let suma = 0;
+                    for (let i = 0; i < k; i++) { perfil.peso[i] = 1 + dispersion * escalera(orden[i]); suma += perfil.peso[i]; }
+                    for (let i = 0; i < k; i++) perfil.peso[i] /= suma;
+                }
+                // Cargas cruzadas: solo si el test tiene otra dimensión
+                const g = grupos.find(x => x.escalas.includes(p.nombreCorto));
+                const otras = g ? g.escalas.filter(s => s !== p.nombreCorto) : [];
+                if (nivel.cruzadas > 0 && otras.length) {
+                    const m = Math.max(1, Math.round(nivel.proporcionCruzadas * k));
+                    const elegidos = this._muestraSinReemplazo(k, Math.min(m, k));
+                    elegidos.forEach(item => perfil.cruzadas.push({ item, sigla: otras[Math.floor(this.aleatorio() * otras.length)], c: nivel.cruzadas }));
+                }
+            }
+            perfiles.set(p, perfil);
+        });
+        return perfiles;
     }
 
     // Valor normal estándar N(0,1) por el método de Box-Muller.
@@ -1167,6 +1312,27 @@ class GeneradorDatos {
             const inf13 = g13.informePedidoObtenido(d13);
             const d13d = inf13.find(f => f.tipo === 'd'), r13 = inf13.find(f => f.tipo === 'r');
             ok('d exacta con escala asimétrica (y su r intacta)', !!d13d && d13d.ok && !!r13 && r13.ok, `${d13d && d13d.obtenido} · r ${r13 && r13.obtenido}`);
+            // 14) (B5) heterogeneidad de ítems: medias y cargas dispersas, cargas cruzadas,
+            //     con α, Media, DE y r intactos; con «ninguna», ítems paralelos como antes
+            const itemTotal = (d, p, j, colTotal) => corr(col(d, `${p}${j}`), col(d, colTotal));
+            const mediasItems = (d, p, k) => Array.from({ length: k }, (_, j) => { const v = col(d, `${p}${j + 1}`); return v.reduce((a, b) => a + b, 0) / v.length; });
+            const cfgHet = cfgBase({ tamanoMuestra: 1500, heterogeneidadItems: 'alta', correlaciones: [{ a: 'Percepción', b: 'Estrés', r: -0.40 }] });
+            cfgHet.pruebas[3].minimo = 1; cfgHet.pruebas[3].maximo = 5; cfgHet.pruebas[3].media = 30; cfgHet.pruebas[3].desviacion = 6;
+            const { g: g14, d: d14 } = generar(cfgHet);
+            const inf14 = g14.informePedidoObtenido(d14);
+            const mST = mediasItems(d14, 'ST', 10), rST = Array.from({ length: 10 }, (_, j) => itemTotal(d14, 'ST', j + 1, 'Dimension_ST'));
+            ok('(B5) «alta»: medias de ítem dispersas (ítems fáciles y difíciles)', Math.max(...mST) - Math.min(...mST) > 0.6, (Math.max(...mST) - Math.min(...mST)).toFixed(2));
+            ok('(B5) «alta»: correlaciones ítem-total desiguales (cargas desiguales)', Math.max(...rST) - Math.min(...rST) > 0.12, (Math.max(...rST) - Math.min(...rST)).toFixed(3));
+            ok('(B5) «alta»: α, Media, DE y r siguen siendo los pedidos', inf14.filter(f => ['α', 'Media', 'DE', 'r'].includes(f.tipo)).every(f => f.ok), inf14.filter(f => !f.ok).map(f => `${f.tipo} ${f.variable} ${f.obtenido}`).join('; '));
+            const perfilPE = g14.perfilesItems.get(g14.configuracion.pruebas[0]);
+            const cruzados = perfilPE.cruzadas.map(c => c.item), noCruzados = Array.from({ length: 8 }, (_, j) => j).filter(j => !cruzados.includes(j));
+            const rCruz = cruzados.map(j => itemTotal(d14, 'PE', j + 1, `Dimension_${perfilPE.cruzadas.find(c => c.item === j).sigla}`));
+            const rNo = noCruzados.map(j => { const s = perfilPE.cruzadas[0].sigla; return itemTotal(d14, 'PE', j + 1, `Dimension_${s}`); });
+            const prom = a => a.reduce((x, y) => x + y, 0) / a.length;
+            ok('(B5) «alta»: los ítems con carga cruzada correlacionan más con la otra dimensión', cruzados.length > 0 && prom(rCruz) - prom(rNo) > 0.08, `${prom(rCruz).toFixed(3)} vs ${prom(rNo).toFixed(3)}`);
+            const { d: d15 } = generar(cfgBase({ tamanoMuestra: 1500, heterogeneidadItems: 'ninguna' }));
+            const mPE = mediasItems(d15, 'PE', 8);
+            ok('(B5) «ninguna»: ítems paralelos (medias iguales)', Math.max(...mPE) - Math.min(...mPE) < 0.25, (Math.max(...mPE) - Math.min(...mPE)).toFixed(2));
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -1495,7 +1661,12 @@ class GeneradorDatos {
             // +unidad²/12 de varianza) y deflacta la d observada en ≈ d·unidad²/(24·DE²):
             // solo pesa en escalas muy cortas (DE de un punto o dos).
             const sesgoRedondeo = Math.abs(dif.d) * unidad * unidad / (24 * deIntra * deIntra);
-            const tolerancia = exactas ? Math.max(0.06, 2 * eeRedondeo) + sesgoRedondeo : Math.max(0.06, 2 * ee);
+            // Con algún grupo de menos de 5 personas la d no puede ser exacta ni
+            // en modo exacto (medias de grupo dominadas por dos o tres casos y
+            // confundidas con las otras agrupaciones): tolerancia muestral.
+            let minGrupo = Infinity;
+            porGrupo.forEach(vals => { if (vals.length < minGrupo) minGrupo = vals.length; });
+            const tolerancia = (exactas && minGrupo >= 5) ? Math.max(0.06, 2 * eeRedondeo) + sesgoRedondeo : Math.max(0.06, 2 * ee);
             const limitada = (this.diferenciasLimitadas || []).some(l => l.variable === dif.cuantitativa && l.agrupacion === dif.agrupacion);
             const etiqueta = `${dif.cuantitativa} por ${dif.agrupacion}` + (limitada ? ' (no alcanzable con las d de sus dimensiones)' : '');
             filas.push({ tipo: 'd', variable: etiqueta, pedido: num(dif.d), obtenido: num(obs), ok: !limitada && Math.abs(obs - dif.d) <= tolerancia });
@@ -2361,6 +2532,17 @@ class GeneradorDatos {
                         advertencias.push(
                             `Escala "${prueba.nombre}": la DE ${de} es muy pequeña para N=${N}; el total entero saldrá "escalonado" ` +
                             `y probablemente NO pasará la prueba de normalidad. Usa una DE de al menos ≈ ${deSuave}.`
+                        );
+                    }
+                    // Fiabilidad alcanzable: repartida entre k ítems enteros, una DE
+                    // total pequeña deja a cada ítem sin apenas variación entre personas
+                    // (el generador impone media unidad de dispersión por ítem), y el α/ω
+                    // observado se hunde por mucho que se pida.
+                    if (prueba.alfa > 0 && de / prueba.numItems < 0.5) {
+                        advertencias.push(
+                            `Escala "${prueba.nombre}": la DE ${de} repartida entre ${prueba.numItems} ítems deja menos de medio punto por ítem ` +
+                            `(${(Math.round(de / prueba.numItems * 100) / 100)}): los ítems apenas variarán entre personas y la fiabilidad pedida ` +
+                            `(${prueba.alfa}) no será alcanzable. Sube la DE (≈ ${Math.ceil(prueba.numItems * 0.6)} o más) o usa menos ítems.`
                         );
                     }
                 }
