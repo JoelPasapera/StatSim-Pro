@@ -5,6 +5,11 @@
 // Tope superior del tamaño muestral para evitar congelar el navegador.
 const TAMANO_MUESTRAL_MAXIMO = 100000;
 
+// σ de la forma «asimétrica» de las ESCALAS: log-normal estandarizada que
+// transformarFormaZ aplica al driver normal. FUENTE ÚNICA: la corrección de
+// correlación intermedia (_rhoIntermedia) debe usar exactamente este valor.
+const SIGMA_FORMA_ASIMETRICA = 0.6;
+
 // ========================================
 // REGLAS DE COHERENCIA (fuente única)
 // Las usan la guía en vivo de la interfaz (guia-coherencia.js) y el respaldo
@@ -442,35 +447,77 @@ class GeneradorDatos {
         // Inicializar la fuente de aleatoriedad (sembrada si hay semilla)
         this.inicializarAleatorio(this.configuracion.semilla);
 
-        // Preparar correlaciones objetivo (si las hay)
-        const hayCorrelaciones = (this.configuracion.correlaciones || []).length > 0;
+        // Estado de la generación anterior: nada debe sobrevivir (el panel de
+        // diagnóstico lee estos campos y no debe mostrar avisos de otra base).
+        this.diagnosticoCorrelaciones = null;
+        this.correlVariables = [];
+        this.correlR = null;
+        this.correlRIntermedia = null;
+        this.correlL = [];
+        this.driversOrtogonalizados = false;
+        this.driversEnValor = new Set();
+
+        // (A1) Diferencias por grupo: traduce la tabla a diferencias efectivas
+        // por variable y calcula la DE intra-grupo de cada una. Va ANTES de las
+        // correlaciones, que se compensan por la varianza entre grupos.
+        this.prepararDiferenciasGrupo();
+
+        // Preparar la estructura de correlación si la hay: tabla III no vacía,
+        // relleno intra-test (tests con ≥ 2 dimensiones) o diferencias por
+        // grupo en modo exacto. Antes solo se preparaba con la tabla III no
+        // vacía, y con ella vacía las dimensiones de un mismo test salían
+        // independientes pese al r del cuadro «Pruebas del estudio» (A4).
+        const hayCorrelaciones = this._hayEstructuraDeCorrelacion();
         if (hayCorrelaciones) {
             this.prepararCorrelaciones();
         }
 
         const n = this.configuracion.tamanoMuestra;
-        const datos = [];
-        // Matriz de drivers con correlación muestral EXACTA (si procede).
+        const socios = this.configuracion.sociodemograficos;
+        const discretos = socios.filter(s => this._esSocioDiscreto(s));
+        const continuos = socios.filter(s => !this._esSocioDiscreto(s));
+
+        // PASE 1 — variables DISCRETAS (binaria, categórica, conteo) de todos los
+        // participantes: son las que agrupan y no reciben desplazamiento. Las
+        // claves de TODOS los sociodemográficos se declaran ya, en el orden de la
+        // tabla, para que el orden de columnas del CSV no cambie.
+        const datos = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const participante = { ID: i + 1 };
+            socios.forEach(s => { participante[s.categoria] = undefined; });
+            discretos.forEach(s => { participante[s.categoria] = this.generarValorSociodemografico(s, null); });
+            datos[i] = participante;
+        }
+
+        // Matriz de drivers con correlación muestral EXACTA (si procede). En
+        // modo exacto los drivers se hacen además ORTOGONALES a los códigos de
+        // grupo, así las medias de grupo del driver son exactamente 0 y la d
+        // obtenida no fluctúa por el muestreo (igual que la r).
         const exactas = hayCorrelaciones && this.configuracion.correlacionesExactas !== false;
-        const matrizDrivers = exactas ? this.generarMatrizDrivers(n) : null;
+        const matrizDrivers = exactas ? this.generarMatrizDrivers(n, this._matrizCodigosGrupo(datos), this._funcionesDeValor(datos)) : null;
         // Fiabilidad autocalibrada: una vez por escala (no por participante).
         const indiceFiab = this.configuracion.indiceFiabilidad || 'alfa';
         const objetivoInterno = new Map();
         this.configuracion.pruebas.forEach(p => objetivoInterno.set(p, this.calibrarFiabilidad(p, indiceFiab)));
 
-        // Generar datos para cada participante
+        // PASE 2 — sociodemográficos CONTINUOS y pruebas de cada participante
         for (let i = 0; i < n; i++) {
-            const participante = { ID: i + 1 };
+            const participante = datos[i];
 
             // Valores normales correlacionados (driver) por variable, si aplica
             const drivers = matrizDrivers ? this._driversDeFila(matrizDrivers[i])
                 : (hayCorrelaciones ? this.generarVectorCorrelacionado() : {});
 
-            // Generar datos sociodemográficos según su distribución
-            this.configuracion.sociodemograficos.forEach(socio => {
-                const driver = drivers['socio:' + socio.categoriaCorta];
+            // Continuos: DE intra-grupo y desplazamiento por grupo aplicados al
+            // valor continuo, ANTES de recortar y redondear (A1).
+            continuos.forEach(socio => {
+                const clave = 'socio:' + socio.categoriaCorta;
+                const driver = drivers[clave];
                 participante[socio.categoria] = this.generarValorSociodemografico(
-                    socio, driver !== undefined ? driver : null
+                    socio, driver !== undefined ? driver : null,
+                    this._desplazamientoDe(participante, socio.categoria, this._deEfectiva(socio)),
+                    this._factorDE(socio.categoria),
+                    !!(this.driversEnValor && this.driversEnValor.has(clave))
                 );
             });
 
@@ -480,17 +527,20 @@ class GeneradorDatos {
             // (y las sumas automáticas de pruebas sin general).
             const totalesPendientes = [];
             this.configuracion.pruebas.forEach(prueba => {
-                const driverEscala = drivers['escala:' + prueba.nombreCorto];
+                const claveEscala = 'escala:' + prueba.nombreCorto;
+                const driverEscala = drivers[claveEscala];
+                const formaYaAplicada = !!(this.driversEnValor && this.driversEnValor.has(claveEscala));
                 const puntajes = this.generarPuntajesPrueba(
                     prueba.numItems,
                     prueba.media,
-                    prueba.desviacion,
+                    prueba.desviacion * this._factorDE(prueba.nombre),
                     prueba.minimo,
                     prueba.maximo,
                     objetivoInterno.has(prueba) ? objetivoInterno.get(prueba) : prueba.alfa,
                     driverEscala !== undefined ? driverEscala : null,
-                    prueba.distribucion,
-                    indiceFiab
+                    formaYaAplicada ? 'normal' : prueba.distribucion,
+                    indiceFiab,
+                    this._desplazamientoDe(participante, prueba.nombre, prueba.desviacion)
                 );
 
                 // Ítems (la Escala general es una sola columna de datos: no
@@ -520,8 +570,8 @@ class GeneradorDatos {
                 }
             });
 
-            // Aplicar diferencias por grupo (desplazan la media según el grupo)
-            this.aplicarDiferenciasGrupo(participante);
+            // Las diferencias por grupo ya van dentro de cada total (A1): no hay
+            // nada que desplazar después de generar.
 
             // Suma automática (pruebas SIN Escala general y con 2+ dimensiones):
             // también va al final, junto a los puntajes generales.
@@ -534,8 +584,6 @@ class GeneradorDatos {
                 grupo.escalas.forEach(sigla => { suma += participante[`Dimension_${sigla}`]; });
                 participante[`General_${grupo.sigla}`] = Math.round(suma / grupo.escalas.length);
             });
-
-            datos.push(participante);
         }
 
         // PERCENTILES (post-proceso, OPCIONAL): posición relativa (0-100) de cada
@@ -631,9 +679,14 @@ class GeneradorDatos {
     _simularIndice(prueba, objetivoInterno, indice, nSim = 400) {
         const k = prueba.numItems;
         const cols = Array.from({ length: k }, () => new Array(nSim));
+        // Se simula con la misma DE intra-grupo y el mismo desplazamiento por
+        // grupo (códigos sorteados) que tendrá la base: la varianza entre grupos
+        // se reparte por igual entre los ítems y sube la fiabilidad observada.
+        const deIntra = prueba.desviacion * this._factorDE(prueba.nombre);
         for (let i = 0; i < nSim; i++) {
-            const p = this.generarPuntajesPrueba(k, prueba.media, prueba.desviacion, prueba.minimo,
-                prueba.maximo, objetivoInterno, null, prueba.distribucion, indice);
+            const p = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo,
+                prueba.maximo, objetivoInterno, null, prueba.distribucion, indice,
+                this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion));
             for (let j = 0; j < k; j++) cols[j][i] = p.items[j];
         }
         return this._indiceObservado(cols, indice);
@@ -656,7 +709,7 @@ class GeneradorDatos {
         return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
     }
 
-    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa') {
+    generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa', desplazamiento = 0) {
         // ENFOQUE "TOTAL AUTORITATIVO":
         // El puntaje TOTAL es la cantidad que importa para los análisis (es lo
         // que se correlaciona y se somete a la prueba de normalidad), así que se
@@ -673,8 +726,10 @@ class GeneradorDatos {
         // (1) TOTAL autoritativo con la forma pedida. Si llega un driver de
         // correlación se usa como base estandarizada; si no, una normal nueva.
         const base = factor !== null ? factor : this.generarNormalEstandar();
-        const zForma = this.transformarFormaZ(base, distribucion); // media 0, var 1
-        const totalObjetivo = mediaTotal + desviacionTotal * zForma;
+        // El desplazamiento por grupo (A1) entra aquí, en el total CONTINUO:
+        // el reparto entero en ítems ya lo incorpora y el redondeo por persona
+        // se promedia en vez de acumularse como sesgo.
+        const totalObjetivo = this._totalObjetivo(mediaTotal, desviacionTotal, base, distribucion, desplazamiento);
 
         // (2) Estructura inter-ítem para que el α de Cronbach observado se acerque
         // al α objetivo: λ es la carga factorial (Spearman-Brown invertida).
@@ -722,7 +777,7 @@ class GeneradorDatos {
         // [k·mín, k·máx] (solo afecta a la cola extrema, poco frecuente) y se
         // reparte en ítems ENTEROS dentro de [mín, máx]. El grueso del total
         // conserva la forma normal.
-        const totalEntero = Math.round(Math.max(k * minItem, Math.min(k * maxItem, totalObjetivo)));
+        const totalEntero = this._totalEnteroLikert(k, minItem, maxItem, totalObjetivo);
 
         // Ítems base con estructura inter-ítem (truncados como Likert real)...
         const mediaPorItem = totalObjetivo / k;
@@ -792,7 +847,7 @@ class GeneradorDatos {
             }
             case 'asimetrica': {
                 // Log-normal estandarizada (sesgo positivo). sigma controla el sesgo.
-                const sigma = 0.6;
+                const sigma = SIGMA_FORMA_ASIMETRICA;
                 const x = Math.exp(sigma * z);
                 const mediaX = Math.exp((sigma * sigma) / 2);
                 const varX = (Math.exp(sigma * sigma) - 1) * Math.exp(sigma * sigma);
@@ -853,7 +908,7 @@ class GeneradorDatos {
     // Genera un valor para una variable sociodemográfica según su distribución.
     // `normalEstandar` permite inyectar un valor normal "driver" (correlaciones)
     // en las distribuciones normal y asimétrica.
-    generarValorSociodemografico(socio, normalEstandar = null) {
+    generarValorSociodemografico(socio, normalEstandar = null, desplazamiento = 0, factorDE = 1, formaAplicada = false) {
         const dist = socio.distribucion || 'normal';
 
         // Tipos discretos → enteros (sin redondeo decimal)
@@ -868,15 +923,43 @@ class GeneradorDatos {
         }
 
         // Tipos continuos → clamp al rango + redondeo según decimales
+        return this._valorContinuoSocio(socio, normalEstandar, desplazamiento, factorDE, formaAplicada);
+    }
+
+    // ============ FUNCIONES DE VALOR (fuente única) ============
+    // Cómo se convierte un driver normal z en el valor FINAL de una variable.
+    // Las usan la generación y la calibración de correlaciones exactas, que
+    // mide las correlaciones sobre estos mismos valores: si cambia una, cambia
+    // en los dos sitios a la vez.
+
+    // Total CONTINUO objetivo de una escala: Media + DE·forma(z) + desplazamiento.
+    _totalObjetivo(mediaTotal, desviacionTotal, base, distribucion, desplazamiento) {
+        return mediaTotal + desviacionTotal * this.transformarFormaZ(base, distribucion) + desplazamiento;
+    }
+    // Total ENTERO de una escala Likert: recorte al rango alcanzable [k·mín, k·máx]
+    // (solo afecta a la cola extrema) y redondeo.
+    _totalEnteroLikert(k, minItem, maxItem, totalObjetivo) {
+        return Math.round(Math.max(k * minItem, Math.min(k * maxItem, totalObjetivo)));
+    }
+    // Total FINAL de una escala a partir de su driver (Likert → entero acotado).
+    _totalDesdeDriver(prueba, z, desplazamiento, factorDE, formaAplicada = false) {
+        const t = this._totalObjetivo(prueba.media, prueba.desviacion * factorDE, z, formaAplicada ? 'normal' : prueba.distribucion, desplazamiento);
+        return (prueba.minimo !== null && prueba.maximo !== null) ? this._totalEnteroLikert(prueba.numItems, prueba.minimo, prueba.maximo, t) : t;
+    }
+    // Valor FINAL de un sociodemográfico continuo (normal, asimétrico, uniforme):
+    // driver → valor + desplazamiento por grupo (A1, antes de recortar y
+    // redondear: redondear después sesgaba la d) → recorte → decimales.
+    _valorContinuoSocio(socio, normalEstandar, desplazamiento = 0, factorDE = 1, formaAplicada = false) {
+        const dist = formaAplicada ? 'normal' : (socio.distribucion || 'normal');
         let valor;
         if (dist === 'uniforme') {
             valor = this.generarUniforme(socio.minimo, socio.maximo);
         } else if (dist === 'asimetrica') {
-            valor = this.generarAsimetrico(socio.promedio, socio.desviacion, normalEstandar);
+            valor = this.generarAsimetrico(socio.promedio, socio.desviacion * factorDE, normalEstandar);
         } else {
-            valor = this.generarValorNormal(socio.promedio, socio.desviacion, normalEstandar);
+            valor = this.generarValorNormal(socio.promedio, socio.desviacion * factorDE, normalEstandar);
         }
-
+        valor += desplazamiento;
         if (socio.minimo !== null && socio.maximo !== null) {
             valor = Math.max(socio.minimo, Math.min(socio.maximo, valor));
         }
@@ -983,7 +1066,68 @@ class GeneradorDatos {
             const faltan = x => { let f = 0; for (let j = 1; j <= 8; j++) if (!esNum(x[`PE${j}`])) f++; return f; };
             ok('regla del 80 %: total vacío solo si faltan >20 % de los ítems', d4.every(x => (faltan(x) >= 2) === !esNum(x.Dimension_PE)));
             ok('exportación: perdidos como celda vacía, nunca NaN', !/NaN/.test(g4.exportarCSV(',')));
+            ok('exportación en formato español (;): perdidos vacíos, decimales con coma', !/NaN/.test(g4.exportarCSV(';')) && /;\d+,\d/.test(g4.exportarCSV(';')));
             ok('percentil vacío cuando el total falta', d4.filter(x => !esNum(x.Dimension_PE)).every(x => !esNum(x.PC_PE)));
+            // 6) (A1) d por grupo sin sesgo de redondeo, con Media y DE totales intactas
+            const cfgDif = cfgBase({ sociodemograficos: [{ categoria: 'Sexo', categoriaCorta: 'Sexo', distribucion: 'binaria', promedio: 0.5, desviacion: 0, minimo: null, maximo: null, decimales: 0 }],
+                diferenciasGrupo: [{ cuantitativa: 'Estrés', agrupacion: 'Sexo', d: 0.8 }] });
+            const { g: g5, d: d5 } = generar(cfgDif);
+            const inf5 = g5.informePedidoObtenido(d5);
+            const fd = inf5.find(f => f.tipo === 'd'), fDE = inf5.find(f => f.tipo === 'DE' && f.variable === 'Estrés');
+            ok('(A1) d por grupo pedida 0.8 → obtenida', !!fd && Math.abs(parseFloat(fd.obtenido) - 0.8) <= 0.06, fd && fd.obtenido);
+            ok('(A1) DE total de la escala con diferencias sigue siendo la pedida', !!fDE && Math.abs(parseFloat(fDE.obtenido) - 6) <= 0.3, fDE && fDE.obtenido);
+            // 7) (A2) correlación exacta con forma asimétrica
+            const cfgAs = cfgBase({ correlaciones: [{ a: 'Percepción', b: 'Estrés', r: -0.40 }] });
+            cfgAs.pruebas[0].distribucion = 'asimetrica'; cfgAs.pruebas[3].distribucion = 'asimetrica';
+            const { d: d6 } = generar(cfgAs);
+            const rAs = corr(col(d6, 'Dimension_PE'), col(d6, 'Dimension_ST'));
+            ok('(A2) r −0.40 exacta entre dos escalas asimétricas', Math.abs(rAs + 0.40) < 0.02, rAs.toFixed(3));
+            // 8) (A4) relleno intra-test con la tabla III vacía
+            const { d: d7 } = generar(cfgBase({ correlaciones: [] }));
+            const rIntraVacia = corr(col(d7, 'Dimension_CE'), col(d7, 'Dimension_RE'));
+            ok('(A4) relleno intra-test 0.40 sin tabla III', Math.abs(rIntraVacia - 0.40) < 0.02, rIntraVacia.toFixed(3));
+            // 10) sociodemográfico cuyo nombre corto NO coincide con su nombre: la columna
+            //     se llama como la categoría; el informe (r, d) y el MAR deben encontrarla
+            const cfgSoc = cfgBase({ sociodemograficos: [{ categoria: 'Edad del participante', categoriaCorta: 'EDP', distribucion: 'normal', promedio: 16, desviacion: 1.5, minimo: 12, maximo: 20, decimales: 0 },
+                { categoria: 'Sexo del participante', categoriaCorta: 'SDP', distribucion: 'binaria', promedio: 0.5, desviacion: 0, minimo: null, maximo: null, decimales: 0 }],
+                correlaciones: [{ a: 'Edad del participante', b: 'Estrés', r: 0.30 }], diferenciasGrupo: [{ cuantitativa: 'Edad del participante', agrupacion: 'Sexo del participante', d: 0.5 }],
+                realismo: { pctPerdidos: 10, mecanismoPerdidos: 'MAR', pctDescuidados: 0, pctDigitacion: 0 } });
+            const { g9, d9 } = (() => { const r = generar(cfgSoc); return { g9: r.g, d9: r.d }; })();
+            const inf9 = g9.informePedidoObtenido(d9);
+            ok('informe: r con sociodemográfico de nombre largo aparece y se cumple', inf9.some(f => f.tipo === 'r' && f.variable.startsWith('Edad del participante') && f.ok), (inf9.find(f => f.tipo === 'r') || {}).obtenido);
+            ok('informe: d con sociodemográfico de nombre largo aparece', inf9.some(f => f.tipo === 'd' && f.variable === 'Edad del participante por Sexo del participante'));
+            const faltanPE = x => { let f = 0; for (let j = 1; j <= 8; j++) if (!esNum(x[`PE${j}`])) f++; return f; };
+            const ordenados = d9.slice().sort((a, b) => a['Edad del participante'] - b['Edad del participante']);
+            const mitad = ordenados.length >> 1;
+            const bajos = ordenados.slice(0, mitad).reduce((s, x) => s + faltanPE(x), 0), altos = ordenados.slice(mitad).reduce((s, x) => s + faltanPE(x), 0);
+            ok('MAR: los perdidos se concentran en quienes puntúan bajo en la referencia', bajos > altos * 1.3, `${bajos} vs ${altos}`);
+            // 11) correlación de un General con una de sus propias dimensiones (parte–todo):
+            //     si no es alcanzable se avisa con la implicada; si lo es, se cumple
+            const { g: g10, d: d10 } = generar(cfgBase({ correlaciones: [{ a: 'Inteligencia emocional — EQ-i', b: 'Percepción', r: 0.10 }] }));
+            const lim10 = (g10.diagnosticoCorrelaciones.limitadas || []).find(l => l.a === 'Inteligencia emocional — EQ-i');
+            const r10 = g10.informePedidoObtenido(d10).find(f => f.tipo === 'r');
+            ok('General ↔ propia dimensión inalcanzable → aviso con el valor implicado (= el medido)', !!lim10 && !!r10 && Math.abs(lim10.alcanzable - parseFloat(r10.obtenido)) < 0.03, lim10 && r10 && `${lim10.alcanzable.toFixed(3)} vs ${r10.obtenido}`);
+            const { g: g11, d: d11 } = generar(cfgBase({ correlaciones: [{ a: 'Inteligencia emocional — EQ-i', b: 'Percepción', r: 0.80 }] }));
+            const r11 = g11.informePedidoObtenido(d11).find(f => f.tipo === 'r');
+            ok('General ↔ propia dimensión alcanzable → se cumple', !!r11 && r11.ok, r11 && r11.obtenido);
+            // 12) d sobre el General y d explícita sobre una de sus dimensiones, misma agrupación
+            const cfg12 = cfgBase({ sociodemograficos: [{ categoria: 'Sexo', categoriaCorta: 'Sexo', distribucion: 'binaria', promedio: 0.5, desviacion: 0, minimo: null, maximo: null, decimales: 0 }],
+                diferenciasGrupo: [{ cuantitativa: 'Inteligencia emocional — EQ-i', agrupacion: 'Sexo', d: -0.6 }, { cuantitativa: 'Percepción', agrupacion: 'Sexo', d: 0.5 }] });
+            const { g: g12, d: d12 } = generar(cfg12);
+            const dd12 = g12.informePedidoObtenido(d12).filter(f => f.tipo === 'd');
+            ok('d del General y d de su dimensión, misma agrupación, ambas cumplidas', dd12.length === 2 && dd12.every(f => f.ok), dd12.map(f => `${f.pedido}→${f.obtenido}`).join(' '));
+            // 13) d exacta también con forma asimétrica (driver en espacio de valor)
+            const cfg13 = cfgBase({ sociodemograficos: [{ categoria: 'Sexo', categoriaCorta: 'Sexo', distribucion: 'binaria', promedio: 0.5, desviacion: 0, minimo: null, maximo: null, decimales: 0 }],
+                correlaciones: [{ a: 'Percepción', b: 'Estrés', r: -0.40 }], diferenciasGrupo: [{ cuantitativa: 'Percepción', agrupacion: 'Sexo', d: -1.1 }] });
+            cfg13.pruebas[0].distribucion = 'asimetrica';   // continua: sin recorte Likert (el recorte atenúa la DE y con ella la d; limitación conocida)
+            const { g: g13, d: d13 } = generar(cfg13);
+            const inf13 = g13.informePedidoObtenido(d13);
+            const d13d = inf13.find(f => f.tipo === 'd'), r13 = inf13.find(f => f.tipo === 'r');
+            ok('d exacta con escala asimétrica (y su r intacta)', !!d13d && d13d.ok && !!r13 && r13.ok, `${d13d && d13d.obtenido} · r ${r13 && r13.obtenido}`);
+            // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
+            const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
+            for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
+            ok('(A3) muestra sin reemplazo: fila 1 elegida ≈ 10 %', Math.abs(vecesFila0 / reps - 0.10) < 0.03, (vecesFila0 / reps).toFixed(3));
         } catch (e) {
             ok('el autotest no lanza excepciones', false, e && e.message);
         }
@@ -1011,6 +1155,21 @@ class GeneradorDatos {
     // continua). El total sigue siendo el correcto: quien analice debe RECODIFICAR
     // esos ítems antes de sumar o de calcular fiabilidad, como en una base real.
     _esInvertido(p, idx1) { return (p.invertidos || 0) > 0 && idx1 > p.numItems - (p.invertidos || 0); }
+    // Muestra SIN reemplazo de k índices de [0, n): Fisher–Yates parcial, O(k).
+    // Sustituye a sort(() => aleatorio() − 0.5), que no baraja uniformemente:
+    // con n = 200 y k = 20 la fila 1 salía elegida el 25 % de las veces y la
+    // 187 el 6 % (lo esperado es 10 % para todas), así que los descuidados se
+    // concentraban en los primeros ID.
+    _muestraSinReemplazo(n, k) {
+        const idx = new Int32Array(n);
+        for (let i = 0; i < n; i++) idx[i] = i;
+        const tope = Math.max(0, Math.min(k, n));
+        for (let j = 0; j < tope; j++) {
+            const r = j + Math.floor(this.aleatorio() * (n - j));
+            const t = idx[j]; idx[j] = idx[r]; idx[r] = t;
+        }
+        return idx.subarray(0, tope);
+    }
     _reflejar(p, v) {
         if (!(typeof v === 'number' && isFinite(v))) return v;
         const centro2 = (isFinite(p.minimo) && isFinite(p.maximo)) ? (p.minimo + p.maximo) : 2 * (p.media / p.numItems);
@@ -1051,7 +1210,7 @@ class GeneradorDatos {
         // --- Respuestas descuidadas ---
         if (r.pctDescuidados > 0 && pruebasConItems.length) {
             const k = Math.round(n * r.pctDescuidados / 100);
-            const orden = datos.map((_, i) => i).sort(() => this.aleatorio() - 0.5).slice(0, k);
+            const orden = this._muestraSinReemplazo(n, k);
             orden.forEach(i => {
                 const d = datos[i];
                 let tipo = r.tipoDescuidado;
@@ -1089,7 +1248,7 @@ class GeneradorDatos {
             // MAR: referencia observada = primer sociodemográfico numérico o, si no hay, el primer total
             let ref = null;
             const socioNum = (cfg.sociodemograficos || []).find(s => s.distribucion === 'normal' || s.distribucion === 'asimetrica');
-            if (socioNum) ref = socioNum.categoriaCorta;
+            if (socioNum) ref = socioNum.categoria;   // la columna se llama como la categoría (no como su nombre corto)
             else if (cfg.pruebas && cfg.pruebas.length) ref = this.columnaDeEscala(cfg.pruebas[0]);
             let rangos = null;
             if (r.mecanismoPerdidos === 'MAR' && ref) {
@@ -1202,7 +1361,7 @@ class GeneradorDatos {
             const g = grupos.find(x => this.nombreGeneral(x) === nombre && x.escalas.length >= 2);
             if (g) return `General_${g.sigla}`;
             const s = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
-            return s ? s.categoriaCorta : null;
+            return s ? s.categoria : null;   // la columna de un sociodemográfico se llama como su categoría
         };
         // 1) Media y DE de cada escala
         (cfg.pruebas || []).forEach(p => {
@@ -1236,6 +1395,48 @@ class GeneradorDatos {
             if (pares.length < 3) return;
             const obs = this._corr(pares.map(q => q[0]), pares.map(q => q[1]));
             filas.push({ tipo: 'r', variable: `${a} ↔ ${b}`, pedido: num(r), obtenido: num(obs, 3), ok: Math.abs(obs - r) <= 0.03 });
+        });
+        // 4) Diferencias por grupo (d de Cohen): cambio de la media por unidad de
+        //    código (pendiente), dividido por la DE intra-grupo agrupada. En modo
+        //    exacto no fluctúa; si no, la tolerancia es 2 EE de la d.
+        // La d solo es exacta si los drivers se ortogonalizaron a los grupos
+        // (modo exacto y n suficiente); si no, fluctúa como en una muestra real.
+        const exactas = cfg.correlacionesExactas !== false && this.driversOrtogonalizados === true;
+        (cfg.diferenciasGrupo || []).forEach(dif => {
+            const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
+            const cv = columnaDe(dif.cuantitativa);
+            if (!agrup || !cv || !(typeof dif.d === 'number' && isFinite(dif.d))) return;
+            const pares = datos.map(d => [d[agrup.categoria], d[cv]]).filter(([g, v]) => typeof g === 'number' && isFinite(g) && typeof v === 'number' && isFinite(v));
+            if (pares.length < 6) return;
+            const porGrupo = new Map();
+            pares.forEach(([g, v]) => { if (!porGrupo.has(g)) porGrupo.set(g, []); porGrupo.get(g).push(v); });
+            if (porGrupo.size < 2) {
+                filas.push({ tipo: 'd', variable: `${dif.cuantitativa} por ${dif.agrupacion}`, pedido: num(dif.d), obtenido: 'un solo grupo en la muestra', ok: false });
+                return;
+            }
+            let ssIntra = 0, gl = 0;
+            porGrupo.forEach(vals => {
+                const mg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                vals.forEach(v => { ssIntra += (v - mg) ** 2; });
+                gl += vals.length - 1;
+            });
+            const deIntra = Math.sqrt(ssIntra / Math.max(1, gl));
+            const codigos = pares.map(q => q[0]), valores = pares.map(q => q[1]);
+            const mc = codigos.reduce((a, b) => a + b, 0) / codigos.length, mv = valores.reduce((a, b) => a + b, 0) / valores.length;
+            let sxy = 0, sxx = 0;
+            for (let i = 0; i < codigos.length; i++) { sxy += (codigos[i] - mc) * (valores[i] - mv); sxx += (codigos[i] - mc) ** 2; }
+            if (!(sxx > 0) || !(deIntra > 0)) return;
+            const obs = (sxy / sxx) / deIntra;
+            const ee = 1 / Math.sqrt(sxx);   // ≈ √(1/n₀ + 1/n₁) en una binaria
+            // En modo exacto solo queda el ruido del redondeo de la variable (Likert:
+            // enteros; continua: 2 decimales; socio: sus decimales), DE = unidad/√12.
+            const p = (cfg.pruebas || []).find(x => x.nombre === dif.cuantitativa);
+            const s = (cfg.sociodemograficos || []).find(x => x.categoria === dif.cuantitativa);
+            const unidad = p ? ((p.minimo !== null && p.maximo !== null) ? 1 : 0.01) : (s ? Math.pow(10, -(s.decimales || 0)) : 1);
+            const eeRedondeo = (unidad / Math.sqrt(12)) / Math.sqrt(sxx) / deIntra;
+            const limitada = (this.diferenciasLimitadas || []).some(l => l.variable === dif.cuantitativa && l.agrupacion === dif.agrupacion);
+            const etiqueta = `${dif.cuantitativa} por ${dif.agrupacion}` + (limitada ? ' (no alcanzable con las d de sus dimensiones)' : '');
+            filas.push({ tipo: 'd', variable: etiqueta, pedido: num(dif.d), obtenido: num(obs), ok: !limitada && Math.abs(obs - dif.d) <= Math.max(0.06, 2 * (exactas ? eeRedondeo : ee)) });
         });
         return filas;
     }
@@ -1301,7 +1502,11 @@ class GeneradorDatos {
         const repartir = (pares, objetivoCov) => {
             // pares: [{i, j, peso}] ; objetivoCov = Σ peso·r_ij deseado
             let fijado = 0, pesoLibre = 0;
-            pares.forEach(p => { if (esExplicita(p.i, p.j)) fijado += p.peso * R[p.i][p.j]; else pesoLibre += p.peso; });
+            pares.forEach(p => {
+                if (p.i === p.j) fijado += p.peso;                                   // General ↔ su propia dimensión: r(D, D) = 1
+                else if (esExplicita(p.i, p.j)) fijado += p.peso * R[p.i][p.j];
+                else pesoLibre += p.peso;
+            });
             if (pesoLibre <= 0) return;
             const rho = (objetivoCov - fijado) / pesoLibre;
             pares.forEach(p => { if (!esExplicita(p.i, p.j)) fijar(p.i, p.j, rho, false); });
@@ -1324,91 +1529,389 @@ class GeneradorDatos {
         this.correlVariables = variables;
         this.diagnosticoCorrelaciones = m > 0 ? this.diagnosticarMatriz(R, variables.map(v => v.nombre)) : { imposible: false, triadas: [], ajustes: [], R };
         this.correlR = this.diagnosticoCorrelaciones.R;
-        this.correlL = m > 0 ? this.descomposicionCholesky(this.correlR) : [];
+        // Las correlaciones pedidas sobre un General derivado no se factorizan:
+        // se reparten entre sus dimensiones. Si el reparto no puede alcanzarlas
+        // (p. ej. General ↔ una de sus propias dimensiones, cuya correlación
+        // parte–todo viene casi fijada por la estructura), se informa la
+        // implicada por la matriz final.
+        const limitadasGeneral = [];
+        const Rf = this.correlR;
+        const covG = (info, j) => { let s = 0; info.idx.forEach((i, ai) => { s += info.de[ai] * (i === j ? 1 : Rf[i][j]); }); return s; };
+        const varG = info => { let v = 0; info.idx.forEach((i, ai) => info.idx.forEach((j, bj) => { v += info.de[ai] * info.de[bj] * (i === j ? 1 : Rf[i][j]); })); return v; };
+        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+            const gA = infoGeneral[a], gB = infoGeneral[b];
+            if (!gA && !gB) return;
+            let implicada = null;
+            if (gA && gB && a !== b) { let c = 0; gA.idx.forEach((i, ai) => gB.idx.forEach((j, bj) => { c += gA.de[ai] * gB.de[bj] * (i === j ? 1 : Rf[i][j]); })); implicada = c / Math.sqrt(varG(gA) * varG(gB)); }
+            else if (gA && indicePorNombre[b] !== undefined) implicada = covG(gA, indicePorNombre[b]) / Math.sqrt(varG(gA));
+            else if (gB && indicePorNombre[a] !== undefined) implicada = covG(gB, indicePorNombre[a]) / Math.sqrt(varG(gB));
+            if (implicada !== null && isFinite(implicada) && Math.abs(implicada - r) > 0.01) limitadasGeneral.push({ a, b, pedido: r, alcanzable: implicada });
+        });
+        // Lo que se factoriza NO es la matriz pedida sino la INTERMEDIA: la que,
+        // tras la DE intra-grupo, la covarianza entre grupos (A1) y las formas
+        // no normales (A2), produce en la base exactamente la r pedida.
+        const inter = this._matrizIntermedia(this.correlR, variables);
+        this.correlRIntermedia = inter.R;
+        this.diagnosticoCorrelaciones.limitadas = limitadasGeneral.concat(inter.limitadas);
+        this.diagnosticoCorrelaciones.intermediaAjustada = inter.ajustada;
+        this.correlL = m > 0 ? this.descomposicionCholesky(this.correlRIntermedia) : [];
+        if (inter.ajustada) console.warn('[Generador] La matriz intermedia no era definida positiva: se usó la válida más cercana.');
         if (this.diagnosticoCorrelaciones.imposible) console.warn('[Generador] Correlaciones incompatibles: se usó la matriz válida más cercana.', this.diagnosticoCorrelaciones);
     }
 
-    /**
-     * Aplica las diferencias por grupo a un participante: desplaza la media de
-     * la variable cuantitativa según el grupo al que pertenece. El
-     * desplazamiento es d·σ·(código − códigoMedio), de modo que entre dos
-     * grupos adyacentes la diferencia estandarizada sea ≈ d (de Cohen). En las
-     * escalas el desplazamiento se reparte entre los ítems para mantener la
-     * coherencia ítems↔total.
-     */
-    aplicarDiferenciasGrupo(participante) {
-        (this.configuracion.diferenciasGrupo || []).forEach(dif => {
-            const agrup = this.configuracion.sociodemograficos.find(s => s.categoria === dif.agrupacion);
-            if (!agrup) return;
-
-            const codigo = participante[agrup.categoria];
-            let codigoMedio;
-            if (agrup.distribucion === 'binaria') {
-                codigoMedio = 0.5;
-            } else if (agrup.distribucion === 'categorica') {
-                codigoMedio = (agrup.minimo + agrup.maximo) / 2;
-            } else {
-                return; // solo binaria/categórica sirven como agrupación
+    // ============ DIFERENCIAS POR GRUPO (d de Cohen) ============
+    // Cada fila de la tabla pide que dos grupos adyacentes de la variable de
+    // agrupación difieran d·σ_intra en la variable cuantitativa. Contrato:
+    //  · la Media y la DE pedidas son las de TODA la base: la DE intra-grupo es
+    //    σ·s, con s = 1/√(1 + Σ d²·Var(código)), y el desplazamiento de cada
+    //    persona es Σ d·σ·s·(código − media del código), de media 0;
+    //  · el desplazamiento se aplica al valor CONTINUO (total objetivo de la
+    //    escala o valor del sociodemográfico), ANTES de recortar y redondear.
+    //    Antes se sumaba después y se redondeaba a entero POR PERSONA: como el
+    //    entero era el mismo para todo el grupo, no se promediaba, era sesgo
+    //    (con DE = 6: d = 0.8 salía 0.65 y d = 1.2 salía 1.31);
+    //  · una d sobre el puntaje GENERAL derivado se traduce a la d por
+    //    dimensión que hace que la d medida sobre el General sea la pedida;
+    //  · las correlaciones pedidas siguen siendo las de toda la base:
+    //    _matrizIntermedia descuenta la varianza y la covarianza entre grupos.
+    prepararDiferenciasGrupo() {
+        const cfg = this.configuracion;
+        const efectivas = new Map();   // nombre de variable → [{ agrup, d, origen }]
+        const anadir = (nombre, agrup, d, origen) => {
+            if (!efectivas.has(nombre)) efectivas.set(nombre, []);
+            efectivas.get(nombre).push({ agrup, d, origen });
+        };
+        const grupos = cfg.gruposPruebas || [];
+        const porSigla = {};
+        (cfg.pruebas || []).forEach(p => { porSigla[p.nombreCorto] = p; });
+        const vistas = new Set();          // (variable, agrupación) repetida: manda la primera fila, como en las correlaciones
+        const sobreGeneral = [];
+        (cfg.diferenciasGrupo || []).forEach(dif => {
+            const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
+            const varC = this._varianzaCodigo(agrup);
+            if (varC === null || !(typeof dif.d === 'number' && isFinite(dif.d)) || dif.d === 0) return;
+            const clave = `${dif.cuantitativa}|${dif.agrupacion}`;
+            if (vistas.has(clave)) return;
+            vistas.add(clave);
+            const esEscala = (cfg.pruebas || []).some(p => p.nombre === dif.cuantitativa);
+            const esSocio = (cfg.sociodemograficos || []).some(s => s.categoria === dif.cuantitativa && !this._esSocioDiscreto(s));
+            if (esEscala || esSocio) { anadir(dif.cuantitativa, agrup, dif.d, 'explicita'); return; }
+            const g = grupos.find(x => x.escalas.length >= 2 && this.nombreGeneral(x) === dif.cuantitativa);
+            if (!g) return;
+            const dims = g.escalas.map(s => porSigla[s]).filter(Boolean);
+            if (dims.length >= 2) sobreGeneral.push({ g, dims, agrup, varC, d: dif.d, nombre: dif.cuantitativa });
+        });
+        // Puntaje GENERAL derivado (promedio de K dimensiones): la d pedida se
+        // traslada a las dimensiones LIBRES (sin d explícita en esa agrupación),
+        // con la misma d para todas ellas, de modo que la d medida sobre el
+        // General sea la pedida. Es una raíz escalar (Δ_G/σ_G,intra = d) que se
+        // resuelve por bisección; con varias agrupaciones sobre el mismo General
+        // se repite el reparto hasta estabilizarse.
+        const varianzaCodigo = agrup => this._varianzaCodigo(agrup) || 0;
+        const factorIntra = nombre => {
+            let suma = 0;
+            (efectivas.get(nombre) || []).forEach(e => { suma += e.d * e.d * varianzaCodigo(e.agrup); });
+            return 1 / Math.sqrt(1 + suma);
+        };
+        const dGeneral = (req) => {
+            // d observada sobre el General con las diferencias efectivas actuales:
+            // Δ_G = (1/K)·Σ d_i·σ_i·s_i ; σ_G,intra² = σ_G² − Σ_k Δ_G,k²·Var(c_k)
+            const K = req.dims.length;
+            const sigmaG = this._factorGeneral(req.g, req.dims) * req.dims.reduce((s, p) => s + p.desviacion, 0) / K;
+            const porAgrup = new Map();
+            req.dims.forEach(p => {
+                const s = factorIntra(p.nombre);
+                (efectivas.get(p.nombre) || []).forEach(e => porAgrup.set(e.agrup, (porAgrup.get(e.agrup) || 0) + e.d * p.desviacion * s / K));
+            });
+            let entre = 0;
+            porAgrup.forEach((delta, agrup) => { entre += delta * delta * varianzaCodigo(agrup); });
+            const intra = Math.sqrt(Math.max(1e-12, sigmaG * sigmaG - entre));
+            return (porAgrup.get(req.agrup) || 0) / intra;
+        };
+        this.diferenciasLimitadas = [];
+        for (let ronda = 0; ronda < (sobreGeneral.length > 1 ? 4 : 1); ronda++) {
+            sobreGeneral.forEach(req => {
+                const libres = req.dims.filter(p => !(efectivas.get(p.nombre) || []).some(e => e.agrup === req.agrup && e.origen === 'explicita'));
+                // quitar lo repartido en rondas anteriores para este General y agrupación
+                req.dims.forEach(p => { if (efectivas.has(p.nombre)) efectivas.set(p.nombre, efectivas.get(p.nombre).filter(e => !(e.origen === req.nombre && e.agrup === req.agrup))); });
+                if (!libres.length) {
+                    if (ronda === 0) this.diferenciasLimitadas.push({ variable: req.nombre, agrupacion: req.agrup.categoria, pedido: req.d, alcanzable: dGeneral(req) });
+                    return;
+                }
+                const probar = dLibre => { libres.forEach(p => anadir(p.nombre, req.agrup, dLibre, req.nombre)); const v = dGeneral(req); libres.forEach(p => efectivas.set(p.nombre, efectivas.get(p.nombre).filter(e => !(e.origen === req.nombre && e.agrup === req.agrup)))); return v; };
+                // Rango de búsqueda ±3 (una d mayor no es plausible en psicología).
+                // Si ni así se alcanza (las d explícitas de otras dimensiones tiran
+                // en contra, y el desplazamiento absoluto d·σ·s está acotado porque
+                // la DE total se mantiene), NO se fuerza nada: el General queda como
+                // lo dejan sus dimensiones y se informa.
+                let lo = -3, hi = 3;
+                if (probar(lo) > req.d || probar(hi) < req.d) {
+                    if (ronda === 0) this.diferenciasLimitadas.push({ variable: req.nombre, agrupacion: req.agrup.categoria, pedido: req.d, alcanzable: dGeneral(req) });
+                    return;
+                }
+                for (let it = 0; it < 40; it++) { const mid = (lo + hi) / 2; if (probar(mid) < req.d) lo = mid; else hi = mid; }
+                libres.forEach(p => anadir(p.nombre, req.agrup, (lo + hi) / 2, req.nombre));
+            });
+        }
+        const factores = new Map();
+        efectivas.forEach((lista, nombre) => factores.set(nombre, factorIntra(nombre)));
+        this.diferenciasEfectivas = efectivas;
+        this.factoresDEIntra = factores;
+    }
+    _esSocioDiscreto(socio) {
+        const d = socio.distribucion || 'normal';
+        return d === 'binaria' || d === 'categorica' || d === 'conteo';
+    }
+    // Varianza del código de una variable de agrupación: binaria p(1 − p);
+    // categórica equiprobable con K niveles (K² − 1)/12. null si no agrupa.
+    _varianzaCodigo(agrup) {
+        if (!agrup) return null;
+        if (agrup.distribucion === 'binaria') {
+            const p = agrup.promedio;
+            return (p > 0 && p < 1) ? p * (1 - p) : 0;
+        }
+        if (agrup.distribucion === 'categorica') {
+            const K = Math.floor(agrup.maximo - agrup.minimo + 1);
+            return K >= 1 ? (K * K - 1) / 12 : 0;
+        }
+        return null;
+    }
+    // Código centrado en su MEDIA (binaria: código − p; categórica: código −
+    // (mín + máx)/2), para que el desplazamiento tenga media 0 y la Media de la
+    // variable en toda la base siga siendo la pedida.
+    _codigoCentrado(agrup, codigo) {
+        if (!(typeof codigo === 'number' && isFinite(codigo))) return 0;
+        if (agrup.distribucion === 'binaria') return codigo - agrup.promedio;
+        if (agrup.distribucion === 'categorica') return codigo - (agrup.minimo + agrup.maximo) / 2;
+        return 0;
+    }
+    // σ_G/(Σσ_i/K) del General de un test con las correlaciones OBJETIVO entre
+    // sus dimensiones (parejas explícitas de la tabla III o, si no, el r intra).
+    _factorGeneral(g, dims) {
+        const K = dims.length;
+        if (K < 2) return 1;
+        const rIntra = g.rIntra === undefined ? 0.40 : g.rIntra;
+        const explicitas = this.configuracion.correlaciones || [];
+        let v = 0, suma = 0;
+        for (let a = 0; a < K; a++) {
+            suma += dims[a].desviacion;
+            for (let b = 0; b < K; b++) {
+                let r = 1;
+                if (a !== b) {
+                    const e = explicitas.find(c => (c.a === dims[a].nombre && c.b === dims[b].nombre) || (c.a === dims[b].nombre && c.b === dims[a].nombre));
+                    r = e ? Math.max(-0.99, Math.min(0.99, e.r)) : rIntra;
+                }
+                v += dims[a].desviacion * dims[b].desviacion * r;
             }
-
-            const escala = this.configuracion.pruebas.find(p => p.nombre === dif.cuantitativa);
-            if (escala) {
-                const sigma = escala.desviacion;
-                const k = escala.numItems;
-                const desplazamientoTotal = dif.d * sigma * (codigo - codigoMedio);
-                const modoLikert = (escala.minimo !== null && escala.maximo !== null);
-
-                if (!modoLikert) {
-                    // Medida continua: desplazar el total y repartirlo por igual
-                    // entre los ítems (2 decimales), sin recorte.
-                    const porItem = desplazamientoTotal / k;
-                    for (let idx = 0; idx < k; idx++) {
-                        const col = escala.nombreCorto + (idx + 1);
-                        participante[col] = Math.round((participante[col] + porItem) * 100) / 100;
-                    }
-                } else {
-                    // Likert: desplazamiento del total como unidades enteras
-                    // repartidas entre los ítems, respetando el rango.
-                    let unidades = Math.round(desplazamientoTotal);
-                    const min = escala.minimo;
-                    const max = escala.maximo;
-                    if (unidades !== 0) {
-                        const paso = unidades > 0 ? 1 : -1;
-                        let restantes = Math.abs(unidades);
-                        let idx = 0;
-                        let intentos = 0;
-                        const limiteIntentos = k * 4;
-                        while (restantes > 0 && intentos < limiteIntentos) {
-                            const col = escala.nombreCorto + (idx % k + 1);
-                            const nuevo = participante[col] + paso;
-                            if (nuevo >= min && nuevo <= max) {
-                                participante[col] = nuevo;
-                                restantes--;
-                            }
-                            idx++;
-                            intentos++;
-                        }
-                    }
-                }
-
-                let total = 0;
-                for (let idx = 0; idx < k; idx++) {
-                    total += participante[escala.nombreCorto + (idx + 1)];
-                }
-                participante[this.columnaDeEscala(escala)] = Math.round(total * 100) / 100;
-                return;
-            }
-
-            const socio = this.configuracion.sociodemograficos.find(s => s.categoria === dif.cuantitativa);
-            if (socio) {
-                let v = participante[socio.categoria] + dif.d * socio.desviacion * (codigo - codigoMedio);
-                if (socio.minimo !== null && socio.maximo !== null) {
-                    v = Math.max(socio.minimo, Math.min(socio.maximo, v));
-                }
-                const factor = Math.pow(10, socio.decimales);
-                participante[socio.categoria] = Math.round(v * factor) / factor;
+        }
+        return suma > 0 ? Math.sqrt(Math.max(v, 1e-12)) / suma : 1;
+    }
+    // Factor DE intra-grupo / DE total de una variable (1 si no tiene diferencias).
+    _factorDE(nombre) {
+        const f = this.factoresDEIntra ? this.factoresDEIntra.get(nombre) : undefined;
+        return f === undefined ? 1 : f;
+    }
+    // DE de un sociodemográfico como variable cuantitativa: la pedida o, para la
+    // uniforme continua (que no la tiene), (máx − mín)/√12.
+    _deEfectiva(socio) {
+        if (typeof socio.desviacion === 'number' && isFinite(socio.desviacion) && socio.desviacion > 0) return socio.desviacion;
+        if (socio.distribucion === 'uniforme' && isFinite(socio.minimo) && isFinite(socio.maximo)) return (socio.maximo - socio.minimo) / Math.sqrt(12);
+        return 0;
+    }
+    // Desplazamiento (en unidades de la variable) de un participante en la
+    // variable `nombre`: Σ d·σ_intra·(código − media del código).
+    _desplazamientoDe(participante, nombre, sigmaTotal) {
+        const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
+        if (!lista || !lista.length || !(sigmaTotal > 0)) return 0;
+        const sigmaIntra = sigmaTotal * this._factorDE(nombre);
+        let total = 0;
+        lista.forEach(e => { total += e.d * sigmaIntra * this._codigoCentrado(e.agrup, participante[e.agrup.categoria]); });
+        return total;
+    }
+    // Igual, pero sorteando los códigos de grupo: para calibrar la fiabilidad
+    // con la misma estructura entre grupos que tendrá la base.
+    _desplazamientoAleatorio(nombre, sigmaTotal) {
+        const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
+        if (!lista || !lista.length || !(sigmaTotal > 0)) return 0;
+        const sigmaIntra = sigmaTotal * this._factorDE(nombre);
+        let total = 0;
+        lista.forEach(e => {
+            const codigo = e.agrup.distribucion === 'binaria' ? this.generarBinaria(e.agrup.promedio)
+                : this.generarCategoria(e.agrup.minimo, e.agrup.maximo);
+            total += e.d * sigmaIntra * this._codigoCentrado(e.agrup, codigo);
+        });
+        return total;
+    }
+    // Columnas de diseño de los grupos con diferencias (binaria: una columna;
+    // categórica: una columna indicadora por nivel salvo el primero), para
+    // hacer los drivers ortogonales a ellas en modo exacto.
+    _matrizCodigosGrupo(datos) {
+        const usados = new Map();
+        if (this.diferenciasEfectivas) this.diferenciasEfectivas.forEach(lista => lista.forEach(e => usados.set(e.agrup.categoria, e.agrup)));
+        const columnas = [];
+        usados.forEach(agrup => {
+            const valores = datos.map(d => d[agrup.categoria]);
+            if (agrup.distribucion === 'binaria') columnas.push(valores.map(v => (v === 1 ? 1 : 0)));
+            else if (agrup.distribucion === 'categorica') {
+                for (let nivel = agrup.minimo + 1; nivel <= agrup.maximo; nivel++) columnas.push(valores.map(v => (v === nivel ? 1 : 0)));
             }
         });
+        // Solo columnas con varianza (un nivel ausente en la muestra sería una
+        // columna nula y haría singular XᵀX).
+        return columnas.filter(c => { const s = c.reduce((a, b) => a + b, 0); return s > 0 && s < c.length; });
+    }
+    // Residualiza cada columna de Z (n × m) contra [1 | X] por mínimos cuadrados:
+    // Z ← Z − X·(XᵀX)⁻¹·XᵀZ. Deja las medias de grupo de cada driver en 0 exacto.
+    _ortogonalizarContraCodigos(Z, X) {
+        const n = Z.length, m = Z[0].length, q = X.length + 1;
+        if (X.length === 0 || n <= q + m + 2) return Z;
+        this.driversOrtogonalizados = true;
+        const col = j => (j === 0 ? null : X[j - 1]);
+        const G = Array.from({ length: q }, () => new Array(q).fill(0));
+        for (let a = 0; a < q; a++) for (let b = a; b < q; b++) {
+            let s = 0;
+            const ca = col(a), cb = col(b);
+            for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * (cb ? cb[i] : 1);
+            G[a][b] = G[b][a] = s;
+        }
+        const L = this.descomposicionCholesky(G), Linv = this._inversaTriangularInferior(L);
+        const Ginv = Array.from({ length: q }, (_, a) => Array.from({ length: q }, (_, b) => {
+            let s = 0; for (let k = 0; k < q; k++) s += Linv[k][a] * Linv[k][b]; return s;
+        }));
+        for (let j = 0; j < m; j++) {
+            const xtz = new Array(q).fill(0);
+            for (let a = 0; a < q; a++) { const ca = col(a); let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * Z[i][j]; xtz[a] = s; }
+            const beta = new Array(q).fill(0);
+            for (let a = 0; a < q; a++) { let s = 0; for (let k = 0; k < q; k++) s += Ginv[a][k] * xtz[k]; beta[a] = s; }
+            for (let i = 0; i < n; i++) { let s = beta[0]; for (let a = 1; a < q; a++) s += X[a - 1][i] * beta[a]; Z[i][j] -= s; }
+        }
+        return Z;
+    }
+    // Hay estructura de correlación que preparar si: tabla III no vacía, algún
+    // test con ≥ 2 dimensiones y r intra ≠ 0, o diferencias por grupo en modo
+    // exacto (para que los drivers existan y se ortogonalicen a los grupos).
+    _hayEstructuraDeCorrelacion() {
+        const cfg = this.configuracion;
+        if ((cfg.correlaciones || []).length > 0) return true;
+        if ((cfg.gruposPruebas || []).some(g => g.escalas.length >= 2 && (g.rIntra === undefined ? 0.40 : g.rIntra) !== 0)) return true;
+        return cfg.correlacionesExactas !== false && !!this.diferenciasEfectivas && this.diferenciasEfectivas.size > 0;
+    }
+
+    // ============ CORRELACIÓN INTERMEDIA (Vale–Maurelli + grupos) ============
+    // La r pedida es de Pearson sobre las variables FINALES de toda la base. El
+    // driver es normal y solo gobierna la parte intra-grupo, y las formas
+    // «asimétrica» (log-normal) y «uniforme» lo transforman de manera monótona
+    // pero no lineal, lo que atenúa la r de Pearson (0.60 salía 0.56 entre dos
+    // asimétricas). Para cada pareja: (1) se descuenta la varianza y la
+    // covarianza entre grupos, r_ij = s_i·s_j·ρ_ij + b_ij; (2) se invierte la
+    // forma, ρ* = T⁻¹(ρ_ij). Es la matriz de ρ* la que se factoriza.
+    _formaMarginal(variable) {
+        if (variable.tipo === 'escala') {
+            const p = (this.configuracion.pruebas || []).find(x => x.nombreCorto === variable.clave);
+            const dist = p ? p.distribucion : 'normal';
+            if (dist === 'asimetrica') return { forma: 'lognormal', orden: 2, sigma: SIGMA_FORMA_ASIMETRICA };
+            if (dist === 'uniforme') return { forma: 'uniforme', orden: 1, sigma: 0 };
+            return { forma: 'normal', orden: 0, sigma: 0 };
+        }
+        const s = (this.configuracion.sociodemograficos || []).find(x => x.categoriaCorta === variable.clave);
+        if (s && s.distribucion === 'asimetrica') {
+            // misma σ que generarAsimetrico con la DE intra-grupo: σ² = ln(1 + DE²/M²)
+            const m = Math.max(1e-6, s.promedio), de = s.desviacion * this._factorDE(s.categoria);
+            return { forma: 'lognormal', orden: 2, sigma: Math.sqrt(Math.log(1 + (de * de) / (m * m))) };
+        }
+        return { forma: 'normal', orden: 0, sigma: 0 };
+    }
+    // Pearson entre T_a(Z₁) y T_b(Z₂) cuando corr(Z₁, Z₂) = ρ, para las formas del
+    // generador (normal: z; uniforme: Φ(z); log-normal: e^{σz}). Todas cerradas
+    // (lema de Stein e inclinación exponencial):
+    //   N–N: ρ · U–U: (6/π)·asen(ρ/2) · N–U: ρ·√(3/π) · N–LN: ρ·σ/√(e^{σ²}−1)
+    //   U–LN: (Φ(ρσ/√2) − ½)·√12/√(e^{σ²}−1) · LN–LN: (e^{σₐσᵦρ} − 1)/√((e^{σₐ²}−1)(e^{σᵦ²}−1))
+    _rTransformada(fa, fb, rho) {
+        const [x, y] = fa.orden <= fb.orden ? [fa, fb] : [fb, fa];
+        switch (x.forma + '-' + y.forma) {
+            case 'normal-normal': return rho;
+            case 'normal-uniforme': return rho * Math.sqrt(3 / Math.PI);
+            case 'uniforme-uniforme': return (6 / Math.PI) * Math.asin(rho / 2);
+            case 'normal-lognormal': return rho * y.sigma / Math.sqrt(Math.expm1(y.sigma * y.sigma));
+            case 'uniforme-lognormal': return (this.normalCDF(rho * y.sigma / Math.SQRT2) - 0.5) * Math.sqrt(12) / Math.sqrt(Math.expm1(y.sigma * y.sigma));
+            case 'lognormal-lognormal': return Math.expm1(x.sigma * y.sigma * rho) / Math.sqrt(Math.expm1(x.sigma * x.sigma) * Math.expm1(y.sigma * y.sigma));
+        }
+        return rho;
+    }
+    // Inversa de la anterior: ρ del espacio normal que produce la Pearson r. Si
+    // r no es alcanzable con esas formas, se acota a ±0.99 y se marca.
+    _rhoIntermedia(fa, fb, r) {
+        const [x, y] = fa.orden <= fb.orden ? [fa, fb] : [fb, fa];
+        const tope = 0.99;
+        let rho;
+        switch (x.forma + '-' + y.forma) {
+            case 'normal-normal': rho = r; break;
+            case 'normal-uniforme': rho = r * Math.sqrt(Math.PI / 3); break;
+            case 'uniforme-uniforme': rho = 2 * Math.sin(Math.PI * Math.max(-1, Math.min(1, r)) / 6); break;
+            case 'normal-lognormal': rho = r * Math.sqrt(Math.expm1(y.sigma * y.sigma)) / y.sigma; break;
+            case 'uniforme-lognormal': {
+                const p = 0.5 + r * Math.sqrt(Math.expm1(y.sigma * y.sigma) / 12);
+                rho = (p > 0 && p < 1) ? Math.SQRT2 * this.normalInversa(p) / y.sigma : (r > 0 ? Infinity : -Infinity);
+                break;
+            }
+            case 'lognormal-lognormal': {
+                const arg = 1 + r * Math.sqrt(Math.expm1(x.sigma * x.sigma) * Math.expm1(y.sigma * y.sigma));
+                rho = arg > 0 ? Math.log(arg) / (x.sigma * y.sigma) : -Infinity;
+                break;
+            }
+            default: rho = r;
+        }
+        if (!isFinite(rho)) rho = rho > 0 ? Infinity : -Infinity;
+        const limitada = !(Math.abs(rho) <= tope);
+        return { rho: Math.max(-tope, Math.min(tope, rho)), limitada };
+    }
+    // Inversa de la normal estándar Φ⁻¹(p): algoritmo de Acklam (error relativo
+    // < 1.2·10⁻⁹ en todo el dominio).
+    normalInversa(p) {
+        if (!(p > 0 && p < 1)) return p <= 0 ? -Infinity : Infinity;
+        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
+        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
+        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
+        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
+        const pBajo = 0.02425;
+        if (p < pBajo) {
+            const q = Math.sqrt(-2 * Math.log(p));
+            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+        }
+        if (p > 1 - pBajo) {
+            const q = Math.sqrt(-2 * Math.log(1 - p));
+            return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
+        }
+        const q = p - 0.5, r = q * q;
+        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+    }
+    _matrizIntermedia(R, variables) {
+        const m = R.length, limitadas = [];
+        const formas = variables.map(v => this._formaMarginal(v));
+        const nombres = variables.map(v => v.nombre);
+        const s = nombres.map(nm => this._factorDE(nm));
+        const lista = nm => (this.diferenciasEfectivas && this.diferenciasEfectivas.get(nm)) || [];
+        const Rint = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
+        for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
+            const r = R[i][j];
+            // covarianza entre grupos compartida (misma agrupación en ambas variables)
+            let b = 0;
+            lista(nombres[i]).forEach(ei => lista(nombres[j]).forEach(ej => {
+                if (ei.agrup === ej.agrup) b += ei.d * ej.d * this._varianzaCodigo(ei.agrup);
+            }));
+            b *= s[i] * s[j];
+            const rhoIntra = (r - b) / (s[i] * s[j]);
+            const inv = this._rhoIntermedia(formas[i], formas[j], rhoIntra);
+            if (inv.limitada) {
+                const alcanzable = s[i] * s[j] * this._rTransformada(formas[i], formas[j], inv.rho) + b;
+                limitadas.push({ a: nombres[i], b: nombres[j], pedido: r, alcanzable });
+            }
+            Rint[i][j] = Rint[j][i] = inv.rho;
+        }
+        // La intermedia puede dejar de ser definida positiva aunque la pedida lo
+        // fuera: se sustituye por la válida más cercana y se deja constancia.
+        const ajustada = m > 0 && !this._esDefinidaPositiva(Rint);
+        return { R: ajustada ? this._matrizValidaMasCercana(Rint) : Rint, limitadas, ajustada };
     }
 
     // Genera el vector de valores normales correlacionados (uno por variable
@@ -1455,24 +1958,177 @@ class GeneradorDatos {
         }
         return inv;
     }
-    generarMatrizDrivers(n) {
+    generarMatrizDrivers(n, codigosGrupo = [], funcionesValor = null) {
         const m = this.correlVariables.length;
         if (!m || n < 3) return null;
         let Z = Array.from({ length: n }, () => Array.from({ length: m }, () => this.generarNormalEstandar()));
+        // Modo exacto + diferencias por grupo: drivers ortogonales a los códigos
+        // (medias de grupo del driver = 0 exacto → la d obtenida es la pedida).
+        this._ortogonalizarContraCodigos(Z, codigosGrupo);
         this._estandarizarColumnas(Z);
         const S = this.descomposicionCholesky(this._correlacionMuestral(Z));
         const Sinv = this._inversaTriangularInferior(S);
-        // W = Z·(S⁻¹)ᵀ  →  Z* = W·Lᵀ  (L = factor objetivo, ya calculado)
-        const L = this.correlL;
-        const salida = new Array(n);
+        // W = Z·(S⁻¹)ᵀ: columnas de media 0, DE 1 y correlación muestral identidad
+        const W = new Array(n);
         for (let i = 0; i < n; i++) {
             const w = new Array(m).fill(0);
             for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += Z[i][k] * Sinv[a][k]; w[a] = s; }
-            const y = new Array(m).fill(0);
+            W[i] = w;
+        }
+        // L: factor de la matriz intermedia. Con funciones de valor se calibra
+        // sobre las variables FINALES (formas, recortes, grupos) para que la
+        // Pearson de la base sea exactamente la pedida.
+        const L = funcionesValor ? this._calibrarCorrelacionesExactas(W, funcionesValor, codigosGrupo) : this.correlL;
+        // Z* = W·Lᵀ
+        const salida = new Array(n);
+        for (let i = 0; i < n; i++) {
+            const w = W[i], y = new Array(m).fill(0);
             for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; y[a] = s; }
             salida[i] = y;
         }
+        // Variables con diferencias por grupo: el driver pasa a ESPACIO DE VALOR
+        // (forma aplicada → medias de grupo igualadas → DE 1). Igualar medias
+        // en z no basta con formas no normales (las medias de grupo de e^{σz}
+        // no son iguales aunque las de z lo sean), y la d dejaba de ser exacta.
+        this.driversEnValor = new Set();
+        if (funcionesValor) {
+            funcionesValor.forEach((f, a) => {
+                if (!f.enValor) return;
+                const u = this._igualarPorGrupos(Float64Array.from(salida, fila => f.transformar(fila[a])), codigosGrupo);
+                for (let i = 0; i < n; i++) salida[i][a] = u[i];
+                this.driversEnValor.add(this.correlVariables[a].tipo + ':' + this.correlVariables[a].clave);
+            });
+        }
         return salida;
+    }
+    // Funciones de valor de cada variable correlacionable, en el orden de
+    // correlVariables: (i, z) → valor final del participante i con driver z.
+    // Incluyen su desplazamiento por grupo (calculado con los códigos ya
+    // generados en el pase 1) y su DE intra-grupo.
+    _funcionesDeValor(datos) {
+        const cfg = this.configuracion;
+        const conDif = nombre => !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(nombre) || []).length);
+        return this.correlVariables.map(v => {
+            if (v.tipo === 'escala') {
+                const p = cfg.pruebas.find(x => x.nombreCorto === v.clave);
+                const f = this._factorDE(p.nombre);
+                const desp = Float64Array.from(datos, d => this._desplazamientoDe(d, p.nombre, p.desviacion));
+                // Con diferencias por grupo el driver llega ya EN ESPACIO DE VALOR
+                // (forma aplicada, medias de grupo igualadas, DE 1): la forma no
+                // se vuelve a aplicar.
+                const enValor = conDif(p.nombre);
+                return { enValor, transformar: z => this.transformarFormaZ(z, p.distribucion),
+                    valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor) };
+            }
+            const s = cfg.sociodemograficos.find(x => x.categoriaCorta === v.clave);
+            const f = this._factorDE(s.categoria);
+            const desp = Float64Array.from(datos, d => this._desplazamientoDe(d, s.categoria, this._deEfectiva(s)));
+            const enValor = conDif(s.categoria);
+            return { enValor, transformar: z => this._formaSocioEstandar(s, z, f),
+                valor: (i, base) => this._valorContinuoSocio(s, base, desp[i], f, enValor) };
+        });
+    }
+    // Forma estandarizada (media 0, DE 1) de un sociodemográfico continuo a
+    // partir de su driver: para el asimétrico, la log-normal de generarAsimetrico
+    // llevada a media 0 y DE 1; para el normal, el propio z.
+    _formaSocioEstandar(socio, z, factorDE) {
+        if (socio.distribucion === 'asimetrica') {
+            const de = socio.desviacion * factorDE;
+            return de > 0 ? (this.generarAsimetrico(socio.promedio, de, z) - socio.promedio) / de : z;
+        }
+        return z;
+    }
+    // Residualiza una columna contra [1 | X] (medias de grupo exactamente 0 en
+    // cada nivel) y la lleva a DE intra-grupo AGRUPADA 1 (grados de libertad
+    // n − q, como la DE agrupada de la d de Cohen; con n = 30 y 3 grupos, usar
+    // n en vez de n − 3 sesgaba la d obtenida un 5 %). Devuelve la columna.
+    _igualarPorGrupos(col, X) {
+        const n = col.length, q = X.length + 1;
+        const Z = Array.from(col, v => [v]);
+        const aplicado = this._ortogonalizarContraCodigos(Z, X) && this.driversOrtogonalizados;
+        let s = 0; for (let i = 0; i < n; i++) s += Z[i][0];
+        const media = s / n;
+        let v = 0; for (let i = 0; i < n; i++) v += (Z[i][0] - media) ** 2;
+        const de = Math.sqrt(v / Math.max(1, aplicado ? n - q : n - 1)) || 1e-9;
+        const out = new Float64Array(n);
+        for (let i = 0; i < n; i++) out[i] = (Z[i][0] - media) / de;
+        return out;
+    }
+    // ============ CALIBRACIÓN DE CORRELACIONES EXACTAS ============
+    // El blanqueo hace exacta la correlación de los DRIVERS, pero la r pedida es
+    // la de Pearson entre las variables FINALES, y entre driver y valor hay
+    // transformaciones no lineales (forma asimétrica o uniforme, recorte Likert,
+    // redondeo) y la varianza entre grupos. Punto fijo sobre la matriz
+    // intermedia: se parte de la de forma cerrada, se generan los valores con
+    // la candidata, se mide su Pearson y se corrige la candidata con el error,
+    // hasta que la Pearson medida coincide con la pedida (o 12 iteraciones).
+    _calibrarCorrelacionesExactas(W, funciones, codigos) {
+        const n = W.length, m = funciones.length, R = this.correlR;
+        let Rt = this.correlRIntermedia.map(f => f.slice());
+        let L = this.descomposicionCholesky(Rt);
+        const X = Array.from({ length: m }, () => new Float64Array(n));
+        const medias = new Float64Array(m), des = new Float64Array(m);
+        // Se conserva la mejor candidata: con valores redondeados (Likert,
+        // decimales) la Pearson muestral cambia a saltos y el punto fijo puede
+        // oscilar alrededor del objetivo en vez de clavarlo.
+        const mejor = { error: Infinity, L, Rt, C: null };
+        let sinMejora = 0, proyectada = false, iteraciones = 0;
+        const base = new Float64Array(n);
+        for (let it = 0; it < 16; it++) {
+            iteraciones = it + 1;
+            for (let a = 0; a < m; a++) {
+                for (let i = 0; i < n; i++) { const w = W[i]; let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; base[i] = s; }
+                const u = funciones[a].enValor ? this._igualarPorGrupos(Float64Array.from(base, z => funciones[a].transformar(z)), codigos) : base;
+                for (let i = 0; i < n; i++) X[a][i] = funciones[a].valor(i, u[i]);
+            }
+            for (let a = 0; a < m; a++) {
+                let s = 0; for (let i = 0; i < n; i++) s += X[a][i];
+                medias[a] = s / n;
+                let v = 0; for (let i = 0; i < n; i++) v += (X[a][i] - medias[a]) ** 2;
+                des[a] = Math.sqrt(v / n) || 1e-9;
+            }
+            const C = Array.from({ length: m }, () => new Float64Array(m));
+            let maxError = 0;
+            for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) {
+                let s = 0; for (let i = 0; i < n; i++) s += (X[a][i] - medias[a]) * (X[b][i] - medias[b]);
+                C[a][b] = C[b][a] = s / n / (des[a] * des[b]);
+                maxError = Math.max(maxError, Math.abs(R[a][b] - C[a][b]));
+            }
+            if (maxError < mejor.error) { mejor.error = maxError; mejor.L = L; mejor.Rt = Rt; mejor.C = C; sinMejora = 0; }
+            else if (++sinMejora >= 4) break;
+            if (maxError < 5e-4) break;
+            // Paso completo al principio; amortiguado después, porque con valores
+            // redondeados (edad entera, Likert) la Pearson muestral responde a
+            // saltos y el paso completo oscila alrededor del objetivo.
+            const paso = it < 2 ? 1 : 0.6;
+            const Rn = Rt.map(f => f.slice());
+            for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) {
+                Rn[a][b] = Rn[b][a] = Math.max(-0.995, Math.min(0.995, Rt[a][b] + paso * (R[a][b] - C[a][b])));
+            }
+            // Si la candidata deja de ser definida positiva, la combinación
+            // pedida no es alcanzable con estas formas: se proyecta a la válida
+            // más cercana y el punto fijo se queda en la mejor aproximación.
+            if (this._esDefinidaPositiva(Rn)) Rt = Rn; else { Rt = this._matrizValidaMasCercana(Rn); proyectada = true; }
+            L = this.descomposicionCholesky(Rt);
+        }
+        this.correlRIntermedia = mejor.Rt;
+        // Constancia para el panel de diagnóstico: si no convergió, alguna r
+        // pedida no es alcanzable con las formas/recortes/grupos configurados.
+        // Las parejas ya marcadas como limitadas reciben el valor MEDIDO como
+        // «alcanzable» (más fiel que la cota de forma cerrada: el recorte
+        // Likert también cuenta).
+        // «Convergió» a efectos del aviso: error máximo < 0.01 (por debajo de la
+        // tolerancia del informe, 0.03, y del efecto del redondeo a enteros).
+        this.diagnosticoCorrelaciones.calibracion = { convergio: mejor.error < 0.01, error: mejor.error, iteraciones, proyectada };
+        if (mejor.C) {
+            const indice = {};
+            this.correlVariables.forEach((v, i) => { indice[v.nombre] = i; });
+            (this.diagnosticoCorrelaciones.limitadas || []).forEach(l => {
+                const a = indice[l.a], b = indice[l.b];
+                if (a !== undefined && b !== undefined) l.alcanzable = mejor.C[a][b];
+            });
+        }
+        return mejor.L;
     }
     _driversDeFila(fila) {
         const drivers = {};
@@ -1507,11 +2163,13 @@ class GeneradorDatos {
         const encabezados = Object.keys(this.datosGenerados[0]);
         const escapar = (valor) => {
             let v = valor;
+            // Valor perdido → celda vacía. Va ANTES del formato español: NaN no
+            // es entero y se convertía en el texto «NaN» con separador «;».
+            if (typeof v === 'number' && !isFinite(v)) v = '';
             // En formato español, los números decimales van con coma (3,14).
             if (sep === ';' && typeof v === 'number' && !Number.isInteger(v)) {
                 v = String(v).replace('.', ',');
             }
-            if (typeof v === 'number' && !isFinite(v)) v = '';   // valor perdido → celda vacía
             v = String(v ?? '');
             // Escapar si contiene el separador, comillas o saltos de línea.
             if (v.includes(sep) || v.includes('"') || v.includes('\n')) {
