@@ -337,6 +337,16 @@
         </select>
         <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
         </div>
+        <div class="form-group">
+        <label for="heterogeneidadItems">Heterogeneidad de los ítems</label>
+        <select id="heterogeneidadItems" class="input">
+        <option value="ninguna">Ninguna (ítems paralelos)</option>
+        <option value="leve" selected>Leve</option>
+        <option value="moderada">Moderada</option>
+        <option value="alta">Alta</option>
+        </select>
+        <span class="help-text">Realismo a nivel de ítem: medias distintas (ítems «fáciles» y «difíciles»), cargas desiguales y algunas cargas cruzadas leves entre dimensiones del mismo test, todo derivado de la semilla. No cambia la Media, la DE, las correlaciones ni la fiabilidad pedidas: solo cómo se reparten entre los ítems (se nota en el AFE/AFC y en las correlaciones ítem-total).</span>
+        </div>
     </div>
     <!-- Fila 2: opciones de generación (tarjetas emparejadas) -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
@@ -1429,7 +1439,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=1"></script>
-    <script src="generador-datos.js?v=11"></script>
+    <script src="generador-datos.js?v=12"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1501,7 +1511,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=26"></script>
+    <script src="app.js?v=27"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
