@@ -295,8 +295,136 @@ function eliminarFilaSocio(fila) {
     fila.remove();
     mostrarToast('Variable eliminada', 'success');
 }
+// ========================================
+// MOTOR DE GENERACIÓN (B4): Web Worker con respaldo en el hilo principal
+// ========================================
+// La base se genera en generador-worker.js, fuera del hilo de la interfaz:
+// la página sigue respondiendo y muestra el avance. Si el Worker no está
+// disponible (archivo no subido, protocolo file://), se genera en el hilo
+// principal como antes. El resultado es la misma BaseColumnar en ambos casos.
+const MotorGeneracion = (() => {
+    // Versión de generador-worker.js: súbela cuando cambie ese archivo (no
+    // tiene etiqueta <script> en index.html, así que se declara aquí).
+    const VERSION_WORKER = 1;
+    let worker = null;
+    let contador = 0;
+
+    // ?v= de un módulo tal como lo carga index.html, para que el Worker
+    // importe exactamente la misma versión (una sola fuente: index.html).
+    const versionDe = (archivo) => {
+        const etiqueta = document.querySelector(`script[src^="${archivo}"]`);
+        const m = etiqueta && /[?&]v=([^&]+)/.exec(etiqueta.getAttribute('src') || '');
+        return m ? m[1] : '1';
+    };
+    const crearWorker = () => new Worker(`generador-worker.js?v=${VERSION_WORKER}&b=${encodeURIComponent(versionDe('base-columnar.js'))}&g=${encodeURIComponent(versionDe('generador-datos.js'))}`);
+
+    function generarConWorker(configuracion, alProgresar) {
+        return new Promise((resolver, rechazar) => {
+            if (typeof Worker === 'undefined') { const e = new Error('Sin Web Workers'); e.esFalloDelWorker = true; rechazar(e); return; }
+            if (!worker) worker = crearWorker();
+            const id = ++contador;
+            const w = worker;
+            const limpiar = () => { w.onmessage = null; w.onerror = null; };
+            w.onmessage = (evento) => {
+                const m = evento.data || {};
+                if (m.id !== id) return;
+                if (m.tipo === 'progreso') { if (alProgresar) alProgresar(m.fraccion, m.etapa); return; }
+                limpiar();
+                if (m.tipo === 'error') { rechazar(new Error(m.mensaje)); return; }
+                resolver({
+                    base: BaseColumnar.desdeSerializado(m.base),
+                    informe: m.informe || [],
+                    diagnosticoCorrelaciones: m.diagnosticoCorrelaciones,
+                    resumenImperfecciones: m.resumenImperfecciones,
+                    diferenciasLimitadas: m.diferenciasLimitadas || [],
+                    ms: m.ms
+                });
+            };
+            w.onerror = (evento) => {
+                // Fallo del propio Worker (archivo no encontrado, error de carga):
+                // se descarta y el llamador cae al respaldo en el hilo principal.
+                limpiar();
+                try { w.terminate(); } catch (e) { /* nada */ }
+                worker = null;
+                const e = new Error(evento && evento.message ? evento.message : 'El Worker de generación no pudo iniciarse');
+                e.esFalloDelWorker = true;
+                if (evento && evento.preventDefault) evento.preventDefault();
+                rechazar(e);
+            };
+            w.postMessage({ id, configuracion });
+        });
+    }
+
+    function generarEnHilo(configuracion, alProgresar) {
+        return new Promise((resolver, rechazar) => {
+            // setTimeout: deja que la interfaz pinte el estado «generando» antes
+            // de bloquear el hilo.
+            setTimeout(() => {
+                try {
+                    generadorDatos.configuracion = configuracion;
+                    const inicio = Date.now();
+                    const base = generadorDatos.generarBaseDatos(alProgresar);
+                    resolver({
+                        base,
+                        informe: generadorDatos.informePedidoObtenido(base) || [],
+                        diagnosticoCorrelaciones: generadorDatos.diagnosticoCorrelaciones,
+                        resumenImperfecciones: generadorDatos.resumenImperfecciones,
+                        diferenciasLimitadas: generadorDatos.diferenciasLimitadas || [],
+                        ms: Date.now() - inicio
+                    });
+                } catch (error) { rechazar(error); }
+            }, 50);
+        });
+    }
+
+    // Genera con la configuración dada (objeto plano). Devuelve una promesa con
+    // { base, informe, diagnosticoCorrelaciones, resumenImperfecciones, ... }.
+    function generar(configuracion, alProgresar) {
+        return generarConWorker(configuracion, alProgresar).catch(error => {
+            if (!error || !error.esFalloDelWorker) throw error;
+            console.warn('[MotorGeneracion] Worker no disponible, se genera en el hilo principal:', error.message);
+            return generarEnHilo(configuracion, alProgresar);
+        });
+    }
+
+    return { generar };
+})();
+
+// Barra de progreso de la generación (marcado en index.html: #progresoGeneracion)
+function mostrarProgresoGeneracion(fraccion, etapa) {
+    const cont = document.getElementById('progresoGeneracion');
+    if (!cont) return;
+    const relleno = cont.querySelector('.progreso-generacion__relleno');
+    const texto = cont.querySelector('.progreso-generacion__texto');
+    const pct = Math.max(0, Math.min(100, Math.round((fraccion || 0) * 100)));
+    if (relleno) relleno.style.width = pct + '%';
+    if (texto) texto.textContent = `${etapa || 'Generando'}… ${pct} %`;
+    cont.setAttribute('aria-valuenow', String(pct));
+    cont.hidden = false;
+}
+function ocultarProgresoGeneracion() {
+    const cont = document.getElementById('progresoGeneracion');
+    if (cont) cont.hidden = true;
+}
+
+// window.datosGenerados: vista por OBJETOS de la base para el código que la
+// espera así (gráficos, respaldos). Se materializa solo si alguien la lee:
+// generar y descargar un CSV nunca paga ese coste.
+function publicarDatosGenerados(base) {
+    let valor;
+    Object.defineProperty(window, 'datosGenerados', {
+        configurable: true,
+        enumerable: true,
+        get() { if (valor === undefined) valor = base ? base.aObjetos() : null; return valor; },
+        set(v) { valor = v; }
+    });
+}
+
 function generarBaseDatos() {
     try {
+        if (typeof BaseColumnar === 'undefined') {
+            throw new Error('Falta base-columnar.js: en index.html debe cargarse antes de generador-datos.js');
+        }
         // Recolectar configuración
         generadorDatos.recolectarConfiguracion();
         // Validar
@@ -311,37 +439,47 @@ function generarBaseDatos() {
             // suele ser la de factibilidad de la Media/DE frente al rango).
             mostrarToast('⚠ ' + validacion.advertencias[0], 'warning', 9000);
         }
-        // Generar datos
+        // Generar datos (asíncrono: Worker o respaldo en el hilo)
         const boton = document.getElementById('btnGenerar');
         boton.disabled = true; // Evitar doble ejecución mientras se procesa
-        setTimeout(() => {
-            // try/catch dentro del setTimeout: los errores de la generación se
-            // lanzan de forma asíncrona y el catch externo no los capturaría.
-            try {
-                const datos = generadorDatos.generarBaseDatos();
-                // Almacenar datos generados globalmente para los gráficos
-                window.datosGenerados = datos;
-                mostrarPreview(datos);
+        mostrarProgresoGeneracion(0, 'Preparando');
+        const configuracion = JSON.parse(JSON.stringify(generadorDatos.obtenerConfiguracion()));
+        MotorGeneracion.generar(configuracion, mostrarProgresoGeneracion)
+            .then(resultado => {
+                // El generador de la página queda con el resultado, igual que si
+                // hubiera generado él mismo (descargas, etiquetas, Analizador).
+                generadorDatos.datosGenerados = resultado.base;
+                generadorDatos.diagnosticoCorrelaciones = resultado.diagnosticoCorrelaciones;
+                generadorDatos.resumenImperfecciones = resultado.resumenImperfecciones;
+                generadorDatos.diferenciasLimitadas = resultado.diferenciasLimitadas;
+                publicarDatosGenerados(resultado.base);
+                mostrarPreview(resultado.base);
                 mostrarDiagnosticoCorrelaciones();
-                mostrarInformePedidoObtenido(datos);
+                mostrarInformePedidoObtenido(resultado.base, resultado.informe);
                 habilitarDescargaCSV();
                 habilitarUsarGenerados();
-                const ri = generadorDatos.resumenImperfecciones || {};
+                const ri = resultado.resumenImperfecciones || {};
                 const partesRi = [];
                 if (ri.perdidos) partesRi.push(`${ri.perdidos} valores perdidos`);
                 if (ri.descuidados) partesRi.push(`${ri.descuidados} respondientes descuidados`);
                 if (ri.digitacion) partesRi.push(`${ri.digitacion} errores de digitación`);
-                mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}` : '¡Base de datos generada exitosamente!', 'success', partesRi.length ? 8000 : undefined);
-            } catch (error) {
+                const tiempo = resultado.ms >= 1000 ? ` (${(resultado.ms / 1000).toFixed(1)} s)` : '';
+                mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}${tiempo}` : `¡Base de datos generada exitosamente!${tiempo}`, 'success', partesRi.length ? 8000 : undefined);
+            })
+            .catch(error => {
                 mostrarToast(error.message, 'error');
                 console.error(error);
-            } finally {
+            })
+            .finally(() => {
                 boton.disabled = false;
-            }
-        }, 300);
+                ocultarProgresoGeneracion();
+            });
     } catch (error) {
         mostrarToast(error.message, 'error');
         console.error(error);
+        const boton = document.getElementById('btnGenerar');
+        if (boton) boton.disabled = false;
+        ocultarProgresoGeneracion();
     }
 }
 // ---- Diagnóstico visible de correlaciones incompatibles ----
@@ -383,11 +521,11 @@ function mostrarDiagnosticoCorrelaciones() {
 }
 // ---- Informe pedido vs obtenido ----
 let ultimoInforme = [];
-function mostrarInformePedidoObtenido(datos) {
+function mostrarInformePedidoObtenido(datos, filasPrecalculadas = null) {
     const cont = document.getElementById('informePedidoObtenido');
     const body = document.getElementById('bodyInforme');
     if (!cont || !body) return;
-    ultimoInforme = generadorDatos.informePedidoObtenido(datos) || [];
+    ultimoInforme = filasPrecalculadas || generadorDatos.informePedidoObtenido(datos) || [];
     if (!ultimoInforme.length) { cont.style.display = 'none'; return; }
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
     body.innerHTML = ultimoInforme.map(f => `<tr>
@@ -410,7 +548,7 @@ function mostrarPreview(datos) {
     const config = generadorDatos.obtenerConfiguracion();
     // Actualizar estadísticas
     document.getElementById('statParticipantes').textContent = datos.length;
-    document.getElementById('statVariables').textContent = Object.keys(datos[0]).length;
+    document.getElementById('statVariables').textContent = (typeof datos.nombres === 'function') ? datos.nombres().length : Object.keys(datos[0]).length;
     document.getElementById('statPruebas').textContent = config.pruebas.length;
     // Crear tabla preview (solo primeras 10 filas)
     renderizarTablaDatos(
@@ -2063,7 +2201,9 @@ function obtenerEtiquetaOpcion(columna) {
 function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
     thead.innerHTML = '';
     tbody.innerHTML = '';
-    const columnas = Object.keys(datos[0]);
+    // Acepta la base columnar del Simulador o un arreglo de filas-objeto (Analizador)
+    const esBase = typeof datos.nombres === 'function' && typeof datos.valor === 'function';
+    const columnas = esBase ? datos.nombres() : Object.keys(datos[0]);
     const filaEncabezados = document.createElement('tr');
     columnas.forEach(col => {
         const th = document.createElement('th');
@@ -2076,8 +2216,8 @@ function renderizarTablaDatos(thead, tbody, datos, maxFilas = 10) {
         const fila = document.createElement('tr');
         columnas.forEach(col => {
             const td = document.createElement('td');
-            const valor = datos[i][col];
-            td.textContent = typeof valor === 'number' ? valor.toFixed(2) : valor;
+            const valor = esBase ? datos.valor(col, i) : datos[i][col];
+            td.textContent = typeof valor === 'number' ? (Number.isNaN(valor) ? '' : valor.toFixed(2)) : valor;
             fila.appendChild(td);
         });
         tbody.appendChild(fila);
