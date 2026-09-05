@@ -2452,6 +2452,7 @@ const CAMPOS_GENERAL = [
     { id: 'generarPercentiles', clave: 'GenerarPercentiles', checkbox: true },
     { id: 'correlacionesExactas', clave: 'CorrelacionesExactas', checkbox: true },
     { id: 'indiceFiabilidad', clave: 'IndiceFiabilidad' },
+    { id: 'heterogeneidadItems', clave: 'HeterogeneidadItems' },
     { id: 'pctPerdidos', clave: 'PctPerdidos' },
     { id: 'mecanismoPerdidos', clave: 'MecanismoPerdidos' },
     { id: 'pctDescuidados', clave: 'PctDescuidados' },
