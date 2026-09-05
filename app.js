@@ -349,20 +349,37 @@ function mostrarDiagnosticoCorrelaciones() {
     const cont = document.getElementById('diagnosticoCorrelaciones');
     if (!cont) return;
     const dg = generadorDatos.diagnosticoCorrelaciones;
-    if (!dg || !dg.imposible) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    const limitadas = (dg && dg.limitadas) || [];
+    const cal = dg && dg.calibracion;
+    // Se muestra si la matriz pedida era imposible O si alguna r no es
+    // alcanzable con las formas (asimétrica/uniforme), los recortes Likert o
+    // las diferencias por grupo configurados (calibración sin converger).
+    const hayLimite = limitadas.length > 0 || (cal && !cal.convergio) || (dg && dg.intermediaAjustada);
+    if (!dg || (!dg.imposible && !hayLimite)) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
     const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-    const tri = dg.triadas.slice(0, 4).map(t =>
+    const tri = (dg.triadas || []).slice(0, 4).map(t =>
         `<li>${t.variables.map(esc).join(' · ')} — correlaciones pedidas ${t.correlaciones.map(x => x.toFixed(2)).join(', ')}</li>`).join('');
-    const aj = dg.ajustes.slice(0, 8).map(a =>
+    const aj = (dg.ajustes || []).slice(0, 8).map(a =>
         `<li>${esc(a.a)} ↔ ${esc(a.b)}: <strong>${a.pedido.toFixed(2)} → ${a.ajustado.toFixed(2)}</strong></li>`).join('');
+    const lim = limitadas.slice(0, 8).map(l =>
+        `<li>${esc(l.a)} ↔ ${esc(l.b)}: pedida <strong>${l.pedido.toFixed(2)}</strong>, alcanzable ≈ <strong>${l.alcanzable.toFixed(2)}</strong></li>`).join('');
+    const titulo = dg.imposible ? '⚠️ Correlaciones incompatibles entre sí' : '⚠️ Correlaciones fuera del alcance de la configuración';
+    const intro = dg.imposible
+        ? 'La combinación pedida no puede existir en ninguna muestra real (la matriz no es definida positiva). Se usó la <strong>matriz válida más cercana</strong>; revisa qué cambió y ajusta tus objetivos si lo necesitas.'
+        : 'Con las formas de distribución (asimétrica/uniforme), los rangos Likert o las diferencias por grupo configurados, alguna correlación pedida no es alcanzable exactamente. Se generó la <strong>mejor aproximación</strong>; el informe «pedido vs. obtenido» muestra el valor real.';
+    const notaCal = (cal && !cal.convergio)
+        ? `<p class="help-text" style="margin:0.4rem 0 0;">La calibración exacta se detuvo con un error máximo de <strong>${cal.error.toFixed(3)}</strong> en alguna correlación: esa combinación no es alcanzable con las formas o rangos elegidos.</p>` : '';
     cont.innerHTML = `
-        <h3 class="card-title">⚠️ Correlaciones incompatibles entre sí</h3>
-        <p class="help-text">La combinación pedida no puede existir en ninguna muestra real (la matriz no es definida positiva).
-        Se usó la <strong>matriz válida más cercana</strong>; revisa qué cambió y ajusta tus objetivos si lo necesitas.</p>
+        <h3 class="card-title">${titulo}</h3>
+        <p class="help-text">${intro}</p>
         ${tri ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Tríada(s) en conflicto:</strong></p><ul class="help-text">${tri}</ul>` : ''}
-        ${aj ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Correlaciones ajustadas:</strong></p><ul class="help-text">${aj}</ul>` : ''}`;
+        ${aj ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Correlaciones ajustadas:</strong></p><ul class="help-text">${aj}</ul>` : ''}
+        ${lim ? `<p style="margin:0.4rem 0 0.2rem;"><strong>Correlaciones limitadas por la forma de las variables:</strong></p><ul class="help-text">${lim}</ul>` : ''}
+        ${notaCal}`;
     cont.style.display = '';
-    mostrarToast('⚠ Algunas correlaciones pedidas eran incompatibles y se ajustaron: revisa el aviso bajo la vista previa', 'warning', 9000);
+    mostrarToast(dg.imposible
+        ? '⚠ Algunas correlaciones pedidas eran incompatibles y se ajustaron: revisa el aviso bajo la vista previa'
+        : '⚠ Alguna correlación pedida no es alcanzable con la configuración elegida: revisa el aviso bajo la vista previa', 'warning', 9000);
 }
 // ---- Informe pedido vs obtenido ----
 let ultimoInforme = [];
