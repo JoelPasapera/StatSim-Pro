@@ -37,7 +37,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#0b0f19">
     <!-- Styles -->
-    <link rel="stylesheet" href="styles.css?v=12">
+    <link rel="stylesheet" href="styles.css?v=13">
     <style>
         .chart-grid {
             display: grid;
@@ -866,6 +866,12 @@
                     </button>
                 </div>
 
+                <!-- Avance de la generación (la base se genera en un Web Worker) -->
+                <div id="progresoGeneracion" class="progreso-generacion" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+                    <div class="progreso-generacion__barra"><div class="progreso-generacion__relleno"></div></div>
+                    <span class="progreso-generacion__texto">Preparando… 0 %</span>
+                </div>
+
                 <!-- Diagnóstico de correlaciones incompatibles (solo aparece si hubo ajuste) -->
                 <div id="diagnosticoCorrelaciones" class="card" style="display: none; border-left: 4px solid #d4a72c;"></div>
 
@@ -1419,8 +1425,11 @@
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
-    <!-- Scripts generador de datos -->
-    <script src="generador-datos.js?v=10"></script>
+    <!-- Scripts generador de datos: primero el almacén columnar (lo usa el
+         generador y también generador-worker.js, que carga ambos con estas
+         mismas versiones) -->
+    <script src="base-columnar.js?v=1"></script>
+    <script src="generador-datos.js?v=11"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1492,7 +1501,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=26"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
