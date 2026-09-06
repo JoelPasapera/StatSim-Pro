@@ -415,7 +415,9 @@ function publicarDatosGenerados(base) {
     Object.defineProperty(window, 'datosGenerados', {
         configurable: true,
         enumerable: true,
-        get() { if (valor === undefined) valor = base ? base.aObjetos() : null; return valor; },
+        // Una sola copia: la vista por objetos vive en la caché de la propia base
+        // (la misma que usa generadorDatos.obtenerDatosGenerados()).
+        get() { return valor !== undefined ? valor : (base ? base.aObjetos() : null); },
         set(v) { valor = v; }
     });
 }
@@ -443,7 +445,9 @@ function generarBaseDatos() {
         const boton = document.getElementById('btnGenerar');
         boton.disabled = true; // Evitar doble ejecución mientras se procesa
         mostrarProgresoGeneracion(0, 'Preparando');
-        const configuracion = JSON.parse(JSON.stringify(generadorDatos.obtenerConfiguracion()));
+        // La configuración viaja tal cual: postMessage la clona (clon estructurado,
+        // que conserva NaN y null) y el respaldo en el hilo la usa directamente.
+        const configuracion = generadorDatos.obtenerConfiguracion();
         MotorGeneracion.generar(configuracion, mostrarProgresoGeneracion)
             .then(resultado => {
                 // El generador de la página queda con el resultado, igual que si
