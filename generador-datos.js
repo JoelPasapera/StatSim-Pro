@@ -152,12 +152,109 @@ class GeneradorDatos {
 
         // Diferencias por grupo (opcionales)
         this.configuracion.diferenciasGrupo = this.recolectarDiferenciasGrupo();
+        // (B6) Modelos estructurales: mediación y moderación desde coeficientes
+        this.configuracion.modelos = this.recolectarModelos();
 
         return this.configuracion;
     }
 
     // Lee las diferencias por grupo de la tabla (variable cuantitativa,
     // variable de agrupación y d de Cohen).
+    // Nombres de las variables correlacionables (mismos que la tabla III):
+    // escalas por nombre, puntajes generales derivados y sociodemográficos continuos.
+    _nombresCorrelacionables() {
+        const cfg = this.configuracion, nombres = new Set();
+        (cfg.pruebas || []).forEach(p => nombres.add(p.nombre));
+        (cfg.gruposPruebas || []).forEach(g => { if (g.escalas.length >= 2) nombres.add(this.nombreGeneral(g)); });
+        (cfg.sociodemograficos || []).forEach(s => { if (s.distribucion === 'normal' || s.distribucion === 'asimetrica') nombres.add(s.categoria); });
+        return nombres;
+    }
+    _esNombreGeneral(nombre) {
+        return (this.configuracion.gruposPruebas || []).some(g => g.escalas.length >= 2 && this.nombreGeneral(g) === nombre);
+    }
+    _validarModelos(errores, advertencias) {
+        const cfg = this.configuracion;
+        const modelos = cfg.modelos || [];
+        if (!modelos.length) return;
+        const nombres = this._nombresCorrelacionables();
+        const tablaIII = new Set((cfg.correlaciones || []).map(c => (c.a < c.b ? `${c.a}|${c.b}` : `${c.b}|${c.a}`)));
+        const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        const criteriosModeracion = new Set();
+        const gruposMediacion = new Map();
+        // Registro de parejas fijadas por algún modelo: dos modelos no pueden fijar
+        // la misma pareja con valores distintos (p. ej. X→M→Y y una moderación
+        // cuyo criterio sea X con M como predictora).
+        const fijadas = new Map();
+        const fijarPareja = (p, valor, etiqueta) => {
+            if (!fijadas.has(p)) { fijadas.set(p, { valor, etiqueta }); return; }
+            const previo = fijadas.get(p);
+            if (Math.abs(previo.valor - valor) > 1e-9 && previo.etiqueta !== etiqueta) {
+                errores.push(`Conflicto entre modelos: la correlación ${p.replace('|', ' ↔ ')} la fija «${previo.etiqueta}» en ${previo.valor.toFixed(2)} y «${etiqueta}» en ${valor.toFixed(2)}`);
+            }
+        };
+        this._correlacionesImplicadasPorMediacion().forEach(c => fijarPareja(par(c.a, c.b), c.r, `mediación sobre ${c.a}/${c.b}`));
+        modelos.filter(md => md.tipo === 'moderacion').forEach(md => {
+            const rXW = (cfg.correlaciones || []).find(c => par(c.a, c.b) === par(md.x, md.m));
+            const rho = rXW ? rXW.r : 0;
+            const etiqueta = `Moderación ${md.x} × ${md.m} → ${md.y}`;
+            fijarPareja(par(md.x, md.y), md.c1 + md.c2 * rho, etiqueta);
+            fijarPareja(par(md.m, md.y), md.c2 + md.c1 * rho, etiqueta);
+        });
+        modelos.forEach((md, k) => {
+            const etiqueta = md.tipo === 'moderacion' ? `Moderación ${md.x} × ${md.m} → ${md.y}` : `Mediación ${md.x} → ${md.m} → ${md.y}`;
+            [md.x, md.m, md.y].forEach(v => { if (!nombres.has(v)) errores.push(`${etiqueta}: la variable «${v}» no existe entre las cuantitativas del estudio`); });
+            if (md.x === md.m || md.x === md.y || md.m === md.y) errores.push(`${etiqueta}: las tres variables deben ser distintas`);
+            if ([md.c1, md.c2, md.c3].some(c => Math.abs(c) >= 1)) errores.push(`${etiqueta}: los coeficientes estandarizados deben estar entre −1 y 1`);
+            if (md.tipo === 'mediacion') {
+                const rXY = md.c3 + md.c1 * md.c2, rMY = md.c2 + md.c1 * md.c3;
+                if (Math.abs(rXY) >= 0.99 || Math.abs(rMY) >= 0.99) {
+                    errores.push(`${etiqueta}: los coeficientes implican correlaciones imposibles (r(X,Y) = ${rXY.toFixed(2)}, r(M,Y) = ${rMY.toFixed(2)}); reduce a, b o c′`);
+                }
+                const clave = par(md.x, md.y);
+                if (gruposMediacion.has(clave) && gruposMediacion.get(clave) !== md.c3) {
+                    advertencias.push(`${etiqueta}: mediadores paralelos con distinto c′; se usa el del primer modelo (${gruposMediacion.get(clave)})`);
+                }
+                if (!gruposMediacion.has(clave)) gruposMediacion.set(clave, md.c3);
+                [par(md.x, md.m), par(md.m, md.y), par(md.x, md.y)].forEach(p => {
+                    if (tablaIII.has(p)) advertencias.push(`${etiqueta}: la correlación ${p.replace('|', ' ↔ ')} de la tabla III se sustituye por la que implican los coeficientes`);
+                });
+            } else {
+                [md.x, md.m, md.y].forEach(v => { if (this._esNombreGeneral(v)) errores.push(`${etiqueta}: un puntaje general derivado no puede entrar en una moderación (usa sus dimensiones)`); });
+                if (criteriosModeracion.has(md.y)) errores.push(`${etiqueta}: «${md.y}» ya es criterio de otra moderación (una variable solo puede serlo de una)`);
+                criteriosModeracion.add(md.y);
+                // R² con la correlación X–W que pida la tabla III (o 0 si no la hay)
+                const rXW = (cfg.correlaciones || []).find(c => par(c.a, c.b) === par(md.x, md.m));
+                const rho = rXW ? rXW.r : 0;
+                const r2 = md.c1 * md.c1 + md.c2 * md.c2 + 2 * md.c1 * md.c2 * rho + md.c3 * md.c3 * (1 + rho * rho);
+                if (r2 >= 0.98) errores.push(`${etiqueta}: los coeficientes explican el ${(r2 * 100).toFixed(0)} % de la varianza de «${md.y}» (máximo 98 %); reduce β₁, β₂ o β₃`);
+                [par(md.x, md.y), par(md.m, md.y)].forEach(p => {
+                    if (tablaIII.has(p)) advertencias.push(`${etiqueta}: la correlación ${p.replace('|', ' ↔ ')} de la tabla III se sustituye por la que implican los coeficientes`);
+                });
+            }
+        });
+    }
+    // (B6) Tabla de modelos estructurales: selects [tipo, X, mediador/moderador, Y]
+    // e inputs [c1, c2, c3]. Mediación: c1 = a (X→M), c2 = b (M→Y), c3 = c′ (X→Y
+    // directo). Moderación: c1 = β₁ (X), c2 = β₂ (W), c3 = β₃ (X×W). Todos
+    // estandarizados.
+    recolectarModelos() {
+        const modelos = [];
+        const filas = document.querySelectorAll('#bodyModelos .fila-modelo');
+        filas.forEach(fila => {
+            const selects = fila.querySelectorAll('select');
+            const inputs = fila.querySelectorAll('input');
+            if (selects.length < 4 || inputs.length < 3) return;
+            const tipo = selects[0].value === 'moderacion' ? 'moderacion' : 'mediacion';
+            const x = selects[1].value, m = selects[2].value, y = selects[3].value;
+            const c1 = parseFloat(inputs[0].value), c2 = parseFloat(inputs[1].value), c3 = parseFloat(inputs[2].value);
+            if (!x || !m || !y) return;
+            if ([c1, c2, c3].some(c => isNaN(c))) {
+                throw new Error(`Modelo ${tipo === 'moderacion' ? 'de moderación' : 'de mediación'} (${x} · ${m} · ${y}): faltan coeficientes`);
+            }
+            modelos.push({ tipo, x, m, y, c1, c2, c3 });
+        });
+        return modelos;
+    }
     recolectarDiferenciasGrupo() {
         const diferencias = [];
         const filas = document.querySelectorAll('#bodyDiferencias .fila-diferencia');
@@ -557,7 +654,8 @@ class GeneradorDatos {
         // obtenida no fluctúa por el muestreo (igual que la r).
         const exactas = hayCorrelaciones && this.configuracion.correlacionesExactas !== false;
         if (exactas) avisar(0.12, 'Calibrando correlaciones exactas');
-        const matrizDrivers = exactas ? this.generarMatrizDrivers(n, this._matrizCodigosGrupo(base), this._funcionesDeValor(base)) : null;
+        const funcionesValor = exactas ? this._funcionesDeValor(base) : null;
+        const matrizDrivers = exactas ? this.generarMatrizDrivers(n, this._matrizCodigosGrupo(base), funcionesValor) : null;
         avisar(0.32, 'Calibrando la fiabilidad');
         // Fiabilidad autocalibrada: una vez por escala (no por participante).
         const indiceFiab = this.configuracion.indiceFiabilidad || 'alfa';
@@ -567,10 +665,14 @@ class GeneradorDatos {
 
         // Desplazamientos por grupo de cada variable continua (A1), por
         // participante, leídos de las columnas de agrupación ya generadas.
+        // En modo exacto se reutilizan los desplazamientos que dejó calibrados
+        // el punto fijo (mismos arreglos que usaron las funciones de valor).
+        const despCalibrado = new Map();
+        if (funcionesValor) funcionesValor.forEach(f => { if (f.desp && f.nombre) despCalibrado.set(f.nombre, f.desp); });
         const despSocio = new Map();
-        continuos.forEach(s => despSocio.set(s, this._desplazamientosDe(base, s.categoria, this._deEfectiva(s))));
+        continuos.forEach(s => despSocio.set(s, despCalibrado.get(s.categoria) || this._desplazamientosDe(base, s.categoria, this._deEfectiva(s))));
         const despPrueba = new Map();
-        pruebas.forEach(p => despPrueba.set(p, this._desplazamientosDe(base, p.nombre, p.desviacion)));
+        pruebas.forEach(p => despPrueba.set(p, despCalibrado.get(p.nombre) || this._desplazamientosDe(base, p.nombre, p.desviacion)));
         const factorDEPrueba = new Map();
         pruebas.forEach(p => factorDEPrueba.set(p, this._factorDE(p.nombre)));
 
@@ -712,15 +814,50 @@ class GeneradorDatos {
     // Desplazamientos por grupo de una variable para TODOS los participantes
     // (Float64Array), leyendo los códigos de las columnas de agrupación.
     _desplazamientosDe(base, nombre, sigmaTotal) {
-        const salida = new Float64Array(base.n);
+        return this._partesDesplazamiento(base, nombre, sigmaTotal).desp;
+    }
+    // Desplazamientos por grupo de una variable con sus PARTES (una por
+    // agrupación): { desp, partes: [{ agrup, d, amplitud, c, codigos }], recalcular }.
+    // `amplitud` está en unidades de σ y es ajustable: la calibración exacta la
+    // corrige hasta que la d MARGINAL observada sea la pedida (con varias
+    // agrupaciones, la correlación muestral entre los códigos confunde las d
+    // marginales: con n = 400 y tres agrupaciones, 0.53 salía 0.29 o 0.75).
+    _partesDesplazamiento(base, nombre, sigmaTotal) {
+        const n = base.n;
+        const desp = new Float64Array(n);
+        const partes = [];
         const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
-        if (!lista || !lista.length || !(sigmaTotal > 0)) return salida;
-        lista.forEach(e => {
-            const codigos = base.columna(e.agrup.categoria).datos;
-            const amplitud = e.amplitud * sigmaTotal;      // Δ_k = d_k·σ/√(1 + d_k²·Var(c_k))
-            for (let i = 0; i < base.n; i++) salida[i] += amplitud * this._codigoCentrado(e.agrup, codigos[i]);
-        });
-        return salida;
+        if (lista && lista.length && sigmaTotal > 0) {
+            lista.forEach(e => {
+                const codigos = base.columna(e.agrup.categoria).datos;
+                const c = new Float64Array(n);
+                for (let i = 0; i < n; i++) c[i] = this._codigoCentrado(e.agrup, codigos[i]);
+                partes.push({ agrup: e.agrup, d: e.d, amplitud: e.amplitud, c, codigos });
+            });
+        }
+        const recalcular = () => {
+            desp.fill(0);
+            partes.forEach(p => { const a = p.amplitud * sigmaTotal; for (let i = 0; i < n; i++) desp[i] += a * p.c[i]; });
+        };
+        recalcular();
+        return { desp, partes, recalcular };
+    }
+    // d marginal observada (pendiente sobre el código / DE agrupada dentro de
+    // los grupos de ESA agrupación), como la calcula el informe.
+    _dMarginal(valores, codigos) {
+        const n = valores.length;
+        const porGrupo = new Map();
+        for (let i = 0; i < n; i++) { const v = valores[i]; if (!(v === v)) continue; const g = codigos[i]; if (!porGrupo.has(g)) porGrupo.set(g, []); porGrupo.get(g).push(v); }
+        if (porGrupo.size < 2) return null;
+        let ssIntra = 0, gl = 0;
+        porGrupo.forEach(vals => { const mg = vals.reduce((a, b) => a + b, 0) / vals.length; vals.forEach(v => { ssIntra += (v - mg) ** 2; }); gl += vals.length - 1; });
+        const deIntra = Math.sqrt(ssIntra / Math.max(1, gl));
+        let mc = 0, mv = 0, k = 0;
+        for (let i = 0; i < n; i++) { if (valores[i] === valores[i]) { mc += codigos[i]; mv += valores[i]; k++; } }
+        mc /= k; mv /= k;
+        let sxy = 0, sxx = 0;
+        for (let i = 0; i < n; i++) { if (valores[i] === valores[i]) { sxy += (codigos[i] - mc) * (valores[i] - mv); sxx += (codigos[i] - mc) ** 2; } }
+        return (sxx > 0 && deIntra > 0) ? (sxy / sxx) / deIntra : null;
     }
 
     // ============ AUTOCALIBRACIÓN DE LA FIABILIDAD ============
@@ -1410,6 +1547,21 @@ class GeneradorDatos {
             try { generar(cfgBase({ sociodemograficos: [{ categoria: 'PE1', categoriaCorta: 'X', distribucion: 'binaria', promedio: 0.5, desviacion: 1, minimo: null, maximo: null, decimales: 0 }] })); }
             catch (e) { mensajeDup = e.message; }
             ok('columna duplicada («PE1» como sociodemográfico y como ítem) → error que la nombra', /PE1/.test(mensajeDup) && /sociodemográfica/.test(mensajeDup), mensajeDup.slice(0, 60));
+            // 16) (B6) mediación X → M → Y: a, b, c′ e indirecto exactos; y moderación con interacción
+            const cfgMed = cfgBase({ tamanoMuestra: 1500, correlaciones: [{ a: 'Comprensión', b: 'Estrés', r: 0.15 }],
+                modelos: [{ tipo: 'mediacion', x: 'Percepción', m: 'Regulación', y: 'Estrés', c1: 0.5, c2: -0.4, c3: -0.2 }] });
+            const { g: g16, d: d16 } = generar(cfgMed);
+            const inf16 = g16.informePedidoObtenido(d16);
+            const coef = (tipo, patron) => inf16.find(f => f.tipo === tipo && (!patron || f.variable.includes(patron)));
+            ok('(B6) mediación: a, b, c′ e indirecto obtenidos = pedidos', ['a', 'b', 'c′', 'a·b'].every(t => coef(t) && coef(t).ok), ['a', 'b', 'c′', 'a·b'].map(t => `${t}=${coef(t) && coef(t).obtenido}`).join(' '));
+            ok('(B6) mediación: la r de la tabla III con otra variable sigue exacta', inf16.filter(f => f.tipo === 'r').every(f => f.ok), inf16.filter(f => f.tipo === 'r').map(f => f.obtenido).join(' '));
+            const cfgMod = cfgBase({ tamanoMuestra: 2000, correlaciones: [{ a: 'Percepción', b: 'Comprensión', r: 0.30 }, { a: 'Estrés', b: 'Regulación', r: -0.35 }],
+                modelos: [{ tipo: 'moderacion', x: 'Percepción', m: 'Comprensión', y: 'Estrés', c1: -0.30, c2: 0.20, c3: 0.25 }] });
+            const { g: g17, d: d17 } = generar(cfgMod);
+            const inf17 = g17.informePedidoObtenido(d17);
+            const beta = t => inf17.find(f => f.tipo === t);
+            ok('(B6) moderación: β₁, β₂ y β₃ (interacción) obtenidos = pedidos', ['β₁', 'β₂', 'β₃'].every(t => beta(t) && beta(t).ok), ['β₁', 'β₂', 'β₃'].map(t => `${t}=${beta(t) && beta(t).obtenido}`).join(' '));
+            ok('(B6) moderación: Y conserva Media/DE y su r con una tercera variable', inf17.filter(f => (f.tipo === 'Media' || f.tipo === 'DE') && f.variable === 'Estrés').every(f => f.ok) && inf17.filter(f => f.tipo === 'r' && f.variable.includes('Regulación')).every(f => f.ok), inf17.filter(f => f.tipo === 'r').map(f => `${f.variable} ${f.obtenido}`).join('; '));
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -1683,8 +1835,11 @@ class GeneradorDatos {
             if (obs === null || !isFinite(obs)) return;
             filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });   // ±0.04 ≈ 2 EE de α con n≈300
         });
-        // 3) Correlaciones objetivo (incluidas las de generales derivados)
+        // 3) Correlaciones objetivo (incluidas las de generales derivados; las
+        //    parejas que fija un modelo estructural se informan en 5)
+        const fijadasPorModelos = this._paresFijadosPorModelos();
         (cfg.correlaciones || []).forEach(({ a, b, r }) => {
+            if (fijadasPorModelos.has(a < b ? `${a}|${b}` : `${b}|${a}`)) return;
             const ca = columnaDe(a), cb = columnaDe(b);
             if (!ca || !cb || !base.tiene(ca) || !base.tiene(cb)) return;
             const x = base.columna(ca).datos, y = base.columna(cb).datos;
@@ -1748,7 +1903,98 @@ class GeneradorDatos {
             const etiqueta = `${dif.cuantitativa} por ${dif.agrupacion}` + (limitada ? ' (no alcanzable con las d de sus dimensiones)' : '');
             filas.push({ tipo: 'd', variable: etiqueta, pedido: num(dif.d), obtenido: num(obs), ok: !limitada && Math.abs(obs - dif.d) <= tolerancia });
         });
+        // 5) (B6) Modelos estructurales: coeficientes estandarizados obtenidos por
+        //    regresión sobre los casos completos (X y W estandarizados en la
+        //    muestra; el producto X·W se forma con los valores estandarizados).
+        this._informeModelos(base, filas, columnaDe, num);
         return filas;
+    }
+    _informeModelos(base, filas, columnaDe, num) {
+        const cfg = this.configuracion, modelos = cfg.modelos || [];
+        if (!modelos.length) return;
+        const n = base.n;
+        const exactas = cfg.correlacionesExactas !== false;
+        const tol = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(Math.max(4, n)));
+        const columna = nombre => { const c = columnaDe(nombre); return c && base.tiene(c) ? base.columna(c).datos : null; };
+        const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        // Mediación: por par (X,Y), regresión de Y sobre X y TODOS sus mediadores
+        const grupos = new Map();
+        modelos.filter(md => md.tipo === 'mediacion').forEach(md => {
+            const clave = par(md.x, md.y);
+            if (!grupos.has(clave)) grupos.set(clave, { x: md.x, y: md.y, cprima: md.c3, mediadores: [] });
+            const g = grupos.get(clave);
+            if (!g.mediadores.some(q => q.m === md.m)) g.mediadores.push({ m: md.m, a: md.c1, b: md.c2 });
+        });
+        grupos.forEach(g => {
+            const cols = [columna(g.x)].concat(g.mediadores.map(q => columna(q.m))).concat([columna(g.y)]);
+            if (cols.some(c => !c)) return;
+            const completos = [];
+            for (let i = 0; i < n; i++) if (cols.every(c => isFinite(c[i]))) completos.push(i);
+            if (completos.length < 10) return;
+            const tomar = c => completos.map(i => c[i]);
+            const X = tomar(cols[0]), Y = tomar(cols[cols.length - 1]), Ms = g.mediadores.map((q, k) => tomar(cols[k + 1]));
+            const betasY = this._betasEstandarizadas(Y, [X].concat(Ms));   // [c′, b1, b2, …]
+            if (!betasY) return;
+            const etiqueta = `Mediación ${g.x} → ${g.mediadores.map(q => q.m).join(' / ')} → ${g.y}`;
+            g.mediadores.forEach((q, k) => {
+                const aObs = this._corr(X, Ms[k]), bObs = betasY[k + 1];
+                filas.push({ tipo: 'a', variable: `${etiqueta}: a (${g.x} → ${q.m})`, pedido: num(q.a), obtenido: num(aObs, 3), ok: Math.abs(aObs - q.a) <= tol });
+                filas.push({ tipo: 'b', variable: `${etiqueta}: b (${q.m} → ${g.y}, con ${g.x})`, pedido: num(q.b), obtenido: num(bObs, 3), ok: Math.abs(bObs - q.b) <= tol });
+                filas.push({ tipo: 'a·b', variable: `${etiqueta}: efecto indirecto vía ${q.m}`, pedido: num(q.a * q.b, 3), obtenido: num(aObs * bObs, 3), ok: Math.abs(aObs * bObs - q.a * q.b) <= tol });
+            });
+            filas.push({ tipo: 'c′', variable: `${etiqueta}: c′ (${g.x} → ${g.y} directo)`, pedido: num(g.cprima), obtenido: num(betasY[0], 3), ok: Math.abs(betasY[0] - g.cprima) <= tol });
+        });
+        // Moderación: regresión de Y (estandarizada) sobre z_X, z_W y z_X·z_W
+        modelos.filter(md => md.tipo === 'moderacion').forEach(md => {
+            const cx = columna(md.x), cw = columna(md.m), cy = columna(md.y);
+            if (!cx || !cw || !cy) return;
+            const completos = [];
+            for (let i = 0; i < n; i++) if (isFinite(cx[i]) && isFinite(cw[i]) && isFinite(cy[i])) completos.push(i);
+            if (completos.length < 10) return;
+            const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / arr.length) || 1; return arr.map(v => (v - mu) / sd); };
+            const zx = est(completos.map(i => cx[i])), zw = est(completos.map(i => cw[i])), y = completos.map(i => cy[i]);
+            const betas = this._betasEstandarizadas(y, [zx, zw, zx.map((v, i) => v * zw[i])], false);
+            if (!betas) return;
+            const etiqueta = `Moderación ${md.x} × ${md.m} → ${md.y}`;
+            filas.push({ tipo: 'β₁', variable: `${etiqueta}: β₁ (${md.x})`, pedido: num(md.c1), obtenido: num(betas[0], 3), ok: Math.abs(betas[0] - md.c1) <= tol });
+            filas.push({ tipo: 'β₂', variable: `${etiqueta}: β₂ (${md.m})`, pedido: num(md.c2), obtenido: num(betas[1], 3), ok: Math.abs(betas[1] - md.c2) <= tol });
+            filas.push({ tipo: 'β₃', variable: `${etiqueta}: β₃ (${md.x} × ${md.m})`, pedido: num(md.c3), obtenido: num(betas[2], 3), ok: Math.abs(betas[2] - md.c3) <= tol });
+        });
+    }
+    // Coeficientes de regresión de y sobre los predictores, con y estandarizada
+    // y (si estandarizarX) cada predictor estandarizado; si no, los predictores
+    // entran tal cual (para el producto z_X·z_W). Mínimos cuadrados por
+    // eliminación gaussiana (p pequeño). null si el sistema es singular.
+    _betasEstandarizadas(y, predictores, estandarizarX = true) {
+        const n = y.length, p = predictores.length;
+        if (n < p + 3) return null;
+        const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / n; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / n); return sd > 0 ? arr.map(v => (v - mu) / sd) : null; };
+        const yz = est(y);
+        if (!yz) return null;
+        const Xs = [];
+        for (let j = 0; j < p; j++) {
+            const c = estandarizarX ? est(predictores[j]) : (() => { const mu = predictores[j].reduce((s, v) => s + v, 0) / n; return predictores[j].map(v => v - mu); })();
+            if (!c) return null;
+            Xs.push(c);
+        }
+        // Ecuaciones normales A·β = g (todo centrado: sin intercepto)
+        const A = Array.from({ length: p }, () => new Array(p + 1).fill(0));
+        for (let j = 0; j < p; j++) {
+            for (let k = j; k < p; k++) { let s = 0; for (let i = 0; i < n; i++) s += Xs[j][i] * Xs[k][i]; A[j][k] = s / n; A[k][j] = s / n; }
+            let s = 0; for (let i = 0; i < n; i++) s += Xs[j][i] * yz[i]; A[j][p] = s / n;
+        }
+        for (let col = 0; col < p; col++) {
+            let piv = col;
+            for (let r = col + 1; r < p; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
+            if (Math.abs(A[piv][col]) < 1e-12) return null;
+            if (piv !== col) { const t = A[piv]; A[piv] = A[col]; A[col] = t; }
+            for (let r = 0; r < p; r++) {
+                if (r === col) continue;
+                const f = A[r][col] / A[col][col];
+                for (let c = col; c <= p; c++) A[r][c] -= f * A[col][c];
+            }
+        }
+        return A.map((f, j) => f[p] / f[j]);
     }
 
     prepararCorrelaciones() {
@@ -1790,7 +2036,11 @@ class GeneradorDatos {
             const de = idx.map(i => (porSigla[variables[i].clave] || {}).desviacion || 1);
             infoGeneral[this.nombreGeneral(g)] = { idx, de, rIntra: (g.rIntra === undefined ? 0.40 : g.rIntra) };
         });
-        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+        // (B6) Las correlaciones que IMPLICAN los modelos de mediación van
+        // delante de la tabla III: mandan sobre cualquier pareja repetida.
+        const correlacionesEfectivas = this._correlacionesImplicadasPorMediacion().concat(this.configuracion.correlaciones || []);
+        this.correlacionesEfectivas = correlacionesEfectivas;
+        correlacionesEfectivas.forEach(({ a, b, r }) => {
             const i = indicePorNombre[a], j = indicePorNombre[b];
             if (i !== undefined && j !== undefined) fijar(i, j, r, true);
         });
@@ -1821,7 +2071,7 @@ class GeneradorDatos {
             const rho = (objetivoCov - fijado) / pesoLibre;
             pares.forEach(p => { if (!esExplicita(p.i, p.j)) fijar(p.i, p.j, rho, false); });
         };
-        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+        correlacionesEfectivas.forEach(({ a, b, r }) => {
             const gA = infoGeneral[a], gB = infoGeneral[b];
             const iA = indicePorNombre[a], iB = indicePorNombre[b];
             const rF = Math.max(-0.99, Math.min(0.99, r));
@@ -1834,6 +2084,21 @@ class GeneradorDatos {
             } else if (gB && iA !== undefined) {
                 repartir(gB.idx.map((j, bj) => ({ i: iA, j, peso: gB.de[bj] })), rF * Math.sqrt(varianzaG(gB)));
             }
+        });
+        // (B6) Moderación: Y = β₁X + β₂W + β₃·X·W + e. Sus correlaciones con X y W
+        // las FIJAN los coeficientes: r(X,Y) = β₁ + β₂·ρ, r(W,Y) = β₂ + β₁·ρ, con
+        // ρ = r(X,W) tal como quedó en la matriz (tabla III, relleno intra-test o 0).
+        this.modelosModeracion = [];
+        (this.configuracion.modelos || []).filter(md => md.tipo === 'moderacion').forEach(md => {
+            const iX = indicePorNombre[md.x], iW = indicePorNombre[md.m], iY = indicePorNombre[md.y];
+            if (iX === undefined || iW === undefined || iY === undefined || new Set([iX, iW, iY]).size < 3) return;
+            const rho = R[iX][iW];
+            const r2 = md.c1 * md.c1 + md.c2 * md.c2 + 2 * md.c1 * md.c2 * rho + md.c3 * md.c3 * (1 + rho * rho);
+            if (!(r2 < 0.98)) return;   // la validación ya lo habrá rechazado
+            const rXY = Math.max(-0.99, Math.min(0.99, md.c1 + md.c2 * rho)), rWY = Math.max(-0.99, Math.min(0.99, md.c2 + md.c1 * rho));
+            R[iX][iY] = R[iY][iX] = rXY;
+            R[iW][iY] = R[iY][iW] = rWY;
+            this.modelosModeracion.push({ iX, iW, iY, b1: md.c1, b2: md.c2, b3: md.c3, rho, r2, x: md.x, w: md.m, y: md.y });
         });
         this.matrizForzada = false;
         this.correlVariables = variables;
@@ -1848,7 +2113,7 @@ class GeneradorDatos {
         const Rf = this.correlR;
         const covG = (info, j) => { let s = 0; info.idx.forEach((i, ai) => { s += info.de[ai] * (i === j ? 1 : Rf[i][j]); }); return s; };
         const varG = info => { let v = 0; info.idx.forEach((i, ai) => info.idx.forEach((j, bj) => { v += info.de[ai] * info.de[bj] * (i === j ? 1 : Rf[i][j]); })); return v; };
-        (this.configuracion.correlaciones || []).forEach(({ a, b, r }) => {
+        correlacionesEfectivas.forEach(({ a, b, r }) => {
             const gA = infoGeneral[a], gB = infoGeneral[b];
             if (!gA && !gB) return;
             let implicada = null;
@@ -2105,8 +2370,108 @@ class GeneradorDatos {
     _hayEstructuraDeCorrelacion() {
         const cfg = this.configuracion;
         if ((cfg.correlaciones || []).length > 0) return true;
+        if ((cfg.modelos || []).length > 0) return true;
         if ((cfg.gruposPruebas || []).some(g => g.escalas.length >= 2 && (g.rIntra === undefined ? 0.40 : g.rIntra) !== 0)) return true;
         return cfg.correlacionesExactas !== false && !!this.diferenciasEfectivas && this.diferenciasEfectivas.size > 0;
+    }
+
+    // ============ MODELOS ESTRUCTURALES (B6) ============
+    // MEDIACIÓN X → M → Y con coeficientes estandarizados a (X→M), b (M→Y|X) y
+    // c′ (X→Y|M). Es un modelo lineal: equivale exactamente a una matriz de
+    // correlaciones, así que se traduce a correlaciones y el resto del motor
+    // (exactitud, formas, grupos) la trata como a las de la tabla III:
+    //   r(X,M) = a · r(X,Y) = c′ + a·b · r(M,Y) = b + a·c′
+    // Con varios mediadores sobre el mismo par (X,Y) — mediación paralela — se
+    // suponen residuos incorrelados: r(Mi,Mj) = ai·aj (salvo pareja explícita),
+    // r(Mi,Y) = bi + ai·c′ + Σ_{j≠i} bj·r(Mi,Mj), r(X,Y) = c′ + Σ ai·bi.
+    _correlacionesImplicadasPorMediacion() {
+        const cfg = this.configuracion, salida = [];
+        const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        const explicitas = new Map((cfg.correlaciones || []).map(c => [par(c.a, c.b), c.r]));
+        const grupos = new Map();   // par(X,Y) → { x, y, cprima, mediadores: [{m, a, b}] }
+        (cfg.modelos || []).filter(md => md.tipo === 'mediacion').forEach(md => {
+            if (new Set([md.x, md.m, md.y]).size < 3) return;
+            const clave = par(md.x, md.y);
+            if (!grupos.has(clave)) grupos.set(clave, { x: md.x, y: md.y, cprima: md.c3, mediadores: [] });
+            const g = grupos.get(clave);
+            if (g.mediadores.some(q => q.m === md.m)) return;   // mediador repetido: manda el primero
+            g.mediadores.push({ m: md.m, a: md.c1, b: md.c2 });
+        });
+        grupos.forEach(g => {
+            const rMM = (i, j) => { const k = par(g.mediadores[i].m, g.mediadores[j].m); return explicitas.has(k) ? explicitas.get(k) : g.mediadores[i].a * g.mediadores[j].a; };
+            g.mediadores.forEach((q, i) => {
+                salida.push({ a: g.x, b: q.m, r: q.a, origen: 'mediación' });
+                let rMY = q.b + q.a * g.cprima;
+                g.mediadores.forEach((p, j) => { if (j !== i) rMY += p.b * rMM(i, j); });
+                salida.push({ a: q.m, b: g.y, r: rMY, origen: 'mediación' });
+                for (let j = i + 1; j < g.mediadores.length; j++) {
+                    const k = par(q.m, g.mediadores[j].m);
+                    if (!explicitas.has(k)) salida.push({ a: q.m, b: g.mediadores[j].m, r: rMM(i, j), origen: 'mediación' });
+                }
+            });
+            salida.push({ a: g.x, b: g.y, r: g.cprima + g.mediadores.reduce((s, q) => s + q.a * q.b, 0), origen: 'mediación' });
+        });
+        return salida;
+    }
+    // Pares fijados por algún modelo (la tabla III no manda sobre ellos).
+    _paresFijadosPorModelos() {
+        const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        const pares = new Set();
+        this._correlacionesImplicadasPorMediacion().forEach(c => pares.add(par(c.a, c.b)));
+        (this.configuracion.modelos || []).filter(md => md.tipo === 'moderacion').forEach(md => { pares.add(par(md.x, md.y)); pares.add(par(md.m, md.y)); });
+        return pares;
+    }
+    // MODERACIÓN: el driver de Y se compone en el espacio normal de los drivers,
+    //   z_Y = β₁·z_X + β₂·z_W + β₃·(z_X·z_W − ρ) + √(1 − R²)·e_Y,
+    // con R² = β₁² + β₂² + 2β₁β₂ρ + β₃²(1 + ρ²), de modo que Var(z_Y) = 1 y el
+    // término de interacción queda incorrelado con X y W (normales centradas).
+    // e_Y es el driver «propio» de Y que sale del Cholesky: en la matriz
+    // intermedia la fila de Y es la de ESE residuo (ver _aResidualModeracion).
+    _aplicarModeracion(fila) {
+        const modelos = this.modelosModeracion;
+        if (!modelos || !modelos.length) return fila;
+        for (let k = 0; k < modelos.length; k++) {
+            const md = modelos[k];
+            const zx = fila[md.iX], zw = fila[md.iW];
+            fila[md.iY] = md.b1 * zx + md.b2 * zw + md.b3 * (zx * zw - md.rho) + Math.sqrt(Math.max(0, 1 - md.r2)) * fila[md.iY];
+        }
+        return fila;
+    }
+    // Residualiza `col` contra las columnas X (con intercepto) por mínimos
+    // cuadrados; sin efectos secundarios. Devuelve un Float64Array nuevo.
+    _residualizarColumna(col, columnasX) {
+        const n = col.length, q = columnasX.length + 1;
+        const x = j => (j === 0 ? null : columnasX[j - 1]);
+        const G = Array.from({ length: q }, () => new Array(q).fill(0)), g = new Array(q).fill(0);
+        for (let a = 0; a < q; a++) {
+            const ca = x(a);
+            for (let b = a; b < q; b++) { const cb = x(b); let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * (cb ? cb[i] : 1); G[a][b] = G[b][a] = s; }
+            let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * col[i]; g[a] = s;
+        }
+        const L = this.descomposicionCholesky(G), Linv = this._inversaTriangularInferior(L);
+        const beta = new Array(q).fill(0);
+        for (let a = 0; a < q; a++) { let s = 0; for (let k = 0; k < q; k++) { let gik = 0; for (let r = 0; r < q; r++) gik += Linv[r][a] * Linv[r][k]; s += gik * g[k]; } beta[a] = s; }
+        const out = new Float64Array(n);
+        for (let i = 0; i < n; i++) { let s = beta[0]; for (let a = 1; a < q; a++) s += columnasX[a - 1][i] * beta[a]; out[i] = col[i] - s; }
+        return out;
+    }
+    // Pasa la fila/columna de cada criterio de moderación de la matriz OBJETIVO
+    // (Pearson entre variables finales) al espacio de su residuo e_Y:
+    //   r(e_Y, V) = (r(Y,V) − β₁·r(X,V) − β₂·r(W,V)) / √(1 − R²),  r(e_Y, X) = r(e_Y, W) = 0.
+    _aResidualModeracion(R) {
+        const modelos = this.modelosModeracion;
+        if (!modelos || !modelos.length) return R;
+        const S = R.map(f => f.slice());
+        const m = S.length;
+        modelos.forEach(md => {
+            const escala = 1 / Math.sqrt(Math.max(1e-6, 1 - md.r2));
+            for (let v = 0; v < m; v++) {
+                if (v === md.iY) continue;
+                const r = (v === md.iX || v === md.iW) ? 0 : Math.max(-0.99, Math.min(0.99, (S[md.iY][v] - md.b1 * S[md.iX][v] - md.b2 * S[md.iW][v]) * escala));
+                S[md.iY][v] = S[v][md.iY] = r;
+            }
+        });
+        return S;
     }
 
     // ============ CORRELACIÓN INTERMEDIA (Vale–Maurelli + grupos) ============
@@ -2197,7 +2562,9 @@ class GeneradorDatos {
         const q = p - 0.5, r = q * q;
         return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
     }
-    _matrizIntermedia(R, variables) {
+    _matrizIntermedia(Robjetivo, variables) {
+        // (B6) criterios de moderación: su fila pasa al espacio del residuo e_Y
+        const R = this._aResidualModeracion(Robjetivo);
         const m = R.length, limitadas = [];
         const formas = variables.map(v => this._formaMarginal(v));
         const nombres = variables.map(v => v.nombre);
@@ -2291,28 +2658,75 @@ class GeneradorDatos {
         // sobre las variables FINALES (formas, recortes, grupos) para que la
         // Pearson de la base sea exactamente la pedida.
         const L = funcionesValor ? this._calibrarCorrelacionesExactas(W, funcionesValor, codigosGrupo) : this.correlL;
-        // Z* = W·Lᵀ
-        const salida = new Array(n);
+        // Z* = W·Lᵀ, por columnas…
+        const Zcols = Array.from({ length: m }, () => new Float64Array(n));
         for (let i = 0; i < n; i++) {
-            const w = W[i], y = new Array(m).fill(0);
-            for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; y[a] = s; }
-            salida[i] = y;
+            const w = W[i];
+            for (let a = 0; a < m; a++) { let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; Zcols[a][i] = s; }
         }
-        // Variables con diferencias por grupo: el driver pasa a ESPACIO DE VALOR
-        // (forma aplicada → medias de grupo igualadas → DE 1). Igualar medias
-        // en z no basta con formas no normales (las medias de grupo de e^{σz}
-        // no son iguales aunque las de z lo sean), y la d dejaba de ser exacta.
+        // …espacio de valor para las variables con grupos y driver compuesto de
+        // los criterios de moderación (mismo pipeline que usa la calibración)
         this.driversEnValor = new Set();
         if (funcionesValor) {
-            funcionesValor.forEach((f, a) => {
-                if (!f.enValor) return;
-                const u = this._igualarPorGrupos(Float64Array.from(salida, fila => f.transformar(fila[a])), codigosGrupo);
-                for (let i = 0; i < n; i++) salida[i][a] = u[i];
-                this.driversEnValor.add(this.correlVariables[a].tipo + ':' + this.correlVariables[a].clave);
-            });
+            this._prepararColumnasDeDrivers(Zcols, funcionesValor, codigosGrupo);
+            funcionesValor.forEach((f, a) => { if (f.enValor || f.esCriterio) this.driversEnValor.add(this.correlVariables[a].tipo + ':' + this.correlVariables[a].clave); });
         }
+        const salida = new Array(n);
+        for (let i = 0; i < n; i++) { const y = new Array(m); for (let a = 0; a < m; a++) y[a] = Zcols[a][i]; salida[i] = y; }
         return salida;
     }
+    // Pipeline por columnas sobre los drivers mezclados (modo exacto):
+    //  1) variables con diferencias por grupo → ESPACIO DE VALOR (forma aplicada,
+    //     medias de grupo igualadas, DE intra 1); igualar medias en z no basta con
+    //     formas no normales (las medias de grupo de e^{σz} no son iguales aunque
+    //     las de z lo sean) y la d dejaba de ser exacta;
+    //  2) (B6) criterios de moderación: driver compuesto a partir de los VALORES
+    //     FINALES estandarizados de X y W, en orden de modelo;
+    //  3) criterios que además tienen diferencias por grupo → igualar medias.
+    _prepararColumnasDeDrivers(Zcols, funciones, codigos) {
+        const n = Zcols[0].length;
+        const criterios = new Set((this.modelosModeracion || []).map(md => md.iY));
+        funciones.forEach((f, a) => {
+            if (!f.enValor || criterios.has(a)) return;
+            Zcols[a] = this._igualarPorGrupos(Float64Array.from(Zcols[a], z => f.transformar(z)), codigos);
+        });
+        (this.modelosModeracion || []).forEach(md => {
+            const xFinal = new Float64Array(n), wFinal = new Float64Array(n);
+            for (let i = 0; i < n; i++) { xFinal[i] = funciones[md.iX].valor(i, Zcols[md.iX][i]); wFinal[i] = funciones[md.iW].valor(i, Zcols[md.iW][i]); }
+            Zcols[md.iY] = this._componerCriterio(md, xFinal, wFinal, Zcols[md.iY]);
+            if (funciones[md.iY].enValor) Zcols[md.iY] = this._igualarPorGrupos(Zcols[md.iY], codigos);
+        });
+        return Zcols;
+    }
+    // Driver del criterio de una moderación, EXACTO para quien analice la base:
+    //   z_Y = β₁·x̃ + β₂·w̃ + β₃·(x̃·w̃ − media) + c·ẽ
+    // con x̃, w̃ los valores finales de X y W estandarizados en la muestra (lo
+    // mismo que hará el analista), ẽ el residuo propio de Y hecho ortogonal a
+    // x̃, w̃ y al producto, y c tal que Var(z_Y) = 1. Así la regresión de Y
+    // estandarizada sobre x̃, w̃ y x̃·w̃ devuelve exactamente β₁, β₂ y β₃; con
+    // el producto de los drivers normales, β₁ fluctuaba ±0.15 con n = 100
+    // porque el tercer momento muestral Σx̃²w̃ no es cero.
+    _componerCriterio(md, xFinal, wFinal, e) {
+        const n = e.length;
+        const est = col => { let mu = 0; for (let i = 0; i < n; i++) mu += col[i]; mu /= n; let v = 0; for (let i = 0; i < n; i++) v += (col[i] - mu) ** 2; const sd = Math.sqrt(v / n) || 1e-9; return Float64Array.from(col, x => (x - mu) / sd); };
+        const zx = est(xFinal), zw = est(wFinal);
+        const p = new Float64Array(n);
+        let mp = 0; for (let i = 0; i < n; i++) { p[i] = zx[i] * zw[i]; mp += p[i]; }
+        mp /= n; for (let i = 0; i < n; i++) p[i] -= mp;
+        const er = this._residualizarColumna(e, [zx, zw, p]);
+        const estructural = new Float64Array(n);
+        let ms = 0; for (let i = 0; i < n; i++) { estructural[i] = md.b1 * zx[i] + md.b2 * zw[i] + md.b3 * p[i]; ms += estructural[i]; }
+        ms /= n;
+        let vs = 0, ve = 0; for (let i = 0; i < n; i++) { vs += (estructural[i] - ms) ** 2; ve += er[i] * er[i]; }
+        vs /= n; ve /= n;
+        // varianza estructural muestral > 1: se rebaja el residuo a 0 (caso límite; la validación acota R² < 0.98)
+        const c = (ve > 0 && vs < 1) ? Math.sqrt((1 - vs) / ve) : 0;
+        const escala = vs >= 1 ? 1 / Math.sqrt(vs) : 1;
+        const out = new Float64Array(n);
+        for (let i = 0; i < n; i++) out[i] = (estructural[i] - ms) * escala + c * er[i];
+        return out;
+    }
+    // Funciones de valor de cada variable correlacionable, en el orden de
     // Funciones de valor de cada variable correlacionable, en el orden de
     // correlVariables: (i, z) → valor final del participante i con driver z.
     // Incluyen su desplazamiento por grupo (calculado con los códigos ya
@@ -2320,24 +2734,32 @@ class GeneradorDatos {
     _funcionesDeValor(base) {
         const cfg = this.configuracion;
         const conDif = nombre => !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(nombre) || []).length);
-        return this.correlVariables.map(v => {
+        const criterios = new Set((this.modelosModeracion || []).map(md => md.iY));
+        return this.correlVariables.map((v, a) => {
+            // (B6) el criterio de una moderación llega con su driver compuesto y
+            // forma normal: el modelo Y = β₁X + β₂W + β₃XW + e define su distribución
+            const esCriterio = criterios.has(a);
             if (v.tipo === 'escala') {
                 const p = cfg.pruebas.find(x => x.nombreCorto === v.clave);
                 const f = this._factorDE(p.nombre);
-                const desp = this._desplazamientosDe(base, p.nombre, p.desviacion);
+                const partes = this._partesDesplazamiento(base, p.nombre, p.desviacion);
+                const desp = partes.desp;
                 // Con diferencias por grupo el driver llega ya EN ESPACIO DE VALOR
                 // (forma aplicada, medias de grupo igualadas, DE 1): la forma no
                 // se vuelve a aplicar.
                 const enValor = conDif(p.nombre);
-                return { enValor, transformar: z => this.transformarFormaZ(z, p.distribucion),
-                    valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor) };
+                return { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: p.nombre,
+                    transformar: z => (esCriterio ? z : this.transformarFormaZ(z, p.distribucion)),
+                    valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor || esCriterio) };
             }
             const s = cfg.sociodemograficos.find(x => x.categoriaCorta === v.clave);
             const f = this._factorDE(s.categoria);
-            const desp = this._desplazamientosDe(base, s.categoria, this._deEfectiva(s));
+            const partes = this._partesDesplazamiento(base, s.categoria, this._deEfectiva(s));
+            const desp = partes.desp;
             const enValor = conDif(s.categoria);
-            return { enValor, transformar: z => this._formaSocioEstandar(s, z, f),
-                valor: (i, base) => this._valorContinuoSocio(s, base, desp[i], f, enValor) };
+            return { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: s.categoria,
+                transformar: z => (esCriterio ? z : this._formaSocioEstandar(s, z, f)),
+                valor: (i, base) => this._valorContinuoSocio(s, base, desp[i], f, enValor || esCriterio) };
         });
     }
     // Forma estandarizada (media 0, DE 1) de un sociodemográfico continuo a
@@ -2385,14 +2807,20 @@ class GeneradorDatos {
         // oscilar alrededor del objetivo en vez de clavarlo.
         const mejor = { error: Infinity, L, Rt, C: null };
         let sinMejora = 0, proyectada = false, iteraciones = 0;
-        const base = new Float64Array(n);
+        const Zmix = Array.from({ length: m }, () => new Float64Array(n));
+        // (B6) parejas criterio–X y criterio–W de una moderación: r(e_Y, X) = r(e_Y, W) = 0
+        // se mantienen; su Pearson final la determinan β₁, β₂, β₃ (y el tercer
+        // momento muestral), no la calibración.
+        const fijosPorBeta = new Set();
+        (this.modelosModeracion || []).forEach(md => { [[md.iY, md.iX], [md.iY, md.iW]].forEach(([a, b]) => fijosPorBeta.add(a < b ? `${a}|${b}` : `${b}|${a}`)); });
         for (let it = 0; it < 16; it++) {
             iteraciones = it + 1;
-            for (let a = 0; a < m; a++) {
-                for (let i = 0; i < n; i++) { const w = W[i]; let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; base[i] = s; }
-                const u = funciones[a].enValor ? this._igualarPorGrupos(Float64Array.from(base, z => funciones[a].transformar(z)), codigos) : base;
-                for (let i = 0; i < n; i++) X[a][i] = funciones[a].valor(i, u[i]);
-            }
+            // drivers mezclados de todas las variables (Z* = W·Lᵀ)…
+            for (let a = 0; a < m; a++) for (let i = 0; i < n; i++) { const w = W[i]; let s = 0; for (let k = 0; k <= a; k++) s += L[a][k] * w[k]; Zmix[a][i] = s; }
+            // …espacio de valor y criterios de moderación (mismo pipeline que la generación)…
+            const cols = this._prepararColumnasDeDrivers(Zmix.map(c => c), funciones, codigos);
+            // …y los valores finales de cada variable
+            for (let a = 0; a < m; a++) for (let i = 0; i < n; i++) X[a][i] = funciones[a].valor(i, cols[a][i]);
             for (let a = 0; a < m; a++) {
                 let s = 0; for (let i = 0; i < n; i++) s += X[a][i];
                 medias[a] = s / n;
@@ -2404,17 +2832,39 @@ class GeneradorDatos {
             for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) {
                 let s = 0; for (let i = 0; i < n; i++) s += (X[a][i] - medias[a]) * (X[b][i] - medias[b]);
                 C[a][b] = C[b][a] = s / n / (des[a] * des[b]);
+                if (fijosPorBeta.has(`${a}|${b}`)) continue;   // (B6) los fijan los coeficientes
                 maxError = Math.max(maxError, Math.abs(R[a][b] - C[a][b]));
             }
-            if (maxError < mejor.error) { mejor.error = maxError; mejor.L = L; mejor.Rt = Rt; mejor.C = C; sinMejora = 0; }
-            else if (++sinMejora >= 4) break;
+            // (A1, exacto) d MARGINALES: error de cada (variable, agrupación) con las
+            // amplitudes actuales; cuenta en el mismo criterio de convergencia.
+            const erroresD = [];
+            funciones.forEach((f, a) => (f.partes || []).forEach(p => {
+                const obs = this._dMarginal(X[a], p.codigos);
+                if (obs === null) return;
+                erroresD.push({ f, p, obs });
+                maxError = Math.max(maxError, Math.abs(p.d - obs));
+            }));
+            if (maxError < mejor.error) {
+                mejor.error = maxError; mejor.L = L; mejor.Rt = Rt; mejor.C = C; sinMejora = 0;
+                mejor.amplitudes = funciones.map(f => (f.partes || []).map(p => p.amplitud));
+            } else if (++sinMejora >= 4) break;
             if (maxError < 5e-4) break;
             // Paso completo al principio; amortiguado después, porque con valores
             // redondeados (edad entera, Likert) la Pearson muestral responde a
             // saltos y el paso completo oscila alrededor del objetivo.
             const paso = it < 2 ? 1 : 0.6;
+            // amplitudes: corrección proporcional d/d_obs (acotada), amortiguada
+            const tocadas = new Set();
+            erroresD.forEach(({ f, p, obs }) => {
+                if (p.d === 0) return;
+                const factor = (obs * p.d > 0 && Math.abs(obs) > 0.02) ? Math.max(0.5, Math.min(2, p.d / obs)) : 1.25;
+                p.amplitud += paso * (p.amplitud * factor - p.amplitud);
+                tocadas.add(f);
+            });
+            tocadas.forEach(f => f.recalcularDesp());
             const Rn = Rt.map(f => f.slice());
             for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) {
+                if (fijosPorBeta.has(`${a}|${b}`)) continue;
                 Rn[a][b] = Rn[b][a] = Math.max(-0.995, Math.min(0.995, Rt[a][b] + paso * (R[a][b] - C[a][b])));
             }
             // Si la candidata deja de ser definida positiva, la combinación
@@ -2424,6 +2874,8 @@ class GeneradorDatos {
             L = this.descomposicionCholesky(Rt);
         }
         this.correlRIntermedia = mejor.Rt;
+        // restaurar las amplitudes de la mejor candidata
+        if (mejor.amplitudes) funciones.forEach((f, a) => { (f.partes || []).forEach((p, k) => { p.amplitud = mejor.amplitudes[a][k]; }); if (f.recalcularDesp) f.recalcularDesp(); });
         // Constancia para el panel de diagnóstico: si no convergió, alguna r
         // pedida no es alcanzable con las formas/recortes/grupos configurados.
         // Las parejas ya marcadas como limitadas reciben el valor MEDIDO como
@@ -2452,12 +2904,15 @@ class GeneradorDatos {
         const z = [];
         for (let i = 0; i < m; i++) z.push(this.generarNormalEstandar());
 
-        const drivers = {};
+        const fila = new Array(m).fill(0);
         for (let i = 0; i < m; i++) {
             let y = 0;
             for (let k = 0; k <= i; k++) y += this.correlL[i][k] * z[k];
-            drivers[this.correlVariables[i].tipo + ':' + this.correlVariables[i].clave] = y;
+            fila[i] = y;
         }
+        this._aplicarModeracion(fila);   // (B6)
+        const drivers = {};
+        for (let i = 0; i < m; i++) drivers[this.correlVariables[i].tipo + ':' + this.correlVariables[i].clave] = fila[i];
         return drivers;
     }
 
@@ -2637,6 +3092,9 @@ class GeneradorDatos {
                 }
             }
         });
+
+        // (B6) Modelos estructurales
+        this._validarModelos(errores, advertencias);
 
         // Validar sociodemográficos
         this.configuracion.sociodemograficos.forEach(socio => {
