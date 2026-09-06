@@ -317,6 +317,27 @@ function actualizarEtiquetasModelo(fila) {
         : [['a (X→M)', 'a: efecto estandarizado de X sobre el mediador M'], ['b (M→Y)', 'b: efecto estandarizado de M sobre Y, controlando X'], ['c′ (X→Y)', 'c′: efecto directo estandarizado de X sobre Y, controlando M']];
     etiquetas.forEach(([ph, tt], k) => { const el = c(k + 1); if (el) { el.placeholder = ph; el.title = tt; } });
     if (selM && selM.options.length) selM.options[0].textContent = tipo === 'moderacion' ? 'Moderador W...' : 'Mediador M...';
+    // Un puntaje general derivado no puede entrar en una moderación (no tiene
+    // driver propio): sus opciones se deshabilitan en ese tipo.
+    const generales = new Set(nombresGeneralesDerivados());
+    ['Variable X', 'Mediador o moderador', 'Variable Y'].forEach(etiqueta => {
+        const sel = fila.querySelector(`[aria-label="${etiqueta}"]`);
+        if (!sel) return;
+        Array.from(sel.options).forEach(op => { if (generales.has(op.value)) op.disabled = (tipo === 'moderacion'); });
+        if (tipo === 'moderacion' && generales.has(sel.value)) sel.value = '';
+    });
+}
+// Nombres de los puntajes generales derivados tal como aparecen en los desplegables
+function nombresGeneralesDerivados() {
+    const filasPorTest = {};
+    document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
+        const sel = fila.querySelector('[aria-label="Nombre de la prueba"]');
+        const p = sel ? sel.value.trim() : '';
+        if (p) filasPorTest[p] = (filasPorTest[p] || 0) + 1;
+    });
+    return (typeof testsDefinidos === 'function' ? testsDefinidos() : [])
+        .filter(t => (filasPorTest[t.prueba] || 0) >= 2)
+        .map(t => (t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`));
 }
 function agregarFilaPrueba() {
     const tbody = document.getElementById('bodyPruebas');
