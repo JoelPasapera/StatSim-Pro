@@ -170,6 +170,23 @@ function configurarGenerador() {
             if (e.target.matches('[aria-label="Tipo de modelo"]')) actualizarEtiquetasModelo(e.target.closest('tr'));
         });
     }
+    // (B7) Medidas repetidas
+    const btnRepetida = document.getElementById('btnAgregarRepetida');
+    if (btnRepetida) {
+        btnRepetida.addEventListener('click', () => agregarFilaRepetida());
+    }
+    const bodyRepetidas = document.getElementById('bodyRepetidas');
+    if (bodyRepetidas) {
+        bodyRepetidas.addEventListener('click', function (e) {
+            if (e.target.closest('.btn-delete')) {
+                e.target.closest('tr').remove();
+            }
+        });
+        // sin agrupación, la d del grupo 1 no aplica
+        bodyRepetidas.addEventListener('change', function (e) {
+            if (e.target.matches('[aria-label="Agrupación del cambio"]')) actualizarFilaRepetida(e.target.closest('tr'));
+        });
+    }
 }
 // Variables que pueden usarse como agrupación: sociodemográficas Binaria o
 // Categórica.
@@ -339,6 +356,73 @@ function nombresGeneralesDerivados() {
         .filter(t => (filasPorTest[t.prueba] || 0) >= 2)
         .map(t => (t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`));
 }
+// ---- (B7) Tabla VI: medidas repetidas ----
+// Una fila = una escala medida en 2–4 ondas: estabilidad test-retest (r entre
+// ondas consecutivas), d de cambio de T1 a la última onda (global, o del grupo 0
+// si hay agrupación binaria) y d de cambio del grupo 1.
+function obtenerVariablesBinarias() {
+    const nombres = [];
+    document.querySelectorAll('#bodySocio .fila-socio').forEach(fila => {
+        const select = fila.querySelector('select');
+        if (select && select.value === 'binaria') {
+            const categoria = fila.querySelector('input').value.trim();
+            if (categoria) nombres.push(categoria);
+        }
+    });
+    return nombres;
+}
+function agregarFilaRepetida(datos = null) {
+    // Solo dimensiones: una Escala general (una sola columna) no se repite
+    const escalas = [];
+    document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
+        const inputEscala = fila.querySelector('[aria-label="Nombre de la escala"]');
+        const selTipo = fila.querySelector('[aria-label="Tipo de escala"]');
+        const nombre = inputEscala ? inputEscala.value.trim() : '';
+        if (nombre && !(selTipo && selTipo.value === 'general')) escalas.push(nombre);
+    });
+    if (!escalas.length) {
+        mostrarToast('Define al menos una escala de tipo dimensión en la tabla I antes de añadir medidas repetidas', 'warning');
+        return null;
+    }
+    const tbody = document.getElementById('bodyRepetidas');
+    if (!tbody) return null;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-repetida';
+    const opciones = escalas.map(n => `<option value="${n}">${n}</option>`).join('');
+    const binarias = obtenerVariablesBinarias().map(n => `<option value="${n}">${n}</option>`).join('');
+    fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Escala repetida"><option value="">Escala...</option>${opciones}</select></td>
+        <td><input type="number" class="input input-sm" min="2" max="4" step="1" value="2" aria-label="Número de ondas"></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="0" max="0.99" placeholder="Ej: 0.70" aria-label="Estabilidad test-retest"></td>
+        <td><input type="number" class="input input-sm" step="0.1" placeholder="Ej: 0.5" aria-label="d de cambio"></td>
+        <td><select class="input input-sm" aria-label="Agrupación del cambio"><option value="">Ninguna (cambio global)</option>${binarias}</select></td>
+        <td><input type="number" class="input input-sm" step="0.1" placeholder="Ej: 0.8" aria-label="d de cambio del grupo 1" disabled></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    if (datos) {
+        const poner = (etiqueta, valor) => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); if (el && valor !== undefined && valor !== null) el.value = valor; };
+        poner('Escala repetida', datos.variable); poner('Número de ondas', datos.ondas); poner('Estabilidad test-retest', datos.estabilidad);
+        poner('d de cambio', datos.cambio); poner('Agrupación del cambio', datos.agrupacion || ''); poner('d de cambio del grupo 1', datos.cambioGrupo);
+    }
+    actualizarFilaRepetida(fila);
+    return fila;
+}
+function actualizarFilaRepetida(fila) {
+    if (!fila) return;
+    const agrup = fila.querySelector('[aria-label="Agrupación del cambio"]');
+    const cambio = fila.querySelector('[aria-label="d de cambio"]');
+    const cambioG1 = fila.querySelector('[aria-label="d de cambio del grupo 1"]');
+    const conGrupo = !!(agrup && agrup.value);
+    if (cambio) { cambio.placeholder = conGrupo ? 'grupo 0 (control)' : 'Ej: 0.5'; cambio.title = conGrupo ? 'd de cambio del grupo 0 (control) de T1 a la última onda' : 'd de cambio global de T1 a la última onda, en DE de T1'; }
+    if (cambioG1) { cambioG1.disabled = !conGrupo; cambioG1.placeholder = conGrupo ? 'grupo 1 (experimental)' : '—'; if (!conGrupo) cambioG1.value = ''; }
+}
 function agregarFilaPrueba() {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = tbody.querySelector('.fila-prueba').cloneNode(true);
@@ -395,7 +479,7 @@ function eliminarFilaSocio(fila) {
 const MotorGeneracion = (() => {
     // Versión de generador-worker.js: súbela cuando cambie ese archivo (no
     // tiene etiqueta <script> en index.html, así que se declara aquí).
-    const VERSION_WORKER = 1;
+    const VERSION_WORKER = 2;
     let worker = null;
     let contador = 0;
 
@@ -424,6 +508,7 @@ const MotorGeneracion = (() => {
                 resolver({
                     base: BaseColumnar.desdeSerializado(m.base),
                     informe: m.informe || [],
+                    configuracion: m.configuracion,
                     diagnosticoCorrelaciones: m.diagnosticoCorrelaciones,
                     resumenImperfecciones: m.resumenImperfecciones,
                     diferenciasLimitadas: m.diferenciasLimitadas || [],
@@ -457,6 +542,7 @@ const MotorGeneracion = (() => {
                     resolver({
                         base,
                         informe: generadorDatos.informePedidoObtenido(base) || [],
+                        configuracion: generadorDatos.configuracion,
                         diagnosticoCorrelaciones: generadorDatos.diagnosticoCorrelaciones,
                         resumenImperfecciones: generadorDatos.resumenImperfecciones,
                         diferenciasLimitadas: generadorDatos.diferenciasLimitadas || [],
@@ -543,6 +629,9 @@ function generarBaseDatos() {
                 // El generador de la página queda con el resultado, igual que si
                 // hubiera generado él mismo (descargas, etiquetas, Analizador).
                 generadorDatos.datosGenerados = resultado.base;
+                // (B7) la configuración vuelve EXPANDIDA (ondas T2… como escalas):
+                // etiquetas, estructura y descargas la necesitan así.
+                if (resultado.configuracion) generadorDatos.configuracion = resultado.configuracion;
                 generadorDatos.diagnosticoCorrelaciones = resultado.diagnosticoCorrelaciones;
                 generadorDatos.resumenImperfecciones = resultado.resumenImperfecciones;
                 generadorDatos.diferenciasLimitadas = resultado.diferenciasLimitadas;
@@ -643,7 +732,8 @@ function mostrarPreview(datos) {
     // Actualizar estadísticas
     document.getElementById('statParticipantes').textContent = datos.length;
     document.getElementById('statVariables').textContent = (typeof datos.nombres === 'function') ? datos.nombres().length : Object.keys(datos[0]).length;
-    document.getElementById('statPruebas').textContent = config.pruebas.length;
+    // (B7) las ondas T2… son clones: se cuentan las pruebas configuradas, no las columnas de onda
+    document.getElementById('statPruebas').textContent = config.pruebas.filter(p => !p.sufijo).length;
     // Crear tabla preview (solo primeras 10 filas)
     renderizarTablaDatos(
         document.getElementById('previewHead'),
@@ -2508,6 +2598,33 @@ function aplicarCSVModelos(csv) {
     }
     return { aplicadas, omitidas };
 }
+// (B7) CSV de la tabla VI (medidas repetidas)
+function csvDeRepetidas() {
+    let csv = 'Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1\n';
+    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    document.querySelectorAll('#bodyRepetidas .fila-repetida').forEach(fila => {
+        const v = etiqueta => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); return el ? el.value : ''; };
+        csv += `${esc(v('Escala repetida'))},${v('Número de ondas')},${v('Estabilidad test-retest')},${v('d de cambio')},${esc(v('Agrupación del cambio'))},${v('d de cambio del grupo 1')}\n`;
+    });
+    return csv;
+}
+function aplicarCSVRepetidas(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return { aplicadas: 0, omitidas: 0 };
+    const tbody = document.getElementById('bodyRepetidas');
+    if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0, omitidas = 0;
+    for (const linea of lineas.slice(1)) {
+        const [variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        if (!variable) { omitidas++; continue; }
+        const fila = agregarFilaRepetida({ variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo });
+        if (!fila) { omitidas++; continue; }
+        const sel = fila.querySelector('[aria-label="Escala repetida"]');
+        if (!sel || sel.value === '') { fila.remove(); omitidas++; continue; }
+        aplicadas++;
+    }
+    return { aplicadas, omitidas };
+}
 // CSV de la tabla IV (diferencias por grupo): antes no viajaba en el archivo maestro
 function csvDeDiferencias() {
     let csv = 'Cuantitativa,Agrupacion,d\n';
@@ -2597,7 +2714,7 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###' };
+const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###', repetidas: '###REPETIDAS###' };
 // Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
@@ -2651,14 +2768,15 @@ function exportarConfigTodo() {
         const csvC = csvDeCorrelaciones();
         const csvD = csvDeDiferencias();
         const csvM = csvDeModelos();
+        const csvR = csvDeRepetidas();
         const nFilas = s => Math.max(0, String(s).trim().split(/\r?\n/).length - 1);
-        if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0 && nFilas(csvD) === 0 && nFilas(csvM) === 0) {
+        if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0 && nFilas(csvD) === 0 && nFilas(csvM) === 0 && nFilas(csvR) === 0) {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '', MARCA_TODO.repetidas, csvR.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
-        mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es), ${nFilas(csvD)} diferencia(s), ${nFilas(csvM)} modelo(s)`, 'success');
+        mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es), ${nFilas(csvD)} diferencia(s), ${nFilas(csvM)} modelo(s), ${nFilas(csvR)} medida(s) repetida(s)`, 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
     }
@@ -2700,6 +2818,7 @@ function importarConfigTodo(e) {
             const csvC = bloqueHastaSiguiente(MARCA_TODO.corr);
             const csvD = bloqueHastaSiguiente(MARCA_TODO.dif);
             const csvM = bloqueHastaSiguiente(MARCA_TODO.modelos);
+            const csvR = bloqueHastaSiguiente(MARCA_TODO.repetidas);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
@@ -2709,8 +2828,9 @@ function importarConfigTodo(e) {
             const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
             const rD = csvD ? aplicarCSVDiferencias(csvD) : { aplicadas: 0, omitidas: 0 };
             const rM = csvM ? aplicarCSVModelos(csvM) : { aplicadas: 0, omitidas: 0 };
-            const omitidas = rC.omitidas + rD.omitidas + rM.omitidas;
-            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s)` + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
+            const rR = csvR ? aplicarCSVRepetidas(csvR) : { aplicadas: 0, omitidas: 0 };
+            const omitidas = rC.omitidas + rD.omitidas + rM.omitidas + rR.omitidas;
+            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
