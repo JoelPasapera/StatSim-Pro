@@ -522,6 +522,7 @@ class GeneradorDatos {
         // tabla), TODOS los ítems, totales de las dimensiones, generales, y al
         // final el puntaje GENERAL derivado de cada test. Las imperfecciones y
         // los percentiles añaden las suyas después.
+        this._comprobarNombresDeColumna();
         const base = new BaseColumnar(n);
         const colID = base.agregar('ID', true);
         for (let i = 0; i < n; i++) colID.datos[i] = i + 1;
@@ -688,16 +689,35 @@ class GeneradorDatos {
         return base;
     }
 
+    // Dos columnas no pueden llamarse igual (antes, con filas-objeto, la segunda
+    // sobrescribía a la primera EN SILENCIO). Se avisa con el origen de cada
+    // nombre para que el usuario sepa qué renombrar.
+    _comprobarNombresDeColumna() {
+        const cfg = this.configuracion;
+        const origen = new Map([['ID', 'la columna ID']]);
+        const registrar = (nombre, descripcion) => {
+            if (origen.has(nombre)) {
+                throw new Error(`Dos columnas se llamarían «${nombre}»: ${origen.get(nombre)} y ${descripcion}. Cambia uno de los nombres.`);
+            }
+            origen.set(nombre, descripcion);
+        };
+        (cfg.sociodemograficos || []).forEach(s => registrar(s.categoria, `la variable sociodemográfica «${s.categoria}»`));
+        (cfg.pruebas || []).forEach(p => {
+            if (p.tipo !== 'general') this._itemsDe(p).forEach((col, j) => registrar(col, `el ítem ${j + 1} de «${p.nombre}» (sigla ${p.nombreCorto})`));
+        });
+        (cfg.pruebas || []).forEach(p => registrar(this.columnaDeEscala(p), `el total de «${p.nombre}»`));
+        (cfg.gruposPruebas || []).forEach(g => { if (g.escalas.length >= 2) registrar(`General_${g.sigla}`, `el puntaje general del test «${g.nombre}»`); });
+    }
+
     // Desplazamientos por grupo de una variable para TODOS los participantes
     // (Float64Array), leyendo los códigos de las columnas de agrupación.
     _desplazamientosDe(base, nombre, sigmaTotal) {
         const salida = new Float64Array(base.n);
         const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
         if (!lista || !lista.length || !(sigmaTotal > 0)) return salida;
-        const sigmaIntra = sigmaTotal * this._factorDE(nombre);
         lista.forEach(e => {
             const codigos = base.columna(e.agrup.categoria).datos;
-            const amplitud = e.d * sigmaIntra;
+            const amplitud = e.amplitud * sigmaTotal;      // Δ_k = d_k·σ/√(1 + d_k²·Var(c_k))
             for (let i = 0; i < base.n; i++) salida[i] += amplitud * this._codigoCentrado(e.agrup, codigos[i]);
         });
         return salida;
@@ -804,25 +824,77 @@ class GeneradorDatos {
     calibrarFiabilidad(prueba, indice) {
         const objetivo = prueba.alfa;
         if (!(objetivo > 0 && objetivo < 1) || prueba.numItems < 2) return objetivo;
-        // Sin redondeo (escala continua), con ítems paralelos y sin diferencias
-        // por grupo la relación ya es exacta: no se calibra. Con perfil
-        // heterogéneo (B5) o con diferencias por grupo (la varianza entre grupos
-        // se reparte por igual entre los ítems y sube la fiabilidad) siempre.
-        const perfil = this.perfilesItems ? this.perfilesItems.get(prueba) : null;
-        const heterogeneo = !!(perfil && (perfil.cruzadas.length || perfil.delta.some(d => d !== 0) || perfil.peso.some(w => Math.abs(w - 1 / prueba.numItems) > 1e-9)));
-        const conGrupos = !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(prueba.nombre) || []).length);
-        if (prueba.minimo === null || prueba.maximo === null) {
-            if (indice !== 'omega' && !heterogeneo && !conGrupos) return objetivo;
+        const perfil = this.perfilesItems ? (this.perfilesItems.get(prueba) || null) : null;
+        const continua = (prueba.minimo === null || prueba.maximo === null);
+        if (continua && indice !== 'omega') {
+            // Sin redondeo, el α del modelo de reparto tiene FÓRMULA CERRADA (ver
+            // _alfaTeorica): se resuelve por bisección sobre la fórmula, sin
+            // simular. Así la calibración no añade ruido de muestreo, que con
+            // totales asimétricos (colas largas) llegaba a ±0.1 en el α observado.
+            let lo = 0.01, hi = 0.985;
+            for (let it = 0; it < 40; it++) {
+                const mid = (lo + hi) / 2;
+                if (this._alfaTeorica(prueba, mid, perfil) < objetivo) lo = mid; else hi = mid;
+            }
+            return (lo + hi) / 2;
         }
-        let lo = 0.01, hi = 0.985, mejor = objetivo;
+        // Likert (redondeo) u ω: se simula. Con forma asimétrica se simulan más
+        // casos, porque la varianza muestral de un total con cola larga es ruidosa.
+        const nSim = prueba.distribucion === 'asimetrica' ? 1000 : 400;
+        let lo = 0.01, hi = 0.985;
         for (let it = 0; it < 12; it++) {
             const mid = (lo + hi) / 2;
-            const obs = this._simularIndice(prueba, mid, indice);
+            const obs = this._simularIndice(prueba, mid, indice, nSim);
             if (obs === null || !isFinite(obs)) break;
-            mejor = mid;
             if (obs < objetivo) lo = mid; else hi = mid;
         }
         return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
+    }
+    // Correlación OBJETIVO entre dos escalas del estudio (por sigla): la de la
+    // matriz preparada si existe; si no, el r intra-test del cuadro (mismo
+    // test) o 0 (tests distintos). Entre una escala y sí misma, 1.
+    _rObjetivoEntre(siglaA, siglaB) {
+        if (siglaA === siglaB) return 1;
+        if (this.correlR && this.correlVariables && this.correlVariables.length) {
+            const ia = this.correlVariables.findIndex(v => v.tipo === 'escala' && v.clave === siglaA);
+            const ib = this.correlVariables.findIndex(v => v.tipo === 'escala' && v.clave === siglaB);
+            if (ia >= 0 && ib >= 0) return this.correlR[ia][ib];
+        }
+        const g = (this.configuracion.gruposPruebas || []).find(x => x.escalas.includes(siglaA) && x.escalas.includes(siglaB));
+        return g ? (g.rIntra === undefined ? 0.40 : g.rIntra) : 0;
+    }
+    // α de Cronbach TEÓRICO del modelo de reparto (_repartirEnItems) sin redondeo:
+    //   ítem_i = μ_i + w_i·D + s·u_i + cruz_i,  D = T − M con Var(D) = σ² (toda la base),
+    //   Var(u_i) = (1 − λ²)(1 − 1/k),  cruz_i = σ_ítem·Σ_e a_ie·z_e con a_ie = c_e·(1[ítem_e = i] − 1/k).
+    //   α = k/(k−1)·(1 − Σ_i Var(ítem_i)/σ²), con Var(T) = σ² porque Σ ítems = T.
+    _alfaTeorica(prueba, objetivoInterno, perfil) {
+        const k = prueba.numItems, sigma = prueba.desviacion, sw = sigma * this._factorDE(prueba.nombre);
+        let lambda = 0;
+        if (objetivoInterno > 0 && objetivoInterno < 1 && k >= 2) {
+            const rMedia = objetivoInterno / (k - objetivoInterno * (k - 1));
+            lambda = Math.sqrt(Math.max(0, Math.min(0.999, rMedia)));
+        }
+        const s = sw / Math.sqrt(k * (1 + (k - 1) * lambda * lambda)), u2 = 1 - lambda * lambda;
+        const varRuido = s * s * u2 * (1 - 1 / k);
+        const sigmaItem = Math.sqrt((sw * sw) / (k * k) + varRuido);
+        const cruz = perfil ? perfil.cruzadas : [];
+        // correlaciones objetivo entre las dimensiones que aportan cargas cruzadas, y con esta
+        const rAB = cruz.map(e => this._rObjetivoEntre(prueba.nombreCorto, e.sigla));
+        const rBB = cruz.map(e => cruz.map(f => this._rObjetivoEntre(e.sigla, f.sigla)));
+        let sumaVar = 0;
+        for (let i = 0; i < k; i++) {
+            const w = perfil ? perfil.peso[i] : 1 / k;
+            let varCruz = 0, covCruzD = 0;
+            if (cruz.length) {
+                const a = cruz.map(e => e.c * ((e.item === i ? 1 : 0) - 1 / k));
+                for (let e = 0; e < cruz.length; e++) {
+                    covCruzD += a[e] * rAB[e];
+                    for (let f = 0; f < cruz.length; f++) varCruz += a[e] * a[f] * rBB[e][f];
+                }
+            }
+            sumaVar += w * w * sigma * sigma + varRuido + sigmaItem * sigmaItem * varCruz + 2 * w * sigma * sigmaItem * covCruzD;
+        }
+        return (k / (k - 1)) * (1 - sumaVar / (sigma * sigma));
     }
 
     generarPuntajesPrueba(numItems, mediaTotal, desviacionTotal, minItem = null, maxItem = null, alfaObjetivo = 0, factor = null, distribucion = 'normal', indiceFiabilidad = 'alfa', desplazamiento = 0, perfil = null, zOtras = null) {
@@ -1333,6 +1405,11 @@ class GeneradorDatos {
             const { d: d15 } = generar(cfgBase({ tamanoMuestra: 1500, heterogeneidadItems: 'ninguna' }));
             const mPE = mediasItems(d15, 'PE', 8);
             ok('(B5) «ninguna»: ítems paralelos (medias iguales)', Math.max(...mPE) - Math.min(...mPE) < 0.25, (Math.max(...mPE) - Math.min(...mPE)).toFixed(2));
+            // 15) nombres de columna duplicados: error claro en vez de sobrescritura silenciosa
+            let mensajeDup = '';
+            try { generar(cfgBase({ sociodemograficos: [{ categoria: 'PE1', categoriaCorta: 'X', distribucion: 'binaria', promedio: 0.5, desviacion: 1, minimo: null, maximo: null, decimales: 0 }] })); }
+            catch (e) { mensajeDup = e.message; }
+            ok('columna duplicada («PE1» como sociodemográfico y como ítem) → error que la nombra', /PE1/.test(mensajeDup) && /sociodemográfica/.test(mensajeDup), mensajeDup.slice(0, 60));
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -1795,9 +1872,10 @@ class GeneradorDatos {
     // ============ DIFERENCIAS POR GRUPO (d de Cohen) ============
     // Cada fila de la tabla pide que dos grupos adyacentes de la variable de
     // agrupación difieran d·σ_intra en la variable cuantitativa. Contrato:
-    //  · la Media y la DE pedidas son las de TODA la base: la DE intra-grupo es
-    //    σ·s, con s = 1/√(1 + Σ d²·Var(código)), y el desplazamiento de cada
-    //    persona es Σ d·σ·s·(código − media del código), de media 0;
+    //  · la Media y la DE pedidas son las de TODA la base; cada d es la MARGINAL
+    //    de su agrupación (la de la prueba t/ANOVA), con amplitud
+    //    Δ_k = d_k·σ/√(1 + d_k²·Var(c_k)) y ruido intra σ·√(1 − Σ_k amp_k²·Var(c_k));
+    //    el desplazamiento de cada persona es Σ_k Δ_k·(código − media del código), de media 0;
     //  · el desplazamiento se aplica al valor CONTINUO (total objetivo de la
     //    escala o valor del sociodemográfico), ANTES de recortar y redondear.
     //    Antes se sumaba después y se redondeaba a entero POR PERSONA: como el
@@ -1840,26 +1918,35 @@ class GeneradorDatos {
         // General sea la pedida. Es una raíz escalar (Δ_G/σ_G,intra = d) que se
         // resuelve por bisección; con varias agrupaciones sobre el mismo General
         // se repite el reparto hasta estabilizarse.
+        // CONTRATO (d MARGINAL): cada d es la que medirá la prueba t/ANOVA de ESA
+        // agrupación, es decir, con la DE agrupada dentro de sus grupos, que
+        // incluye la varianza que aportan las OTRAS agrupaciones. Con la DE total
+        // fija, la amplitud del desplazamiento de la agrupación k resulta
+        // independiente de las demás: Δ_k = d_k·σ/√(1 + d_k²·Var(c_k)) (en unidades
+        // de σ, amp_k = d_k/√(1 + d_k²·V_k)), y la DE del ruido intra queda
+        // σ·√(1 − Σ_k amp_k²·V_k). Con una sola agrupación coincide con la fórmula
+        // anterior; con varias, la anterior subestimaba cada d (1.17 salía 1.03).
         const varianzaCodigo = agrup => this._varianzaCodigo(agrup) || 0;
+        const amplitud = e => e.d / Math.sqrt(1 + e.d * e.d * varianzaCodigo(e.agrup));
         const factorIntra = nombre => {
-            let suma = 0;
-            (efectivas.get(nombre) || []).forEach(e => { suma += e.d * e.d * varianzaCodigo(e.agrup); });
-            return 1 / Math.sqrt(1 + suma);
+            let entre = 0;
+            (efectivas.get(nombre) || []).forEach(e => { const a = amplitud(e); entre += a * a * varianzaCodigo(e.agrup); });
+            // Si las diferencias pedidas se llevan toda la varianza no hay ruido
+            // intra posible: se deja un mínimo (el informe delatará las d).
+            return Math.sqrt(Math.max(0.04, 1 - entre));
         };
         const dGeneral = (req) => {
-            // d observada sobre el General con las diferencias efectivas actuales:
-            // Δ_G = (1/K)·Σ d_i·σ_i·s_i ; σ_G,intra² = σ_G² − Σ_k Δ_G,k²·Var(c_k)
+            // d marginal observada sobre el General con las diferencias efectivas
+            // actuales: Δ_G,k = (1/K)·Σ_i amp_ik·σ_i ; DE agrupada de esa
+            // agrupación = √(σ_G² − Δ_G,k²·Var(c_k))
             const K = req.dims.length;
             const sigmaG = this._factorGeneral(req.g, req.dims) * req.dims.reduce((s, p) => s + p.desviacion, 0) / K;
-            const porAgrup = new Map();
+            let deltaG = 0;
             req.dims.forEach(p => {
-                const s = factorIntra(p.nombre);
-                (efectivas.get(p.nombre) || []).forEach(e => porAgrup.set(e.agrup, (porAgrup.get(e.agrup) || 0) + e.d * p.desviacion * s / K));
+                (efectivas.get(p.nombre) || []).forEach(e => { if (e.agrup === req.agrup) deltaG += amplitud(e) * p.desviacion / K; });
             });
-            let entre = 0;
-            porAgrup.forEach((delta, agrup) => { entre += delta * delta * varianzaCodigo(agrup); });
-            const intra = Math.sqrt(Math.max(1e-12, sigmaG * sigmaG - entre));
-            return (porAgrup.get(req.agrup) || 0) / intra;
+            const intra = Math.sqrt(Math.max(1e-12, sigmaG * sigmaG - deltaG * deltaG * varianzaCodigo(req.agrup)));
+            return deltaG / intra;
         };
         this.diferenciasLimitadas = [];
         for (let ronda = 0; ronda < (sobreGeneral.length > 1 ? 4 : 1); ronda++) {
@@ -1887,7 +1974,10 @@ class GeneradorDatos {
             });
         }
         const factores = new Map();
-        efectivas.forEach((lista, nombre) => factores.set(nombre, factorIntra(nombre)));
+        efectivas.forEach((lista, nombre) => {
+            lista.forEach(e => { e.amplitud = amplitud(e); });   // en unidades de σ de la variable
+            factores.set(nombre, factorIntra(nombre));
+        });
         this.diferenciasEfectivas = efectivas;
         this.factoresDEIntra = factores;
     }
@@ -1956,12 +2046,11 @@ class GeneradorDatos {
     _desplazamientoAleatorio(nombre, sigmaTotal) {
         const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
         if (!lista || !lista.length || !(sigmaTotal > 0)) return 0;
-        const sigmaIntra = sigmaTotal * this._factorDE(nombre);
         let total = 0;
         lista.forEach(e => {
             const codigo = e.agrup.distribucion === 'binaria' ? this.generarBinaria(e.agrup.promedio)
                 : this.generarCategoria(e.agrup.minimo, e.agrup.maximo);
-            total += e.d * sigmaIntra * this._codigoCentrado(e.agrup, codigo);
+            total += e.amplitud * sigmaTotal * this._codigoCentrado(e.agrup, codigo);
         });
         return total;
     }
@@ -2117,12 +2206,12 @@ class GeneradorDatos {
         const Rint = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
         for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
             const r = R[i][j];
-            // covarianza entre grupos compartida (misma agrupación en ambas variables)
+            // covarianza entre grupos compartida (misma agrupación en ambas
+            // variables): Σ_k amp_ik·amp_jk·Var(c_k), en unidades de σ_i·σ_j
             let b = 0;
             lista(nombres[i]).forEach(ei => lista(nombres[j]).forEach(ej => {
-                if (ei.agrup === ej.agrup) b += ei.d * ej.d * this._varianzaCodigo(ei.agrup);
+                if (ei.agrup === ej.agrup) b += ei.amplitud * ej.amplitud * this._varianzaCodigo(ei.agrup);
             }));
-            b *= s[i] * s[j];
             const rhoIntra = (r - b) / (s[i] * s[j]);
             const inv = this._rhoIntermedia(formas[i], formas[j], rhoIntra);
             if (inv.limitada) {
