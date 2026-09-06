@@ -887,6 +887,45 @@
                     </p>
                 </div>
 
+                <!-- Tabla VI: Medidas repetidas (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VI. Medidas Repetidas: pre/post y seguimiento (opcional)</h3>
+                        <button id="btnAgregarRepetida" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Medida Repetida
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaRepetidas">
+                            <thead>
+                                <tr>
+                                    <th>Escala</th>
+                                    <th title="Número de mediciones (2 = pre/post; hasta 4)">Ondas</th>
+                                    <th title="Correlación test-retest entre ondas consecutivas; entre T1 y T3 es su cuadrado">Estabilidad (r)</th>
+                                    <th title="Cambio de la media de T1 a la última onda, en DE de T1 (global, o del grupo 0 si hay agrupación)">d de cambio</th>
+                                    <th title="Variable binaria (0 = control, 1 = experimental) que modera el cambio">Agrupación</th>
+                                    <th title="Cambio de T1 a la última onda en el grupo 1, en DE de T1">d de cambio (grupo 1)</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyRepetidas"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Repite una escala en 2 a 4 ondas. La onda 1 conserva sus columnas; las siguientes añaden ítems, total y percentil con
+                        sufijo <code>_T2</code>, <code>_T3</code>… (mismo instrumento: mismo α, forma y perfil de ítems). La
+                        <strong>estabilidad</strong> es la correlación entre ondas consecutivas (entre no consecutivas decae como en un
+                        proceso AR(1)); las correlaciones de la escala con otras variables se propagan a cada onda atenuadas por ella.
+                        La <strong>d de cambio</strong> desplaza la media de T1 a la última onda en DE de T1, de forma lineal entre ondas;
+                        con una agrupación <strong>binaria</strong> cada grupo cambia lo suyo (diseño pre/post con grupo control) y el informe
+                        muestra el cambio por grupo y la interacción tiempo × grupo. Las diferencias por grupo de la tabla IV se mantienen en
+                        todas las ondas; los puntajes generales derivados y los modelos usan solo la onda 1.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">
@@ -1477,7 +1516,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=1"></script>
-    <script src="generador-datos.js?v=13"></script>
+    <script src="generador-datos.js?v=14"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1549,7 +1588,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=28"></script>
+    <script src="app.js?v=29"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
