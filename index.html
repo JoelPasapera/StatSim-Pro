@@ -849,6 +849,44 @@
                     </p>
                 </div>
 
+                <!-- Tabla V: Modelos estructurales (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">V. Modelos Estructurales: mediación y moderación (opcional)</h3>
+                        <button id="btnAgregarModelo" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Modelo
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaModelos">
+                            <thead>
+                                <tr>
+                                    <th>Modelo</th>
+                                    <th>X (predictora)</th>
+                                    <th>Mediador M / Moderador W</th>
+                                    <th>Y (criterio)</th>
+                                    <th title="Mediación: a (X→M). Moderación: β₁ (X)">Coef. 1</th>
+                                    <th title="Mediación: b (M→Y, controlando X). Moderación: β₂ (W)">Coef. 2</th>
+                                    <th title="Mediación: c′ (X→Y directo, controlando M). Moderación: β₃ (interacción X×W)">Coef. 3</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyModelos"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Coeficientes <strong>estandarizados</strong>. <strong>Mediación</strong> X → M → Y: <em>a</em> (X→M), <em>b</em> (M→Y controlando X)
+                        y <em>c′</em> (X→Y directo); el efecto indirecto es <em>a·b</em> y el total <em>c′ + a·b</em>. Dos filas con la misma X e Y y
+                        distinto mediador forman una mediación paralela. <strong>Moderación</strong> Y = β₁X + β₂W + β₃·X·W: la interacción se
+                        construye con X y W estandarizadas, tal como la estimará una regresión con el término producto; la forma de Y la define
+                        el modelo (normal). Las correlaciones que implican los coeficientes sustituyen a las de la tabla III para esas parejas;
+                        el informe «pedido vs. obtenido» muestra cada coeficiente recuperado por regresión sobre la base generada.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">
@@ -1439,7 +1477,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=1"></script>
-    <script src="generador-datos.js?v=12"></script>
+    <script src="generador-datos.js?v=13"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1511,7 +1549,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=27"></script>
+    <script src="app.js?v=28"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
