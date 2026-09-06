@@ -15,8 +15,8 @@
  *     { id, configuracion }              → genera con esa configuración
  * Mensajes desde el Worker:
  *     { id, tipo: 'progreso', fraccion, etapa }
- *     { id, tipo: 'listo', base, informe, diagnosticoCorrelaciones,
- *                          resumenImperfecciones, diferenciasLimitadas, ms }
+ *     { id, tipo: 'listo', base, informe, configuracion (expandida),
+ *                          diagnosticoCorrelaciones, resumenImperfecciones, diferenciasLimitadas, ms }
  *     { id, tipo: 'error', mensaje }
  */
 (function () {
@@ -48,6 +48,7 @@
                 tipo: 'listo',
                 base: { n: serial.n, columnas: serial.columnas },
                 informe,
+                configuracion: generador.configuracion,   // expandida (B7: ondas T2… como escalas)
                 diagnosticoCorrelaciones: generador.diagnosticoCorrelaciones,
                 resumenImperfecciones: generador.resumenImperfecciones,
                 diferenciasLimitadas: generador.diferenciasLimitadas || [],
