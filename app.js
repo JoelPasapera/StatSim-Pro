@@ -153,6 +153,23 @@ function configurarGenerador() {
             }
         });
     }
+    // (B6) Modelos estructurales: mediación y moderación
+    const btnModelo = document.getElementById('btnAgregarModelo');
+    if (btnModelo) {
+        btnModelo.addEventListener('click', () => agregarFilaModelo());
+    }
+    const bodyModelos = document.getElementById('bodyModelos');
+    if (bodyModelos) {
+        bodyModelos.addEventListener('click', function (e) {
+            if (e.target.closest('.btn-delete')) {
+                e.target.closest('tr').remove();
+            }
+        });
+        // al cambiar el tipo, las tres casillas de coeficientes cambian de significado
+        bodyModelos.addEventListener('change', function (e) {
+            if (e.target.matches('[aria-label="Tipo de modelo"]')) actualizarEtiquetasModelo(e.target.closest('tr'));
+        });
+    }
 }
 // Variables que pueden usarse como agrupación: sociodemográficas Binaria o
 // Categórica.
@@ -248,6 +265,58 @@ function agregarFilaCorrelacion() {
         </td>
     `;
     tbody.appendChild(fila);
+}
+// ---- (B6) Tabla V: modelos estructurales ----
+// Una fila = un modelo. Mediación: a (X→M), b (M→Y con X), c′ (X→Y directo).
+// Moderación: β₁ (X), β₂ (W), β₃ (X×W). Coeficientes estandarizados.
+function agregarFilaModelo(datos = null) {
+    const nombres = obtenerVariablesCorrelacionables();
+    if (nombres.length < 3) {
+        mostrarToast('Define al menos 3 variables cuantitativas (escalas o continuas) antes de añadir un modelo', 'warning');
+        return null;
+    }
+    const tbody = document.getElementById('bodyModelos');
+    if (!tbody) return null;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-modelo';
+    const opciones = nombres.map(n => `<option value="${n}">${n}</option>`).join('');
+    const coef = (n) => `<input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" aria-label="Coeficiente ${n}">`;
+    fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Tipo de modelo"><option value="mediacion">Mediación (X → M → Y)</option><option value="moderacion">Moderación (X × W → Y)</option></select></td>
+        <td><select class="input input-sm" aria-label="Variable X"><option value="">X (predictora)...</option>${opciones}</select></td>
+        <td><select class="input input-sm" aria-label="Mediador o moderador"><option value="">Mediador M...</option>${opciones}</select></td>
+        <td><select class="input input-sm" aria-label="Variable Y"><option value="">Y (criterio)...</option>${opciones}</select></td>
+        <td>${coef(1)}</td>
+        <td>${coef(2)}</td>
+        <td>${coef(3)}</td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    if (datos) {
+        const poner = (etiqueta, valor) => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); if (el && valor !== undefined) el.value = valor; };
+        poner('Tipo de modelo', datos.tipo === 'moderacion' ? 'moderacion' : 'mediacion');
+        poner('Variable X', datos.x); poner('Mediador o moderador', datos.m); poner('Variable Y', datos.y);
+        poner('Coeficiente 1', datos.c1); poner('Coeficiente 2', datos.c2); poner('Coeficiente 3', datos.c3);
+    }
+    actualizarEtiquetasModelo(fila);
+    return fila;
+}
+function actualizarEtiquetasModelo(fila) {
+    if (!fila) return;
+    const tipo = (fila.querySelector('[aria-label="Tipo de modelo"]') || {}).value;
+    const c = n => fila.querySelector(`[aria-label="Coeficiente ${n}"]`);
+    const selM = fila.querySelector('[aria-label="Mediador o moderador"]');
+    const etiquetas = tipo === 'moderacion'
+        ? [['β₁ (X)', 'β₁: efecto estandarizado de X sobre Y'], ['β₂ (W)', 'β₂: efecto estandarizado del moderador W sobre Y'], ['β₃ (X×W)', 'β₃: efecto de la interacción X×W (X y W estandarizadas)']]
+        : [['a (X→M)', 'a: efecto estandarizado de X sobre el mediador M'], ['b (M→Y)', 'b: efecto estandarizado de M sobre Y, controlando X'], ['c′ (X→Y)', 'c′: efecto directo estandarizado de X sobre Y, controlando M']];
+    etiquetas.forEach(([ph, tt], k) => { const el = c(k + 1); if (el) { el.placeholder = ph; el.title = tt; } });
+    if (selM && selM.options.length) selM.options[0].textContent = tipo === 'moderacion' ? 'Moderador W...' : 'Mediador M...';
 }
 function agregarFilaPrueba() {
     const tbody = document.getElementById('bodyPruebas');
@@ -2391,6 +2460,65 @@ function csvDeCorrelaciones() {
     });
     return csv;
 }
+// (B6) CSV de la tabla V (modelos estructurales)
+function csvDeModelos() {
+    let csv = 'Tipo,X,MediadorModerador,Y,Coef1,Coef2,Coef3\n';
+    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    document.querySelectorAll('#bodyModelos .fila-modelo').forEach(fila => {
+        const v = etiqueta => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); return el ? el.value : ''; };
+        csv += `${v('Tipo de modelo')},${esc(v('Variable X'))},${esc(v('Mediador o moderador'))},${esc(v('Variable Y'))},${v('Coeficiente 1')},${v('Coeficiente 2')},${v('Coeficiente 3')}\n`;
+    });
+    return csv;
+}
+function aplicarCSVModelos(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return { aplicadas: 0, omitidas: 0 };
+    const tbody = document.getElementById('bodyModelos');
+    if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0, omitidas = 0;
+    for (const linea of lineas.slice(1)) {
+        const [tipo, x, m, y, c1, c2, c3] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        if (!x || !m || !y) { omitidas++; continue; }
+        const fila = agregarFilaModelo({ tipo, x, m, y, c1, c2, c3 });
+        if (!fila) { omitidas++; continue; }
+        const existe = etiqueta => { const sel = fila.querySelector(`[aria-label="${etiqueta}"]`); return sel && sel.value !== ''; };
+        if (!existe('Variable X') || !existe('Mediador o moderador') || !existe('Variable Y')) { fila.remove(); omitidas++; continue; }
+        aplicadas++;
+    }
+    return { aplicadas, omitidas };
+}
+// CSV de la tabla IV (diferencias por grupo): antes no viajaba en el archivo maestro
+function csvDeDiferencias() {
+    let csv = 'Cuantitativa,Agrupacion,d\n';
+    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    document.querySelectorAll('#bodyDiferencias .fila-diferencia').forEach(fila => {
+        const selects = fila.querySelectorAll('select'), inp = fila.querySelector('input');
+        csv += `${esc(selects[0] ? selects[0].value : '')},${esc(selects[1] ? selects[1].value : '')},${inp ? inp.value : ''}\n`;
+    });
+    return csv;
+}
+function aplicarCSVDiferencias(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    if (lineas.length < 2) return { aplicadas: 0, omitidas: 0 };
+    const tbody = document.getElementById('bodyDiferencias');
+    if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0, omitidas = 0;
+    for (const linea of lineas.slice(1)) {
+        const [cuant, agrup, d] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        if (!cuant || !agrup) { omitidas++; continue; }
+        const antes = tbody ? tbody.children.length : 0;
+        agregarFilaDiferencia();
+        const fila = tbody && tbody.children.length > antes ? tbody.lastElementChild : null;
+        if (!fila) { omitidas++; continue; }
+        const selects = fila.querySelectorAll('select'), inp = fila.querySelector('input');
+        const existe = (sel, val) => sel && Array.from(sel.options).some(o => o.value === val);
+        if (!existe(selects[0], cuant) || !existe(selects[1], agrup)) { fila.remove(); omitidas++; continue; }
+        selects[0].value = cuant; selects[1].value = agrup;
+        if (inp) inp.value = d === undefined ? '' : d;
+        aplicadas++;
+    }
+    return { aplicadas, omitidas };
+}
 // Aplica filas de correlación desde texto CSV. Devuelve cuántas entraron.
 // Las variables deben EXISTIR ya en las tablas I/II (los <select> se llenan de
 // ahí): por eso el maestro importa correlaciones al final.
@@ -2448,7 +2576,7 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###' };
+const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###' };
 // Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
@@ -2500,14 +2628,16 @@ function exportarConfigTodo() {
         const csvP = csvDeTabla('#bodyPruebas .fila-prueba', 'pruebas');
         const csvS = csvDeTabla('#bodySocio .fila-socio', 'socio');
         const csvC = csvDeCorrelaciones();
+        const csvD = csvDeDiferencias();
+        const csvM = csvDeModelos();
         const nFilas = s => Math.max(0, String(s).trim().split(/\r?\n/).length - 1);
-        if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0) {
+        if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0 && nFilas(csvD) === 0 && nFilas(csvM) === 0) {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
-        mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es)`, 'success');
+        mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es), ${nFilas(csvD)} diferencia(s), ${nFilas(csvM)} modelo(s)`, 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
     }
@@ -2535,7 +2665,20 @@ function importarConfigTodo(e) {
             const csvT = bloque(MARCA_TODO.tests, MARCA_TODO.pruebas);
             const csvP = bloque(MARCA_TODO.pruebas, MARCA_TODO.socio);
             const csvS = bloque(MARCA_TODO.socio, MARCA_TODO.corr);
-            const csvC = bloque(MARCA_TODO.corr, null);
+            // Cada bloque termina en la siguiente marca ###…### (o al final):
+            // así los archivos antiguos, sin DIFERENCIAS/MODELOS, siguen funcionando.
+            const bloqueHastaSiguiente = (ini) => {
+                const a = texto.indexOf(ini);
+                if (a < 0) return '';
+                const desde = a + ini.length;
+                const re = /###[A-Z]+###/g;
+                re.lastIndex = desde;
+                const sig = re.exec(texto);
+                return texto.slice(desde, sig ? sig.index : undefined).trim();
+            };
+            const csvC = bloqueHastaSiguiente(MARCA_TODO.corr);
+            const csvD = bloqueHastaSiguiente(MARCA_TODO.dif);
+            const csvM = bloqueHastaSiguiente(MARCA_TODO.modelos);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
@@ -2543,7 +2686,10 @@ function importarConfigTodo(e) {
             const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
             const rS = csvS ? aplicarCSVSocio(csvS) : 0;
             const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
-            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es)` + (rC.omitidas ? ` · ${rC.omitidas} correlación(es) omitida(s)` : ''), 'success');
+            const rD = csvD ? aplicarCSVDiferencias(csvD) : { aplicadas: 0, omitidas: 0 };
+            const rM = csvM ? aplicarCSVModelos(csvM) : { aplicadas: 0, omitidas: 0 };
+            const omitidas = rC.omitidas + rD.omitidas + rM.omitidas;
+            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s)` + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
