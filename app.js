@@ -52,6 +52,11 @@ function configurarGenerador() {
         });
     }
     document.getElementById('btnAgregarPrueba').addEventListener('click', agregarFilaPrueba);
+    // Fila inicial de la tabla de escalas: la misma función que todas las demás
+    // (la antigua fila estática del HTML llevaba un input de texto y una columna
+    // Tipo que ya no existen: desalineaba la tabla y el generador la ignoraba).
+    const _bodyPruebas = document.getElementById('bodyPruebas');
+    if (_bodyPruebas && !_bodyPruebas.querySelector('.fila-prueba')) agregarFilaPruebaConDatos(FILA_PRUEBA_VACIA);
     // Botón agregar sociodemográfico
     document.getElementById('btnAgregarSocio').addEventListener('click', agregarFilaSocio);
     // Botón generar base de datos
@@ -106,9 +111,6 @@ function configurarGenerador() {
     tbodyPruebas.addEventListener('input', function (e) {
         const fila = e.target.closest && e.target.closest('.fila-prueba');
         if (fila) actualizarLimitesPrueba(fila);
-        if (e.target.getAttribute && e.target.getAttribute('aria-label') === 'Nombre de la prueba') {
-            actualizarListaPruebas();
-        }
     });
     tbodyPruebas.addEventListener('change', ajustarPruebaEnCambio);
     actualizarTodasLasPruebas(); // pase inicial sobre la fila de ejemplo
@@ -423,19 +425,9 @@ function actualizarFilaRepetida(fila) {
     if (cambio) { cambio.placeholder = conGrupo ? 'grupo 0 (control)' : 'Ej: 0.5'; cambio.title = conGrupo ? 'd de cambio del grupo 0 (control) de T1 a la última onda' : 'd de cambio global de T1 a la última onda, en DE de T1'; }
     if (cambioG1) { cambioG1.disabled = !conGrupo; cambioG1.placeholder = conGrupo ? 'grupo 1 (experimental)' : '—'; if (!conGrupo) cambioG1.value = ''; }
 }
+const FILA_PRUEBA_VACIA = { prueba: '', nombre: '', numItems: '', distribucion: 'normal', media: '', de: '', min: '', max: '', alfa: '', invertidos: '' };
 function agregarFilaPrueba() {
-    const tbody = document.getElementById('bodyPruebas');
-    const nuevaFila = tbody.querySelector('.fila-prueba').cloneNode(true);
-    // Limpiar valores y estado de validación heredado del clon
-    nuevaFila.querySelectorAll('input').forEach(input => {
-        input.value = '';
-        input.classList.remove('invalid');
-    });
-    // Reset de límites dinámicos solo en Media/DE (los de ítems y α son fijos)
-    const ioNueva = inputsPrueba(nuevaFila);
-    [ioNueva.media, ioNueva.de].forEach(inp => { if (inp) { inp.removeAttribute('min'); inp.removeAttribute('max'); } });
-    tbody.appendChild(nuevaFila);
-    actualizarLimitesPrueba(nuevaFila);
+    agregarFilaPruebaConDatos(FILA_PRUEBA_VACIA);
     mostrarToast('Fila agregada', 'success');
 }
 function eliminarFilaPrueba(fila) {
@@ -2542,10 +2534,10 @@ function exportarConfigCorrelaciones() {
 }
 // CSV de correlaciones (reutilizado por el exportador maestro).
 function csvDeTests() {
-    let csv = 'Prueba,Variable,CorrDimensiones\n';
+    let csv = 'Prueba,Variable,CorrDimensiones,Dimensiones\n';
     testsDefinidos().forEach(t => {
         const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
-        csv += `${esc(t.prueba)},${esc(t.variable)},${t.rIntra}\n`;
+        csv += `${esc(t.prueba)},${esc(t.variable)},${t.rIntra},${esc((t.dimensiones || []).join(', '))}\n`;
     });
     return csv;
 }
@@ -2558,7 +2550,7 @@ function aplicarCSVTests(csv) {
     for (const linea of lineas.slice(1)) {
         const v = parsearLineaCSV(linea);
         if (!v[0]) continue;
-        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '', rIntra: v[2] !== undefined ? v[2] : '' });
+        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '', rIntra: v[2] !== undefined ? v[2] : '', dimensiones: String(v[3] || '').split(',').map(s => s.trim()).filter(Boolean) });
         n++;
     }
     refrescarSelectoresDePrueba();
@@ -2834,6 +2826,7 @@ function importarConfigTodo(e) {
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
             const rT = csvT ? aplicarCSVTests(csvT) : 0;   // los tests van ANTES que las escalas
             const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
+            sincronizarDimensionesDesdeTests(true);
             const rS = csvS ? aplicarCSVSocio(csvS) : 0;
             const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
             const rD = csvD ? aplicarCSVDiferencias(csvD) : { aplicadas: 0, omitidas: 0 };
@@ -2856,28 +2849,8 @@ function exportarConfigPruebas() {
             mostrarToast('No hay pruebas para exportar', 'warning');
             return;
         }
-        // Crear CSV con encabezados
-        let csv = 'Prueba,Escala,Tipo,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa\n';
-        filas.forEach(fila => {
-            const inputs = fila.querySelectorAll('input');
-            const selectTipo = fila.querySelector('[aria-label="Tipo de escala"]');
-            const selectDist = fila.querySelector('[aria-label="Distribución"]');
-            const tipo = selectTipo ? selectTipo.value : 'dimension';
-            const distribucion = selectDist ? selectDist.value : 'normal';
-            const prueba = inputs[0].value.trim() || '';
-            const escala = inputs[1].value.trim() || '';
-            const numItems = inputs[2].value || '';
-            const media = inputs[3].value || '';
-            const de = inputs[4].value || '';
-            const min = inputs[5].value || '';
-            const max = inputs[6].value || '';
-            const alfa = inputs[7] ? (inputs[7].value || '') : '';
-            // Escapar valores con comas
-            const esc = v => (v.includes(',') ? `"${v}"` : v);
-            csv += `${esc(prueba)},${esc(escala)},${tipo},${numItems},${distribucion},${media},${de},${min},${max},${alfa}\n`;
-        });
-        // Descargar archivo
-        descargarArchivo(csv, 'configuracion_pruebas.csv', 'text/csv');
+        // Mismo formato que el archivo maestro (con Invertidos y sin la columna Tipo)
+        descargarArchivo(csvDeTabla('#bodyPruebas .fila-prueba', 'pruebas'), 'configuracion_pruebas.csv', 'text/csv');
         mostrarToast('Configuración de pruebas exportada exitosamente', 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
@@ -2890,75 +2863,14 @@ function importarConfigPruebas(e) {
     reader.onload = function (event) {
         try {
             const csv = event.target.result;
-            const lineas = csv.trim().split('\n');
-            if (lineas.length < 2) {
-                mostrarToast('El archivo CSV está vacío o no tiene datos', 'error');
+            if (!String(csv).trim().split(/\r?\n/)[0].toLowerCase().includes('numitems')) {
+                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos', 'error');
                 return;
             }
-            // Verificar encabezados
-            const encabezados = lineas[0].toLowerCase();
-            if (!encabezados.includes('numitems')) {
-                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa', 'error');
-                return;
-            }
-            // Compatibilidad de formatos:
-            //  nuevo:      Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa
-            //  intermedio: Nombre,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa
-            //  antiguo:    Nombre,NumItems,Media,DE,MinItem,MaxItem,Alfa
-            const tienePruebaEscala = encabezados.includes('escala');
-            const tieneTipo = encabezados.includes('tipo');
-            const tieneDistribucion = encabezados.includes('distribucion');
-            // Limpiar tabla actual
-            const tbody = document.getElementById('bodyPruebas');
-            tbody.innerHTML = '';
-            // Procesar cada línea (saltar encabezados)
-            for (let i = 1; i < lineas.length; i++) {
-                const linea = lineas[i].trim();
-                if (!linea) continue;
-                const valores = parsearLineaCSV(linea);
-                if (valores.length < 4) continue;
-                if (tienePruebaEscala) {
-                    const off = tieneTipo ? 1 : 0; // formato nuevo incluye columna Tipo
-                    agregarFilaPruebaConDatos({
-                        prueba: valores[0] || '',
-                        nombre: valores[1] || '',
-                        tipo: tieneTipo ? (valores[2] || 'dimension') : 'dimension',
-                        numItems: valores[2 + off] || '',
-                        distribucion: valores[3 + off] || 'normal',
-                        media: valores[4 + off] || '',
-                        de: valores[5 + off] || '',
-                        min: valores[6 + off] || '',
-                        max: valores[7 + off] || '',
-                        alfa: valores[8 + off] || ''
-                    });
-                } else if (tieneDistribucion) {
-                    // Formato sin columna Prueba: usar el mismo nombre como prueba y escala
-                    agregarFilaPruebaConDatos({
-                        prueba: valores[0] || '',
-                        nombre: valores[0] || '',
-                        numItems: valores[1] || '',
-                        distribucion: valores[2] || 'normal',
-                        media: valores[3] || '',
-                        de: valores[4] || '',
-                        min: valores[5] || '',
-                        max: valores[6] || '',
-                        alfa: valores[7] || ''
-                    });
-                } else {
-                    agregarFilaPruebaConDatos({
-                        prueba: valores[0] || '',
-                        nombre: valores[0] || '',
-                        numItems: valores[1] || '',
-                        distribucion: 'normal',
-                        media: valores[2] || '',
-                        de: valores[3] || '',
-                        min: valores[4] || '',
-                        max: valores[5] || '',
-                        alfa: valores[6] || ''
-                    });
-                }
-            }
-            mostrarToast(`Configuración importada: ${lineas.length - 1} pruebas`, 'success');
+            const n = aplicarCSVPruebas(csv);   // misma compatibilidad de formatos que el archivo maestro
+            sincronizarDimensionesDesdeTests(true);
+            actualizarTodasLasPruebas();
+            mostrarToast(`Configuración importada: ${n} pruebas`, 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
@@ -2969,53 +2881,6 @@ function importarConfigPruebas(e) {
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
-// ===================== CUADRO DE PRUEBAS (TESTS) =====================
-// Define qué tests existen y qué variable psicológica mide cada uno. Alimenta
-// el desplegable «Prueba (test)» de la tabla de escalas.
-function agregarFilaTestConDatos(datos = {}) {
-    const tbody = document.getElementById('bodyTests');
-    if (!tbody) return;
-    const fila = document.createElement('tr');
-    fila.className = 'fila-test';
-    fila.innerHTML = `
-        <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre del test"></td>
-        <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${datos.variable || ''}" aria-label="Variable psicológica"></td>
-        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" value="${datos.rIntra !== undefined && datos.rIntra !== '' ? datos.rIntra : '0.40'}" aria-label="Correlación entre dimensiones" title="Correlación esperada entre las dimensiones de este test (las subescalas de un mismo instrumento suelen correlacionar entre 0.30 y 0.60). Una pareja fijada en la tabla III prevalece sobre este valor."></td>
-        <td>
-            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar test">
-                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-            </button>
-        </td>`;
-    tbody.appendChild(fila);
-    fila.querySelector('[aria-label="Nombre del test"]').addEventListener('input', refrescarSelectoresDePrueba);
-    refrescarSelectoresDePrueba();
-}
-function agregarFilaTest() { agregarFilaTestConDatos({}); }
-// Nombres de test definidos arriba (sin vacíos ni repetidos).
-function testsDefinidos() {
-    const out = [];
-    document.querySelectorAll('#bodyTests .fila-test').forEach(f => {
-        const nombre = (f.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
-        const variable = (f.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
-        const rIntra = (f.querySelector('[aria-label="Correlación entre dimensiones"]') || {}).value || '';
-        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim(), rIntra: rIntra.trim() });
-    });
-    return out;
-}
-// Repuebla los desplegables de la tabla de escalas conservando la selección.
-function refrescarSelectoresDePrueba() {
-    const tests = testsDefinidos();
-    document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la prueba"]').forEach(sel => {
-        if (!sel || sel.tagName !== 'SELECT') return;
-        const actual = sel.value;
-        sel.innerHTML = '<option value="">— elige un test —</option>'
-            + tests.map(t => `<option value="${t.prueba}"${t.prueba === actual ? ' selected' : ''}>${t.prueba}</option>`).join('');
-        if (actual && !tests.some(t => t.prueba === actual)) sel.value = '';
-    });
-}
-
 function agregarFilaPruebaConDatos(datos) {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = document.createElement('tr');
