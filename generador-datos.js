@@ -35,6 +35,14 @@ const ESTILOS_RESPUESTA = {
     moderada: { aquiescencia: 1.0, extrema: 0.50 },
     alta:     { aquiescencia: 1.5, extrema: 0.75 }
 };
+// (C1) Desajuste controlado de la estructura factorial: proporción de ítems del
+// test emparejados con un residuo común y correlación residual de cada par.
+const NIVELES_DESAJUSTE = {
+    ninguno:  { proporcion: 0,    rho: 0 },
+    leve:     { proporcion: 0.30, rho: 0.20 },
+    moderado: { proporcion: 0.50, rho: 0.35 },
+    alto:     { proporcion: 0.80, rho: 0.50 }
+};
 const PERFILES_HETEROGENEIDAD = {
     ninguna:  { medias: 0,   cargas: 0,   cruzadas: 0,    proporcionCruzadas: 0 },
     leve:     { medias: 0.3, cargas: 0.3, cruzadas: 0.15, proporcionCruzadas: 0.20 },
@@ -88,6 +96,11 @@ class GeneradorDatos {
     // Inicializa la fuente de aleatoriedad. Con una semilla numérica usa un
     // PRNG determinista (Mulberry32): la misma semilla produce el mismo
     // conjunto de datos. Sin semilla, usa Math.random.
+    // El generador es una clausura sobre su estado: guardarlo/restaurarlo es
+    // guardar/restaurar la función (una simulación con semilla propia no altera
+    // la secuencia principal).
+    _guardarAleatorio() { return this.aleatorio; }
+    _restaurarAleatorio(fn) { if (typeof fn === 'function') this.aleatorio = fn; }
     inicializarAleatorio(semilla) {
         if (semilla === null || semilla === undefined || isNaN(semilla)) {
             this.aleatorio = Math.random;
@@ -179,6 +192,8 @@ class GeneradorDatos {
         this.configuracion.modelos = this.recolectarModelos();
         // (B7) Medidas repetidas: ondas T2… con estabilidad y d de cambio
         this.configuracion.medidasRepetidas = this.recolectarMedidasRepetidas();
+        // (C1) Estructura factorial por test (la interfaz la guarda como JSON)
+        this.configuracion.estructuras = this.recolectarEstructuras();
 
         return this.configuracion;
     }
@@ -321,6 +336,19 @@ class GeneradorDatos {
             modelos.push({ tipo, x, m, y, c1, c2, c3 });
         });
         return modelos;
+    }
+    // (C1) La tarjeta VII guarda las estructuras en #estructurasJSON:
+    // [{ prueba, modo: 'cargas'|'alfa', factores: [nombres de dimensión],
+    //    cargas: { <dimensión>: [[λ por factor] por ítem] }, metodo: {carga, sobre}|null, desajuste }]
+    recolectarEstructuras() {
+        const el = document.getElementById('estructurasJSON');
+        if (!el) return [];
+        try {
+            const lista = JSON.parse(el.value || '[]');
+            return Array.isArray(lista) ? lista.filter(e => e && e.prueba && e.cargas && typeof e.cargas === 'object') : [];
+        } catch (e) {
+            throw new Error('Estructura factorial: el contenido guardado no es válido (' + e.message + ')');
+        }
     }
     // (B7) Tabla de medidas repetidas: selects [variable, agrupación] e inputs
     // [ondas, estabilidad, cambio, cambioGrupo].
@@ -836,7 +864,11 @@ class GeneradorDatos {
         // Fiabilidad autocalibrada: una vez por escala (no por participante).
         const indiceFiab = this.configuracion.indiceFiabilidad || 'alfa';
         const objetivoInterno = new Map();
-        pruebas.forEach(p => objetivoInterno.set(p, this.calibrarFiabilidad(p, indiceFiab)));
+        pruebas.forEach(p => {
+            const perfil = this.perfilesItems.get(p);
+            if (perfil && perfil.estructura) { this._calibrarCargas(p); objetivoInterno.set(p, p.alfa); return; }   // (C1) las cargas mandan
+            objetivoInterno.set(p, this.calibrarFiabilidad(p, indiceFiab));
+        });
         avisar(0.36, 'Generando participantes');
 
         // Desplazamientos por grupo de cada variable continua (A1), por
@@ -895,9 +927,16 @@ class GeneradorDatos {
                 // (B7) las cargas cruzadas de una onda T2… miran a la misma onda de la
                 // otra dimensión si existe; si no, a su onda 1
                 let zOtras = zDim;
-                if (prueba.sufijo && perfil && perfil.cruzadas.length) {
+                const conMetodo = !!(perfil && perfil.estructura && perfil.estructura.metodo);
+                if ((prueba.sufijo && perfil && perfil.cruzadas.length) || conMetodo) {
                     zOtras = {};
-                    perfil.cruzadas.forEach(c => { zOtras[c.sigla] = zDim[this._siglaOnda(prueba, c.sigla)]; });
+                    if (perfil && perfil.cruzadas.length) perfil.cruzadas.forEach(c => { zOtras[c.sigla] = zDim[this._siglaOnda(prueba, c.sigla)]; });
+                    if (conMetodo) {
+                        // (C1) un factor de método por persona, test y onda (independiente del resto)
+                        const clave = 'metodo:' + prueba.prueba + (prueba.sufijo || '');
+                        if (!(clave in zDim)) zDim[clave] = this.generarNormalEstandar();
+                        zOtras['metodo:' + prueba.prueba] = zDim[clave];
+                    }
                 }
                 const puntajes = this._repartirEnItems(
                     prueba.numItems,
@@ -1110,7 +1149,7 @@ class GeneradorDatos {
         // (B5) Mismo perfil de ítems que tendrá la base; las otras dimensiones
         // (cargas cruzadas) se simulan con su correlación objetivo con esta.
         const perfil = this.perfilesItems ? (this.perfilesItems.get(prueba) || null) : null;
-        const zOtras = (perfil && perfil.cruzadas.length) ? this._zOtrasSimuladas(prueba, perfil) : null;
+        const zOtras = (perfil && (perfil.cruzadas.length || (perfil.estructura && perfil.estructura.metodo))) ? this._zOtrasSimuladas(prueba, perfil) : null;
         for (let i = 0; i < nSim; i++) {
             const p = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo,
                 prueba.maximo, objetivoInterno, null, prueba.distribucion, indice,
@@ -1138,9 +1177,11 @@ class GeneradorDatos {
             }
             rCon[sigla] = Math.max(-0.99, Math.min(0.99, r));
         });
+        const conMetodo = !!(perfil.estructura && perfil.estructura.metodo);
         return (base) => {
             const z = {};
             siglas.forEach(sigla => { const r = rCon[sigla]; z[sigla] = r * base + Math.sqrt(1 - r * r) * this.generarNormalEstandar(); });
+            if (conMetodo) z['metodo:' + perfil.estructura.prueba] = this.generarNormalEstandar();
             return z;
         };
     }
@@ -1283,7 +1324,7 @@ class GeneradorDatos {
         const delta = perfil ? perfil.delta : null;
         const peso = perfil ? perfil.peso : null;
         let cruz = null;
-        if (perfil && perfil.cruzadas.length && zOtras) {
+        if (perfil && !perfil.estructura && perfil.cruzadas.length && zOtras) {
             const z = typeof zOtras === 'function' ? zOtras(base) : zOtras;
             // DE del ítem sin el término cruzado: la carga cruzada c se expresa en
             // unidades estandarizadas del ítem (≈ carga secundaria c en el AFE).
@@ -1299,6 +1340,62 @@ class GeneradorDatos {
         }
         const mediaItem = mediaTotal / k, desvioTotal = totalObjetivo - mediaTotal;
         const cuota = i => mediaItem + (delta ? delta[i] : 0) + (peso ? peso[i] : 1 / k) * desvioTotal;
+        // (C1) reparto ESTRUCTURADO: ruido propio por ítem según su carga, cruzadas
+        // explícitas, factor de método y pares de desajuste; todo centrado (pesos
+        // ∝ DE del ruido propio) para que la suma sea exactamente el total.
+        if (perfil && perfil.estructura) {
+            const est = perfil.estructura;
+            const sigma0 = desviacionTotal / est.sumaLambda;
+            // varianza extra por ítem (cruzadas y método) que se descuenta del ruido
+            // propio: así la carga propia no se atenúa por añadir esos componentes
+            const extra = new Float64Array(k), cruzE = new Float64Array(k), metE = new Float64Array(k);
+            if (perfil.cruzadas.length && zOtras) {
+                const z = typeof zOtras === 'function' ? zOtras(base) : zOtras;
+                let sumaC = 0;
+                perfil.cruzadas.forEach(({ item, sigla, c }) => { const zb = z[sigla]; if (typeof zb === 'number' && isFinite(zb)) { cruzE[item] += c * sigma0 * zb; sumaC += c * sigma0 * zb; extra[item] += c * c * sigma0 * sigma0; } });
+                for (let i = 0; i < k; i++) cruzE[i] -= sumaC / k;   // Σ = 0: el total no cambia
+            }
+            if (est.metodo && zOtras) {
+                const z = typeof zOtras === 'function' ? zOtras(base) : zOtras;
+                const zm = z['metodo:' + est.prueba];
+                if (typeof zm === 'number' && isFinite(zm)) {
+                    // contraste pre-centrado: +aplicada·(1 − m/k) en los invertidos, −aplicada·(m/k) en los directos
+                    const m = est.metodo.items.length, enSet = new Uint8Array(k);
+                    est.metodo.items.forEach(i => { enSet[i] = 1; });
+                    for (let i = 0; i < k; i++) { const coef = enSet[i] ? est.metodo.aplicada * (1 - m / k) : -est.metodo.aplicada * (m / k); metE[i] = coef * sigma0 * zm; extra[i] += coef * coef * sigma0 * sigma0; }
+                }
+            }
+            const s = new Float64Array(k), e = new Float64Array(k);
+            for (let i = 0; i < k; i++) {
+                const total = est.mu * sigma0 * Math.sqrt(Math.max(0.02, 1 - est.lambda[i] * est.lambda[i]));
+                s[i] = Math.sqrt(Math.max(0.2 * total * total, total * total - extra[i]));
+                e[i] = s[i] * this.generarNormalEstandar();
+            }
+            est.pares.forEach(par => { const u = this.generarNormalEstandar(); const r = par.rho; e[par.i] = Math.sqrt(1 - r) * e[par.i] + Math.sqrt(r) * s[par.i] * u; e[par.j] = Math.sqrt(1 - r) * e[par.j] + Math.sqrt(r) * s[par.j] * u; });
+            let sumaE = 0, sumaS = 0;
+            for (let i = 0; i < k; i++) { sumaE += e[i]; sumaS += s[i]; }
+            for (let i = 0; i < k; i++) e[i] = e[i] - (s[i] / sumaS) * sumaE + cruzE[i] + metE[i];   // centrado (pesos ∝ DE) + extras de suma 0
+            if (!modoLikert) {
+                const items = new Array(k);
+                for (let i = 0; i < k; i++) items[i] = Math.round((cuota(i) + e[i]) * 100) / 100;
+                const total = Math.round(items.reduce((a, b) => a + b, 0) * 100) / 100;
+                return { items, total, factorUtilizado: base };
+            }
+            const totalEntero = this._totalEnteroLikert(k, minItem, maxItem, totalObjetivo);
+            const items = new Array(k);
+            for (let i = 0; i < k; i++) items[i] = Math.max(minItem, Math.min(maxItem, Math.round(cuota(i) + e[i])));
+            let diff = totalEntero - items.reduce((a, b) => a + b, 0);
+            let guard = 0;
+            const limite = k * (maxItem - minItem) + k * 4 + 50;
+            while (diff !== 0 && guard < limite) {
+                const idx = Math.floor(this.aleatorio() * k);
+                const paso = diff > 0 ? 1 : -1;
+                const nuevo = items[idx] + paso;
+                if (nuevo >= minItem && nuevo <= maxItem) { items[idx] = nuevo; diff -= paso; }
+                guard++;
+            }
+            return { items, total: items.reduce((a, b) => a + b, 0), factorUtilizado: base };
+        }
 
         if (!modoLikert) {
             // MEDIDA CONTINUA: ítem = cuota + desviación centrada → la suma es
@@ -1345,6 +1442,375 @@ class GeneradorDatos {
         return { items: items, total: total, factorUtilizado: base };
     }
 
+    // ============ ESTRUCTURA FACTORIAL CONTROLADA (C1) ============
+    // Contrato: los factores son las dimensiones del test; el factor común de
+    // cada dimensión es su total (autoritativo); las cargas se definen sobre el
+    // ítem recodificado y son las que recupera un análisis de ejes principales
+    // sobre los ítems (la restricción «los ítems suman el total» se compensa en
+    // la calibración, como ya hacía el reparto paralelo con el α).
+    //   ítem_i = M/k + δ_i + w_i·(T − M) + e_i,   w_i = λ_i / Σλ
+    //   e_i = μ·σ₀·√(1 − λ_i²)·g_i + Σ_m c_im·σ₀·z_m + λ_met·σ₀·z_met + pares,   σ₀ = σ_T / Σλ
+    // con los e_i centrados (pesos ∝ su DE) para que Σ ítem_i = T exactamente, y μ
+    // calibrado por bisección hasta que la carga media recuperada sea la pedida.
+    _estructuraDe(prueba) {
+        const lista = (this.configuracion && this.configuracion.estructuras) || [];
+        const base = prueba.base || prueba;
+        return lista.find(e => e.prueba === base.prueba && e.cargas && Array.isArray(e.cargas[base.nombre])) || null;
+    }
+    // α y ω implícitos por unas cargas propias (ítems con la misma DE, modelo
+    // congenérico; las cruzadas y el método no entran en la fiabilidad propia)
+    _fiabilidadImplicita(lambdas) {
+        const k = lambdas.length;
+        if (k < 2) return { alfa: 0, omega: 0 };
+        let suma = 0, sumaCuad = 0, unic = 0;
+        lambdas.forEach(l => { suma += l; sumaCuad += l * l; unic += 1 - l * l; });
+        const sumaPares = suma * suma - sumaCuad;          // Σ_{i≠j} λ_i λ_j
+        const alfa = (k / (k - 1)) * sumaPares / (k + sumaPares);
+        const omega = (suma * suma) / (suma * suma + unic);
+        return { alfa, omega };
+    }
+    // Cargas propias efectivas de una dimensión: las de la matriz o, en modo
+    // «alfa», reescaladas por un multiplicador hasta que la fiabilidad implícita
+    // sea la de la tabla I (con tope 0.95 por carga).
+    _lambdasEfectivas(prueba, filas, idxPropio) {
+        const k = prueba.numItems;
+        const crudas = filas.map(f => Math.max(0.05, Math.min(0.95, +f[idxPropio] || 0)));
+        const est = this._estructuraDe(prueba);
+        if (!est || est.modo !== 'alfa' || !(prueba.alfa > 0 && prueba.alfa < 1)) return crudas;
+        const indice = this.configuracion.indiceFiabilidad === 'omega' ? 'omega' : 'alfa';
+        let lo = 0.05, hi = 3;
+        for (let it = 0; it < 40; it++) {
+            const mid = (lo + hi) / 2;
+            const l = crudas.map(x => Math.min(0.95, x * mid));
+            const fi = this._fiabilidadImplicita(l)[indice];
+            if (fi < prueba.alfa) lo = mid; else hi = mid;
+        }
+        const m = (lo + hi) / 2;
+        return crudas.map(x => Math.min(0.95, x * m));
+    }
+    _validarEstructuras(errores, advertencias) {
+        const cfg = this.configuracion, lista = cfg.estructuras || [];
+        if (!lista.length) return;
+        const indice = cfg.indiceFiabilidad === 'omega' ? 'omega' : 'alfa';
+        lista.forEach(est => {
+            const dims = (cfg.pruebas || []).filter(p => p.prueba === est.prueba && !p.sufijo && p.tipo !== 'general' && p.numItems >= 2);
+            if (!dims.length) { errores.push(`Estructura factorial: el test «${est.prueba}» no tiene dimensiones con ítems en la tabla I`); return; }
+            const factores = est.factores || dims.map(d => d.nombre);
+            const idxDe = nombre => factores.indexOf(nombre);
+            const desajuste = est.desajuste || 'ninguno';
+            if (!NIVELES_DESAJUSTE[desajuste]) errores.push(`Estructura factorial de «${est.prueba}»: nivel de desajuste desconocido (${desajuste})`);
+            const conMetodo = !!(est.metodo && est.metodo.carga > 0);
+            if (conMetodo && est.metodo.carga > 0.6) errores.push(`Estructura factorial de «${est.prueba}»: la carga del factor de método (${est.metodo.carga}) no puede superar 0.6`);
+            if (conMetodo && !dims.some(d => (d.invertidos || 0) > 0 && d.invertidos < d.numItems)) advertencias.push(`Estructura factorial de «${est.prueba}»: el factor de método actúa sobre los ítems invertidos y ninguna dimensión tiene invertidos (y directos); no tendrá efecto`);
+            const alfasImplicitos = [];
+            dims.forEach(p => {
+                const filas = est.cargas[p.nombre];
+                if (!Array.isArray(filas)) { advertencias.push(`Estructura factorial de «${est.prueba}»: la dimensión «${p.nombre}» no tiene matriz; usará el perfil automático`); return; }
+                if (filas.length !== p.numItems) { errores.push(`Estructura factorial de «${est.prueba}»: «${p.nombre}» tiene ${p.numItems} ítems y la matriz ${filas.length} filas; pulsa «Actualizar desde la tabla I»`); return; }
+                const ip = idxDe(p.nombre);
+                if (ip < 0) { errores.push(`Estructura factorial de «${est.prueba}»: la matriz no tiene columna para «${p.nombre}»`); return; }
+                const propias = this._lambdasEfectivas(p, filas, ip);
+                filas.forEach((fila, i) => {
+                    const propia = +fila[ip] || 0;
+                    if (!(propia >= 0.1 && propia <= 0.95)) errores.push(`Estructura factorial de «${est.prueba}»: la carga propia del ítem ${i + 1} de «${p.nombre}» debe estar entre 0.10 y 0.95 (tiene ${propia})`);
+                    let comunalidad = propias[i] * propias[i];
+                    fila.forEach((c, j) => {
+                        if (j === ip) return;
+                        const cr = +c || 0;
+                        if (Math.abs(cr) > 0.6) errores.push(`Estructura factorial de «${est.prueba}»: la carga cruzada del ítem ${i + 1} de «${p.nombre}» sobre «${factores[j]}» (${cr}) no puede superar 0.6 en valor absoluto`);
+                        else if (Math.abs(cr) >= propias[i] && Math.abs(cr) > 0) errores.push(`Estructura factorial de «${est.prueba}»: el ítem ${i + 1} de «${p.nombre}» carga más en «${factores[j]}» (${cr}) que en su propia dimensión (${propias[i].toFixed(2)})`);
+                        comunalidad += cr * cr;
+                    });
+                    if (comunalidad > 0.95) errores.push(`Estructura factorial de «${est.prueba}»: la comunalidad del ítem ${i + 1} de «${p.nombre}» supera 0.95 (${comunalidad.toFixed(2)}); baja alguna carga`);
+                });
+                // DE de ítem implícita frente al rango Likert
+                const likert = p.minimo !== null && p.maximo !== null;
+                const sumaL = propias.reduce((s, l) => s + l, 0);
+                const sigmaItem = p.desviacion / Math.max(1e-9, sumaL);
+                if (likert && sigmaItem > (p.maximo - p.minimo) / 2) errores.push(`Estructura factorial de «${est.prueba}»: con esas cargas cada ítem de «${p.nombre}» necesitaría una DE de ${sigmaItem.toFixed(2)}, que no cabe en el rango ${p.minimo}–${p.maximo}; sube las cargas o baja la DE del total`);
+                else if (likert && sigmaItem > (p.maximo - p.minimo) / 3) advertencias.push(`Estructura factorial de «${est.prueba}»: las cargas de «${p.nombre}» exigen ítems con DE ${sigmaItem.toFixed(2)} en un rango ${p.minimo}–${p.maximo}: el recorte deformará los extremos`);
+                // el ruido propio del ítem debe poder absorber el redondeo a enteros (varianza 1/12)
+                const mediaL = sumaL / Math.max(1, propias.length);
+                const ruidoPropio = sigmaItem * sigmaItem * (1 - mediaL * mediaL);
+                if (likert && ruidoPropio < 0.10) errores.push(`Estructura factorial de «${est.prueba}»: con DE ${p.desviacion} en ${p.numItems} ítems y cargas de ${mediaL.toFixed(2)}, el ruido propio de cada ítem de «${p.nombre}» (DE ${Math.sqrt(ruidoPropio).toFixed(2)}) es menor que el redondeo a enteros y las cargas no pueden cumplirse; sube la DE del total, baja las cargas o reduce los ítems`);
+                else if (likert && ruidoPropio < 0.16) advertencias.push(`Estructura factorial de «${est.prueba}»: los ítems de «${p.nombre}» tienen poco ruido propio frente al redondeo a enteros; las cargas saldrán algo atenuadas`);
+                const fi = this._fiabilidadImplicita(propias)[indice];
+                alfasImplicitos.push({ p, fi });
+                if ((est.modo || 'cargas') !== 'alfa' && p.alfa > 0 && p.alfa < 1 && Math.abs(fi - p.alfa) > 0.03) advertencias.push(`Estructura factorial de «${est.prueba}»: las cargas de «${p.nombre}» implican ${indice === 'omega' ? 'ω' : 'α'} = ${fi.toFixed(2)}, distinto del ${p.alfa} de la tabla I; mandan las cargas (o elige el modo «respetar el α»)`);
+                if (p.numItems <= 4 && desajuste !== 'ninguno') advertencias.push(`Estructura factorial de «${est.prueba}»: con ${p.numItems} ítems en «${p.nombre}» el desajuste apenas se notará`);
+            });
+            const r = cfg.realismo || {};
+            if ((r.pctAquiescencia > 0 || r.pctExtrema > 0)) advertencias.push(`Estructura factorial de «${est.prueba}»: los estilos de respuesta añaden un factor de método propio que se sumará a la estructura pedida`);
+        });
+    }
+    // Un factor por ejes principales iterados sobre una matriz de correlaciones
+    // (misma rutina que usa el ω): devuelve las cargas estandarizadas o null.
+    _pafUnFactor(R) {
+        const k = R.length;
+        if (k < 2) return null;
+        let h2 = R.map((fila, i) => Math.max(...fila.map((r, j) => i === j ? 0 : Math.abs(r))));
+        let cargas = null;
+        for (let iter = 0; iter < 30; iter++) {
+            const Rr = R.map((fila, i) => fila.map((r, j) => i === j ? h2[i] : r));
+            let v = new Array(k).fill(1 / Math.sqrt(k)), lam = 0;
+            for (let p = 0; p < 60; p++) {
+                const w = Rr.map(fila => fila.reduce((s, r, j) => s + r * v[j], 0));
+                const norma = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
+                if (!(norma > 0)) return null;
+                v = w.map(x => x / norma); lam = norma;
+            }
+            if (!(lam > 0)) return null;
+            const signo = v.reduce((s, x) => s + x, 0) >= 0 ? 1 : -1;
+            const nuevas = v.map(x => Math.sqrt(lam) * x * signo);
+            const cambio = Math.max(...nuevas.map((c, i) => Math.abs(c * c - h2[i])));
+            h2 = nuevas.map(c => Math.min(c * c, 0.999));
+            cargas = nuevas;
+            if (cambio < 1e-6) break;
+        }
+        return cargas;
+    }
+    // Matriz de correlaciones de columnas (arreglos de igual longitud)
+    _matrizCorrelacion(cols) {
+        const k = cols.length, n = cols[0].length;
+        const medias = cols.map(c => c.reduce((s, v) => s + v, 0) / n);
+        const des = cols.map((c, j) => Math.sqrt(c.reduce((s, v) => s + (v - medias[j]) ** 2, 0) / (n - 1)) || 1e-9);
+        const R = Array.from({ length: k }, () => new Array(k).fill(1));
+        for (let a = 0; a < k; a++) for (let b = a + 1; b < k; b++) {
+            let s = 0; for (let i = 0; i < n; i++) s += (cols[a][i] - medias[a]) * (cols[b][i] - medias[b]);
+            R[a][b] = R[b][a] = (s / (n - 1)) / (des[a] * des[b]);
+        }
+        return R;
+    }
+    // Perfil estructurado de una dimensión a partir de la matriz de su test
+    _perfilEstructurado(p, est, perfil, grupos) {
+        const k = p.numItems;
+        const dims = (this.configuracion.pruebas || []).filter(x => x.prueba === p.prueba && !x.sufijo && x.tipo !== 'general' && x.numItems >= 2);
+        const factores = est.factores || dims.map(d => d.nombre);
+        const filas = est.cargas[p.nombre];
+        const ip = factores.indexOf(p.nombre);
+        if (!Array.isArray(filas) || filas.length !== k || ip < 0) return null;
+        const lambda = Float64Array.from(this._lambdasEfectivas(p, filas, ip));
+        let suma = 0; for (let i = 0; i < k; i++) suma += lambda[i];
+        for (let i = 0; i < k; i++) perfil.peso[i] = lambda[i] / suma;
+        // cargas cruzadas explícitas (en unidades de DE de ítem, como las del perfil automático)
+        perfil.cruzadas = [];
+        filas.forEach((fila, i) => fila.forEach((c, j) => {
+            if (j === ip) return;
+            const cr = +c || 0;
+            if (Math.abs(cr) < 0.005) return;
+            const dim = dims.find(d => d.nombre === factores[j]);
+            if (dim) perfil.cruzadas.push({ item: i, sigla: dim.nombreCorto, c: cr });
+        }));
+        // factor de método sobre los ítems invertidos. Como los ítems deben sumar
+        // el total, el componente se centra dentro de la dimensión: queda como
+        // CONTRASTE (positivo en los invertidos, negativo en los directos), el
+        // patrón de un factor de redacción; la carga aplicada se infla por
+        // 1/(1 − m/k) para que, tras centrar, los invertidos conserven la pedida.
+        let metodo = null;
+        if (est.metodo && est.metodo.carga > 0 && (p.invertidos || 0) > 0) {
+            const items = [];
+            for (let i = 0; i < k; i++) if (i >= k - p.invertidos) items.push(i);
+            const m = items.length;
+            if (m && m < k) metodo = { carga: Math.min(0.6, est.metodo.carga), aplicada: Math.min(0.95, Math.min(0.6, est.metodo.carga) / (1 - m / k)), items };
+        }
+        // desajuste: pares disjuntos de ítems con un residuo común
+        const nivel = NIVELES_DESAJUSTE[est.desajuste || 'ninguno'] || NIVELES_DESAJUSTE.ninguno;
+        const pares = [];
+        if (nivel.proporcion > 0 && k >= 4) {
+            const nPares = Math.max(1, Math.round(nivel.proporcion * k / 2));
+            const orden = this._muestraSinReemplazo(k, k);
+            for (let q = 0; q < nPares && 2 * q + 1 < k; q++) pares.push({ i: orden[2 * q], j: orden[2 * q + 1], rho: nivel.rho });
+        }
+        const media = suma / k;
+        const mu0 = Math.sqrt(k * media * media / (1 + (k - 1) * media * media));   // solución exacta del caso paralelo
+        perfil.estructura = { lambda, sumaLambda: suma, mu: mu0, metodo, pares, modo: est.modo || 'cargas', prueba: p.prueba, calibrada: false };
+        return perfil.estructura;
+    }
+    // Calibración de μ (escala del ruido propio) para que la carga media
+    // recuperada por ejes principales sea la pedida, con el mismo reparto (y el
+    // mismo redondeo/recorte) que tendrá la base.
+    _calibrarCargas(prueba, nSim = 1500) {
+        const perfil = this.perfilesItems ? this.perfilesItems.get(prueba) : null;
+        const est = perfil && perfil.estructura;
+        if (!est || est.calibrada) return;
+        const objetivo = Array.from(est.lambda).reduce((s, l) => s + l, 0) / est.lambda.length;
+        const k = prueba.numItems;
+        const deIntra = prueba.desviacion * this._factorDE(prueba.nombre);
+        // modelo puro: las cruzadas, el método y los pares se descuentan del ruido
+        // propio al generar, así que no cambian la carga propia y no entran aquí
+        const estPuro = Object.assign({}, est, { metodo: null, pares: [] });
+        const perfilPuro = { delta: perfil.delta, peso: perfil.peso, cruzadas: [], estructura: estPuro };
+        const evaluar = () => {
+            const cols = Array.from({ length: k }, () => new Array(nSim));
+            for (let s = 0; s < nSim; s++) {
+                const r = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo, prueba.maximo, prueba.alfa, null, prueba.distribucion, 'alfa', this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfilPuro, null);
+                for (let j = 0; j < k; j++) cols[j][s] = r.items[j];   // el reparto ya devuelve los ítems en orientación recodificada
+            }
+            const cargas = this._pafUnFactor(this._matrizCorrelacion(cols));
+            if (!cargas) return null;
+            return { media: cargas.reduce((s, l) => s + l, 0) / k, cols };
+        };
+        let lo = 0.15, hi = 2.5, ultimo = null;
+        for (let it = 0; it < 14; it++) {
+            est.mu = estPuro.mu = (lo + hi) / 2;
+            const r = evaluar();
+            if (!r) break;
+            ultimo = r;
+            if (r.media > objetivo) lo = est.mu; else hi = est.mu;   // más ruido → menos carga
+        }
+        est.mu = (lo + hi) / 2;
+        if (ultimo) {
+            est.alfaImplicito = this._indiceObservado(ultimo.cols, 'alfa');
+            est.omegaImplicito = this._indiceObservado(ultimo.cols, 'omega');
+        }
+        est.calibrada = true;
+    }
+    // KMO global y prueba de Bartlett de una matriz de correlaciones (por Cholesky)
+    _kmoBartlett(R, n) {
+        const k = R.length;
+        try {
+            const L = this.descomposicionCholesky(R.map(f => f.slice()));
+            const Linv = this._inversaTriangularInferior(L);
+            const inv = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => { let s = 0; for (let r = 0; r < k; r++) s += Linv[r][i] * Linv[r][j]; return s; }));
+            let sumR2 = 0, sumP2 = 0, logDet = 0;
+            for (let i = 0; i < k; i++) { logDet += 2 * Math.log(L[i][i]); for (let j = 0; j < k; j++) { if (i === j) continue; sumR2 += R[i][j] * R[i][j]; const pij = -inv[i][j] / Math.sqrt(inv[i][i] * inv[j][j]); sumP2 += pij * pij; } }
+            const kmo = sumR2 / (sumR2 + sumP2);
+            const chi2 = -(n - 1 - (2 * k + 5) / 6) * logDet;
+            const gl = k * (k - 1) / 2;
+            return { kmo, chi2, gl, significativo: chi2 > gl + 4 * Math.sqrt(2 * gl) };   // aprox. p < 0.001 con gl grande
+        } catch (e) { return null; }
+    }
+    // Matriz de correlaciones entre ítems IMPLICADA por la estructura pedida de un
+    // test, obtenida por SIMULACIÓN conjunta del test (totales con sus
+    // correlaciones objetivo, mismo reparto, redondeo y recorte, cruzadas y
+    // método) sin los pares de desajuste; y el SRMR que esos pares producen
+    // (simulación con pares frente a sin pares). PRNG propio: el informe no
+    // depende del estado del generador principal ni lo consume.
+    _matrizImplicadaTest(dims, nSim = 2500) {
+        const simular = (conPares) => {
+            const K = dims.length;
+            // correlaciones objetivo entre los totales del test → Cholesky (con cresta si hace falta)
+            const Phi = dims.map(a => dims.map(b => this._rObjetivoEntre(this._claveEscala(a), this._claveEscala(b))));
+            let L = null;
+            for (let cresta = 0; cresta < 6 && !L; cresta++) { try { L = this.descomposicionCholesky(Phi.map((f, i) => f.map((v, j) => i === j ? 1 + cresta * 0.02 : v * (1 - cresta * 0.02)))); } catch (e) { L = null; } }
+            if (!L) return null;
+            const cols = [];
+            const porDim = dims.map(p => { const perfil = this.perfilesItems.get(p); const est = perfil.estructura; return { p, perfil: { delta: perfil.delta, peso: perfil.peso, cruzadas: perfil.cruzadas, estructura: conPares ? est : Object.assign({}, est, { pares: [] }) }, deIntra: p.desviacion * this._factorDE(p.nombre), cols: Array.from({ length: p.numItems }, () => new Array(nSim)) }; });
+            for (let s = 0; s < nSim; s++) {
+                const z = new Array(K).fill(0), w = Array.from({ length: K }, () => this.generarNormalEstandar());
+                for (let a = 0; a < K; a++) for (let k = 0; k <= a; k++) z[a] += L[a][k] * w[k];
+                const zOtras = {};
+                dims.forEach((p, a) => { zOtras[p.nombreCorto] = z[a]; });
+                zOtras['metodo:' + dims[0].prueba] = this.generarNormalEstandar();
+                porDim.forEach((d, a) => {
+                    const r = this.generarPuntajesPrueba(d.p.numItems, d.p.media, d.deIntra, d.p.minimo, d.p.maximo, d.p.alfa, z[a], d.p.distribucion, 'alfa', this._desplazamientoAleatorio(d.p.nombre, d.p.desviacion), d.perfil, zOtras);
+                    for (let j = 0; j < d.p.numItems; j++) d.cols[j][s] = r.items[j];
+                });
+            }
+            porDim.forEach(d => d.cols.forEach(c => cols.push(c)));
+            return this._matrizCorrelacion(cols);
+        };
+        // PRNG separado y reproducible
+        const estadoPrevio = this._guardarAleatorio();
+        this.inicializarAleatorio(4242);
+        const R = simular(false);
+        const hayPares = dims.some(p => this.perfilesItems.get(p).estructura.pares.length);
+        const Rp = hayPares ? simular(true) : null;
+        this._restaurarAleatorio(estadoPrevio);
+        if (!R) return null;
+        let srmrPares = 0;
+        if (Rp) { const K = R.length; let suma = 0; for (let a = 0; a < K; a++) for (let b = a + 1; b < K; b++) suma += (Rp[a][b] - R[a][b]) ** 2; srmrPares = Math.sqrt(suma / (K * (K - 1) / 2)); }
+        return { R, srmrPares };
+    }
+    // Informe de la estructura factorial de cada test con matriz
+    _informeEstructuras(base, filas, num) {
+        const cfg = this.configuracion, lista = cfg.estructuras || [];
+        if (!lista.length) return;
+        const n = base.n, exactas = cfg.correlacionesExactas !== false;
+        // las cargas de ítem llevan el ruido de muestreo del ítem aunque los totales sean exactos
+        const tolCarga = Math.max(0.06, 2.5 / Math.sqrt(Math.max(4, n)));
+        const est = arr => { const m = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length) || 1e-9; return arr.map(v => (v - m) / sd); };
+        lista.forEach(e => {
+            const dims = (cfg.pruebas || []).filter(p => p.prueba === e.prueba && !p.sufijo && p.tipo !== 'general' && p.numItems >= 2 && this.perfilesItems && this.perfilesItems.get(p) && this.perfilesItems.get(p).estructura);
+            if (!dims.length) return;
+            // ítems recodificados y casos completos del test entero
+            const columnasPorDim = new Map();
+            dims.forEach(p => columnasPorDim.set(p, this._itemsDe(p).map(k => base.columna(k)).filter(Boolean)));
+            // casos completos del TEST (para SRMR/KMO) y de cada DIMENSIÓN (para sus cargas)
+            const completosTest = [];
+            for (let i = 0; i < n; i++) if (dims.every(p => columnasPorDim.get(p).every(c => isFinite(c.datos[i])) && isFinite(base.columna(this.columnaDeEscala(p)).datos[i]))) completosTest.push(i);
+            const completosDe = p => { const out = []; const cols = columnasPorDim.get(p), tot = base.columna(this.columnaDeEscala(p)); for (let i = 0; i < n; i++) if (cols.every(c => isFinite(c.datos[i])) && isFinite(tot.datos[i])) out.push(i); return out; };
+            const itemsDe = (p, casos) => columnasPorDim.get(p).map((c, j) => casos.map(i => this._recodificar(p, j + 1, c.datos[i])));
+            const totalZDe = (p, casos) => est(casos.map(i => base.columna(this.columnaDeEscala(p)).datos[i]));
+            const totalesZ = new Map(); dims.forEach(p => totalesZ.set(p, totalZDe(p, completosTest)));
+            const todos = [];
+            dims.forEach(p => {
+                const est1 = this.perfilesItems.get(p).estructura;
+                const completos = completosDe(p);
+                if (completos.length < 30) return;
+                const cols = itemsDe(p, completos);
+                const zPropio = totalZDe(p, completos);
+                const R = this._matrizCorrelacion(cols);
+                const cargas = this._pafUnFactor(R);
+                if (!cargas) return;
+                const pedidas = Array.from(est1.lambda);
+                const mediaP = pedidas.reduce((s, l) => s + l, 0) / pedidas.length, mediaO = cargas.reduce((s, l) => s + l, 0) / cargas.length;
+                const maxDesv = Math.max(...cargas.map((l, i) => Math.abs(l - pedidas[i])));
+                filas.push({ tipo: 'λ', variable: `${p.nombre}: cargas propias (ejes principales; media, y desviación máxima por ítem)`, pedido: num(mediaP, 2), obtenido: `${num(mediaO, 2)} (máx. desv. ${num(maxDesv, 2)})`, ok: Math.abs(mediaO - mediaP) <= 0.03 + (exactas ? 0 : 1 / Math.sqrt(n)) && maxDesv <= tolCarga * 1.5 });
+                // cruzadas: coeficiente estandarizado del ítem sobre [total propio, total ajeno]
+                (this.perfilesItems.get(p).cruzadas || []).forEach(cz => {
+                    const otra = dims.find(d => d.nombreCorto === cz.sigla);
+                    if (!otra) return;
+                    // casos completos de ambas dimensiones
+                    const casos = completos.filter(i => columnasPorDim.get(otra).every(c => isFinite(c.datos[i])) && isFinite(base.columna(this.columnaDeEscala(otra)).datos[i]));
+                    if (casos.length < 30) return;
+                    const item = casos.map(i => this._recodificar(p, cz.item + 1, columnasPorDim.get(p)[cz.item].datos[i]));
+                    const betas = this._betasEstandarizadas(item, [totalZDe(p, casos), totalZDe(otra, casos)]);
+                    if (!betas) return;
+                    filas.push({ tipo: 'λ×', variable: `${p.nombre} ítem ${cz.item + 1}: carga cruzada sobre ${otra.nombre}`, pedido: num(cz.c, 2), obtenido: num(betas[1], 2), ok: Math.abs(betas[1] - cz.c) <= Math.max(0.06, 2.5 / Math.sqrt(Math.max(4, casos.length))) });
+                });
+                // fiabilidad implícita frente a la obtenida
+                const indice = cfg.indiceFiabilidad === 'omega' ? 'omega' : 'alfa';
+                const impl = indice === 'omega' ? est1.omegaImplicito : est1.alfaImplicito;
+                if (isFinite(impl)) {
+                    const obs = this._indiceObservado(cols, indice);
+                    if (obs !== null && isFinite(obs)) filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: `${p.nombre} (implícito por las cargas)`, pedido: num(impl, 3), obtenido: num(obs, 3), ok: Math.abs(obs - impl) <= (p.distribucion === 'normal' ? 0.04 : 0.06) });
+                }
+                // método: ejes principales sobre los residuos de los ítems de método tras su total
+                if (est1.metodo && est1.metodo.items.length >= 2) {
+                    const residuos = est1.metodo.items.map(i => { const z = est(cols[i]); const t = zPropio; let sxy = 0, sxx = 0; for (let q = 0; q < z.length; q++) { sxy += z[q] * t[q]; sxx += t[q] * t[q]; } const b = sxy / sxx; return z.map((v, q) => v - b * t[q]); });
+                    const cargasMet = this._pafUnFactor(this._matrizCorrelacion(residuos));
+                    if (cargasMet) { const mediaM = cargasMet.reduce((s, l) => s + Math.abs(l), 0) / cargasMet.length; filas.push({ tipo: 'λmét', variable: `${p.nombre}: factor de método (${est1.metodo.items.length} ítems; carga media residual)`, pedido: num(est1.metodo.carga, 2), obtenido: num(mediaM, 2), ok: Math.abs(mediaM - est1.metodo.carga) <= Math.max(0.08, tolCarga) }); }
+                }
+            });
+            // ajuste del test completo (casos completos del test): SRMR entre R
+            // observada y la implicada por la estructura pedida (sin los pares de
+            // desajuste), frente al SRMR esperado por esos pares y el error muestral
+            if (completosTest.length >= 30) {
+                todos.length = 0;
+                dims.forEach(p => itemsDe(p, completosTest).forEach(c => todos.push(c)));
+            }
+            if (todos.length >= 3 && completosTest.length >= 30) {
+                const completos = completosTest;
+                const impl = this._matrizImplicadaTest(dims);
+                const Robs = this._matrizCorrelacion(todos);
+                const K = todos.length;
+                if (impl) {
+                    let suma = 0, cuenta = 0;
+                    for (let a = 0; a < K; a++) for (let b = a + 1; b < K; b++) { suma += (Robs[a][b] - impl.R[a][b]) ** 2; cuenta++; }
+                    const srmr = Math.sqrt(suma / cuenta);
+                    // esperado: desajuste de los pares + error muestral de las correlaciones (≈ 0.9/√n)
+                    const piso = 0.9 / Math.sqrt(Math.max(4, completos.length));
+                    const esperado = Math.sqrt(impl.srmrPares * impl.srmrPares + piso * piso);
+                    const nivel = e.desajuste || 'ninguno';
+                    filas.push({ tipo: 'SRMR', variable: `${e.prueba}: SRMR entre la matriz de ítems observada y la implicada por la estructura (desajuste «${nivel}»; incluye el error muestral)`, pedido: num(esperado, 3), obtenido: num(srmr, 3), ok: Math.abs(srmr - esperado) <= Math.max(0.015, 0.6 * piso) });
+                }
+                const kb = this._kmoBartlett(Robs, completos.length);
+                if (kb) filas.push({ tipo: 'KMO', variable: `${e.prueba}: KMO global y esfericidad de Bartlett (χ² gl ${kb.gl})`, pedido: '≥ 0.60; p < .001', obtenido: `${num(kb.kmo, 2)}; χ² = ${num(kb.chi2, 0)} ${kb.significativo ? '(p < .001)' : '(no significativo)'}`, ok: kb.kmo >= 0.6 && kb.significativo });
+            }
+        });
+    }
+
     // ============ PERFILES DE ÍTEMS (B5) ============
     // Un perfil por escala, derivado de la semilla: {delta, peso, cruzadas}.
     //  · delta[i] (Σ = 0): medias de ítem en escalera dentro del espacio libre
@@ -1389,6 +1855,9 @@ class GeneradorDatos {
                     const elegidos = this._muestraSinReemplazo(k, Math.min(m, k));
                     elegidos.forEach(item => perfil.cruzadas.push({ item, sigla: otras[Math.floor(this.aleatorio() * otras.length)], c: nivel.cruzadas }));
                 }
+                // (C1) con matriz de cargas para este test, pesos y cruzadas salen de ella
+                const est = this._estructuraDe(p);
+                if (est) this._perfilEstructurado(p, est, perfil, grupos);
             }
             perfiles.set(p, perfil);
         });
@@ -1817,6 +2286,38 @@ class GeneradorDatos {
             const { d: d22 } = generar(cfgMnar);
             const [bajosM, altosM] = perdidosPor(d22, 'Dimension_ST', itemsST);
             ok('(B9) MNAR: los ítems de Estrés se pierden más en quienes puntúan alto en el propio Estrés', altosM > bajosM * 1.3, `${bajosM} vs ${altosM}`);
+            // 20) (C1) estructura factorial controlada
+            const cargasPE = [0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45].map(l => [l, 0, 0]);
+            cargasPE[2][1] = 0.30;   // cruzada del ítem 3 sobre Comprensión
+            const cargasCE = [0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70, 0.70].map(l => [0, l, 0]);
+            const cargasRE = [0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60, 0.60].map(l => [0, 0, l]);
+            const estructuraEQ = [{ prueba: 'EQ-i', modo: 'cargas', factores: ['Percepción', 'Comprensión', 'Regulación'], cargas: { 'Percepción': cargasPE, 'Comprensión': cargasCE, 'Regulación': cargasRE }, metodo: { carga: 0.30, sobre: 'invertidos' }, desajuste: 'ninguno' }];
+            const cfgC1 = cfgBase({ tamanoMuestra: 1500, estructuras: estructuraEQ });
+            cfgC1.pruebas[2].invertidos = 4;   // Regulación con 4 invertidos → factor de método
+            const { g: g23, d: d23 } = generar(cfgC1);
+            const inf23 = g23.informePedidoObtenido(g23.datosGenerados);
+            const filaL = nombre => inf23.find(f => f.tipo === 'λ' && f.variable.startsWith(nombre));
+            ok('(C1) cargas propias recuperadas por ejes principales (escalera 0.80→0.45, Likert 1–5)', filaL('Percepción') && filaL('Percepción').ok && filaL('Comprensión') && filaL('Comprensión').ok, [filaL('Percepción'), filaL('Comprensión')].map(f => f && `${f.pedido}→${f.obtenido}`).join(' | '));
+            const filaX = inf23.find(f => f.tipo === 'λ×');
+            ok('(C1) carga cruzada explícita 0.30 recuperada', !!filaX && filaX.ok, filaX ? `${filaX.pedido}→${filaX.obtenido}` : 'sin fila');
+            const filaM = inf23.find(f => f.tipo === 'λmét');
+            ok('(C1) factor de método sobre los invertidos de Regulación detectable', !!filaM && filaM.ok, filaM ? `${filaM.pedido}→${filaM.obtenido}` : 'sin fila');
+            const filaA = inf23.filter(f => f.tipo === 'α' && /implícito/.test(f.variable));
+            ok('(C1) fiabilidad implícita por las cargas = obtenida', filaA.length === 3 && filaA.every(f => f.ok), filaA.map(f => `${f.pedido}→${f.obtenido}`).join(' '));
+            const filaS = inf23.find(f => f.tipo === 'SRMR');
+            ok('(C1) SRMR pequeño sin desajuste y KMO adecuado', !!filaS && filaS.ok && inf23.some(f => f.tipo === 'KMO' && f.ok), filaS ? filaS.obtenido : 'sin fila');
+            // la estructura en modo «alfa» respeta el α de la tabla I; ítems continuos; desajuste moderado sube el SRMR
+            const estructuraAlfa = [{ prueba: 'PSS', modo: 'alfa', factores: ['Estrés'], cargas: { 'Estrés': [0.9, 0.8, 0.7, 0.6, 0.5, 0.5, 0.6, 0.7, 0.8, 0.9].map(l => [l]) }, metodo: null, desajuste: 'moderado' }];
+            const cfgC1b = cfgBase({ tamanoMuestra: 1500, estructuras: estructuraAlfa });
+            cfgC1b.pruebas[3].minimo = null; cfgC1b.pruebas[3].maximo = null;   // Estrés continua
+            const { g: g24 } = generar(cfgC1b);
+            const inf24 = g24.informePedidoObtenido(g24.datosGenerados);
+            const alfaImpl = inf24.find(f => f.tipo === 'α' && /Estrés/.test(f.variable));
+            ok('(C1) modo «respetar el α»: el α implícito coincide con el de la tabla I (0.80) y se obtiene', !!alfaImpl && Math.abs(parseFloat(alfaImpl.pedido) - 0.80) < 0.01 && alfaImpl.ok, alfaImpl ? `${alfaImpl.pedido}→${alfaImpl.obtenido}` : 'sin fila');
+            const srmrMod = inf24.find(f => f.tipo === 'SRMR');
+            ok('(C1) desajuste moderado: SRMR obtenido ≈ esperado por los pares', !!srmrMod && srmrMod.ok && parseFloat(srmrMod.obtenido) > 0.03, srmrMod ? `${srmrMod.pedido}→${srmrMod.obtenido}` : 'sin fila');
+            ok('(C1) los totales siguen siendo exactos con estructura (Media, DE y suma de ítems)', inf24.filter(f => f.tipo === 'Media' || f.tipo === 'DE').every(f => f.ok) && g24.datosGenerados.aObjetos().slice(0, 50).every(f => Math.abs(Object.keys(f).filter(c => /^ST\d+$/.test(c)).reduce((s, c) => s + g24._recodificar(cfgC1b.pruebas[3], parseInt(c.slice(2), 10), f[c]), 0) - f.Dimension_ST) < 0.011), '');
+            ok('(C1) un test sin matriz sale idéntico a antes (misma semilla, misma base)', JSON.stringify(generar(cfgBase({ tamanoMuestra: 60 })).d[0]) === JSON.stringify(generar(cfgBase({ tamanoMuestra: 60, estructuras: [] })).d[0]), '');
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -2246,6 +2747,8 @@ class GeneradorDatos {
             if (cols.length < 2) return;
             const obs = this._indiceObservado(cols, indice);
             if (obs === null || !isFinite(obs)) return;
+            // (C1) con matriz de cargas, la fiabilidad la fijan las cargas: se informa en la sección de estructura
+            if (this.perfilesItems && this.perfilesItems.get(p) && this.perfilesItems.get(p).estructura) return;
             filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });   // ±0.04 ≈ 2 EE de α con n≈300
         });
         // 3) Correlaciones objetivo (incluidas las de generales derivados; las
@@ -2331,6 +2834,8 @@ class GeneradorDatos {
         this._informeRepetidas(base, filas, num);
         // 7) (B9) Sociodemográficos: proporciones pedidas y asociaciones entre discretas
         this._informeSociodemograficos(base, filas, num);
+        // 8) (C1) Estructura factorial: cargas, cruzadas, método, fiabilidad implícita, SRMR, KMO
+        this._informeEstructuras(base, filas, num);
         return filas;
     }
     _informeSociodemograficos(base, filas, num) {
@@ -4042,6 +4547,8 @@ class GeneradorDatos {
         this._validarModelos(errores, advertencias);
         // (B7) Medidas repetidas
         this._validarMedidasRepetidas(errores, advertencias);
+        // (C1) Estructura factorial
+        this._validarEstructuras(errores, advertencias);
 
         // (B9) dependencias, fechas de nacimiento y referencia del MAR
         this._validarSociodemograficosB9(errores, advertencias);
