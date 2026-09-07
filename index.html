@@ -422,8 +422,18 @@
         <select id="mecanismoPerdidos" class="input" style="margin-top:0.35rem;" title="MCAR: al azar. MAR: más frecuentes en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala).">
         <option value="MCAR" selected>MCAR — completamente al azar</option>
         <option value="MAR">MAR — dependen de una variable observada</option>
+        <option value="MNAR">MNAR — dependen de la propia puntuación</option>
         </select>
-        <span class="help-text"><em>MCAR</em> los reparte completamente al azar; <em>MAR</em> los concentra en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala), como esos perfiles que omiten más. Regla del 80 %: si a una escala le falta más del 20 % de sus ítems, su total, su General y su percentil quedan vacíos; si falta menos, el total se prorratea.</span>
+        <div style="display:flex; gap:0.35rem; margin-top:0.35rem;">
+        <select id="referenciaMAR" class="input" style="flex:1 1 60%;" title="MAR: variable numérica u ordinal observada de la que dependen los perdidos (vacío = la primera sociodemográfica numérica o, si no hay, la primera escala).">
+        <option value="">Referencia automática</option>
+        </select>
+        <select id="sentidoMAR" class="input" style="flex:1 1 40%;" title="Quiénes pierden más: los que puntúan bajo o los que puntúan alto en la referencia (MAR) o en la propia escala (MNAR).">
+        <option value="bajos" selected>Pierden más los bajos</option>
+        <option value="altos">Pierden más los altos</option>
+        </select>
+        </div>
+        <span class="help-text"><em>MCAR</em> los reparte completamente al azar; <em>MAR</em> los concentra en un extremo (bajos o altos) de la variable de referencia que elijas (por defecto, la primera sociodemográfica numérica o, si no hay, la primera escala); <em>MNAR</em> los concentra en un extremo de la propia escala que se omite (quien puntúa alto en depresión deja ítems de depresión sin responder), el mecanismo que la imputación no puede corregir. Regla del 80 %: si a una escala le falta más del 20 % de sus ítems, su total, su General y su percentil quedan vacíos; si falta menos, el total se prorratea.</span>
         </div>
         <div>
         <div class="orden-guia" role="note" aria-label="Guía de las respuestas descuidadas" style="margin:0 0 0.6rem;">
@@ -743,6 +753,8 @@
                                     <th>Mínimo</th>
                                     <th>Máximo</th>
                                     <th>N° Decimales</th>
+                                    <th title="Binaria/categórica: nombres de las categorías separados por coma, con proporción opcional («Soltero:60, Casado:40») o en orden («Primaria < Secundaria < Superior»). Continua: «fecha» añade la fecha de nacimiento a partir de la edad.">Categorías / opciones</th>
+                                    <th title="Asociación con otra variable binaria o categórica: quien está en una categoría de aquella tiende a caer en las categorías altas de esta. Fuerza: r latente (0.2 leve, 0.4 moderada, 0.6 fuerte).">Depende de · fuerza</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -779,6 +791,11 @@
                                         <input type="number" class="input input-sm" placeholder="Ej: 2" min="0" max="4"
                                             value="2" aria-label="Número de decimales">
                                     </td>
+                                    <td><input type="text" class="input input-sm" placeholder="Ej: Femenino, Masculino" maxlength="400" value="" aria-label="Categorías u opciones" title="Binaria/categórica: «Femenino, Masculino», «Soltero:60, Casado:40» (proporciones) o «Primaria < Secundaria < Superior» (ordinal). Continua (edad): «fecha» o «fecha:AAAA-MM-DD» para añadir la fecha de nacimiento."></td>
+                                    <td>
+                                        <select class="input input-sm" aria-label="Depende de" title="Otra variable binaria o categórica de la que depende esta (asociación)."><option value="">Ninguna</option></select>
+                                        <input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.05" min="0" max="0.95" value="0.4" placeholder="fuerza 0–0.95" aria-label="Fuerza de la asociación" title="Fuerza de la asociación (r latente): 0.2 leve, 0.4 moderada, 0.6 fuerte.">
+                                    </td>
                                     <td>
                                         <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
                                             <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -798,6 +815,15 @@
                         equiprobables); <em>Conteo (Poisson)</em> usa el Promedio como tasa; <em>Binaria</em> usa el
                         Promedio como proporción de unos (p. ej. 0.5). <strong>Mín/Máx:</strong> rango de valores.
                         <strong>Decimales:</strong> precisión (0-4).
+                        <strong>Categorías / opciones:</strong> en binarias y categóricas, los nombres de las categorías separados por coma
+                        («Femenino, Masculino»; la binaria codifica 0 la primera y 1 la segunda), con proporciones si las quieres
+                        («Soltero:60, Casado:30, Divorciado:10») o en orden si es ordinal («Primaria &lt; Secundaria &lt; Superior»). En modo
+                        exacto las proporciones salen exactas en la muestra. La base y el CSV muestran los nombres; el motor y las pruebas
+                        estadísticas trabajan con los códigos. En una variable continua que sea una edad, «fecha» (o «fecha:AAAA-MM-DD»)
+                        añade la columna <code>FechaNac_…</code> con una fecha de nacimiento coherente con la edad a esa fecha.
+                        <strong>Depende de:</strong> hace que una binaria o categórica esté asociada a otra (p. ej. Grado según Zona) con la
+                        fuerza indicada; el informe muestra la V de Cramér obtenida. Para que una variable continua difiera según un grupo,
+                        usa la tabla IV.
                     </p>
                 </div>
 
@@ -1544,8 +1570,8 @@
     <!-- Scripts generador de datos: primero el almacén columnar (lo usa el
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
-    <script src="base-columnar.js?v=1"></script>
-    <script src="generador-datos.js?v=15"></script>
+    <script src="base-columnar.js?v=2"></script>
+    <script src="generador-datos.js?v=16"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1617,7 +1643,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=32"></script>
+    <script src="app.js?v=33"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
