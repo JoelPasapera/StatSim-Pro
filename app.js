@@ -2881,6 +2881,87 @@ function importarConfigPruebas(e) {
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
+// ===================== CUADRO DE PRUEBAS (TESTS) =====================
+// Define qué tests existen y qué variable psicológica mide cada uno. Alimenta
+// el desplegable «Prueba (test)» de la tabla de escalas.
+function agregarFilaTestConDatos(datos = {}) {
+    const tbody = document.getElementById('bodyTests');
+    if (!tbody) return;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-test';
+    fila.innerHTML = `
+        <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre del test"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${datos.variable || ''}" aria-label="Variable psicológica"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Intrapersonal, Interpersonal, Adaptabilidad" maxlength="400" value="${(datos.dimensiones || []).join(', ')}" aria-label="Dimensiones del test" title="Separadas por coma. Al salir del campo, la tabla de escalas se completa con una fila por dimensión."></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" value="${datos.rIntra !== undefined && datos.rIntra !== '' ? datos.rIntra : '0.40'}" aria-label="Correlación entre dimensiones" title="Correlación esperada entre las dimensiones de este test (las subescalas de un mismo instrumento suelen correlacionar entre 0.30 y 0.60). Una pareja fijada en la tabla III prevalece sobre este valor."></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar test">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+            </button>
+        </td>`;
+    tbody.appendChild(fila);
+    fila.querySelector('[aria-label="Nombre del test"]').addEventListener('input', refrescarSelectoresDePrueba);
+    fila.querySelector('[aria-label="Dimensiones del test"]').addEventListener('change', () => sincronizarDimensionesDesdeTests());
+    refrescarSelectoresDePrueba();
+}
+// Completa la tabla de escalas con una fila (test, dimensión) por cada
+// dimensión declarada arriba que aún no exista. Nunca borra filas: si una
+// dimensión desaparece de la lista, su fila queda y se elimina a mano.
+// Reutiliza la fila vacía inicial antes de añadir otras.
+function sincronizarDimensionesDesdeTests(silencioso = false) {
+    const tbody = document.getElementById('bodyPruebas');
+    if (!tbody) return 0;
+    const clave = (p, e) => `${String(p).trim().toLowerCase()}|${String(e).trim().toLowerCase()}`;
+    const campos = f => ({ sel: f.querySelector('[aria-label="Nombre de la prueba"]'), inp: f.querySelector('[aria-label="Nombre de la escala"]') });
+    const existentes = new Set();
+    tbody.querySelectorAll('.fila-prueba').forEach(f => { const { sel, inp } = campos(f); if (sel && inp && sel.value && inp.value.trim()) existentes.add(clave(sel.value, inp.value)); });
+    let creadas = 0;
+    testsDefinidos().forEach(t => (t.dimensiones || []).forEach(dim => {
+        if (existentes.has(clave(t.prueba, dim))) return;
+        const vacia = Array.from(tbody.querySelectorAll('.fila-prueba')).find(f => { const { sel, inp } = campos(f); return sel && inp && !sel.value && !inp.value.trim(); });
+        if (vacia) {
+            refrescarSelectoresDePrueba();
+            const { sel, inp } = campos(vacia);
+            sel.value = t.prueba; inp.value = dim;
+            if (typeof actualizarLimitesPrueba === 'function') actualizarLimitesPrueba(vacia);
+        } else {
+            agregarFilaPruebaConDatos(Object.assign({}, FILA_PRUEBA_VACIA, { prueba: t.prueba, nombre: dim }));
+        }
+        existentes.add(clave(t.prueba, dim));
+        creadas++;
+    }));
+    if (creadas && typeof actualizarTodasLasPruebas === 'function') actualizarTodasLasPruebas();
+    if (creadas && !silencioso) mostrarToast(`${creadas} fila(s) añadida(s) a la tabla de escalas: completa ítems, media y DE de cada una`, 'success');
+    return creadas;
+}
+function agregarFilaTest() { agregarFilaTestConDatos({}); }
+// Nombres de test definidos arriba (sin vacíos ni repetidos).
+function testsDefinidos() {
+    const out = [];
+    document.querySelectorAll('#bodyTests .fila-test').forEach(f => {
+        const nombre = (f.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
+        const variable = (f.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
+        const rIntra = (f.querySelector('[aria-label="Correlación entre dimensiones"]') || {}).value || '';
+        const dims = ((f.querySelector('[aria-label="Dimensiones del test"]') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
+        const dimensiones = dims.filter((d, i) => dims.findIndex(x => x.toLowerCase() === d.toLowerCase()) === i);
+        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim(), rIntra: rIntra.trim(), dimensiones });
+    });
+    return out;
+}
+// Repuebla los desplegables de la tabla de escalas conservando la selección.
+function refrescarSelectoresDePrueba() {
+    const tests = testsDefinidos();
+    document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la prueba"]').forEach(sel => {
+        if (!sel || sel.tagName !== 'SELECT') return;
+        const actual = sel.value;
+        sel.innerHTML = '<option value="">— elige un test —</option>'
+            + tests.map(t => `<option value="${t.prueba}"${t.prueba === actual ? ' selected' : ''}>${t.prueba}</option>`).join('');
+        if (actual && !tests.some(t => t.prueba === actual)) sel.value = '';
+    });
+}
+
 function agregarFilaPruebaConDatos(datos) {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = document.createElement('tr');
