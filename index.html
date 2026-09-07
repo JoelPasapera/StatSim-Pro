@@ -981,6 +981,66 @@
                     </p>
                 </div>
 
+                <!-- Tabla VII: Estructura factorial (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VII. Estructura Factorial de cada test (opcional)</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="btnProponerCargas" type="button" class="btn btn-outline" title="Rellena las cargas propias a partir del α (u ω) de la tabla I y de la heterogeneidad elegida; las cruzadas quedan en 0.">Proponer cargas desde el α</button>
+                            <button id="btnActualizarEstructura" type="button" class="btn btn-outline" title="Vuelve a leer la tabla I (dimensiones, número de ítems, invertidos) y reconcilia la matriz conservando las cargas ya escritas.">Actualizar desde la tabla I</button>
+                            <button id="btnQuitarEstructura" type="button" class="btn btn-outline" title="Elimina la estructura de este test: sus ítems volverán a repartirse con el perfil automático.">Quitar estructura</button>
+                        </div>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de la estructura factorial" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota">Decide qué estructura deben recuperar el AFE y el AFC sobre los ítems de un test: la carga de cada ítem en su dimensión, las cargas cruzadas, un factor de método para los ítems invertidos y cuánto desajuste. Los factores son las dimensiones del test declaradas en la tabla I; los totales (media, DE, correlaciones, d…) no cambian: la estructura solo decide cómo se reparte cada total entre sus ítems. Si no rellenas nada, los ítems se reparten como hasta ahora.</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin-bottom: 0.8rem;">
+                        <div>
+                            <label for="selectorTestEstructura">Test</label>
+                            <select id="selectorTestEstructura" class="input"><option value="">Elige un test de la tabla I…</option></select>
+                        </div>
+                        <div>
+                            <label for="modoEstructura">Qué manda</label>
+                            <select id="modoEstructura" class="input" title="«Las cargas»: el α queda implícito por las cargas (se muestra abajo). «El α de la tabla I»: las cargas se reescalan en bloque para cumplir exactamente ese α; solo cuenta su patrón relativo.">
+                                <option value="cargas" selected>Las cargas (el α queda implícito)</option>
+                                <option value="alfa">El α de la tabla I (las cargas se reescalan)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="metodoCarga">Factor de método en los ítems invertidos (carga; 0 = ninguno)</label>
+                            <input type="number" id="metodoCarga" class="input" value="0" min="0" max="0.6" step="0.05" title="Un factor común a los ítems invertidos del test (efecto de redacción), típico 0.15–0.35: en el AFE aparece como factor de los ítems en negativo y en el AFC como residuos correlacionados. Queda como contraste invertidos/directos porque los ítems suman el total.">
+                        </div>
+                        <div>
+                            <label for="desajusteEstructura">Desajuste del modelo</label>
+                            <select id="desajusteEstructura" class="input" title="Residuos correlacionados entre pares de ítems para que el AFC no ajuste perfectamente: ninguno (CFI ≈ 1), leve, moderado o alto. El informe da el SRMR que producen.">
+                                <option value="ninguno" selected>Ninguno (ajuste casi perfecto)</option>
+                                <option value="leve">Leve</option>
+                                <option value="moderado">Moderado</option>
+                                <option value="alto">Alto</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaCargas">
+                            <thead id="headCargas"><tr><th>Ítem</th></tr></thead>
+                            <tbody id="bodyCargas"></tbody>
+                        </table>
+                    </div>
+                    <div id="panelEstructura" class="help-text" style="margin-top:0.6rem; display:block;">Elige un test para ver o construir su matriz de cargas.</div>
+                    <textarea id="estructurasJSON" hidden aria-hidden="true">[]</textarea>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Cada fila es un ítem (INV = invertido; su carga se define sobre el ítem recodificado, así que en la base bruta cargará
+                        en negativo) y cada columna una dimensión: la celda de su propia dimensión es la carga propia (0.10–0.95); las demás,
+                        cargas cruzadas (0 = ninguna). Con «las cargas mandan», el α u ω de cada dimensión queda implícito por las cargas y se muestra
+                        debajo; con «el α de la tabla I manda», el patrón se reescala en bloque para cumplirlo. Las correlaciones entre factores son las
+                        de la tabla III (o el r intra del test). El informe «pedido vs. obtenido» recupera las cargas por ejes principales, las cruzadas,
+                        el factor de método, la fiabilidad implícita, el SRMR frente a la matriz implicada y el KMO con Bartlett. Los ítems de cada
+                        dimensión siguen sumando exactamente su total; por eso sus residuos llevan una correlación negativa leve (−1/(k−1)) que con
+                        seis o más ítems el AFC no distingue de un modelo puro.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">
@@ -1571,7 +1631,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=2"></script>
-    <script src="generador-datos.js?v=16"></script>
+    <script src="generador-datos.js?v=17"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1643,7 +1703,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=33"></script>
+    <script src="app.js?v=34"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
