@@ -21,6 +21,20 @@ const SIGMA_FORMA_ASIMETRICA = 0.6;
 //    del mismo test.
 // «ninguna» reproduce el comportamiento anterior: ítems paralelos (en modo ω
 // se mantiene el modelo congenérico de siempre, con dispersión 0.45).
+// (B8) Estilos de respuesta: intensidad por persona (× U(0.7, 1.3)).
+//  · aquiescencia: puntos que se suman a la respuesta BRUTA de cada ítem (los
+//    invertidos se guardan reflejados, así que el sesgo va en la misma dirección
+//    en todos y, tras recodificar, empuja en contra a los invertidos: es lo que
+//    la delata en un análisis real);
+//  · extrema: probabilidad de que cada respuesta salte al extremo de su lado
+//    (y, si está justo en el punto medio, a un extremo cualquiera). Un factor
+//    multiplicativo v' = m + s·(v − m) dejaba sin efecto las escalas de 4
+//    puntos con intensidad leve o moderada; el salto probabilístico no.
+const ESTILOS_RESPUESTA = {
+    leve:     { aquiescencia: 0.6, extrema: 0.30 },
+    moderada: { aquiescencia: 1.0, extrema: 0.50 },
+    alta:     { aquiescencia: 1.5, extrema: 0.75 }
+};
 const PERFILES_HETEROGENEIDAD = {
     ninguna:  { medias: 0,   cargas: 0,   cruzadas: 0,    proporcionCruzadas: 0 },
     leve:     { medias: 0.3, cargas: 0.3, cruzadas: 0.15, proporcionCruzadas: 0.20 },
@@ -130,7 +144,13 @@ class GeneradorDatos {
             pctDescuidados: leerPct('pctDescuidados', 20),
             tipoDescuidado: ((document.getElementById('tipoDescuidado') || {}).value) || 'mixto',
             marcarDescuidados: !!((document.getElementById('marcarDescuidados') || {}).checked),
-            pctDigitacion: leerPct('pctDigitacion', 10)
+            pctDigitacion: leerPct('pctDigitacion', 10),
+            // (B8) estilos de respuesta, tiempo de respuesta e ítems de control
+            pctAquiescencia: leerPct('pctAquiescencia', 40),
+            pctExtrema: leerPct('pctExtrema', 40),
+            intensidadEstilos: (ESTILOS_RESPUESTA[((document.getElementById('intensidadEstilos') || {}).value)] ? document.getElementById('intensidadEstilos').value : 'moderada'),
+            tiempoMinutos: (() => { const el = document.getElementById('tiempoMinutos'); const v = el ? parseFloat(el.value) : 0; return isFinite(v) && v > 0 ? Math.min(600, v) : 0; })(),
+            itemsControl: (() => { const el = document.getElementById('itemsControl'); const v = el ? parseInt(el.value, 10) : 0; return isFinite(v) ? Math.max(0, Math.min(3, v)) : 0; })()
         };
 
         // Pruebas aplicadas (cada fila es una ESCALA; se agrupan por prueba)
@@ -508,6 +528,11 @@ class GeneradorDatos {
             mapa[this.columnaDeEscala(e)] = e.nombre;
             mapa[`PC_${this._claveEscala(e)}`] = `Percentil — ${e.nombre}`;
         });
+        // (B8) columnas auxiliares de las imperfecciones
+        mapa['Respuesta_descuidada'] = 'Marcador: 1 = respondiente descuidado (línea recta o al azar)';
+        mapa['Estilo_respuesta'] = 'Marcador de estilo de respuesta: 0 = ninguno, 1 = aquiescente, 2 = extremo';
+        mapa['Tiempo_respuesta_seg'] = 'Tiempo total de respuesta al cuestionario (segundos)';
+        this._controlesEsperados().forEach(c => { mapa[c.columna] = `Ítem de control ${c.indice}: instrucción «marque ${c.correcta}» (rango ${c.minimo}–${c.maximo})`; });
         (this.configuracion && this.configuracion.gruposPruebas || []).forEach(g => {
             if (g.escalas.length >= 2) {
                 const etiqueta = g.variable ? `${g.variable} — ${g.nombre}` : `Puntaje general — ${g.nombre}`;
@@ -1703,6 +1728,27 @@ class GeneradorDatos {
             ok('(B7) cambio global (Percepción) y por grupo (Estrés) e interacción tiempo × grupo', camb.length >= 5 && camb.every(f => f.ok), camb.map(f => `${f.pedido}→${f.obtenido}`).join(' '));
             ok('(B7) la r de la onda 2 con otra variable queda atenuada por la estabilidad', (() => { const r = corr(col(d18, 'Dimension_ST_T2'), col(d18, 'Dimension_PE')); return Math.abs(r - (-0.40 * 0.7)) < 0.03; })(), corr(col(d18, 'Dimension_ST_T2'), col(d18, 'Dimension_PE')).toFixed(3));
             ok('(B7) α de la onda 2 es el pedido y sus etiquetas existen', inf18.filter(f => f.tipo === 'α' && /\(T2\)/.test(f.variable)).every(f => f.ok) && !!g18.obtenerEtiquetas()['Dimension_ST_T2'], g18.obtenerEtiquetas()['Dimension_ST_T3']);
+            // 18) (B8) estilos de respuesta, ítems de control y tiempo de respuesta
+            const cfgB8 = cfgBase({ tamanoMuestra: 1000, realismo: { pctPerdidos: 0, pctDescuidados: 10, tipoDescuidado: 'mixto', marcarDescuidados: true, pctDigitacion: 0, pctAquiescencia: 20, pctExtrema: 20, intensidadEstilos: 'alta', tiempoMinutos: 12, itemsControl: 2 } });
+            cfgB8.pruebas[2].invertidos = 4;   // Estrés (Likert 0–4) con ítems invertidos: la aquiescencia debe delatarse
+            const { g: g19, d: d19 } = generar(cfgB8);
+            const cols19 = Object.keys(d19[0]);
+            ok('(B8) columnas: marcadores, Control_1/2 y Tiempo_respuesta_seg', ['Respuesta_descuidada', 'Estilo_respuesta', 'Control_1', 'Control_2', 'Tiempo_respuesta_seg'].every(c => cols19.includes(c)), cols19.slice(-6).join(','));
+            const marcaE = col(d19, 'Estilo_respuesta'), marcaD = col(d19, 'Respuesta_descuidada');
+            const nAq = marcaE.filter(v => v === 1).length, nEx = marcaE.filter(v => v === 2).length, nDs = marcaD.filter(v => v === 1).length;
+            ok('(B8) 20 % aquiescentes, 20 % extremos y 10 % descuidados, sin solaparse', nAq === 200 && nEx === 200 && nDs === 100 && marcaE.every((v, i) => !(v && marcaD[i])), `${nAq} ${nEx} ${nDs}`);
+            // aquiescencia: en los ítems INVERTIDOS de Estrés, la respuesta bruta media sube en los aquiescentes; en los extremos, más 0 y 4
+            const brutaInv = quien => { let s = 0, c = 0; d19.forEach((f, i) => { if (quien(i)) for (let j = 7; j <= 10; j++) { s += f[`ST${j}`]; c++; } }); return s / c; };
+            const mediaInvAq = brutaInv(i => marcaE[i] === 1), mediaInvNo = brutaInv(i => marcaE[i] === 0 && !marcaD[i]);
+            ok('(B8) aquiescencia: sube la respuesta BRUTA de los ítems invertidos (≈ +1 punto)', mediaInvAq - mediaInvNo > 0.6, `${mediaInvAq.toFixed(2)} vs ${mediaInvNo.toFixed(2)}`);
+            const pExtremos = quien => { let e = 0, c = 0; d19.forEach((f, i) => { if (quien(i)) for (let j = 1; j <= 10; j++) { const v = f[`ST${j}`]; if (v === 0 || v === 4) e++; c++; } }); return e / c; };
+            ok('(B8) respuesta extrema: más respuestas en los extremos del rango', pExtremos(i => marcaE[i] === 2) > pExtremos(i => marcaE[i] === 0 && !marcaD[i]) + 0.2, `${pExtremos(i => marcaE[i] === 2).toFixed(2)} vs ${pExtremos(i => marcaE[i] === 0 && !marcaD[i]).toFixed(2)}`);
+            const correctas = g19.controlesGenerados.map(x => x.correcta);
+            const fallos = quien => { let f = 0, c = 0; d19.forEach((fila, i) => { if (quien(i)) { c++; if (fila.Control_1 !== correctas[0] || fila.Control_2 !== correctas[1]) f++; } }); return f / c; };
+            ok('(B8) ítems de control: los descuidados fallan casi siempre y los atentos casi nunca', fallos(i => marcaD[i] === 1) > 0.7 && fallos(i => marcaD[i] === 0) < 0.12, `${fallos(i => marcaD[i] === 1).toFixed(2)} vs ${fallos(i => marcaD[i] === 0).toFixed(2)}`);
+            const medianaT = quien => { const v = d19.filter((f, i) => quien(i)).map(f => f.Tiempo_respuesta_seg).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+            ok('(B8) tiempo: mediana ≈ 12 min en atentos y los descuidados tardan menos de la mitad', Math.abs(medianaT(i => marcaD[i] === 0 && !marcaE[i]) - 720) < 90 && medianaT(i => marcaD[i] === 1) < 0.6 * 720, `${medianaT(i => marcaD[i] === 0 && !marcaE[i])} vs ${medianaT(i => marcaD[i] === 1)} s`);
+            ok('(B8) sin estilos ni controles, la base sale como antes', !Object.keys(generar(cfgBase({ tamanoMuestra: 100 })).d[0]).some(c => /^(Control_|Tiempo_|Estilo_)/.test(c)), '');
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -1790,23 +1836,33 @@ class GeneradorDatos {
         const r = this.configuracion.realismo || {};
         const cfg = this.configuracion, grupos = cfg.gruposPruebas || [];
         const n = base.n;
-        if (!n || !(r.pctPerdidos > 0 || r.pctDescuidados > 0 || r.pctDigitacion > 0)) return { perdidos: 0, descuidados: 0, digitacion: 0 };
+        this.controlesGenerados = [];
+        const vacio = { perdidos: 0, descuidados: 0, digitacion: 0, aquiescentes: 0, extremos: 0, controles: 0, fallosControl: 0, tiempo: false };
+        if (!n || !(r.pctPerdidos > 0 || r.pctDescuidados > 0 || r.pctDigitacion > 0 || r.pctAquiescencia > 0 || r.pctExtrema > 0 || r.tiempoMinutos > 0 || r.itemsControl > 0)) return vacio;
         const pruebasConItems = (cfg.pruebas || []).filter(p => p.numItems >= 2);
         const columnasItems = p => this._itemsDe(p).map(k => base.columna(k).datos);
         const tocados = new Set();
         let nPerdidos = 0, nDescuidados = 0, nDigitacion = 0;
+        // Quién es descuidado se decide primero: los estilos de respuesta se
+        // reparten entre los demás, y tiempo e ítems de control dependen de ello.
+        const esDescuidado = new Uint8Array(n);
+        const tipoDescuidado = new Array(n).fill(null), valorLinea = new Map();
+        const kDesc = (r.pctDescuidados > 0 && pruebasConItems.length) ? Math.round(n * r.pctDescuidados / 100) : 0;
+        const ordenDesc = kDesc > 0 ? this._muestraSinReemplazo(n, kDesc) : [];
+        ordenDesc.forEach(i => { esDescuidado[i] = 1; let tipo = r.tipoDescuidado; if (tipo === 'mixto') tipo = this.aleatorio() < 0.5 ? 'linea' : 'aleatorio'; tipoDescuidado[i] = tipo; });
+        // columnas marcadoras en orden fijo: Respuesta_descuidada, Estilo_respuesta
+        const marcador = (kDesc > 0 && r.marcarDescuidados) ? base.agregar('Respuesta_descuidada', true).datos : null;
+        // --- (B8) Estilos de respuesta: aquiescencia y respuesta extrema ---
+        const estilos = this._aplicarEstilosRespuesta(base, pruebasConItems, esDescuidado, tocados);
         // --- Respuestas descuidadas ---
-        if (r.pctDescuidados > 0 && pruebasConItems.length) {
-            const marcador = r.marcarDescuidados ? base.agregar('Respuesta_descuidada', true).datos : null;
-            const k = Math.round(n * r.pctDescuidados / 100);
-            const orden = this._muestraSinReemplazo(n, k);
-            orden.forEach(i => {
-                let tipo = r.tipoDescuidado;
-                if (tipo === 'mixto') tipo = this.aleatorio() < 0.5 ? 'linea' : 'aleatorio';
+        if (kDesc > 0) {
+            ordenDesc.forEach(i => {
+                const tipo = tipoDescuidado[i];
                 pruebasConItems.forEach(p => {
                     const min = isFinite(p.minimo) ? p.minimo : Math.floor(p.media / p.numItems - p.desviacion);
                     const max = isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + p.desviacion);
                     const fijo = min + Math.floor(this.aleatorio() * (max - min + 1));
+                    if (tipo === 'linea' && !valorLinea.has(i)) valorLinea.set(i, fijo);
                     columnasItems(p).forEach(col => {
                         col[i] = tipo === 'linea' ? fijo : (min + Math.floor(this.aleatorio() * (max - min + 1)));
                     });
@@ -1856,7 +1912,130 @@ class GeneradorDatos {
             }
         }
         tocados.forEach(i => this._recalcularTotales(base, i, grupos));
-        return { perdidos: nPerdidos, descuidados: nDescuidados, digitacion: nDigitacion };
+        // --- (B8) Ítems de control y tiempo de respuesta (tras saber quién es descuidado) ---
+        const control = this._generarItemsControl(base, esDescuidado, tipoDescuidado, valorLinea);
+        const tiempo = this._generarTiempoRespuesta(base, esDescuidado, estilos.marcaPersona);
+        return { perdidos: nPerdidos, descuidados: nDescuidados, digitacion: nDigitacion, aquiescentes: estilos.aquiescentes, extremos: estilos.extremos, controles: control.columnas, fallosControl: control.fallos, tiempo };
+    }
+    // (B8) Estilos de respuesta sobre las escalas Likert. Se reparten entre las
+    // personas NO descuidadas, sin solaparse (una persona tiene a lo sumo un
+    // estilo). La intensidad de cada persona es la del preset × U(0.7, 1.3).
+    //  · Aquiescencia: suma «a» puntos a la respuesta bruta de cada ítem (la
+    //    parte fraccionaria, con esa probabilidad) y recorta al máximo.
+    //  · Extrema: cada respuesta salta al extremo de su lado con probabilidad q
+    //    (en el punto medio exacto, a un extremo al azar con probabilidad q/2).
+    // Devuelve el marcador por persona (0 ninguno, 1 aquiescente, 2 extremo).
+    _aplicarEstilosRespuesta(base, pruebasConItems, esDescuidado, tocados) {
+        const r = this.configuracion.realismo || {};
+        const n = base.n;
+        const marcaPersona = new Uint8Array(n);
+        const salida = { aquiescentes: 0, extremos: 0, marcaPersona };
+        const pctA = r.pctAquiescencia || 0, pctE = r.pctExtrema || 0;
+        if (!(pctA > 0 || pctE > 0)) return salida;
+        const likert = pruebasConItems.filter(p => p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo));
+        if (!likert.length) return salida;
+        const preset = ESTILOS_RESPUESTA[r.intensidadEstilos] || ESTILOS_RESPUESTA.moderada;
+        const candidatos = [];
+        for (let i = 0; i < n; i++) if (!esDescuidado[i]) candidatos.push(i);
+        const nA = Math.min(candidatos.length, Math.round(n * pctA / 100));
+        const nE = Math.min(candidatos.length - nA, Math.round(n * pctE / 100));
+        const orden = this._muestraSinReemplazo(candidatos.length, nA + nE).map(k => candidatos[k]);
+        const columnas = likert.map(p => ({ p, cols: this._itemsDe(p).map(k => base.columna(k).datos) }));
+        for (let idx = 0; idx < orden.length; idx++) {
+            const i = orden[idx];
+            const factor = 0.7 + 0.6 * this.aleatorio();
+            if (idx < nA) {
+                const a = preset.aquiescencia * factor, entero = Math.floor(a), frac = a - entero;
+                columnas.forEach(({ p, cols }) => cols.forEach(col => {
+                    const v = col[i];
+                    if (!(v === v)) return;
+                    const salto = entero + (this.aleatorio() < frac ? 1 : 0);
+                    col[i] = Math.min(p.maximo, v + salto);
+                }));
+                marcaPersona[i] = 1; salida.aquiescentes++;
+            } else {
+                const q = Math.min(0.98, preset.extrema * factor);
+                columnas.forEach(({ p, cols }) => {
+                    const m = (p.minimo + p.maximo) / 2;
+                    cols.forEach(col => {
+                        const v = col[i];
+                        if (!(v === v)) return;
+                        if (v === m) { if (this.aleatorio() < q / 2) col[i] = this.aleatorio() < 0.5 ? p.minimo : p.maximo; }
+                        else if (this.aleatorio() < q) col[i] = v < m ? p.minimo : p.maximo;
+                    });
+                });
+                marcaPersona[i] = 2; salida.extremos++;
+            }
+            tocados.add(i);
+        }
+        if (r.marcarDescuidados) {
+            const col = base.agregar('Estilo_respuesta', true).datos;
+            for (let i = 0; i < n; i++) col[i] = marcaPersona[i];
+        }
+        return salida;
+    }
+    // (B8) Ítems de control («marque X»): columnas Control_1…k con el rango de
+    // las escalas Likert (por turno). La respuesta correcta es el máximo del
+    // rango. Atentos: aciertan con probabilidad 0.97; descuidados en línea
+    // recta responden su valor fijo; descuidados al azar, un valor uniforme.
+    // Ítems de control que corresponden a la configuración: columna, número,
+    // respuesta correcta y rango. Se deriva de la configuración (no del estado
+    // de la generación) para que las etiquetas valgan también en el hilo
+    // principal cuando la base la generó el Worker.
+    _controlesEsperados() {
+        const cfg = this.configuracion || {}, r = cfg.realismo || {};
+        const k = Math.max(0, Math.min(3, Math.round(r.itemsControl || 0)));
+        if (!k) return [];
+        const likert = (cfg.pruebas || []).filter(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && !p.sufijo);
+        if (!likert.length) return [];
+        const salida = [];
+        for (let c = 1; c <= k; c++) {
+            const p = likert[(c - 1) % likert.length];
+            salida.push({ columna: `Control_${c}`, indice: c, correcta: p.maximo, minimo: p.minimo, maximo: p.maximo });
+        }
+        return salida;
+    }
+    _generarItemsControl(base, esDescuidado, tipoDescuidado, valorLinea) {
+        const salida = { columnas: 0, fallos: 0 };
+        const esperados = this._controlesEsperados();
+        if (!esperados.length) return salida;
+        const n = base.n;
+        esperados.forEach(ctrl => {
+            const min = ctrl.minimo, max = ctrl.maximo, ancho = max - min + 1;
+            const col = base.agregar(ctrl.columna, true).datos;
+            for (let i = 0; i < n; i++) {
+                let v;
+                if (esDescuidado[i]) {
+                    v = (tipoDescuidado[i] === 'linea' && valorLinea.has(i)) ? Math.max(min, Math.min(max, valorLinea.get(i))) : min + Math.floor(this.aleatorio() * ancho);
+                } else if (this.aleatorio() < 0.97 || ancho < 2) {
+                    v = max;
+                } else {
+                    v = min + Math.floor(this.aleatorio() * (ancho - 1));   // cualquier valor distinto del correcto
+                }
+                col[i] = v;
+                if (v !== max) salida.fallos++;
+            }
+            this.controlesGenerados.push(ctrl);
+            salida.columnas++;
+        });
+        return salida;
+    }
+    // (B8) Tiempo total de respuesta (segundos): log-normal alrededor de la
+    // mediana pedida (σ_log = 0.35); los descuidados tardan ×U(0.25, 0.55) y
+    // quienes tienen un estilo de respuesta ×U(0.8, 1.0). Mínimo 30 s.
+    _generarTiempoRespuesta(base, esDescuidado, marcaPersona) {
+        const r = this.configuracion.realismo || {};
+        const mediana = (r.tiempoMinutos || 0) * 60;
+        if (!(mediana > 0)) return false;
+        const n = base.n;
+        const col = base.agregar('Tiempo_respuesta_seg', true).datos;
+        for (let i = 0; i < n; i++) {
+            let t = mediana * Math.exp(0.35 * this.generarNormalEstandar());
+            if (esDescuidado[i]) t *= 0.25 + 0.30 * this.aleatorio();
+            else if (marcaPersona && marcaPersona[i]) t *= 0.8 + 0.2 * this.aleatorio();
+            col[i] = Math.max(30, Math.round(t));
+        }
+        return true;
     }
     _esDefinidaPositiva(R) {
         const n = R.length, L = Array.from({ length: n }, () => new Array(n).fill(0));
@@ -3491,6 +3670,15 @@ class GeneradorDatos {
             }
         });
 
+        // (B8) Estilos de respuesta e ítems de control necesitan escalas Likert
+        {
+            const r = this.configuracion.realismo || {};
+            const hayLikert = (this.configuracion.pruebas || []).some(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo));
+            if (!hayLikert && (r.pctAquiescencia > 0 || r.pctExtrema > 0)) advertencias.push('Estilos de respuesta: solo actúan sobre escalas Likert (con mínimo y máximo por ítem); ninguna escala los tiene, así que no se aplicarán');
+            if (!hayLikert && r.itemsControl > 0) advertencias.push('Ítems de control: toman el rango de una escala Likert; sin escalas Likert no se generan');
+            if ((r.pctAquiescencia || 0) + (r.pctExtrema || 0) + (r.pctDescuidados || 0) > 60) advertencias.push('Más del 60 % de la muestra con algún estilo de respuesta o descuido: la base se alejará mucho de lo pedido');
+            if (r.tiempoMinutos > 0 && r.tiempoMinutos < 2) advertencias.push('Tiempo de respuesta: con una mediana menor de 2 minutos, el mínimo de 30 s aplana la distribución y los descuidados dejan de distinguirse');
+        }
         // (B6) Modelos estructurales
         this._validarModelos(errores, advertencias);
         // (B7) Medidas repetidas
