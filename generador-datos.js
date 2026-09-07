@@ -141,6 +141,9 @@ class GeneradorDatos {
         this.configuracion.realismo = {
             pctPerdidos: leerPct('pctPerdidos', 30),
             mecanismoPerdidos: ((document.getElementById('mecanismoPerdidos') || {}).value) || 'MCAR',
+            // (B9) MAR con referencia elegible y sentido; MNAR según el propio total
+            referenciaMAR: ((document.getElementById('referenciaMAR') || {}).value) || '',
+            sentidoMAR: ((document.getElementById('sentidoMAR') || {}).value) === 'altos' ? 'altos' : 'bajos',
             pctDescuidados: leerPct('pctDescuidados', 20),
             tipoDescuidado: ((document.getElementById('tipoDescuidado') || {}).value) || 'mixto',
             marcarDescuidados: !!((document.getElementById('marcarDescuidados') || {}).checked),
@@ -528,6 +531,14 @@ class GeneradorDatos {
             mapa[this.columnaDeEscala(e)] = e.nombre;
             mapa[`PC_${this._claveEscala(e)}`] = `Percentil — ${e.nombre}`;
         });
+        // (B9) sociodemográficos con categorías etiquetadas, ordinales y fechas
+        ((this.configuracion && this.configuracion.sociodemograficos) || []).forEach(s => {
+            if (s.niveles && s.niveles.some(x => x.etiqueta)) {
+                const lista = s.niveles.map(x => `${x.codigo} = ${x.etiqueta}`).join(', ');
+                mapa[s.categoria] = `${s.categoria} (${s.ordinal ? 'ordinal' : (s.distribucion === 'binaria' ? 'binaria' : 'categórica')}: ${lista})` + (s.dependeDe ? `; asociada a ${s.dependeDe}` : '');
+            }
+            if (s.fechaNacimiento && !this._esSocioDiscreto(s)) mapa[`FechaNac_${s.categoriaCorta}`] = `Fecha de nacimiento (AAAA-MM-DD) coherente con «${s.categoria}» a la fecha ${s.fechaNacimiento === 'hoy' ? 'de generación' : s.fechaNacimiento}`;
+        });
         // (B8) columnas auxiliares de las imperfecciones
         mapa['Respuesta_descuidada'] = 'Marcador: 1 = respondiente descuidado (línea recta o al azar)';
         mapa['Estilo_respuesta'] = 'Marcador de estilo de respuesta: 0 = ninguno, 1 = aquiescente, 2 = extremo';
@@ -608,11 +619,27 @@ class GeneradorDatos {
             const selectDist = fila.querySelector('select');
             const distribucion = selectDist ? selectDist.value : 'normal';
             const categoria = inputs[0].value.trim();
-            const promedio = parseFloat(inputs[1].value);
+            let promedio = parseFloat(inputs[1].value);
             const desviacion = parseFloat(inputs[2].value);
-            const minimo = parseFloat(inputs[3].value);
-            const maximo = parseFloat(inputs[4].value);
+            let minimo = parseFloat(inputs[3].value);
+            let maximo = parseFloat(inputs[4].value);
             const decimales = parseInt(inputs[5].value);
+            // (B9) opciones: categorías con proporciones/etiquetas/orden, o «fecha» para la edad
+            const textoOpciones = inputs[6] ? inputs[6].value : '';
+            const opciones = this._parsearOpcionesSocio(textoOpciones, distribucion, categoria);
+            const selDepende = fila.querySelector('[aria-label="Depende de"]');
+            const dependeDe = selDepende ? selDepende.value.trim() : '';
+            const fuerzaRaw = inputs[7] ? parseFloat(inputs[7].value) : NaN;
+            const fuerza = isFinite(fuerzaRaw) ? Math.max(0, Math.min(0.95, fuerzaRaw)) : 0.4;
+            if (opciones.niveles) {
+                if (distribucion === 'binaria') {
+                    // el texto manda sobre el promedio si trae proporciones; si no, el promedio reparte
+                    if (opciones.conProporciones) promedio = opciones.niveles[1].proporcion;
+                    else if (isFinite(promedio) && promedio >= 0 && promedio <= 1) { opciones.niveles[0].proporcion = 1 - promedio; opciones.niveles[1].proporcion = promedio; }
+                    if (!isFinite(promedio)) promedio = opciones.niveles[1].proporcion;
+                } else { minimo = 1; maximo = opciones.niveles.length; if (!isFinite(promedio)) promedio = 0; }
+            }
+            if (distribucion === 'categorica' && !opciones.niveles && !isFinite(promedio)) promedio = 0;
 
             // Distribuciones que no requieren DE (uniforme, conteo, binaria,
             // categórica): basta con la categoría y el promedio/rango.
@@ -653,7 +680,13 @@ class GeneradorDatos {
                     desviacion: !isNaN(desviacion) ? desviacion : 1,
                     minimo: !isNaN(minimo) ? minimo : null,
                     maximo: !isNaN(maximo) ? maximo : null,
-                    decimales: numDecimales
+                    decimales: numDecimales,
+                    // (B9)
+                    niveles: opciones.niveles,
+                    ordinal: opciones.ordinal,
+                    fechaNacimiento: opciones.fechaNacimiento,
+                    dependeDe: dependeDe && dependeDe !== categoria ? dependeDe : '',
+                    fuerza: fuerza
                 });
             }
         });
@@ -766,7 +799,11 @@ class GeneradorDatos {
         const colID = base.agregar('ID', true);
         for (let i = 0; i < n; i++) colID.datos[i] = i + 1;
         const colSocio = new Map();
-        socios.forEach(s => colSocio.set(s.categoria, base.agregar(s.categoria, this._esSocioDiscreto(s))));
+        socios.forEach(s => {
+            colSocio.set(s.categoria, base.agregar(s.categoria, this._esSocioDiscreto(s)));
+            // (B9) la fecha de nacimiento va justo después de su edad
+            if (s.fechaNacimiento && !this._esSocioDiscreto(s)) { base.agregar(`FechaNac_${s.categoriaCorta}`, true); base.formatear(`FechaNac_${s.categoriaCorta}`, 'fecha'); }
+        });
         const colItems = new Map();   // prueba → [columnas de sus ítems]
         pruebas.forEach(p => {
             if (p.tipo === 'general') { colItems.set(p, []); return; }
@@ -784,10 +821,7 @@ class GeneradorDatos {
 
         // PASE 1 — variables DISCRETAS (binaria, categórica, conteo) de todos los
         // participantes: son las que agrupan y no reciben desplazamiento.
-        discretos.forEach(s => {
-            const col = colSocio.get(s.categoria);
-            for (let i = 0; i < n; i++) col.datos[i] = this.generarValorSociodemografico(s, null);
-        });
+        this._generarDiscretos(base, discretos, this.configuracion.correlacionesExactas !== false);
         avisar(0.10, 'Sociodemográficos de agrupación');
 
         // Matriz de drivers con correlación muestral EXACTA (si procede). En
@@ -901,6 +935,8 @@ class GeneradorDatos {
             });
         }
 
+        // (B9) fechas de nacimiento derivadas de las edades ya generadas
+        this._rellenarFechasNacimiento(base);
         // Imperfecciones realistas (si se pidieron), antes de los percentiles.
         avisar(0.88, 'Aplicando imperfecciones realistas');
         this.resumenImperfecciones = this.aplicarImperfecciones(base);
@@ -1749,6 +1785,38 @@ class GeneradorDatos {
             const medianaT = quien => { const v = d19.filter((f, i) => quien(i)).map(f => f.Tiempo_respuesta_seg).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
             ok('(B8) tiempo: mediana ≈ 12 min en atentos y los descuidados tardan menos de la mitad', Math.abs(medianaT(i => marcaD[i] === 0 && !marcaE[i]) - 720) < 90 && medianaT(i => marcaD[i] === 1) < 0.6 * 720, `${medianaT(i => marcaD[i] === 0 && !marcaE[i])} vs ${medianaT(i => marcaD[i] === 1)} s`);
             ok('(B8) sin estilos ni controles, la base sale como antes', !Object.keys(generar(cfgBase({ tamanoMuestra: 100 })).d[0]).some(c => /^(Control_|Tiempo_|Estilo_)/.test(c)), '');
+            // 19) (B9) sociodemográficos con contenido
+            const sociosB9 = [
+                { categoria: 'Sexo', categoriaCorta: 'S', distribucion: 'binaria', promedio: 0.4, desviacion: 1, minimo: null, maximo: null, decimales: 0, niveles: [{ codigo: 0, etiqueta: 'Femenino', proporcion: 0.6 }, { codigo: 1, etiqueta: 'Masculino', proporcion: 0.4 }], ordinal: false, fechaNacimiento: null, dependeDe: '', fuerza: 0 },
+                { categoria: 'Grado', categoriaCorta: 'Gr', distribucion: 'categorica', promedio: 0, desviacion: 1, minimo: 1, maximo: 3, decimales: 0, niveles: [{ codigo: 1, etiqueta: 'Primaria', proporcion: 0.2 }, { codigo: 2, etiqueta: 'Secundaria', proporcion: 0.5 }, { codigo: 3, etiqueta: 'Superior', proporcion: 0.3 }], ordinal: true, fechaNacimiento: null, dependeDe: 'Sexo', fuerza: 0.5 },
+                { categoria: 'Edad', categoriaCorta: 'E', distribucion: 'normal', promedio: 30, desviacion: 8, minimo: 18, maximo: 65, decimales: 0, niveles: null, ordinal: false, fechaNacimiento: '2026-06-30', dependeDe: '', fuerza: 0 }
+            ];
+            const cfgB9 = cfgBase({ tamanoMuestra: 500, sociodemograficos: sociosB9, diferenciasGrupo: [{ cuantitativa: 'Estrés', agrupacion: 'Sexo', d: 0.5 }, { cuantitativa: 'Percepción', agrupacion: 'Grado', d: -0.4 }] });
+            const { g: g20, d: d20 } = generar(cfgB9);
+            const inf20 = g20.informePedidoObtenido(g20.datosGenerados);   // con la base (los objetos llevan las etiquetas de texto)
+            const objetos20 = g20.datosGenerados.aObjetos();
+            const cuenta = (col, v) => objetos20.filter(f => f[col] === v).length;
+            ok('(B9) proporciones EXACTAS y etiquetas de texto en la vista por objetos (Sexo 60/40)', cuenta('Sexo', 'Femenino') === 300 && cuenta('Sexo', 'Masculino') === 200, `${cuenta('Sexo', 'Femenino')}/${cuenta('Sexo', 'Masculino')}`);
+            ok('(B9) categórica ordinal dependiente con proporciones exactas (20/50/30) y códigos 1–3 en el motor', cuenta('Grado', 'Primaria') === 100 && cuenta('Grado', 'Secundaria') === 250 && cuenta('Grado', 'Superior') === 150 && Array.from(g20.datosGenerados.columna('Grado').datos).every(v => v >= 1 && v <= 3), `${cuenta('Grado', 'Primaria')}/${cuenta('Grado', 'Secundaria')}/${cuenta('Grado', 'Superior')}`);
+            const filaV = inf20.find(f => f.tipo === 'V');
+            ok('(B9) asociación Grado según Sexo: V de Cramér obtenida ≈ esperada por el mecanismo', !!filaV && filaV.ok && parseFloat(filaV.obtenido) > 0.15, filaV ? `${filaV.pedido}→${filaV.obtenido}` : 'sin fila');
+            ok('(B9) d exactas con una binaria 60/40 y una categórica con proporciones desiguales', inf20.filter(f => f.tipo === 'd').every(f => f.ok), inf20.filter(f => f.tipo === 'd').map(f => `${f.pedido}→${f.obtenido}`).join(' '));
+            const edadOk = objetos20.every(f => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(f.FechaNac_E); if (!m) return false; const nac = Date.UTC(+m[1], +m[2] - 1, +m[3]); const ref = Date.UTC(2026, 5, 30); let edad = 2026 - (+m[1]); if (Date.UTC(2026, +m[2] - 1, +m[3]) > ref) edad--; return edad === f.Edad; });
+            ok('(B9) fecha de nacimiento AAAA-MM-DD coherente con la edad en años cumplidos al 2026-06-30', edadOk && Object.keys(objetos20[0]).indexOf('FechaNac_E') === Object.keys(objetos20[0]).indexOf('Edad') + 1, objetos20[0].Edad + ' → ' + objetos20[0].FechaNac_E);
+            const csv20 = g20.exportarCSV(';');
+            ok('(B9) el CSV lleva etiquetas de texto y fechas ISO', csv20.split('\n')[1].includes('Femenino') || csv20.split('\n')[1].includes('Masculino'), csv20.split('\n')[1].slice(0, 60));
+            ok('(B9) etiquetas del diccionario con los códigos y sus categorías', /0 = Femenino, 1 = Masculino/.test(g20.obtenerEtiquetas()['Sexo']) && /ordinal/.test(g20.obtenerEtiquetas()['Grado']) && !!g20.obtenerEtiquetas()['FechaNac_E'], g20.obtenerEtiquetas()['Grado']);
+            // MAR con referencia elegida (Percepción, sentido altos) y MNAR
+            const cfgMar = cfgBase({ tamanoMuestra: 1500, sociodemograficos: sociosB9, realismo: { pctPerdidos: 10, mecanismoPerdidos: 'MAR', referenciaMAR: 'Percepción', sentidoMAR: 'altos', pctDescuidados: 0, pctDigitacion: 0 } });
+            const { g: g21, d: d21 } = generar(cfgMar);
+            const perdidosPor = (rows, colRef, colsItem) => { const ord = rows.map((f, i) => [f[colRef], i]).filter(x => isFinite(x[0])).sort((a, b) => a[0] - b[0]); const q = Math.floor(ord.length / 4); const cnt = idxs => idxs.reduce((s, i) => s + colsItem.reduce((t, c) => t + (isNaN(rows[i][c]) ? 1 : 0), 0), 0); return [cnt(ord.slice(0, q).map(x => x[1])), cnt(ord.slice(-q).map(x => x[1]))]; };
+            const itemsST = Array.from({ length: 10 }, (_, j) => `ST${j + 1}`);
+            const [bajosP, altosP] = perdidosPor(d21, 'Dimension_PE', itemsST);
+            ok('(B9) MAR con referencia elegida y sentido «altos»: pierden más quienes puntúan alto en Percepción', g21.referenciaMARUsada === 'Dimension_PE' && altosP > bajosP * 1.3, `${bajosP} vs ${altosP}`);
+            const cfgMnar = cfgBase({ tamanoMuestra: 1500, sociodemograficos: sociosB9, realismo: { pctPerdidos: 10, mecanismoPerdidos: 'MNAR', referenciaMAR: '', sentidoMAR: 'altos', pctDescuidados: 0, pctDigitacion: 0 } });
+            const { d: d22 } = generar(cfgMnar);
+            const [bajosM, altosM] = perdidosPor(d22, 'Dimension_ST', itemsST);
+            ok('(B9) MNAR: los ítems de Estrés se pierden más en quienes puntúan alto en el propio Estrés', altosM > bajosM * 1.3, `${bajosM} vs ${altosM}`);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -1888,27 +1956,52 @@ class GeneradorDatos {
         // --- Valores perdidos ---
         if (r.pctPerdidos > 0 && pruebasConItems.length) {
             const p0 = r.pctPerdidos / 100;
-            // MAR: referencia observada = primer sociodemográfico numérico o, si no hay, el primer total
-            let ref = null;
-            const socioNum = (cfg.sociodemograficos || []).find(s => s.distribucion === 'normal' || s.distribucion === 'asimetrica');
-            if (socioNum) ref = socioNum.categoria;   // la columna se llama como la categoría (no como su nombre corto)
-            else if (cfg.pruebas && cfg.pruebas.length) ref = this.columnaDeEscala(cfg.pruebas[0]);
-            let rangos = null;
-            if (r.mecanismoPerdidos === 'MAR' && ref && base.tiene(ref)) {
-                const datosRef = base.columna(ref).datos;
+            const altos = r.sentidoMAR === 'altos';
+            // rangos [0,1] de una columna (casos observados); NaN → 0.5
+            const rangosDe = datosRef => {
                 const vals = [];
                 for (let i = 0; i < n; i++) if (isFinite(datosRef[i])) vals.push([datosRef[i], i]);
                 vals.sort((a, b) => a[0] - b[0]);
-                rangos = new Float64Array(n).fill(0.5);
-                vals.forEach(([, i], pos) => { rangos[i] = vals.length > 1 ? pos / (vals.length - 1) : 0.5; });
+                const rg = new Float64Array(n).fill(0.5);
+                vals.forEach(([, i], pos) => { rg[i] = vals.length > 1 ? pos / (vals.length - 1) : 0.5; });
+                return rg;
+            };
+            // quienes están en el extremo elegido pierden hasta el doble; el otro extremo casi nada
+            const probabilidad = rg => Math.max(0, Math.min(1, p0 * (1.8 - 1.6 * (altos ? 1 - rg : rg))));
+            let rangos = null;
+            if (r.mecanismoPerdidos === 'MAR') {
+                // (B9) referencia elegible: variable numérica u ordinal del estudio; si no, la automática
+                let ref = null;
+                if (r.referenciaMAR) {
+                    const p = (cfg.pruebas || []).find(x => x.nombre === r.referenciaMAR);
+                    ref = p ? this.columnaDeEscala(p) : r.referenciaMAR;
+                }
+                if (!ref || !base.tiene(ref)) {
+                    const socioNum = (cfg.sociodemograficos || []).find(s => s.distribucion === 'normal' || s.distribucion === 'asimetrica');
+                    if (socioNum) ref = socioNum.categoria;   // la columna se llama como la categoría (no como su nombre corto)
+                    else if (cfg.pruebas && cfg.pruebas.length) ref = this.columnaDeEscala(cfg.pruebas[0]);
+                }
+                if (ref && base.tiene(ref)) rangos = rangosDe(base.columna(ref).datos);
+                this.referenciaMARUsada = ref;
             }
             const columnasPorPrueba = pruebasConItems.map(columnasItems);
-            for (let i = 0; i < n; i++) {
-                // MAR: quienes puntúan bajo en la referencia pierden hasta el doble; los altos casi nada
-                const pi = rangos ? Math.max(0, Math.min(1, p0 * (1.8 - 1.6 * rangos[i]))) : p0;
-                columnasPorPrueba.forEach(cols => cols.forEach(col => {
-                    if (this.aleatorio() < pi) { col[i] = NaN; nPerdidos++; tocados.add(i); }
-                }));
+            if (r.mecanismoPerdidos === 'MNAR') {
+                // (B9) MNAR: la pérdida depende del propio total de la escala (antes de perder)
+                pruebasConItems.forEach((p, k) => {
+                    const total = base.columna(this.columnaDeEscala(p));
+                    const rg = total ? rangosDe(total.datos) : null;
+                    for (let i = 0; i < n; i++) {
+                        const pi = rg ? probabilidad(rg[i]) : p0;
+                        columnasPorPrueba[k].forEach(col => { if (this.aleatorio() < pi) { col[i] = NaN; nPerdidos++; tocados.add(i); } });
+                    }
+                });
+            } else {
+                for (let i = 0; i < n; i++) {
+                    const pi = rangos ? probabilidad(rangos[i]) : p0;
+                    columnasPorPrueba.forEach(cols => cols.forEach(col => {
+                        if (this.aleatorio() < pi) { col[i] = NaN; nPerdidos++; tocados.add(i); }
+                    }));
+                }
             }
         }
         tocados.forEach(i => this._recalcularTotales(base, i, grupos));
@@ -2114,7 +2207,7 @@ class GeneradorDatos {
         const filas = [];
         if (!datos || !datos.length) return filas;
         // Acepta la base columnar o, por compatibilidad, un arreglo de filas-objeto.
-        const base = (typeof BaseColumnar !== 'undefined' && datos instanceof BaseColumnar) ? datos : BaseColumnar.desdeObjetos(datos);
+        const base = (typeof BaseColumnar !== 'undefined' && datos instanceof BaseColumnar) ? datos : this._baseDesdeObjetos(datos);
         const n = base.n;
         const cfg = this.configuracion;
         const col = k => (base.tiene(k) ? Array.from(base.finitos(k)) : []);
@@ -2236,7 +2329,33 @@ class GeneradorDatos {
         this._informeModelos(base, filas, columnaDe, num);
         // 6) (B7) Medidas repetidas: estabilidad y cambio (global o por grupo)
         this._informeRepetidas(base, filas, num);
+        // 7) (B9) Sociodemográficos: proporciones pedidas y asociaciones entre discretas
+        this._informeSociodemograficos(base, filas, num);
         return filas;
+    }
+    _informeSociodemograficos(base, filas, num) {
+        const cfg = this.configuracion, socios = cfg.sociodemograficos || [];
+        const n = base.n, exactas = cfg.correlacionesExactas !== false;
+        socios.forEach(s => {
+            if (!s.niveles || !this._esSocioDiscreto(s) || !base.tiene(s.categoria)) return;
+            const datos = base.columna(s.categoria).datos;
+            const conteos = new Map(); let total = 0;
+            for (let i = 0; i < n; i++) if (datos[i] === datos[i]) { conteos.set(datos[i], (conteos.get(datos[i]) || 0) + 1); total++; }
+            if (!total) return;
+            const obtenidas = s.niveles.map(x => ((conteos.get(x.codigo) || 0) / total));
+            const maxDif = Math.max(...s.niveles.map((x, k) => Math.abs(obtenidas[k] - x.proporcion)));
+            const tol = (exactas || s.dependeDe) ? 1 / total + 1e-9 : Math.max(0.03, 2 * Math.sqrt(0.25 / total));
+            filas.push({ tipo: '%', variable: `${s.categoria} (${s.niveles.map(x => x.etiqueta || x.codigo).join(' / ')})`, pedido: s.niveles.map(x => Math.round(x.proporcion * 100) + '%').join(' / '), obtenido: obtenidas.map(p => (p * 100).toFixed(1) + '%').join(' / '), ok: maxDif <= tol });
+        });
+        socios.forEach(s => {
+            if (!s.dependeDe || !this._esSocioDiscreto(s)) return;
+            const ref = socios.find(x => x.categoria === s.dependeDe);
+            if (!ref || !base.tiene(s.categoria) || !base.tiene(ref.categoria)) return;
+            const V = this._cramerV(base.columna(ref.categoria).datos, base.columna(s.categoria).datos);
+            const esperada = s.fuerza > 0 ? this._vEsperada(s, ref) : 0;
+            const tol = Math.max(0.05, 2 / Math.sqrt(Math.max(4, n)));
+            filas.push({ tipo: 'V', variable: `${s.categoria} según ${ref.categoria} (V de Cramér; fuerza latente ${num(s.fuerza)})`, pedido: esperada === null ? '—' : num(esperada, 3), obtenido: num(V, 3), ok: esperada === null ? true : Math.abs(V - esperada) <= tol });
+        });
     }
     _informeRepetidas(base, filas, num) {
         const cfg = this.configuracion, lista = cfg.medidasRepetidas || [];
@@ -2675,17 +2794,236 @@ class GeneradorDatos {
         const d = socio.distribucion || 'normal';
         return d === 'binaria' || d === 'categorica' || d === 'conteo';
     }
+    // ============ SOCIODEMOGRÁFICOS CON CONTENIDO (B9) ============
+    // Texto de la casilla «Categorías / opciones» de la tabla II:
+    //  · binaria / categórica: «Femenino, Masculino» (equiprobables),
+    //    «Soltero:60, Casado:30, Divorciado:10» (proporciones en % o fracción),
+    //    «Primaria < Secundaria < Superior» (ordinal; también con :proporción).
+    //    Códigos: binaria 0 = primera, 1 = segunda; categórica 1…K en ese orden.
+    //  · normal / asimétrica / uniforme (una edad): «fecha» o «fecha:AAAA-MM-DD»
+    //    añade la columna FechaNac_<sigla> coherente con la edad a esa fecha.
+    _parsearOpcionesSocio(texto, distribucion, categoria) {
+        const salida = { niveles: null, ordinal: false, fechaNacimiento: null, conProporciones: false };
+        const t = String(texto || '').trim();
+        if (!t) return salida;
+        const nombre = categoria || 'variable';
+        if (distribucion === 'binaria' || distribucion === 'categorica') {
+            const ordinal = t.includes('<');
+            const partes = t.split(ordinal ? '<' : ',').map(s => s.trim()).filter(Boolean);
+            const niveles = partes.map(p => {
+                const m = /^(.*?)\s*:\s*([0-9]+(?:[.,][0-9]+)?)\s*%?\s*$/.exec(p);
+                if (m) return { etiqueta: m[1].trim(), proporcion: parseFloat(m[2].replace(',', '.')) };
+                return { etiqueta: p, proporcion: null };
+            });
+            if (niveles.some(x => !x.etiqueta)) throw new Error(`Variable «${nombre}»: hay una categoría sin nombre en las opciones`);
+            const etiquetas = new Set(niveles.map(x => x.etiqueta.toLowerCase()));
+            if (etiquetas.size < niveles.length) throw new Error(`Variable «${nombre}»: hay categorías repetidas en las opciones`);
+            if (distribucion === 'binaria' && niveles.length !== 2) throw new Error(`Variable «${nombre}»: una binaria necesita exactamente dos categorías (p. ej. «Femenino, Masculino»)`);
+            if (distribucion === 'categorica' && (niveles.length < 2 || niveles.length > 20)) throw new Error(`Variable «${nombre}»: una categórica necesita entre 2 y 20 categorías`);
+            const conProp = niveles.filter(x => x.proporcion !== null).length;
+            if (conProp && conProp !== niveles.length) throw new Error(`Variable «${nombre}»: indica la proporción de todas las categorías o de ninguna`);
+            if (conProp) {
+                const suma = niveles.reduce((s, x) => s + x.proporcion, 0);
+                if (!(suma > 0)) throw new Error(`Variable «${nombre}»: las proporciones deben sumar más de 0`);
+                niveles.forEach(x => { x.proporcion = x.proporcion / suma; });   // 60/40, 0.6/0.4 o 3/2: se normalizan
+            } else niveles.forEach(x => { x.proporcion = 1 / niveles.length; });
+            niveles.forEach((x, k) => { x.codigo = distribucion === 'binaria' ? k : k + 1; });
+            return { niveles, ordinal, fechaNacimiento: null, conProporciones: conProp > 0 };
+        }
+        if (distribucion === 'conteo') throw new Error(`Variable «${nombre}»: un conteo no admite opciones (deja la casilla vacía)`);
+        const m = /^fecha(?:\s*:\s*(\d{4}-\d{2}-\d{2}))?$/i.exec(t);
+        if (!m) throw new Error(`Variable «${nombre}»: para una variable continua la casilla solo admite «fecha» o «fecha:AAAA-MM-DD» (fecha de nacimiento a partir de la edad)`);
+        if (m[1] && !isFinite(BaseColumnar.isoADias(m[1]))) throw new Error(`Variable «${nombre}»: fecha de referencia no válida (${m[1]})`);
+        return { niveles: null, ordinal: false, fechaNacimiento: m[1] || 'hoy', conProporciones: false };
+    }
+    // Filas-objeto → base columnar, traduciendo las etiquetas de texto de las
+    // categóricas (B9) y las fechas ISO a sus códigos/días, para que el informe
+    // sea el mismo que sobre la base columnar.
+    _baseDesdeObjetos(datos) {
+        const socios = (this.configuracion && this.configuracion.sociodemograficos) || [];
+        const traductores = new Map();
+        socios.forEach(s => {
+            if (s.niveles && s.niveles.some(x => x.etiqueta)) { const m = new Map(); s.niveles.forEach(x => m.set(String(x.etiqueta), x.codigo)); traductores.set(s.categoria, v => (typeof v === 'string' && m.has(v)) ? m.get(v) : v); }
+            if (s.fechaNacimiento && !this._esSocioDiscreto(s)) traductores.set(`FechaNac_${s.categoriaCorta}`, v => (typeof v === 'string' ? BaseColumnar.isoADias(v) : v));
+        });
+        if (!traductores.size) return BaseColumnar.desdeObjetos(datos);
+        const copia = datos.map(f => { const o = Object.assign({}, f); traductores.forEach((tr, col) => { if (col in o) o[col] = tr(o[col]); }); return o; });
+        const base = BaseColumnar.desdeObjetos(copia);
+        socios.forEach(s => {
+            if (s.niveles && s.niveles.some(x => x.etiqueta) && base.tiene(s.categoria)) { const e = {}; s.niveles.forEach(x => { e[x.codigo] = x.etiqueta; }); base.etiquetar(s.categoria, e); }
+            if (s.fechaNacimiento && !this._esSocioDiscreto(s) && base.tiene(`FechaNac_${s.categoriaCorta}`)) base.formatear(`FechaNac_${s.categoriaCorta}`, 'fecha');
+        });
+        return base;
+    }
+    // Niveles efectivos de una discreta (con o sin texto de opciones)
+    _nivelesDe(socio) {
+        if (socio.niveles && socio.niveles.length) return socio.niveles;
+        if (socio.distribucion === 'binaria') { const p = Math.max(0, Math.min(1, socio.promedio)); return [{ codigo: 0, proporcion: 1 - p }, { codigo: 1, proporcion: p }]; }
+        if (socio.distribucion === 'categorica') {
+            const K = Math.max(1, Math.floor(socio.maximo - socio.minimo + 1));
+            return Array.from({ length: K }, (_, k) => ({ codigo: socio.minimo + k, proporcion: 1 / K }));
+        }
+        return null;
+    }
+    _validarSociodemograficosB9(errores, advertencias) {
+        const cfg = this.configuracion, socios = cfg.sociodemograficos || [];
+        const porNombre = new Map(socios.map(s => [s.categoria, s]));
+        socios.forEach(s => {
+            if (s.dependeDe) {
+                const ref = porNombre.get(s.dependeDe);
+                if (!ref) errores.push(`Variable «${s.categoria}»: depende de «${s.dependeDe}», que no existe`);
+                else if (!this._esSocioDiscreto(s)) errores.push(`Variable «${s.categoria}»: solo una binaria o categórica puede depender de otra variable; para una continua usa la tabla IV (diferencias por grupo)`);
+                else if (!(ref.distribucion === 'binaria' || ref.distribucion === 'categorica')) errores.push(`Variable «${s.categoria}»: solo puede depender de una binaria o categórica (para que una categoría dependa de una continua, plantéalo al revés: la continua difiere por grupo, tabla IV)`);
+                else if (s.distribucion === 'conteo') errores.push(`Variable «${s.categoria}»: un conteo no puede depender de otra variable`);
+                // ciclos
+                let cur = ref, pasos = 0;
+                while (cur && cur.dependeDe && pasos < 50) { if (cur.dependeDe === s.categoria) { errores.push(`Dependencia circular entre «${s.categoria}» y «${cur.categoria}»`); break; } cur = porNombre.get(cur.dependeDe); pasos++; }
+                if (!(s.fuerza > 0)) advertencias.push(`Variable «${s.categoria}»: depende de «${s.dependeDe}» con fuerza 0, es decir, sin asociación`);
+            }
+            if (s.fechaNacimiento) {
+                if (this._esSocioDiscreto(s)) errores.push(`Variable «${s.categoria}»: la fecha de nacimiento solo se deriva de una variable continua (edad en años)`);
+                else if (s.promedio < 5 || s.promedio > 110) advertencias.push(`Variable «${s.categoria}»: se derivará una fecha de nacimiento suponiendo que es una edad en años (promedio ${s.promedio})`);
+                if (s.fechaNacimiento === 'hoy' && cfg.semilla !== null && cfg.semilla !== undefined && cfg.semilla !== '') advertencias.push(`Variable «${s.categoria}»: la fecha de nacimiento se calcula a la fecha de HOY, así que la misma semilla dará fechas distintas otro día; usa «fecha:AAAA-MM-DD» para reproducibilidad`);
+            }
+        });
+        const r = cfg.realismo || {};
+        if (r.pctPerdidos > 0 && (r.mecanismoPerdidos === 'MAR') && r.referenciaMAR) {
+            const existe = socios.some(s => s.categoria === r.referenciaMAR && (!this._esSocioDiscreto(s) || s.distribucion === 'conteo' || s.ordinal)) || (cfg.pruebas || []).some(p => p.nombre === r.referenciaMAR);
+            if (!existe) errores.push(`Valores perdidos MAR: la variable de referencia «${r.referenciaMAR}» no es una variable numérica u ordinal del estudio`);
+        }
+    }
+    // Sorteo de un nivel según sus proporciones (i.i.d.)
+    _sortearNivel(niveles) {
+        const u = this.aleatorio();
+        let acum = 0;
+        for (let k = 0; k < niveles.length; k++) { acum += niveles[k].proporcion; if (u < acum) return niveles[k].codigo; }
+        return niveles[niveles.length - 1].codigo;
+    }
+    // Recuentos exactos por nivel (mayores restos) para n personas
+    _recuentosExactos(niveles, n) {
+        const exactos = niveles.map(x => x.proporcion * n);
+        const base = exactos.map(Math.floor);
+        let faltan = n - base.reduce((s, v) => s + v, 0);
+        const orden = exactos.map((v, k) => [v - base[k], k]).sort((a, b) => b[0] - a[0]);
+        for (let j = 0; faltan > 0 && j < orden.length; j++, faltan--) base[orden[j][1]]++;
+        return base;
+    }
+    // PASE 1: variables discretas. Orden de dependencias; las independientes con
+    // proporciones EXACTAS en modo exacto (mayores restos + permutación) e i.i.d.
+    // si no; las dependientes por un latente z = f·A_est + √(1 − f²)·e, asignando
+    // los niveles por rango (proporciones exactas en la muestra siempre).
+    _generarDiscretos(base, discretos, exactas) {
+        const n = base.n;
+        const porNombre = new Map(discretos.map(s => [s.categoria, s]));
+        const hechos = new Set(), orden = [];
+        const visitar = (s, pila) => {
+            if (hechos.has(s.categoria)) return;
+            const ref = s.dependeDe ? porNombre.get(s.dependeDe) : null;
+            if (ref && !pila.has(ref.categoria)) { pila.add(s.categoria); visitar(ref, pila); }
+            hechos.add(s.categoria); orden.push(s);
+        };
+        discretos.forEach(s => visitar(s, new Set()));
+        orden.forEach(s => {
+            const col = base.columna(s.categoria);
+            const niveles = this._nivelesDe(s);
+            const ref = s.dependeDe ? porNombre.get(s.dependeDe) : null;
+            const refValida = ref && niveles && (ref.distribucion === 'binaria' || ref.distribucion === 'categorica') && s.distribucion !== 'conteo';
+            if (refValida && s.fuerza > 0) {
+                const refCol = base.columna(ref.categoria).datos;
+                const media = this._mediaCodigo(ref), de = Math.sqrt(this._varianzaCodigo(ref) || 1) || 1;
+                const f = Math.min(0.95, s.fuerza), c = Math.sqrt(1 - f * f);
+                const latente = new Float64Array(n);
+                for (let i = 0; i < n; i++) latente[i] = f * (refCol[i] - media) / de + c * this.generarNormalEstandar();
+                const idx = Array.from({ length: n }, (_, i) => i).sort((a, b) => latente[a] - latente[b]);
+                const recuentos = this._recuentosExactos(niveles, n);
+                let pos = 0;
+                niveles.forEach((nv, k) => { for (let j = 0; j < recuentos[k]; j++) col.datos[idx[pos++]] = nv.codigo; });
+            } else if (niveles && exactas) {
+                const recuentos = this._recuentosExactos(niveles, n);
+                const perm = this._muestraSinReemplazo(n, n);
+                let pos = 0;
+                niveles.forEach((nv, k) => { for (let j = 0; j < recuentos[k]; j++) col.datos[perm[pos++]] = nv.codigo; });
+            } else if (niveles) {
+                for (let i = 0; i < n; i++) col.datos[i] = this._sortearNivel(niveles);
+            } else {
+                for (let i = 0; i < n; i++) col.datos[i] = this.generarValorSociodemografico(s, null);
+            }
+            if (s.niveles && s.niveles.some(x => x.etiqueta)) {
+                const etiquetas = {}; s.niveles.forEach(x => { etiquetas[x.codigo] = x.etiqueta; });
+                base.etiquetar(s.categoria, etiquetas);
+            }
+        });
+    }
+    _mediaCodigo(agrup) {
+        const niveles = this._nivelesDe(agrup);
+        if (!niveles) return 0;
+        return niveles.reduce((s, x) => s + x.proporcion * x.codigo, 0);
+    }
+    // V de Cramér entre dos columnas de códigos (casos completos)
+    _cramerV(a, b) {
+        const tabla = new Map(); const filas = new Set(), cols = new Set(); let n = 0;
+        for (let i = 0; i < a.length; i++) { if (!(a[i] === a[i]) || !(b[i] === b[i])) continue; const k = `${a[i]}|${b[i]}`; tabla.set(k, (tabla.get(k) || 0) + 1); filas.add(a[i]); cols.add(b[i]); n++; }
+        if (n === 0 || filas.size < 2 || cols.size < 2) return 0;
+        const mf = new Map(), mc = new Map();
+        tabla.forEach((v, k) => { const [f, c] = k.split('|'); mf.set(f, (mf.get(f) || 0) + v); mc.set(c, (mc.get(c) || 0) + v); });
+        let chi2 = 0;
+        mf.forEach((nf, f) => mc.forEach((nc, c) => { const e = nf * nc / n; const o = tabla.get(`${f}|${c}`) || 0; chi2 += (o - e) * (o - e) / e; }));
+        return Math.sqrt(chi2 / n / Math.min(filas.size - 1, cols.size - 1));
+    }
+    // V esperada por el mecanismo latente (simulación poblacional, 6000 casos)
+    _vEsperada(socio, ref) {
+        const nS = 6000;
+        const nivR = this._nivelesDe(ref), nivS = this._nivelesDe(socio);
+        if (!nivR || !nivS) return null;
+        const a = new Float64Array(nS), lat = new Float64Array(nS);
+        const media = this._mediaCodigo(ref), de = Math.sqrt(this._varianzaCodigo(ref) || 1) || 1;
+        const f = Math.min(0.95, socio.fuerza), c = Math.sqrt(1 - f * f);
+        const recR = this._recuentosExactos(nivR, nS); let pos = 0;
+        nivR.forEach((nv, k) => { for (let j = 0; j < recR[k]; j++) a[pos++] = nv.codigo; });
+        // PRNG propio y fijo (mulberry32): el valor esperado no depende del estado
+        // del generador principal ni lo consume, así el informe es reproducible
+        let semilla = 0x9E3779B9 ^ Math.round(f * 1000) ^ (nivR.length * 131 + nivS.length * 17);
+        const u = () => { semilla = (semilla + 0x6D2B79F5) | 0; let x = Math.imul(semilla ^ (semilla >>> 15), 1 | semilla); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+        const normal = () => { const u1 = Math.max(1e-12, u()), u2 = u(); return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); };
+        for (let i = 0; i < nS; i++) lat[i] = f * (a[i] - media) / de + c * normal();
+        const idx = Array.from({ length: nS }, (_, i) => i).sort((x, y) => lat[x] - lat[y]);
+        const b = new Float64Array(nS); const recS = this._recuentosExactos(nivS, nS); pos = 0;
+        nivS.forEach((nv, k) => { for (let j = 0; j < recS[k]; j++) b[idx[pos++]] = nv.codigo; });
+        return this._cramerV(a, b);
+    }
+    // Fecha de nacimiento coherente con la edad (años cumplidos) a la fecha de referencia
+    _rellenarFechasNacimiento(base) {
+        (this.configuracion.sociodemograficos || []).forEach(s => {
+            if (!s.fechaNacimiento || this._esSocioDiscreto(s)) return;
+            const col = base.columna(`FechaNac_${s.categoriaCorta}`), edad = base.columna(s.categoria);
+            if (!col || !edad) return;
+            const refDias = s.fechaNacimiento === 'hoy' ? Math.floor(Date.now() / 86400000) : BaseColumnar.isoADias(s.fechaNacimiento);
+            const refFecha = new Date(refDias * 86400000);
+            const Y = refFecha.getUTCFullYear(), M = refFecha.getUTCMonth(), D = refFecha.getUTCDate();
+            const mismoDiaHace = anios => Math.round(Date.UTC(Y - anios, M, D) / 86400000);
+            for (let i = 0; i < base.n; i++) {
+                const e = edad.datos[i];
+                if (!(e === e)) { col.datos[i] = NaN; continue; }
+                // Con calendario real: nació en (ref − (e+1) años, ref − e años]; así la
+                // edad en años cumplidos a la referencia es exactamente `e` (sin
+                // desfases por 365.25 en años sin bisiesto).
+                const edadEntera = Math.max(0, Math.floor(e));
+                const tope = mismoDiaHace(edadEntera), inicioExcl = mismoDiaHace(edadEntera + 1);
+                const span = tope - inicioExcl;   // 365 o 366 días
+                col.datos[i] = inicioExcl + 1 + Math.floor(this.aleatorio() * span);
+            }
+        });
+    }
     // Varianza del código de una variable de agrupación: binaria p(1 − p);
     // categórica equiprobable con K niveles (K² − 1)/12. null si no agrupa.
     _varianzaCodigo(agrup) {
         if (!agrup) return null;
-        if (agrup.distribucion === 'binaria') {
-            const p = agrup.promedio;
-            return (p > 0 && p < 1) ? p * (1 - p) : 0;
-        }
-        if (agrup.distribucion === 'categorica') {
-            const K = Math.floor(agrup.maximo - agrup.minimo + 1);
-            return K >= 1 ? (K * K - 1) / 12 : 0;
+        if (agrup.distribucion === 'binaria' || agrup.distribucion === 'categorica') {
+            // (B9) con las proporciones de sus niveles (equiprobables si no hay texto)
+            const niveles = this._nivelesDe(agrup);
+            if (!niveles) return 0;
+            const media = niveles.reduce((s, x) => s + x.proporcion * x.codigo, 0);
+            return niveles.reduce((s, x) => s + x.proporcion * (x.codigo - media) * (x.codigo - media), 0);
         }
         return null;
     }
@@ -2694,8 +3032,7 @@ class GeneradorDatos {
     // variable en toda la base siga siendo la pedida.
     _codigoCentrado(agrup, codigo) {
         if (!(typeof codigo === 'number' && isFinite(codigo))) return 0;
-        if (agrup.distribucion === 'binaria') return codigo - agrup.promedio;
-        if (agrup.distribucion === 'categorica') return codigo - (agrup.minimo + agrup.maximo) / 2;
+        if (agrup.distribucion === 'binaria' || agrup.distribucion === 'categorica') return codigo - this._mediaCodigo(agrup);
         return 0;
     }
     // σ_G/(Σσ_i/K) del General de un test con las correlaciones OBJETIVO entre
@@ -3235,7 +3572,7 @@ class GeneradorDatos {
         this.driversEnValor = new Set();
         if (funcionesValor) {
             this._prepararColumnasDeDrivers(Zcols, funcionesValor, codigosGrupo);
-            funcionesValor.forEach((f, a) => { if (f.enValor || f.esCriterio) this.driversEnValor.add(this.correlVariables[a].tipo + ':' + this.correlVariables[a].clave); });
+            funcionesValor.forEach((f, a) => { if (f.enValor || f.esCriterio || f.formaAplicada) this.driversEnValor.add(this.correlVariables[a].tipo + ':' + this.correlVariables[a].clave); });
         }
         const salida = new Array(n);
         for (let i = 0; i < n; i++) { const y = new Array(m); for (let a = 0; a < m; a++) y[a] = Zcols[a][i]; salida[i] = y; }
@@ -3253,8 +3590,21 @@ class GeneradorDatos {
         const n = Zcols[0].length;
         const criterios = new Set((this.modelosModeracion || []).map(md => md.iY));
         funciones.forEach((f, a) => {
-            if (!f.enValor || criterios.has(a)) return;
-            Zcols[a] = this._igualarPorGrupos(Float64Array.from(Zcols[a], z => f.transformar(z)), codigos);
+            if (criterios.has(a)) return;
+            if (f.enValor) { Zcols[a] = this._igualarPorGrupos(Float64Array.from(Zcols[a], z => f.transformar(z)), codigos); return; }
+            // (modo exacto) formas no normales sin grupos: la forma se aplica aquí y
+            // se re-estandariza EN LA MUESTRA (media 0, DE 1 con n − 1), así la
+            // Media y la DE de la variable salen exactas también con formas
+            // asimétricas o uniformes (antes fluctuaban ±3 % de σ con n = 150 y,
+            // con ellas, el cambio de una medida repetida).
+            if (f.conForma) {
+                const u = Float64Array.from(Zcols[a], z => f.transformar(z));
+                let m = 0; for (let i = 0; i < n; i++) m += u[i]; m /= n;
+                let v = 0; for (let i = 0; i < n; i++) v += (u[i] - m) * (u[i] - m);
+                const sd = Math.sqrt(v / Math.max(1, n - 1)) || 1;
+                for (let i = 0; i < n; i++) u[i] = (u[i] - m) / sd;
+                Zcols[a] = u; f.formaAplicada = true;
+            }
         });
         (this.modelosModeracion || []).forEach(md => {
             const xFinal = new Float64Array(n), wFinal = new Float64Array(n);
@@ -3322,18 +3672,22 @@ class GeneradorDatos {
                 // (forma aplicada, medias de grupo igualadas, DE 1): la forma no
                 // se vuelve a aplicar.
                 const enValor = conDif(p.nombre);
-                return { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: p.nombre,
+                const fn = { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: p.nombre,
+                    conForma: !esCriterio && p.distribucion && p.distribucion !== 'normal', formaAplicada: false,
                     transformar: z => (esCriterio ? z : this.transformarFormaZ(z, p.distribucion)),
-                    valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor || esCriterio) };
+                    valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor || esCriterio || fn.formaAplicada) };
+                return fn;
             }
             const s = cfg.sociodemograficos.find(x => x.categoriaCorta === v.clave);
             const f = this._factorDE(s.categoria);
             const partes = this._partesDesplazamiento(base, s.categoria, this._deEfectiva(s));
             const desp = partes.desp;
             const enValor = conDif(s.categoria);
-            return { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: s.categoria,
+            const fn = { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: s.categoria,
+                conForma: !esCriterio && s.distribucion && s.distribucion !== 'normal', formaAplicada: false,
                 transformar: z => (esCriterio ? z : this._formaSocioEstandar(s, z, f)),
-                valor: (i, base) => this._valorContinuoSocio(s, base, desp[i], f, enValor || esCriterio) };
+                valor: (i, base) => this._valorContinuoSocio(s, base, desp[i], f, enValor || esCriterio || fn.formaAplicada) };
+            return fn;
         });
     }
     // Forma estandarizada (media 0, DE 1) de un sociodemográfico continuo a
@@ -3521,11 +3875,16 @@ class GeneradorDatos {
             return (espanol && !Number.isInteger(v)) ? s.replace('.', ',') : s;
         };
         const columnas = base.columnas.map(c => c.datos);
+        // (B9) columnas con etiquetas de valor o formato de fecha: texto de presentación
+        const presentables = base.columnas.map(c => !!(c.etiquetas || c.formato));
         const lineas = new Array(base.n + 1);
         lineas[0] = base.columnas.map(c => escapar(c.nombre)).join(sep);
         const partes = new Array(columnas.length);
         for (let i = 0; i < base.n; i++) {
-            for (let c = 0; c < columnas.length; c++) partes[c] = texto(columnas[c][i]);
+            for (let c = 0; c < columnas.length; c++) {
+                if (presentables[c]) { const v = base.presentar(base.columnas[c], i); partes[c] = typeof v === 'string' ? escapar(v) : texto(v); }
+                else partes[c] = texto(columnas[c][i]);
+            }
             lineas[i + 1] = partes.join(sep);
         }
         return lineas.join('\n') + '\n';
@@ -3684,6 +4043,8 @@ class GeneradorDatos {
         // (B7) Medidas repetidas
         this._validarMedidasRepetidas(errores, advertencias);
 
+        // (B9) dependencias, fechas de nacimiento y referencia del MAR
+        this._validarSociodemograficosB9(errores, advertencias);
         // Validar sociodemográficos
         this.configuracion.sociodemograficos.forEach(socio => {
             // Validar desviación razonable
