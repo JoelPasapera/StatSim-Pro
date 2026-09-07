@@ -57,6 +57,19 @@ function configurarGenerador() {
     // Tipo que ya no existen: desalineaba la tabla y el generador la ignoraba).
     const _bodyPruebas = document.getElementById('bodyPruebas');
     if (_bodyPruebas && !_bodyPruebas.querySelector('.fila-prueba')) agregarFilaPruebaConDatos(FILA_PRUEBA_VACIA);
+    const _btnActualizar = document.getElementById('btnActualizarDesdeTests');
+    if (_btnActualizar) _btnActualizar.addEventListener('click', reconstruirTablaDesdeTests);
+    // Lo que se escribe a mano en la tabla de escalas se anota arriba: el
+    // nombre anterior se guarda al entrar en el campo para detectar renombrados.
+    if (_bodyPruebas) {
+        _bodyPruebas.addEventListener('focusin', e => {
+            if (e.target.matches && (e.target.matches('[aria-label="Nombre de la escala"]') || e.target.matches('[aria-label="Nombre de la prueba"]'))) e.target.dataset.anterior = e.target.value.trim();
+        });
+        _bodyPruebas.addEventListener('change', e => {
+            if (!e.target.matches) return;
+            if (e.target.matches('[aria-label="Nombre de la escala"]') || e.target.matches('[aria-label="Nombre de la prueba"]')) reflejarFilaEnTests(e.target.closest('.fila-prueba'));
+        });
+    }
     // Botón agregar sociodemográfico
     document.getElementById('btnAgregarSocio').addEventListener('click', agregarFilaSocio);
     // Botón generar base de datos
@@ -2904,37 +2917,161 @@ function agregarFilaTestConDatos(datos = {}) {
     tbody.appendChild(fila);
     fila.querySelector('[aria-label="Nombre del test"]').addEventListener('input', refrescarSelectoresDePrueba);
     fila.querySelector('[aria-label="Dimensiones del test"]').addEventListener('change', () => sincronizarDimensionesDesdeTests());
+    fila.querySelector('[aria-label="Dimensiones del test"]').dataset.previo = JSON.stringify(datos.dimensiones || []);
     refrescarSelectoresDePrueba();
 }
+// ---- Sincronización cuadro de tests ⇄ tabla de escalas ----
+const _claveEscala = (p, e) => `${String(p).trim().toLowerCase()}|${String(e).trim().toLowerCase()}`;
+const _camposFilaPrueba = f => ({ sel: f.querySelector('[aria-label="Nombre de la prueba"]'), inp: f.querySelector('[aria-label="Nombre de la escala"]') });
+function _filasPruebaDe(prueba) {
+    return Array.from(document.querySelectorAll('#bodyPruebas .fila-prueba')).filter(f => { const { sel } = _camposFilaPrueba(f); return sel && sel.value.trim().toLowerCase() === String(prueba).trim().toLowerCase(); });
+}
+function _filaPruebaPor(prueba, escala) {
+    return _filasPruebaDe(prueba).find(f => { const { inp } = _camposFilaPrueba(f); return inp && inp.value.trim().toLowerCase() === String(escala).trim().toLowerCase(); }) || null;
+}
+// Una fila tiene datos si alguno de sus campos numéricos está completo.
+function _filaPruebaConDatos(f) {
+    return ['Número de ítems', 'Media (M)', 'Desviación estándar (DE)', 'Mínimo por ítem', 'Máximo por ítem', 'Alfa de Cronbach objetivo'].some(et => { const el = f.querySelector(`[aria-label="${et}"]`); return el && el.value.trim() !== ''; });
+}
+// Cambia el nombre de una escala en los desplegables de las tablas III–VI
+// (correlaciones, diferencias, modelos, medidas repetidas) sin perder la selección.
+function renombrarVariableEnTablas(viejo, nuevo) {
+    if (!viejo || !nuevo || viejo === nuevo) return 0;
+    let cambios = 0;
+    document.querySelectorAll('#bodyCorrelaciones select, #bodyDiferencias select, #bodyModelos select, #bodyRepetidas select').forEach(sel => {
+        Array.from(sel.options).forEach(op => { if (op.value === viejo) { op.value = nuevo; op.textContent = nuevo; cambios++; } });
+    });
+    return cambios;
+}
+function _renombrarFilaPrueba(fila, nuevo) {
+    const { inp } = _camposFilaPrueba(fila);
+    const viejo = inp.value.trim();
+    if (viejo === nuevo) return;
+    inp.value = nuevo;
+    inp.dataset.anterior = nuevo;
+    renombrarVariableEnTablas(viejo, nuevo);
+    if (typeof actualizarLimitesPrueba === 'function') actualizarLimitesPrueba(fila);
+}
 // Completa la tabla de escalas con una fila (test, dimensión) por cada
-// dimensión declarada arriba que aún no exista. Nunca borra filas: si una
-// dimensión desaparece de la lista, su fila queda y se elimina a mano.
+// dimensión declarada arriba que aún no exista, y propaga los RENOMBRADOS:
+// comparando la lista anterior de cada test con la nueva, un cambio solo de
+// mayúsculas o acentos renombra la fila; si desaparece una dimensión y aparece
+// otra en la misma posición (o es la única que cambia), también se trata como
+// renombrado. Nunca borra filas (eso lo hace «Actualizar desde las pruebas»).
 // Reutiliza la fila vacía inicial antes de añadir otras.
 function sincronizarDimensionesDesdeTests(silencioso = false) {
     const tbody = document.getElementById('bodyPruebas');
     if (!tbody) return 0;
-    const clave = (p, e) => `${String(p).trim().toLowerCase()}|${String(e).trim().toLowerCase()}`;
-    const campos = f => ({ sel: f.querySelector('[aria-label="Nombre de la prueba"]'), inp: f.querySelector('[aria-label="Nombre de la escala"]') });
-    const existentes = new Set();
-    tbody.querySelectorAll('.fila-prueba').forEach(f => { const { sel, inp } = campos(f); if (sel && inp && sel.value && inp.value.trim()) existentes.add(clave(sel.value, inp.value)); });
-    let creadas = 0;
-    testsDefinidos().forEach(t => (t.dimensiones || []).forEach(dim => {
-        if (existentes.has(clave(t.prueba, dim))) return;
-        const vacia = Array.from(tbody.querySelectorAll('.fila-prueba')).find(f => { const { sel, inp } = campos(f); return sel && inp && !sel.value && !inp.value.trim(); });
-        if (vacia) {
-            refrescarSelectoresDePrueba();
-            const { sel, inp } = campos(vacia);
-            sel.value = t.prueba; inp.value = dim;
-            if (typeof actualizarLimitesPrueba === 'function') actualizarLimitesPrueba(vacia);
-        } else {
-            agregarFilaPruebaConDatos(Object.assign({}, FILA_PRUEBA_VACIA, { prueba: t.prueba, nombre: dim }));
-        }
-        existentes.add(clave(t.prueba, dim));
-        creadas++;
-    }));
-    if (creadas && typeof actualizarTodasLasPruebas === 'function') actualizarTodasLasPruebas();
-    if (creadas && !silencioso) mostrarToast(`${creadas} fila(s) añadida(s) a la tabla de escalas: completa ítems, media y DE de cada una`, 'success');
-    return creadas;
+    let creadas = 0, renombradas = 0;
+    document.querySelectorAll('#bodyTests .fila-test').forEach(filaTest => {
+        const prueba = (filaTest.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
+        const inpDims = filaTest.querySelector('[aria-label="Dimensiones del test"]');
+        if (!prueba.trim() || !inpDims) return;
+        const nuevas = _listaDimensiones(inpDims.value);
+        let previas = [];
+        try { previas = JSON.parse(inpDims.dataset.previo || '[]'); } catch (e) { previas = []; }
+        const norm = s => String(s).trim().toLowerCase();
+        // 1) renombrados solo de forma (mayúsculas/acentos): misma clave normalizada
+        const pendientes = [];
+        nuevas.forEach((dim, i) => {
+            const fila = _filaPruebaPor(prueba, dim);
+            if (fila) { if (_camposFilaPrueba(fila).inp.value.trim() !== dim) { _renombrarFilaPrueba(fila, dim); renombradas++; } return; }
+            pendientes.push({ dim, i });
+        });
+        // 2) renombrados de fondo: dimensiones que desaparecieron y cuya fila sigue
+        const desaparecidas = previas.filter(p => !nuevas.some(n => norm(n) === norm(p))).map(p => ({ dim: p, i: previas.findIndex(x => norm(x) === norm(p)), fila: _filaPruebaPor(prueba, p) })).filter(d => d.fila);
+        pendientes.slice().forEach(pend => {
+            let cand = desaparecidas.find(d => d.i === pend.i);
+            if (!cand && desaparecidas.length === 1 && pendientes.length === 1) cand = desaparecidas[0];
+            if (!cand) return;
+            _renombrarFilaPrueba(cand.fila, pend.dim); renombradas++;
+            desaparecidas.splice(desaparecidas.indexOf(cand), 1);
+            pendientes.splice(pendientes.indexOf(pend), 1);
+        });
+        // 3) las que quedan son nuevas: fila vacía primero, luego filas nuevas
+        pendientes.forEach(({ dim }) => {
+            const vacia = Array.from(tbody.querySelectorAll('.fila-prueba')).find(f => { const { sel, inp } = _camposFilaPrueba(f); return sel && inp && !sel.value && !inp.value.trim(); });
+            if (vacia) {
+                refrescarSelectoresDePrueba();
+                const { sel, inp } = _camposFilaPrueba(vacia);
+                sel.value = prueba; inp.value = dim;
+                if (typeof actualizarLimitesPrueba === 'function') actualizarLimitesPrueba(vacia);
+            } else {
+                agregarFilaPruebaConDatos(Object.assign({}, FILA_PRUEBA_VACIA, { prueba, nombre: dim }));
+            }
+            creadas++;
+        });
+        inpDims.dataset.previo = JSON.stringify(nuevas);
+    });
+    if ((creadas || renombradas) && typeof actualizarTodasLasPruebas === 'function') actualizarTodasLasPruebas();
+    if (!silencioso && (creadas || renombradas)) {
+        const partes = [];
+        if (creadas) partes.push(`${creadas} fila(s) añadida(s) a la tabla de escalas`);
+        if (renombradas) partes.push(`${renombradas} renombrada(s)`);
+        mostrarToast(partes.join(' · ') + (creadas ? ': completa ítems, media y DE' : ''), 'success');
+    }
+    return creadas + renombradas;
+}
+function _listaDimensiones(texto) {
+    const dims = String(texto || '').split(',').map(s => s.trim()).filter(Boolean);
+    return dims.filter((d, i) => dims.findIndex(x => x.toLowerCase() === d.toLowerCase()) === i);
+}
+// «Actualizar desde las pruebas»: la tabla de escalas queda exactamente como
+// el cuadro de arriba: mismas filas (creando las que falten, en el mismo
+// orden) y sin las que no estén declaradas. Las filas que se quedan
+// conservan sus datos; si alguna de las que se eliminan tenía datos, se pide
+// confirmación.
+function reconstruirTablaDesdeTests() {
+    const tbody = document.getElementById('bodyPruebas');
+    if (!tbody) return;
+    sincronizarDimensionesDesdeTests(true);
+    const orden = [];
+    testsDefinidos().forEach(t => (t.dimensiones || []).forEach(dim => { const f = _filaPruebaPor(t.prueba, dim); if (f && !orden.includes(f)) orden.push(f); }));
+    const sobrantes = Array.from(tbody.querySelectorAll('.fila-prueba')).filter(f => !orden.includes(f));
+    const conDatos = sobrantes.filter(_filaPruebaConDatos);
+    if (conDatos.length && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+        const nombres = conDatos.map(f => _camposFilaPrueba(f).inp.value.trim() || '(sin nombre)').join(', ');
+        if (!window.confirm(`Se eliminarán ${sobrantes.length} fila(s) que no figuran en las dimensiones declaradas; ${conDatos.length} de ellas tienen datos: ${nombres}. ¿Continuar?`)) return;
+    }
+    sobrantes.forEach(f => f.remove());
+    orden.forEach(f => tbody.appendChild(f));   // reordena siguiendo el cuadro de arriba
+    if (!tbody.querySelector('.fila-prueba')) agregarFilaPruebaConDatos(FILA_PRUEBA_VACIA);
+    if (typeof actualizarTodasLasPruebas === 'function') actualizarTodasLasPruebas();
+    mostrarToast(`Tabla de escalas actualizada: ${orden.length} fila(s) según las pruebas` + (sobrantes.length ? `, ${sobrantes.length} eliminada(s)` : ''), 'success');
+}
+// Reflejo hacia arriba: una fila escrita o renombrada a mano en la tabla de
+// escalas se anota en las dimensiones de su prueba (y el nombre anterior se
+// sustituye donde se use).
+function reflejarFilaEnTests(fila) {
+    if (!fila) return;
+    const { sel, inp } = _camposFilaPrueba(fila);
+    if (!sel || !inp) return;
+    const prueba = sel.value.trim(), nuevo = inp.value.trim();
+    const anterior = (inp.dataset.anterior || '').trim();
+    if (anterior && nuevo && anterior !== nuevo) renombrarVariableEnTablas(anterior, nuevo);
+    inp.dataset.anterior = nuevo;
+    // si la fila cambió de prueba, la dimensión deja la lista de la prueba anterior
+    // (salvo que otra fila de esa prueba siga usándola)
+    const pruebaAnterior = (sel.dataset.anterior || '').trim();
+    if (pruebaAnterior && pruebaAnterior !== prueba && nuevo && !_filaPruebaPor(pruebaAnterior, nuevo)) {
+        const filaTestAnt = Array.from(document.querySelectorAll('#bodyTests .fila-test')).find(f => ((f.querySelector('[aria-label="Nombre del test"]') || {}).value || '').trim() === pruebaAnterior);
+        const inpAnt = filaTestAnt ? filaTestAnt.querySelector('[aria-label="Dimensiones del test"]') : null;
+        if (inpAnt) { const l = _listaDimensiones(inpAnt.value).filter(d => d.toLowerCase() !== nuevo.toLowerCase()); inpAnt.value = l.join(', '); inpAnt.dataset.previo = JSON.stringify(l); }
+    }
+    sel.dataset.anterior = prueba;
+    if (!prueba || !nuevo) return;
+    const filaTest = Array.from(document.querySelectorAll('#bodyTests .fila-test')).find(f => ((f.querySelector('[aria-label="Nombre del test"]') || {}).value || '').trim() === prueba);
+    if (!filaTest) return;
+    const inpDims = filaTest.querySelector('[aria-label="Dimensiones del test"]');
+    if (!inpDims) return;
+    const lista = _listaDimensiones(inpDims.value);
+    const iAnt = anterior ? lista.findIndex(d => d.toLowerCase() === anterior.toLowerCase()) : -1;
+    const iNuevo = lista.findIndex(d => d.toLowerCase() === nuevo.toLowerCase());
+    if (iNuevo >= 0) { if (lista[iNuevo] !== nuevo) lista[iNuevo] = nuevo; }
+    else if (iAnt >= 0 && !_filaPruebaPor(prueba, anterior)) lista[iAnt] = nuevo;   // renombrado: sustituye
+    else lista.push(nuevo);                                                          // alta manual: se anota
+    inpDims.value = lista.join(', ');
+    inpDims.dataset.previo = JSON.stringify(lista);
 }
 function agregarFilaTest() { agregarFilaTestConDatos({}); }
 // Nombres de test definidos arriba (sin vacíos ni repetidos).
