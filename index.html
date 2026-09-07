@@ -513,13 +513,6 @@
                                 </svg>
                                 Exportar CSV
                             </button>
-                            <button id="btnAgregarPrueba" class="btn btn-secondary">
-                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2"
-                                        stroke-linecap="round" />
-                                </svg>
-                                Agregar Escala / Dimensión
-                            </button>
                         </div>
                     </div>
 
@@ -527,7 +520,7 @@
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.5rem;">
                             <div>
                                 <strong>Pruebas del estudio</strong>
-                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide, sus dimensiones separadas por coma y la correlación esperada entre ellas. Al escribir las dimensiones, la tabla de escalas de abajo se completa sola con una fila por dimensión (tú rellenas ítems, media, DE…); las filas que ya existan se conservan. El puntaje General de cada test aparece como variable correlacionable en la tabla III.</span>
+                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide, sus dimensiones separadas por coma y la correlación esperada entre ellas. Al escribir las dimensiones, la tabla de escalas de abajo se completa sola con una fila por dimensión (tú rellenas ítems, media, DE…); si cambias el nombre de una dimensión, se renombra su fila y donde se use (correlaciones, modelos…); las filas que ya existan se conservan. El puntaje General de cada test aparece como variable correlacionable en la tabla III.</span>
                             </div>
                             <button id="btnAgregarTest" type="button" class="btn btn-secondary">+ Agregar Prueba</button>
                         </div>
@@ -568,6 +561,27 @@
                             <strong>puntaje general de cada test se calcula automáticamente</strong> como el promedio de sus dimensiones
                             (columna con prefijo <em>General_</em>, redondeada a entero); no hay que configurarlo a mano.
                             Cada campo se desbloquea al completar el anterior.</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0 0 0.6rem;">
+                        <div>
+                            <strong>Escalas / dimensiones del estudio</strong>
+                            <span class="help-text" style="display:block;">Se completa sola con las dimensiones declaradas arriba (los cambios de nombre también se reflejan). «Actualizar desde las pruebas» reconstruye esta tabla siguiendo el cuadro de arriba y quita las filas que ya no figuren allí; «Agregar» añade una fila a mano, que también se anota arriba.</span>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button id="btnActualizarDesdeTests" type="button" class="btn btn-outline" title="Reconstruye la tabla de escalas a partir del cuadro de pruebas: crea las filas que faltan, ordena como arriba y elimina las que no estén declaradas (conserva los datos de las filas que se quedan).">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M13 8A5 5 0 1 1 11.5 4.5M11.5 2V4.5H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Actualizar desde las pruebas
+                            </button>
+                            <button id="btnAgregarPrueba" type="button" class="btn btn-secondary" title="Añade una fila a mano (por ejemplo, una escala que no quieras declarar arriba); se anota en las dimensiones de su prueba.">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" />
+                                </svg>
+                                Agregar Escala / Dimensión
+                            </button>
+                        </div>
                     </div>
                     <div class="table-container">
                         <table class="table" id="tablaPruebas">
@@ -1603,7 +1617,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=31"></script>
+    <script src="app.js?v=32"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
