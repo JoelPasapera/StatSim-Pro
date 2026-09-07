@@ -79,9 +79,43 @@ class BaseColumnar {
     }
 
     /** Fila i como objeto {columna: valor}, en el orden de las columnas. */
+    /**
+     * (B9) Etiquetas de valor de una columna categórica: { código: 'texto' }.
+     * La columna sigue siendo numérica (códigos) para el motor; la vista por
+     * objetos (fila, aObjetos) y el CSV devuelven el texto, como en una base real.
+     */
+    etiquetar(nombre, etiquetas) {
+        const c = this._indice.get(nombre);
+        if (!c) throw new Error(`BaseColumnar: no existe la columna «${nombre}»`);
+        c.etiquetas = etiquetas && Object.keys(etiquetas).length ? Object.assign({}, etiquetas) : null;
+        this._objetos = null;
+    }
+    /** (B9) Formato de presentación: 'fecha' = días desde 1970-01-01 → 'AAAA-MM-DD'. */
+    formatear(nombre, formato) {
+        const c = this._indice.get(nombre);
+        if (!c) throw new Error(`BaseColumnar: no existe la columna «${nombre}»`);
+        c.formato = formato || null;
+        this._objetos = null;
+    }
+    /** Valor de PRESENTACIÓN de una celda (texto si hay etiqueta o formato; si no, el número). */
+    presentar(columna, i) {
+        const v = columna.datos[i];
+        if (columna.etiquetas && v === v) { const e = columna.etiquetas[v]; if (e !== undefined) return e; }
+        if (columna.formato === 'fecha' && v === v) return BaseColumnar.diasAISO(v);
+        return v;
+    }
+    static diasAISO(dias) {
+        const d = new Date(Math.round(dias) * 86400000);
+        return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+    static isoADias(iso) {
+        const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').trim());
+        if (!m) return NaN;
+        return Math.round(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000);
+    }
     fila(i) {
         const salida = {};
-        for (let c = 0; c < this.columnas.length; c++) salida[this.columnas[c].nombre] = this.columnas[c].datos[i];
+        for (let c = 0; c < this.columnas.length; c++) salida[this.columnas[c].nombre] = this.presentar(this.columnas[c], i);
         return salida;
     }
 
@@ -127,7 +161,7 @@ class BaseColumnar {
     serializar() {
         return {
             n: this.n,
-            columnas: this.columnas.map(c => ({ nombre: c.nombre, entera: c.entera, buffer: c.datos.buffer })),
+            columnas: this.columnas.map(c => ({ nombre: c.nombre, entera: c.entera, buffer: c.datos.buffer, etiquetas: c.etiquetas || null, formato: c.formato || null })),
             transferibles: this.columnas.map(c => c.datos.buffer)
         };
     }
@@ -135,7 +169,7 @@ class BaseColumnar {
     static desdeSerializado(serial) {
         const base = new BaseColumnar(serial.n);
         (serial.columnas || []).forEach(c => {
-            const columna = { nombre: c.nombre, entera: !!c.entera, datos: c.entera ? new Float32Array(c.buffer) : new Float64Array(c.buffer) };
+            const columna = { nombre: c.nombre, entera: !!c.entera, datos: c.entera ? new Float32Array(c.buffer) : new Float64Array(c.buffer), etiquetas: c.etiquetas || null, formato: c.formato || null };
             base.columnas.push(columna);
             base._indice.set(c.nombre, columna);
         });
