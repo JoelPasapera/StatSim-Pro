@@ -518,18 +518,16 @@
                                     <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2"
                                         stroke-linecap="round" />
                                 </svg>
-                                Agregar Prueba
+                                Agregar Escala / Dimensión
                             </button>
                         </div>
                     </div>
-
-                    <datalist id="listaPruebas"></datalist>
 
                     <div style="margin:0 0 1.1rem; padding:0.85rem 1rem; border:1px solid var(--color-border, #2a3550); border-radius:10px;">
                         <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.5rem;">
                             <div>
                                 <strong>Pruebas del estudio</strong>
-                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide y la correlación esperada entre sus dimensiones. Estos nombres alimentan el desplegable «Prueba (test)» de la tabla de abajo, y el puntaje General de cada test aparece como variable correlacionable en la tabla III.</span>
+                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide, sus dimensiones separadas por coma y la correlación esperada entre ellas. Al escribir las dimensiones, la tabla de escalas de abajo se completa sola con una fila por dimensión (tú rellenas ítems, media, DE…); las filas que ya existan se conservan. El puntaje General de cada test aparece como variable correlacionable en la tabla III.</span>
                             </div>
                             <button id="btnAgregarTest" type="button" class="btn btn-secondary">+ Agregar Prueba</button>
                         </div>
@@ -539,6 +537,7 @@
                                     <tr>
                                         <th>Prueba (test)</th>
                                         <th>Variable psicológica que mide</th>
+                                        <th title="Escribe las dimensiones del test separadas por coma: la tabla de escalas de abajo se completa sola con una fila por dimensión (luego rellena ítems, media, DE…). Si el test tiene una sola escala, escribe su nombre.">Dimensiones (separadas por coma)</th>
                                         <th title="Correlación esperada entre las dimensiones del test (típicamente 0.30–0.60). Da coherencia al puntaje General y permite correlacionarlo con otras variables." style="cursor:help; text-decoration:underline dotted;">r entre dimensiones</th>
                                         <th>Acciones</th>
                                     </tr>
@@ -587,60 +586,7 @@
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody id="bodyPruebas">
-                                <!-- Fila inicial -->
-                                <tr class="fila-prueba">
-                                    <td>
-                                        <input type="text" class="input input-sm" placeholder="Ej: WAIS-IV"
-                                            maxlength="100" aria-label="Nombre de la prueba" list="listaPruebas">
-                                    </td>
-                                    <td>
-                                        <input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo"
-                                            maxlength="100" aria-label="Nombre de la escala" disabled>
-                                    </td>
-                                    <td>
-                                        <select class="input input-sm" aria-label="Tipo de escala">
-                                            <option value="dimension">Dimensión</option>
-                                            <option value="general">General</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 60" min="1" aria-label="Número de ítems" disabled>
-                                    </td>
-                                    <td>
-                                        <select class="input input-sm" aria-label="Distribución">
-                                            <option value="normal">Normal</option>
-                                            <option value="uniforme">Uniforme</option>
-                                            <option value="asimetrica">Asimétrica</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 100" step="0.01" aria-label="Media (M)" disabled>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01"
-                                            min="0.01" aria-label="Desviación estándar (DE)" disabled>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 0" step="1" aria-label="Mínimo por ítem" disabled>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 5" step="1" aria-label="Máximo por ítem" disabled>
-                                    </td>
-                                    <td>
-                                        <input type="number" class="input input-sm" placeholder="Ej: 0.85" step="0.01" min="0" max="0.99" aria-label="Alfa de Cronbach objetivo" disabled>
-                                    </td>
-                                    <td>
-                                        <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
-                                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                                <path
-                                                    d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z"
-                                                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
-                                            </svg>
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
+                            <tbody id="bodyPruebas"></tbody>
                         </table>
                     </div>
                     <div class="leyenda-pruebas">
@@ -1657,7 +1603,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=30"></script>
+    <script src="app.js?v=31"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
