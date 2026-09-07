@@ -130,6 +130,17 @@ function configurarGenerador() {
     // El límite inferior de DE (anti-escalera) depende de N: recalcular al cambiarlo.
     const inputN = document.getElementById('tamanoMuestra');
     if (inputN) inputN.addEventListener('input', actualizarTodasLasPruebas);
+    // (B9) «Depende de»: se puebla al enfocar con las otras binarias/categóricas
+    document.getElementById('bodySocio').addEventListener('focusin', function (e) {
+        if (e.target.matches && e.target.matches('[aria-label="Depende de"]')) poblarDependeDe(e.target);
+    });
+    const _refMAR = document.getElementById('referenciaMAR');
+    if (_refMAR) _refMAR.addEventListener('focusin', () => poblarReferenciaMAR());
+    // Al elegir MNAR, el caso típico es que omitan quienes puntúan ALTO en la escala:
+    // si el sentido sigue en su valor por defecto, se cambia (el usuario puede volver a «bajos»).
+    const _mecMAR = document.getElementById('mecanismoPerdidos'), _sentMAR = document.getElementById('sentidoMAR');
+    if (_mecMAR && _sentMAR) _mecMAR.addEventListener('change', () => { if (_mecMAR.value === 'MNAR' && !_sentMAR.dataset.tocado) _sentMAR.value = 'altos'; });
+    if (_sentMAR) _sentMAR.addEventListener('change', () => { _sentMAR.dataset.tocado = '1'; });
     document.getElementById('bodySocio').addEventListener('click', function (e) {
         if (e.target.closest('.btn-delete')) {
             eliminarFilaSocio(e.target.closest('tr'));
@@ -453,6 +464,38 @@ function eliminarFilaPrueba(fila) {
     fila.remove();
     mostrarToast('Fila eliminada', 'success');
 }
+// (B9) Variables binarias o categóricas de las que puede depender la fila dada
+function poblarDependeDe(sel) {
+    const fila = sel.closest('.fila-socio');
+    const actual = sel.value;
+    const nombres = [];
+    document.querySelectorAll('#bodySocio .fila-socio').forEach(f => {
+        if (f === fila) return;
+        const dist = (f.querySelector('select') || {}).value;
+        const nombre = (f.querySelector('input') || {}).value || '';
+        if ((dist === 'binaria' || dist === 'categorica') && nombre.trim()) nombres.push(nombre.trim());
+    });
+    sel.innerHTML = '<option value="">Ninguna</option>' + nombres.map(n => `<option value="${escapeAttr(n)}"${n === actual ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('');
+    if (actual && !nombres.includes(actual)) sel.value = '';
+}
+// (B9) Referencia del MAR: sociodemográficas numéricas u ordinales y escalas
+function poblarReferenciaMAR() {
+    const sel = document.getElementById('referenciaMAR');
+    if (!sel) return;
+    const actual = sel.value;
+    const nombres = [];
+    document.querySelectorAll('#bodySocio .fila-socio').forEach(f => {
+        const dist = (f.querySelector('select') || {}).value;
+        const nombre = ((f.querySelector('input') || {}).value || '').trim();
+        const opciones = (f.querySelector('[aria-label="Categorías u opciones"]') || {}).value || '';
+        if (!nombre) return;
+        if (dist === 'normal' || dist === 'asimetrica' || dist === 'uniforme' || dist === 'conteo') nombres.push(nombre);
+        else if (dist === 'categorica' && opciones.includes('<')) nombres.push(nombre);   // ordinal
+    });
+    document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la escala"]').forEach(inp => { const n = inp.value.trim(); if (n) nombres.push(n); });
+    sel.innerHTML = '<option value="">Referencia automática</option>' + nombres.map(n => `<option value="${escapeAttr(n)}"${n === actual ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('');
+    if (actual && !nombres.includes(actual)) sel.value = '';
+}
 function agregarFilaSocio() {
     const tbody = document.getElementById('bodySocio');
     const nuevaFila = tbody.querySelector('.fila-socio').cloneNode(true);
@@ -460,6 +503,8 @@ function agregarFilaSocio() {
     nuevaFila.querySelectorAll('input').forEach(input => {
         input.value = '';
     });
+    // (B9) la fila nueva no hereda la dependencia de la fila clonada
+    nuevaFila.querySelectorAll('[aria-label="Depende de"]').forEach(sel => { sel.innerHTML = '<option value="">Ninguna</option>'; sel.value = ''; });
     tbody.appendChild(nuevaFila);
     actualizarBloqueoSocio(nuevaFila);
     mostrarToast('Variable agregada', 'success');
@@ -2461,12 +2506,14 @@ function csvDeTabla(selectorFilas, tipo) {
         });
         return csv;
     }
-    let csv = 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales\n';
+    let csv = 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza\n';
     document.querySelectorAll(selectorFilas).forEach(fila => {
         const inputs = fila.querySelectorAll('input');
         const select = fila.querySelector('select');
+        const depende = fila.querySelector('[aria-label="Depende de"]');
         csv += `${esc(inputs[0].value.trim())},${select ? select.value : 'normal'},${inputs[1].value || ''},`
-            + `${inputs[2].value || ''},${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''}\n`;
+            + `${inputs[2].value || ''},${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},`
+            + `${esc(inputs[6] ? inputs[6].value.trim() : '')},${esc(depende ? depende.value : '')},${inputs[7] ? (inputs[7].value || '') : ''}\n`;
     });
     return csv;
 }
@@ -2522,7 +2569,8 @@ function aplicarCSVSocio(csv) {
         const d = tieneDistribucion ? 1 : 0;
         agregarFilaSocioConDatos({
             categoria: v[0] || '', distribucion: tieneDistribucion ? (v[1] || 'normal') : 'normal',
-            promedio: v[1 + d] || '', de: v[2 + d] || '', min: v[3 + d] || '', max: v[4 + d] || '', decimales: v[5 + d] || '2'
+            promedio: v[1 + d] || '', de: v[2 + d] || '', min: v[3 + d] || '', max: v[4 + d] || '', decimales: v[5 + d] || '2',
+            opciones: v[6 + d] || '', dependeDe: v[7 + d] || '', fuerza: v[8 + d] !== undefined && v[8 + d] !== '' ? v[8 + d] : '0.4'
         });
         n++;
     }
@@ -2738,6 +2786,8 @@ const CAMPOS_GENERAL = [
     { id: 'tipoDescuidado', clave: 'TipoDescuidado' },
     { id: 'marcarDescuidados', clave: 'MarcarDescuidados', checkbox: true },
     { id: 'pctDigitacion', clave: 'PctDigitacion' },
+    { id: 'referenciaMAR', clave: 'ReferenciaMAR' },
+    { id: 'sentidoMAR', clave: 'SentidoMAR' },
     // (B8) estilos de respuesta, ítems de control y tiempo
     { id: 'pctAquiescencia', clave: 'PctAquiescencia' },
     { id: 'pctExtrema', clave: 'PctExtrema' },
@@ -3150,24 +3200,8 @@ function exportarConfigSocio() {
             mostrarToast('No hay variables sociodemográficas para exportar', 'warning');
             return;
         }
-        // Crear CSV con encabezados
-        let csv = 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales\n';
-        filas.forEach(fila => {
-            const inputs = fila.querySelectorAll('input');
-            const select = fila.querySelector('select');
-            const categoria = inputs[0].value.trim() || '';
-            const distribucion = select ? select.value : 'normal';
-            const promedio = inputs[1].value || '';
-            const de = inputs[2].value || '';
-            const min = inputs[3].value || '';
-            const max = inputs[4].value || '';
-            const decimales = inputs[5].value || '';
-            // Escapar valores con comas
-            const categoriaEscapada = categoria.includes(',') ? `"${categoria}"` : categoria;
-            csv += `${categoriaEscapada},${distribucion},${promedio},${de},${min},${max},${decimales}\n`;
-        });
-        // Descargar archivo
-        descargarArchivo(csv, 'configuracion_sociodemograficos.csv', 'text/csv');
+        // Mismo formato que el archivo maestro (con Opciones, DependeDe y Fuerza)
+        descargarArchivo(csvDeTabla('#bodySocio .fila-socio', 'socio'), 'configuracion_sociodemograficos.csv', 'text/csv');
         mostrarToast('Configuración de sociodemográficos exportada exitosamente', 'success');
     } catch (error) {
         mostrarToast('Error al exportar: ' + error.message, 'error');
@@ -3180,42 +3214,13 @@ function importarConfigSocio(e) {
     reader.onload = function (event) {
         try {
             const csv = event.target.result;
-            const lineas = csv.trim().split('\n');
-            if (lineas.length < 2) {
-                mostrarToast('El archivo CSV está vacío o no tiene datos', 'error');
+            const enc = String(csv).trim().split(/\r?\n/)[0].toLowerCase();
+            if (!enc.includes('categoria') || !enc.includes('promedio')) {
+                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza', 'error');
                 return;
             }
-            // Verificar encabezados
-            const encabezados = lineas[0].toLowerCase();
-            if (!encabezados.includes('categoria') || !encabezados.includes('promedio')) {
-                mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Categoria,Promedio,DE,Minimo,Maximo,Decimales', 'error');
-                return;
-            }
-            // Limpiar tabla actual
-            const tbody = document.getElementById('bodySocio');
-            tbody.innerHTML = '';
-            // El formato nuevo incluye una columna "Distribucion" tras "Categoria";
-            // se detecta por el encabezado para mantener compatibilidad con CSV viejos.
-            const tieneDistribucion = encabezados.includes('distribucion');
-            // Procesar cada línea (saltar encabezados)
-            for (let i = 1; i < lineas.length; i++) {
-                const linea = lineas[i].trim();
-                if (!linea) continue;
-                const valores = parsearLineaCSV(linea);
-                if (valores.length >= 3) {
-                    const desplazamiento = tieneDistribucion ? 1 : 0;
-                    agregarFilaSocioConDatos({
-                        categoria: valores[0] || '',
-                        distribucion: tieneDistribucion ? (valores[1] || 'normal') : 'normal',
-                        promedio: valores[1 + desplazamiento] || '',
-                        de: valores[2 + desplazamiento] || '',
-                        min: valores[3 + desplazamiento] || '',
-                        max: valores[4 + desplazamiento] || '',
-                        decimales: valores[5 + desplazamiento] || '2'
-                    });
-                }
-            }
-            mostrarToast(`Configuración importada: ${lineas.length - 1} variables`, 'success');
+            const n = aplicarCSVSocio(csv);   // misma compatibilidad de formatos que el archivo maestro
+            mostrarToast(`Configuración importada: ${n} variables`, 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
@@ -3226,6 +3231,7 @@ function importarConfigSocio(e) {
     reader.readAsText(file);
     e.target.value = ''; // Limpiar input
 }
+function escapeAttr(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 function agregarFilaSocioConDatos(datos) {
     const tbody = document.getElementById('bodySocio');
     const nuevaFila = document.createElement('tr');
@@ -3244,6 +3250,11 @@ function agregarFilaSocioConDatos(datos) {
         <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" value="${datos.min}" aria-label="Mínimo"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 25" step="0.01" value="${datos.max}" aria-label="Máximo"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 2" min="0" max="4" value="${datos.decimales}" aria-label="Número de decimales"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Femenino, Masculino" maxlength="400" value="${escapeAttr(datos.opciones || '')}" aria-label="Categorías u opciones" title="Binaria/categórica: «Femenino, Masculino», «Soltero:60, Casado:40» (proporciones) o «Primaria < Secundaria < Superior» (ordinal). Continua (edad): «fecha» o «fecha:AAAA-MM-DD» para añadir la fecha de nacimiento."></td>
+        <td>
+            <select class="input input-sm" aria-label="Depende de" title="Otra variable binaria o categórica de la que depende esta (asociación)."><option value="">Ninguna</option>${datos.dependeDe ? `<option value="${escapeAttr(datos.dependeDe)}" selected>${escapeAttr(datos.dependeDe)}</option>` : ''}</select>
+            <input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.05" min="0" max="0.95" value="${datos.fuerza !== undefined && datos.fuerza !== '' ? datos.fuerza : '0.4'}" placeholder="fuerza 0–0.95" aria-label="Fuerza de la asociación" title="Fuerza de la asociación (r latente): 0.2 leve, 0.4 moderada, 0.6 fuerte.">
+        </td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
