@@ -320,16 +320,28 @@
     <!-- Fila 1: parámetros básicos (3 columnas fluidas) -->
     <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-lg);">
         <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía del tamaño muestral" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Cuántas personas (filas) tendrá la base. Pon el N de tu estudio, por ejemplo 120 si encuestaste a 120 estudiantes. Con N pequeño (menos de 50) los resultados fluctúan más; con N grande el archivo pesa más.</span>
+        </div>
         <label for="tamanoMuestra">Tamaño Muestral (N)</label>
         <input type="number" id="tamanoMuestra" class="input" min="2" max="100000" value="100" placeholder="Ej: 100">
         <span class="help-text">Número de participantes/unidades de análisis</span>
         </div>
         <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía de la semilla" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Un número cualquiera (42, 2025, lo que quieras) para poder volver a generar <strong>exactamente la misma base</strong> otro día: misma semilla + misma configuración = misma base. Si lo dejas vacío, cada vez saldrá una base distinta.</span>
+        </div>
         <label for="semilla">Semilla (opcional)</label>
         <input type="number" id="semilla" class="input" step="1" placeholder="Ej: 42">
         <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
         </div>
         <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía del índice de fiabilidad" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Decide qué coeficiente va a cumplir la base: el valor de fiabilidad que escribas en la tabla I (por ejemplo 0.85) será lo que salga al analizar, como <strong>α de Cronbach</strong> o como <strong>ω de McDonald</strong>. Si tu tesis reporta α (lo más habitual), deja α; si reporta ω, elige ω. Entre ambos la diferencia suele ser de centésimas.</span>
+        </div>
         <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
         <select id="indiceFiabilidad" class="input">
         <option value="alfa" selected>α de Cronbach</option>
@@ -338,6 +350,10 @@
         <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
         </div>
         <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía de la heterogeneidad de los ítems" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Hace que los ítems se parezcan a los de un cuestionario real: unos con respuestas más altas que otros y unos que miden mejor que otros. <strong>No cambia nada de lo que pides</strong> (media, DE, fiabilidad, correlaciones): solo lo hace creíble ítem por ítem. Deja <strong>Leve</strong>; usa <strong>Ninguna</strong> si quieres ítems idénticos entre sí, y <strong>Moderada</strong> o <strong>Alta</strong> si vas a hacer análisis factorial y quieres cargas más variadas.</span>
+        </div>
         <label for="heterogeneidadItems">Heterogeneidad de los ítems</label>
         <select id="heterogeneidadItems" class="input">
         <option value="ninguna">Ninguna (ítems paralelos)</option>
