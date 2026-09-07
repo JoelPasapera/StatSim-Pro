@@ -386,10 +386,17 @@
             <span class="orden-paso"><span class="orden-num">2</span> Respuestas descuidadas</span>
             <span class="orden-flecha" aria-hidden="true">→</span>
             <span class="orden-paso"><span class="orden-num">3</span> Errores de digitación</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">4</span> Estilos de respuesta</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">5</span> Ítems de control</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">6</span> Tiempo de respuesta</span>
             <span class="orden-nota"><strong>1 · Valores perdidos:</strong> deja vacío el porcentaje indicado de respuestas a ítems, como ocurre cuando un participante omite preguntas. <em>MCAR</em> los reparte completamente al azar; <em>MAR</em> los concentra en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala), reproduciendo el patrón habitual de que ciertos perfiles omiten más. Sirve para practicar el diagnóstico del mecanismo de pérdida y las estrategias de tratamiento (eliminación, imputación). Regla del 80 %: si a una escala le falta más del 20 % de sus ítems, su total —y con él el General y el percentil— queda vacío; si falta menos, el total se prorratea.
             <strong>2 · Respuestas descuidadas:</strong> convierte al porcentaje indicado de personas en respondientes inatentos, con dos patrones típicos: <em>línea recta</em> (marcan el mismo valor en todos los ítems) o <em>al azar</em>. Sus totales se recalculan a partir de esas respuestas, de modo que los análisis de consistencia y los índices de atención los delatan como en una muestra real. Sirve para entrenar la limpieza de datos previa al análisis. La casilla <em>columna marcadora</em> añade una variable que identifica a esos casos: apagada para que el ejercicio sea genuino, encendida para que el docente pueda corregirlo.
             <strong>3 · Errores de digitación:</strong> introduce, en el porcentaje indicado de personas, un ítem con un valor imposible (por ejemplo «44» donde solo cabe 1–5, o «50» por «5»), el atípico más frecuente en bases transcritas a mano. El total arrastra el error. Sirve para practicar la detección de valores fuera de rango y su corrección antes de analizar.
-            Con los tres controles en 0 la base sale limpia, como hasta ahora; todo lo inyectado se resume tras generar.</span>
+            <strong>4 · Estilos de respuesta:</strong> <em>aquiescencia</em> (tendencia a estar de acuerdo: suma puntos a la respuesta bruta de todos los ítems, también los invertidos, con lo que baja la consistencia interna y se delata en el análisis) y <em>respuesta extrema</em> (uso de los extremos de la escala). Solo actúan sobre escalas Likert y en personas que no son descuidadas. <strong>5 · Ítems de control:</strong> columnas <code>Control_1…</code> con la instrucción «marque el valor máximo»; los descuidados fallan. <strong>6 · Tiempo de respuesta:</strong> columna <code>Tiempo_respuesta_seg</code>; los descuidados tardan mucho menos.
+            Con todos los controles en 0 la base sale limpia, como hasta ahora; todo lo inyectado se resume tras generar. Medias, α y correlaciones se desvían de lo pedido en la medida de lo inyectado, y el informe lo muestra.</span>
         </div>
         <strong>Imperfecciones realistas (opcional)</strong>
         <span class="help-text" style="display:block; margin-bottom:0.6rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia (como hasta ahora). Los totales se recalculan de forma coherente: si a una escala le falta más del 20 % de sus ítems, su total queda vacío; si falta menos, se prorratea.</span>
@@ -411,13 +418,37 @@
         <option value="aleatorio">Solo respuestas al azar</option>
         </select>
         <label for="marcarDescuidados" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer;">
-        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columna marcadora (para corregir el ejercicio)
+        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columnas marcadoras (descuidados y estilos, para corregir el ejercicio)
         </label>
         </div>
         <div>
         <label for="pctDigitacion">Errores de digitación (% de personas)</label>
         <input type="number" id="pctDigitacion" class="input" value="0" min="0" max="10" step="1" title="Un ítem con un valor imposible (p. ej. 44 en una escala de 1 a 5): el atípico más común en bases reales.">
         <span class="help-text">Producen valores fuera de rango que el análisis debe detectar y limpiar.</span>
+        </div>
+        </div>
+        <!-- (B8) Estilos de respuesta, ítems de control y tiempo -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem; margin-top:0.8rem;">
+        <div>
+        <label for="pctAquiescencia">Aquiescencia (% de personas)</label>
+        <input type="number" id="pctAquiescencia" class="input" value="0" min="0" max="40" step="1" title="Personas que tienden a estar de acuerdo con todo: suman puntos a la respuesta bruta de cada ítem, también en los invertidos (tras recodificar, empujan en contra y bajan la consistencia).">
+        <label for="pctExtrema" style="margin-top:0.35rem;">Respuesta extrema (% de personas)</label>
+        <input type="number" id="pctExtrema" class="input" value="0" min="0" max="40" step="1" title="Personas que usan sobre todo los extremos de la escala: sus respuestas se alejan del punto medio.">
+        <select id="intensidadEstilos" class="input" style="margin-top:0.35rem;" title="Intensidad de ambos estilos (varía ±30 % entre personas).">
+        <option value="leve">Intensidad leve</option>
+        <option value="moderada" selected>Intensidad moderada</option>
+        <option value="alta">Intensidad alta</option>
+        </select>
+        </div>
+        <div>
+        <label for="itemsControl">Ítems de control (0–3)</label>
+        <input type="number" id="itemsControl" class="input" value="0" min="0" max="3" step="1" title="Ítems del tipo «marque X»: columnas Control_1… con el rango de una escala Likert. Los atentos aciertan (97 %); los descuidados responden su patrón y fallan.">
+        <span class="help-text">Permiten practicar la depuración por atención: quien falla el control se descarta.</span>
+        </div>
+        <div>
+        <label for="tiempoMinutos">Tiempo de respuesta (mediana en minutos; 0 = sin columna)</label>
+        <input type="number" id="tiempoMinutos" class="input" value="0" min="0" max="600" step="1" title="Añade Tiempo_respuesta_seg: log-normal alrededor de la mediana; los descuidados tardan entre un 25 % y un 55 % de lo normal.">
+        <span class="help-text">Los descuidados responden mucho más rápido: el tiempo sirve como criterio de depuración.</span>
         </div>
         </div>
     </div>
@@ -1516,7 +1547,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=1"></script>
-    <script src="generador-datos.js?v=14"></script>
+    <script src="generador-datos.js?v=15"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1588,7 +1619,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=29"></script>
+    <script src="app.js?v=30"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
