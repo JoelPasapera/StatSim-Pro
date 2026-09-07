@@ -646,6 +646,10 @@ function generarBaseDatos() {
                 if (ri.perdidos) partesRi.push(`${ri.perdidos} valores perdidos`);
                 if (ri.descuidados) partesRi.push(`${ri.descuidados} respondientes descuidados`);
                 if (ri.digitacion) partesRi.push(`${ri.digitacion} errores de digitación`);
+                if (ri.aquiescentes) partesRi.push(`${ri.aquiescentes} aquiescentes`);
+                if (ri.extremos) partesRi.push(`${ri.extremos} de respuesta extrema`);
+                if (ri.controles) partesRi.push(`${ri.controles} ítem(s) de control (${ri.fallosControl} fallos)`);
+                if (ri.tiempo) partesRi.push('tiempo de respuesta');
                 const tiempo = resultado.ms >= 1000 ? ` (${(resultado.ms / 1000).toFixed(1)} s)` : '';
                 mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}${tiempo}` : `¡Base de datos generada exitosamente!${tiempo}`, 'success', partesRi.length ? 8000 : undefined);
             })
@@ -2728,7 +2732,13 @@ const CAMPOS_GENERAL = [
     { id: 'pctDescuidados', clave: 'PctDescuidados' },
     { id: 'tipoDescuidado', clave: 'TipoDescuidado' },
     { id: 'marcarDescuidados', clave: 'MarcarDescuidados', checkbox: true },
-    { id: 'pctDigitacion', clave: 'PctDigitacion' }
+    { id: 'pctDigitacion', clave: 'PctDigitacion' },
+    // (B8) estilos de respuesta, ítems de control y tiempo
+    { id: 'pctAquiescencia', clave: 'PctAquiescencia' },
+    { id: 'pctExtrema', clave: 'PctExtrema' },
+    { id: 'intensidadEstilos', clave: 'IntensidadEstilos' },
+    { id: 'itemsControl', clave: 'ItemsControl' },
+    { id: 'tiempoMinutos', clave: 'TiempoMinutos' }
 ];
 function csvDeGeneral() {
     let csv = 'Campo,Valor\n';
