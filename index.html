@@ -607,6 +607,7 @@
                                     <th>Máx por Ítem</th>
                                     <th id="thFiabilidad" title="Fiabilidad objetivo de cada escala. Indica qué proporción de la puntuación refleja el constructo y no el error de medida: con 0.85, en torno al 85 % de la varianza del total es señal y el 15 % restante, ruido. El α de Cronbach asume que todos los ítems miden con la misma precisión; el ω de McDonald no lo exige y pondera cada ítem según su carga, por lo que se considera la estimación preferible cuando esa igualdad no está garantizada. Deje el campo vacío o en 0 para obtener ítems independientes entre sí." style="cursor:help; text-decoration:underline dotted;">α objetivo</th>
                                     <th title="Cuántos ítems de la escala se puntúan al revés (los últimos). Se guardan reflejados, como en una base real: quien analice debe recodificarlos antes de sumar o calcular la fiabilidad." style="cursor:help; text-decoration:underline dotted;">Ítems inv.</th>
+                                    <th title="Solo en escalas dicotómicas (Mín 0, Máx 1: acierto/error, sí/no): proporción de unos de cada ítem, separadas por coma (0.90, 0.75, 0.50…). Con ellas, la Media es su suma y la DE se calcula con el KR-20.">Dificultades</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -1697,7 +1698,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=2"></script>
-    <script src="generador-datos.js?v=19"></script>
+    <script src="generador-datos.js?v=20"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1769,7 +1770,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=36"></script>
+    <script src="app.js?v=37"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
