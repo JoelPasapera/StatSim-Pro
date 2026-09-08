@@ -123,7 +123,7 @@ function configurarGenerador() {
     const tbodyPruebas = document.getElementById('bodyPruebas');
     tbodyPruebas.addEventListener('input', function (e) {
         const fila = e.target.closest && e.target.closest('.fila-prueba');
-        if (fila) actualizarLimitesPrueba(fila);
+        if (fila) { actualizarLimitesPrueba(fila); actualizarDicotomicaFila(fila); }
     });
     tbodyPruebas.addEventListener('change', ajustarPruebaEnCambio);
     actualizarTodasLasPruebas(); // pase inicial sobre la fila de ejemplo
@@ -821,7 +821,30 @@ function actualizarFilaRepetida(fila) {
     const crec = !!(modelo && modelo.value === 'crecimiento');
     ['DE de las pendientes', 'Correlación intercepto-pendiente'].forEach(et => { const el = fila.querySelector(`[aria-label="${et}"]`); if (el) { el.disabled = !crec; if (!crec) el.value = ''; } });
 }
-const FILA_PRUEBA_VACIA = { prueba: '', nombre: '', numItems: '', distribucion: 'normal', media: '', de: '', min: '', max: '', alfa: '', invertidos: '' };
+// (C5) Escala dicotómica (Mín 0, Máx 1): se habilita «Dificultades» y la DE pasa a
+// calcularse con el KR-20 y las dificultades (Var = Σp(1−p) / (1 − α·(k−1)/k)).
+function actualizarDicotomicaFila(fila) {
+    if (!fila) return;
+    const q = et => fila.querySelector(`[aria-label="${et}"]`);
+    const min = parseFloat((q('Mínimo por ítem') || {}).value), max = parseFloat((q('Máximo por ítem') || {}).value);
+    const k = parseInt((q('Número de ítems') || {}).value, 10);
+    const inpDif = q('Dificultades de los ítems'), inpDE = q('Desviación estándar (DE)');
+    const dicot = isFinite(min) && isFinite(max) && (max - min) === 1 && k >= 2;
+    if (inpDif) { inpDif.disabled = !dicot; if (!dicot) { inpDif.value = ''; inpDif.placeholder = '—'; } else inpDif.placeholder = 'Ej: 0.9, 0.7, 0.5…'; }
+    if (!inpDE) return;
+    if (!dicot) { if (inpDE.dataset.dicotomica) { inpDE.readOnly = false; inpDE.title = ''; delete inpDE.dataset.dicotomica; } return; }
+    const media = parseFloat((q('Media (M)') || {}).value), alfa = parseFloat((q('Alfa de Cronbach objetivo') || {}).value);
+    if (!isFinite(media) || typeof generadorDatos === 'undefined') return;
+    let dificultades = null;
+    try { dificultades = generadorDatos._parsearDificultades(inpDif ? inpDif.value : '', 'escala'); } catch (e) { dificultades = null; }
+    const het = (document.getElementById('heterogeneidadItems') || {}).value || 'leve';
+    const imp = generadorDatos._dicotomicaImplicita({ numItems: k, minimo: min, maximo: max, media, alfa: isFinite(alfa) ? alfa : 0.7, dificultades: dificultades && dificultades.length === k ? dificultades : null, tipo: 'dimension' }, het);
+    inpDE.value = (Math.round(imp.desviacion * 100) / 100).toString();
+    inpDE.readOnly = true; inpDE.dataset.dicotomica = '1';
+    inpDE.title = `DE calculada: ítems dicotómicos, KR-20 ${isFinite(alfa) ? alfa : 0.7} y dificultades ${dificultades && dificultades.length === k ? 'dadas' : 'repartidas'}`;
+    if (dificultades && dificultades.length === k && q('Media (M)')) { const m = q('Media (M)'); if (Math.abs(parseFloat(m.value) - imp.media) > 0.005) { m.value = (Math.round(imp.media * 100) / 100).toString(); m.title = 'Media = suma de las dificultades'; } }
+}
+const FILA_PRUEBA_VACIA = { prueba: '', nombre: '', numItems: '', distribucion: 'normal', media: '', de: '', min: '', max: '', alfa: '', invertidos: '', dificultades: '' };
 function agregarFilaPrueba() {
     agregarFilaPruebaConDatos(FILA_PRUEBA_VACIA);
     mostrarToast('Fila agregada', 'success');
@@ -2868,14 +2891,15 @@ function mostrarToast(mensaje, tipo = 'success', duracion = 3000) {
 function csvDeTabla(selectorFilas, tipo) {
     const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
     if (tipo === 'pruebas') {
-        let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos\n';
+        let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades\n';
         document.querySelectorAll(selectorFilas).forEach(fila => {
             const inputs = fila.querySelectorAll('input');
             const selPrueba = fila.querySelector('[aria-label="Nombre de la prueba"]');
             const selectDist = fila.querySelector('[aria-label="Distribución"]');
+            const dif = fila.querySelector('[aria-label="Dificultades de los ítems"]');
             csv += `${esc(selPrueba ? selPrueba.value.trim() : '')},${esc(inputs[0].value.trim())},`
                 + `${inputs[1].value || ''},${selectDist ? selectDist.value : 'normal'},${inputs[2].value || ''},`
-                + `${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6] ? (inputs[6].value || '') : ''},${inputs[7] ? (inputs[7].value || '') : ''}\n`;
+                + `${inputs[3].value || ''},${inputs[4].value || ''},${inputs[5].value || ''},${inputs[6] ? (inputs[6].value || '') : ''},${inputs[7] ? (inputs[7].value || '') : ''},${esc(dif && !dif.disabled ? dif.value.trim() : '')}\n`;
         });
         return csv;
     }
@@ -2915,7 +2939,7 @@ function aplicarCSVPruebas(csv) {
                 numItems: v[2 + off] || '', distribucion: v[3 + off] || 'normal',
                 media: v[4 + off] || '', de: v[5 + off] || '',
                 min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || '',
-                invertidos: v[9 + off] || ''
+                invertidos: v[9 + off] || '', dificultades: v[10 + off] || ''
             });
         } else if (tieneDistribucion) {
             agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
@@ -3557,6 +3581,7 @@ function agregarFilaPruebaConDatos(datos) {
         <td><input type="number" class="input input-sm" placeholder="Ej: 5" step="1" value="${datos.max}" aria-label="Máximo por ítem"></td>
         <td><input type="number" class="input input-sm" placeholder="Ej: 0.85" step="0.01" min="0" max="0.99" value="${datos.alfa || ''}" aria-label="Alfa de Cronbach objetivo"></td>
         <td><input type="number" class="input input-sm" placeholder="0" step="1" min="0" value="${datos.invertidos || ''}" aria-label="Ítems invertidos" title="Cuántos ítems de esta escala se puntúan al revés (se guardan reflejados, como en una base real: hay que recodificarlos antes de sumar). Son los ÚLTIMOS de la escala."></td>
+        <td><input type="text" class="input input-sm" placeholder="—" maxlength="600" value="${escapeAttr(datos.dificultades || '')}" aria-label="Dificultades de los ítems" title="Solo en escalas dicotómicas (Mín 0, Máx 1): proporción de unos por ítem, separadas por coma. Vacío = repartidas alrededor de Media/ítems según la heterogeneidad." disabled></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -3578,6 +3603,8 @@ function agregarFilaPruebaConDatos(datos) {
         sel.value = datos.prueba;
     }
     actualizarLimitesPrueba(nuevaFila);
+    actualizarDicotomicaFila(nuevaFila);
+    return nuevaFila;
 }
 // SOCIODEMOGRÁFICOS
 function exportarConfigSocio() {
