@@ -357,7 +357,7 @@ function agregarFilaModelo(datos = null) {
     const opciones = nombres.map(n => `<option value="${n}">${n}</option>`).join('');
     const coef = (n) => `<input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" aria-label="Coeficiente ${n}">`;
     fila.innerHTML = `
-        <td><select class="input input-sm" aria-label="Tipo de modelo"><option value="mediacion">Mediación (X → M → Y)</option><option value="moderacion">Moderación (X × W → Y)</option></select></td>
+        <td><select class="input input-sm" aria-label="Tipo de modelo"><option value="mediacion">Mediación (X → M → Y)</option><option value="moderacion">Moderación (X × W → Y)</option><option value="curvilinea">Curvilínea (X² → Y)</option></select></td>
         <td><select class="input input-sm" aria-label="Variable X"><option value="">X (predictora)...</option>${opciones}</select></td>
         <td><select class="input input-sm" aria-label="Mediador o moderador"><option value="">Mediador M...</option>${opciones}</select></td>
         <td><select class="input input-sm" aria-label="Variable Y"><option value="">Y (criterio)...</option>${opciones}</select></td>
@@ -375,7 +375,7 @@ function agregarFilaModelo(datos = null) {
     tbody.appendChild(fila);
     if (datos) {
         const poner = (etiqueta, valor) => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); if (el && valor !== undefined) el.value = valor; };
-        poner('Tipo de modelo', datos.tipo === 'moderacion' ? 'moderacion' : 'mediacion');
+        poner('Tipo de modelo', ['moderacion', 'curvilinea'].includes(datos.tipo) ? datos.tipo : 'mediacion');
         poner('Variable X', datos.x); poner('Mediador o moderador', datos.m); poner('Variable Y', datos.y);
         poner('Coeficiente 1', datos.c1); poner('Coeficiente 2', datos.c2); poner('Coeficiente 3', datos.c3);
     }
@@ -389,9 +389,15 @@ function actualizarEtiquetasModelo(fila) {
     const selM = fila.querySelector('[aria-label="Mediador o moderador"]');
     const etiquetas = tipo === 'moderacion'
         ? [['β₁ (X)', 'β₁: efecto estandarizado de X sobre Y'], ['β₂ (W)', 'β₂: efecto estandarizado del moderador W sobre Y'], ['β₃ (X×W)', 'β₃: efecto de la interacción X×W (X y W estandarizadas)']]
-        : [['a (X→M)', 'a: efecto estandarizado de X sobre el mediador M'], ['b (M→Y)', 'b: efecto estandarizado de M sobre Y, controlando X'], ['c′ (X→Y)', 'c′: efecto directo estandarizado de X sobre Y, controlando M']];
+        : (tipo === 'curvilinea'
+            ? [['β₁ (lineal)', 'β₁: efecto lineal estandarizado de X sobre Y'], ['β₂ (cuadrático)', 'β₂: efecto de X² (X estandarizada, X² centrada); negativo = U invertida, positivo = U'], ['—', 'No se usa en la relación curvilínea']]
+            : [['a (X→M)', 'a: efecto estandarizado de X sobre el mediador M'], ['b (M→Y)', 'b: efecto estandarizado de M sobre Y, controlando X'], ['c′ (X→Y)', 'c′: efecto directo estandarizado de X sobre Y, controlando M']]);
     etiquetas.forEach(([ph, tt], k) => { const el = c(k + 1); if (el) { el.placeholder = ph; el.title = tt; } });
-    if (selM && selM.options.length) selM.options[0].textContent = tipo === 'moderacion' ? 'Moderador W...' : 'Mediador M...';
+    // (C6) curvilínea: sin mediador/moderador ni tercer coeficiente
+    const curv = tipo === 'curvilinea';
+    if (selM) { selM.disabled = curv; if (curv) selM.value = ''; }
+    if (c(3)) { c(3).disabled = curv; if (curv) c(3).value = ''; }
+    if (selM && selM.options.length) selM.options[0].textContent = tipo === 'moderacion' ? 'Moderador W...' : (curv ? '— (X²)' : 'Mediador M...');
     // Un puntaje general derivado no puede entrar en una moderación (no tiene
     // driver propio): sus opciones se deshabilitan en ese tipo.
     const generales = new Set(nombresGeneralesDerivados());
@@ -539,6 +545,8 @@ function testsConItems() {
         const prueba = v('Nombre de la prueba').trim(), nombre = v('Nombre de la escala').trim();
         const k = parseInt(v('Número de ítems'), 10);
         if (!prueba || !nombre || !(k >= 2)) return;
+        // (C5) las dicotómicas no entran en la matriz de cargas (correlaciones tetracóricas)
+        if (isFinite(parseFloat(v('Mínimo por ítem'))) && isFinite(parseFloat(v('Máximo por ítem'))) && parseFloat(v('Máximo por ítem')) - parseFloat(v('Mínimo por ítem')) === 1) return;
         if (!porTest.has(prueba)) porTest.set(prueba, []);
         porTest.get(prueba).push({ nombre, numItems: k, invertidos: parseInt(v('Ítems invertidos'), 10) || 0, alfa: parseFloat(v('Alfa de Cronbach objetivo')), minimo: parseFloat(v('Mínimo por ítem')), maximo: parseFloat(v('Máximo por ítem')), desviacion: parseFloat(v('Desviación estándar (DE)')) });
     });
