@@ -1108,6 +1108,44 @@
                     </p>
                 </div>
 
+                <!-- Tabla IX: Concordancia (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">IX. Concordancia entre informantes y jueces (opcional)</h3>
+                        <button id="btnAgregarConcordancia" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar fila
+                        </button>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de concordancia" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota"><strong>Informante</strong>: una segunda versión de la escala respondida por otra persona (madre, docente) o una forma paralela, con la concordancia que indiques y, si quieres, un sesgo (el informante puntúa más alto o más bajo). <strong>Jueces</strong>: varios evaluadores clasifican a cada persona en una categoría (κ de Cohen o Fleiss) o le asignan una puntuación (CCI), con el acuerdo que pidas.</span>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaConcordancia">
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th title="Informante y jueces con puntuación: una escala. Jueces categóricos: una escala con puntos de corte (tabla VIII), un sociodemográfico binario/categórico o un desenlace binario/ordinal.">Variable</th>
+                                    <th title="Informante: nombre del informante (madre, docente, forma B). Jueces: cuántos (2–6).">Etiqueta / N.º de jueces</th>
+                                    <th title="Informante: correlación con el autoinforme (0.3–0.7 típico). Jueces categóricos: κ objetivo. Jueces con puntuación: CCI objetivo.">Concordancia (r / κ / CCI)</th>
+                                    <th title="Solo informante: cuánto puntúa más (o menos) que el autoinforme, en DE.">Sesgo (d)</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyConcordancia"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">
+                        El informante crea las columnas de la escala con el sufijo de su etiqueta (ítems, total y percentil), con el mismo
+                        instrumento y la correlación pedida con el autoinforme (exacta en modo exacto); sus correlaciones con las demás variables
+                        quedan atenuadas por esa concordancia y hereda las diferencias por grupo. Los jueces crean columnas <code>Juez1_…</code>,
+                        <code>Juez2_…</code>: en los categóricos cada juez repite la categoría verdadera con probabilidad √κ y si no sortea una
+                        según su frecuencia (el κ resultante es el pedido, sea cual sea la distribución); en los de puntuación, cada juez añade un error
+                        que deja la CCI(1) pedida. El informe compara r, sesgo, κ de Fleiss y CCI con lo pedido.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">
@@ -1698,7 +1736,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=2"></script>
-    <script src="generador-datos.js?v=21"></script>
+    <script src="generador-datos.js?v=22"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1770,7 +1808,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=38"></script>
+    <script src="app.js?v=39"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
