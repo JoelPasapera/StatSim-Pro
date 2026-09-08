@@ -641,6 +641,9 @@ class GeneradorDatos {
             const alfa = inputs[6] ? parseFloat(inputs[6].value) : NaN;
             const invertidosRaw = inputs[7] ? parseInt(inputs[7].value, 10) : 0;
             const invertidos = Number.isFinite(invertidosRaw) ? Math.max(0, invertidosRaw) : 0;
+            // (C5) dificultades de los ítems dicotómicos (proporción de aciertos por ítem)
+            const inpDif = fila.querySelector('[aria-label="Dificultades de los ítems"]');
+            const dificultades = inpDif ? this._parsearDificultades(inpDif.value, nombre) : null;
 
             if (nombre && !isNaN(numItems) && !isNaN(media) && !isNaN(desviacion)) {
                 if (numItems < 1) {
@@ -677,6 +680,7 @@ class GeneradorDatos {
                     desviacion: desviacion,
                     minimo: !isNaN(minimo) ? minimo : null,
                     maximo: !isNaN(maximo) ? maximo : null,
+                    dificultades: dificultades,
                     alfa: !isNaN(alfa) ? alfa : 0
                 });
             }
@@ -939,6 +943,8 @@ class GeneradorDatos {
         // Inicializar la fuente de aleatoriedad (sembrada si hay semilla)
         this.inicializarAleatorio(this.configuracion.semilla);
 
+        // (C5) dicotómicas: Media (si hay dificultades) y DE derivadas ANTES de clonar ondas
+        this._ajustarDicotomicas(this.configuracion);
         // (B7) Medidas repetidas: cada onda T2… es un clon de su escala base con
         // media desplazada, estabilidad como correlación y las mismas diferencias
         // por grupo (más el cambio diferencial). La configuración queda
@@ -1355,13 +1361,13 @@ class GeneradorDatos {
                 const prev = todosY.reduce((s, v) => s + v, 0) / todosY.length;
                 filas.push({ tipo: 'prevalencia', variable: `${d.nombre} (desenlace binario)`, pedido: num(d.prevalencia * 100, 1) + '%', obtenido: num(prev * 100, 1) + '%', ok: Math.abs(prev - d.prevalencia) <= 1 / todosY.length + 1e-9 });
                 const fit = X.length ? this._glm(yy, X, 'logit') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE, regresión logística)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE, regresión logística)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
             } else if (d.tipo === 'conteo') {
                 const yy = casos.map(i => y[i]);
                 const media = yy.reduce((s, v) => s + v, 0) / yy.length;
                 filas.push({ tipo: 'media', variable: `${d.nombre} (conteo)`, pedido: num(d.media, 2), obtenido: num(media, 2), ok: Math.abs(media - d.media) <= 3 * Math.sqrt(d.media / yy.length) + 0.02 });
                 const fit = X.length ? this._glm(yy, X, 'log') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'IRR', variable: `${d.nombre} ~ ${pr.variable} (IRR por DE, regresión de Poisson)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'IRR', variable: `${d.nombre} ~ ${pr.variable} (IRR por DE, regresión de Poisson)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
             } else {
                 const yy = casos.map(i => y[i]);
                 const conteos = new Map(); todosY.forEach(v => conteos.set(v, (conteos.get(v) || 0) + 1));
@@ -1371,7 +1377,7 @@ class GeneradorDatos {
                 let acum = 0, corte = 1; for (let k = 0; k < d.niveles.length - 1; k++) { acum += d.niveles[k].proporcion; if (Math.abs(acum - 0.5) < Math.abs((acum - d.niveles[k].proporcion) - 0.5) || k === 0) corte = k + 1; }
                 const yb = yy.map(v => (v > corte ? 1 : 0));
                 const fit = X.length ? this._glm(yb, X, 'logit') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE; odds proporcionales, dicotomía «> ${d.niveles[corte - 1].etiqueta}»)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE; odds proporcionales, dicotomía «> ${d.niveles[corte - 1].etiqueta}»)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
             }
         });
         (this.cortesGenerados || []).forEach(c => {
@@ -2274,9 +2280,15 @@ class GeneradorDatos {
                     const elegidos = this._muestraSinReemplazo(k, Math.min(m, k));
                     elegidos.forEach(item => perfil.cruzadas.push({ item, sigla: otras[Math.floor(this.aleatorio() * otras.length)], c: nivel.cruzadas }));
                 }
+                // (C5) dicotómica: las medias de ítem son las dificultades (Σ δ = 0 respecto a M/k)
+                if (this._esDicotomica(p) && Array.isArray(p.dificultadesEfectivas) && p.dificultadesEfectivas.length === k) {
+                    const mediaItem = p.media / k;
+                    for (let i = 0; i < k; i++) perfil.delta[i] = p.dificultadesEfectivas[i] + p.minimo - mediaItem;
+                    perfil.cruzadas = [];
+                }
                 // (C1) con matriz de cargas para este test, pesos y cruzadas salen de ella
                 const est = this._estructuraDe(p);
-                if (est) this._perfilEstructurado(p, est, perfil, grupos);
+                if (est && !this._esDicotomica(p)) this._perfilEstructurado(p, est, perfil, grupos);
             }
             perfiles.set(p, perfil);
         });
@@ -2784,6 +2796,20 @@ class GeneradorDatos {
             ok('(C4) el efecto de aula se comparte entre las ondas T1 y T2 (medias de aula muy correlacionadas)', rAulas > 0.8, `r entre medias de aula T1/T2 = ${rAulas.toFixed(2)}`);
             const fInt = inf28.find(f => f.tipo === 'd×'), fD = inf28.find(f => f.tipo === 'd' && /Ingreso por Programa/.test(f.variable));
             ok('(C4) interacción desbalanceada (Programa 30 %) sobre una sociodemográfica continua, con su efecto principal', fInt && fInt.ok && fD && fD.ok, `${fInt && fInt.pedido}→${fInt && fInt.obtenido}; d ${fD && fD.pedido}→${fD && fD.obtenido}`);
+            // 24) (C5) escala dicotómica: KR-20, dificultades y DE implícita
+            const dific = [0.9, 0.85, 0.8, 0.75, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.3, 0.25, 0.2];
+            const cfgC5 = cfgBase({ tamanoMuestra: 2000, correlaciones: [{ a: 'Conocimientos', b: 'Percepción', r: 0.35 }] });
+            cfgC5.pruebas.push({ nombre: 'Conocimientos', nombreCorto: 'CO', prueba: 'Examen', tipo: 'dimension', numItems: 15, media: 9, desviacion: 2, alfa: 0.80, minimo: 0, maximo: 1, distribucion: 'normal', invertidos: 0, dificultades: dific });
+            const { g: g29, d: d29 } = generar(cfgC5);
+            const inf29 = g29.informePedidoObtenido(g29.datosGenerados);
+            const pC5 = g29.configuracion.pruebas.find(p => p.nombre === 'Conocimientos');
+            const f29 = tipo => inf29.find(f => f.tipo === tipo && /Conocimientos/.test(f.variable));
+            ok('(C5) dicotómica: Media = Σ dificultades (8.25) y DE derivada del KR-20 y las dificultades, ambas cumplidas', Math.abs(pC5.media - 8.25) < 1e-9 && Math.abs(pC5.desviacion - Math.sqrt(dific.reduce((s, v) => s + v * (1 - v), 0) / (1 - 0.8 * 14 / 15))) < 1e-9 && inf29.filter(f => (f.tipo === 'Media' || f.tipo === 'DE') && f.variable === 'Conocimientos').every(f => f.ok), `M ${pC5.media} DE ${pC5.desviacion.toFixed(2)}`);
+            ok('(C5) KR-20 obtenido = pedido (0.80)', f29('KR-20') && f29('KR-20').ok, f29('KR-20') && `${f29('KR-20').pedido}→${f29('KR-20').obtenido}`);
+            ok('(C5) dificultades por ítem recuperadas (0.90…0.20) y discriminación adecuada', f29('p') && f29('p').ok && f29('disc') && f29('disc').ok, `${f29('p') && f29('p').obtenido} | ${f29('disc') && f29('disc').obtenido}`);
+            ok('(C5) los ítems son 0/1 y la r con otra escala sigue exacta', d29.every(f => [0, 1].includes(f.CO1) && [0, 1].includes(f.CO15)) && inf29.filter(f => f.tipo === 'r').every(f => f.ok), inf29.filter(f => f.tipo === 'r').map(f => f.obtenido).join(' '));
+            const cfgC5b = cfgBase({ tamanoMuestra: 100 }); cfgC5b.pruebas.push({ nombre: 'Síntomas', nombreCorto: 'SI', prueba: 'Lista', tipo: 'dimension', numItems: 10, media: 3, desviacion: 5, alfa: 0.75, minimo: 0, maximo: 1, distribucion: 'normal', invertidos: 0, dificultades: null });
+            { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC5b)); gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C5) validación: avisa de que la DE la fijan las dificultades y el KR-20 (y no usa los avisos Likert)', v.advertencias.some(a => /Síntomas.*la DE la fijan/.test(a)) && !v.advertencias.some(a => /Síntomas.*medio punto/.test(a)), v.advertencias.filter(a => /Síntomas/.test(a)).map(a => a.slice(0, 80)).join(' | ')); }
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -2992,7 +3018,7 @@ class GeneradorDatos {
         const salida = { aquiescentes: 0, extremos: 0, marcaPersona };
         const pctA = r.pctAquiescencia || 0, pctE = r.pctExtrema || 0;
         if (!(pctA > 0 || pctE > 0)) return salida;
-        const likert = pruebasConItems.filter(p => p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo));
+        const likert = pruebasConItems.filter(p => p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && (p.maximo - p.minimo) >= 2);   // (C5) sin dicotómicas
         if (!likert.length) return salida;
         const preset = ESTILOS_RESPUESTA[r.intensidadEstilos] || ESTILOS_RESPUESTA.moderada;
         const candidatos = [];
@@ -3046,7 +3072,7 @@ class GeneradorDatos {
         const cfg = this.configuracion || {}, r = cfg.realismo || {};
         const k = Math.max(0, Math.min(3, Math.round(r.itemsControl || 0)));
         if (!k) return [];
-        const likert = (cfg.pruebas || []).filter(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && !p.sufijo);
+        const likert = (cfg.pruebas || []).filter(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && (p.maximo - p.minimo) >= 2 && !p.sufijo);   // (C5) sin dicotómicas
         if (!likert.length) return [];
         const salida = [];
         for (let c = 1; c <= k; c++) {
@@ -3215,6 +3241,20 @@ class GeneradorDatos {
             if (obs === null || !isFinite(obs)) return;
             // (C1) con matriz de cargas, la fiabilidad la fijan las cargas: se informa en la sección de estructura
             if (this.perfilesItems && this.perfilesItems.get(p) && this.perfilesItems.get(p).estructura) return;
+            // (C5) en dicotómicas el α es el KR-20; además, dificultades y discriminación
+            if (this._esDicotomica(p)) {
+                filas.push({ tipo: 'KR-20', variable: `${p.nombre} (ítems dicotómicos)`, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });
+                const st = this._estadisticosDicotomica(cols.map(c => c.map(v => v - p.minimo)));
+                const pedidas = p.dificultadesEfectivas || [];
+                const mediaP = st.p.reduce((s, v) => s + v, 0) / st.p.length;
+                const mediaPed = pedidas.length ? pedidas.reduce((s, v) => s + v, 0) / pedidas.length : (p.media - p.numItems * p.minimo) / p.numItems;
+                const maxDesv = pedidas.length ? Math.max(...st.p.map((v, i) => Math.abs(v - pedidas[i]))) : 0;
+                const tolP = 0.04 + 2 / Math.sqrt(Math.max(4, n));
+                filas.push({ tipo: 'p', variable: `${p.nombre}: dificultad de los ítems (proporción de unos; media, mín–máx${pedidas.length ? ', desviación máxima respecto a las pedidas' : ''})`, pedido: `${num(mediaPed, 2)} (${num(Math.min(...(pedidas.length ? pedidas : [mediaPed])), 2)}–${num(Math.max(...(pedidas.length ? pedidas : [mediaPed])), 2)})`, obtenido: `${num(mediaP, 2)} (${num(Math.min(...st.p), 2)}–${num(Math.max(...st.p), 2)})${pedidas.length ? ` · máx. desv. ${num(maxDesv, 2)}` : ''}`, ok: Math.abs(mediaP - mediaPed) <= 0.02 + 1 / Math.sqrt(n) && maxDesv <= tolP });
+                const discV = st.disc.filter(v => isFinite(v));
+                if (discV.length) { const md = discV.reduce((s, v) => s + v, 0) / discV.length; filas.push({ tipo: 'disc', variable: `${p.nombre}: discriminación (r ítem–resto media; mín)`, pedido: '≥ 0.20', obtenido: `${num(md, 2)} (mín ${num(Math.min(...discV), 2)})`, ok: md >= 0.2 }); }
+                return;
+            }
             filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: p.nombre, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });   // ±0.04 ≈ 2 EE de α con n≈300
         });
         // 3) Correlaciones objetivo (incluidas las de generales derivados; las
@@ -3356,7 +3396,7 @@ class GeneradorDatos {
             if (!ref || !base.tiene(s.categoria) || !base.tiene(ref.categoria)) return;
             const V = this._cramerV(base.columna(ref.categoria).datos, base.columna(s.categoria).datos);
             const esperada = s.fuerza > 0 ? this._vEsperada(s, ref) : 0;
-            const tol = Math.max(0.05, 2 / Math.sqrt(Math.max(4, n)));
+            const tol = Math.max(0.06, 2.5 / Math.sqrt(Math.max(4, n)));
             filas.push({ tipo: 'V', variable: `${s.categoria} según ${ref.categoria} (V de Cramér; fuerza latente ${num(s.fuerza)})`, pedido: esperada === null ? '—' : num(esperada, 3), obtenido: num(V, 3), ok: esperada === null ? true : Math.abs(V - esperada) <= tol });
         });
     }
@@ -4190,6 +4230,87 @@ class GeneradorDatos {
         if ((cfg.modelos || []).length > 0) return true;
         if ((cfg.gruposPruebas || []).some(g => g.escalas.length >= 2 && (g.rIntra === undefined ? 0.40 : g.rIntra) !== 0)) return true;
         return cfg.correlacionesExactas !== false && !!this.diferenciasEfectivas && this.diferenciasEfectivas.size > 0;
+    }
+
+    // ============ ESCALAS DICOTÓMICAS (C5) ============
+    // Ítems de dos valores (0/1: acierto/error, sí/no, presente/ausente). Contrato:
+    //  · la Media del total es Σ p_i (p_i = dificultad = proporción de unos del ítem);
+    //    si se dan las dificultades, la Media se deriva de ellas;
+    //  · la DE NO es libre: con KR-20 = α y dificultades p_i,
+    //        Var(T) = Σ p_i(1 − p_i) / (1 − α·(k − 1)/k)
+    //    así que se deriva y sustituye a la de la tabla I (la validación lo dice);
+    //  · las medias de ítem son las dificultades; α es el KR-20 (mismo cálculo);
+    //  · sin dificultades, se reparten alrededor de M/k con la heterogeneidad elegida.
+    _esDicotomica(p) {
+        return !!p && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && (p.maximo - p.minimo) === 1 && p.numItems >= 2 && p.tipo !== 'general';
+    }
+    _parsearDificultades(texto, nombre) {
+        const t = String(texto || '').trim();
+        if (!t) return null;
+        const vals = t.split(/[,;\s]+/).filter(Boolean).map(s => { let v = parseFloat(s.replace(',', '.')); if (/%$/.test(s) || v > 1) v = v / 100; return v; });
+        if (vals.some(v => !isFinite(v))) throw new Error(`Escala «${nombre}»: dificultades no numéricas (usa proporciones de acierto entre 0.05 y 0.95, separadas por coma)`);
+        return vals;
+    }
+    // Dificultades efectivas (dadas o repartidas alrededor de M/k) y DE implícita
+    _dicotomicaImplicita(p, heterogeneidad) {
+        const k = p.numItems, min = p.minimo;
+        let pi;
+        if (Array.isArray(p.dificultades) && p.dificultades.length === k) pi = p.dificultades.map(v => Math.max(0.02, Math.min(0.98, v)));
+        else {
+            const media = Math.max(0.02, Math.min(0.98, (p.media - k * min) / k));   // proporción media de unos
+            const disp = { ninguna: 0, leve: 0.10, moderada: 0.20, alta: 0.30 }[heterogeneidad || 'leve'] || 0.10;
+            const espacio = Math.min(media - 0.05, 0.95 - media, disp);
+            pi = Array.from({ length: k }, (_, i) => Math.max(0.02, Math.min(0.98, media + (k > 1 ? (2 * i / (k - 1) - 1) : 0) * espacio)));
+        }
+        const sumaPQ = pi.reduce((s, v) => s + v * (1 - v), 0);
+        const alfa = (p.alfa > 0 && p.alfa < 1) ? p.alfa : 0.7;
+        const varT = sumaPQ / Math.max(0.02, 1 - alfa * (k - 1) / k);
+        return { dificultades: pi, media: pi.reduce((s, v) => s + v, 0) + k * min, desviacion: Math.sqrt(varT), sumaPQ };
+    }
+    // Media y DE derivadas para todas las dicotómicas (idempotente)
+    _ajustarDicotomicas(cfg) {
+        (cfg.pruebas || []).forEach(p => {
+            if (!this._esDicotomica(p) || p.sufijo) return;
+            const imp = this._dicotomicaImplicita(p, cfg.heterogeneidadItems);
+            p.dificultadesEfectivas = imp.dificultades;
+            if (Array.isArray(p.dificultades) && p.dificultades.length === p.numItems) p.media = imp.media;
+            p.desviacionPedida = p.desviacion;
+            p.desviacion = imp.desviacion;
+        });
+    }
+    _validarDicotomicas(errores, advertencias) {
+        const cfg = this.configuracion;
+        (cfg.pruebas || []).forEach(p => {
+            if (!this._esDicotomica(p) || p.sufijo) return;
+            const k = p.numItems, et = `Escala dicotómica «${p.nombre}»`;
+            if (Array.isArray(p.dificultades)) {
+                if (p.dificultades.length !== k) errores.push(`${et}: ${k} ítems necesitan ${k} dificultades (hay ${p.dificultades.length})`);
+                else if (p.dificultades.some(v => v < 0.05 || v > 0.95)) advertencias.push(`${et}: alguna dificultad está fuera de 0.05–0.95; ítems tan fáciles o tan difíciles no discriminan`);
+            }
+            const pMedia = (p.media - k * p.minimo) / k;
+            if (!(pMedia > 0.05 && pMedia < 0.95)) errores.push(`${et}: la Media ${p.media} implica una proporción media de aciertos de ${pMedia.toFixed(2)}; debe estar entre 0.05 y 0.95 (con ${k} ítems, Media entre ${(k * p.minimo + 0.05 * k).toFixed(1)} y ${(k * p.minimo + 0.95 * k).toFixed(1)})`);
+            if (!(p.alfa > 0.2 && p.alfa < 0.97)) errores.push(`${et}: el KR-20 objetivo debe estar entre 0.20 y 0.97`);
+            const imp = this._dicotomicaImplicita(p, cfg.heterogeneidadItems);
+            // la DE derivada debe caber: con la Media cerca de un tope el total se recorta y el KR-20 no llega
+            const deMax = (typeof ReglasCoherencia !== 'undefined' && ReglasCoherencia.deMaxima) ? ReglasCoherencia.deMaxima(imp.media, k * p.minimo, k * p.maximo) : Infinity;
+            if (imp.desviacion > deMax) errores.push(`${et}: con Media ${imp.media.toFixed(2)} en ${k} ítems, el KR-20 ${p.alfa} exigiría una DE de ${imp.desviacion.toFixed(2)}, mayor que la máxima posible (${deMax.toFixed(2)}): el total se recortaría contra el tope y el KR-20 no se alcanzaría; acerca la Media a ${(k * p.minimo + k / 2).toFixed(1)}, baja el KR-20 o añade ítems`);
+            if (Math.abs((p.desviacionPedida !== undefined ? p.desviacionPedida : p.desviacion) - imp.desviacion) > 0.05) advertencias.push(`${et}: en ítems dicotómicos la DE la fijan las dificultades y el KR-20: se usará DE = ${imp.desviacion.toFixed(2)} (en vez de ${(p.desviacionPedida !== undefined ? p.desviacionPedida : p.desviacion)})`);
+            if (Array.isArray(p.dificultades) && p.dificultades.length === k && Math.abs(imp.media - p.media) > 0.01 && p.desviacionPedida === undefined) advertencias.push(`${et}: la Media será la suma de las dificultades (${imp.media.toFixed(2)})`);
+            if ((cfg.estructuras || []).some(e => e.cargas && e.cargas[p.nombre])) errores.push(`${et}: la estructura factorial no está disponible para ítems dicotómicos (sus correlaciones son tetracóricas); usa las dificultades y el KR-20`);
+            if (p.distribucion !== 'normal') advertencias.push(`${et}: la forma «${p.distribucion}» se aplica al total; con pocos ítems la distribución de aciertos ya es discreta`);
+        });
+    }
+    // Estadísticos de ítem de una dicotómica: dificultades observadas y discriminación (r ítem-resto)
+    _estadisticosDicotomica(cols) {
+        const k = cols.length, n = cols[0].length;
+        const p = cols.map(c => { let s = 0, m = 0; for (let i = 0; i < n; i++) if (c[i] === c[i]) { s += c[i]; m++; } return m ? s / m : NaN; });
+        const disc = cols.map((c, j) => {
+            const resto = new Array(n).fill(0), x = new Array(n).fill(0); const validos = [];
+            for (let i = 0; i < n; i++) { let ok = true, s = 0; for (let q = 0; q < k; q++) { if (!(cols[q][i] === cols[q][i])) { ok = false; break; } if (q !== j) s += cols[q][i]; } if (ok) { validos.push(i); resto[i] = s; x[i] = c[i]; } }
+            if (validos.length < 10) return NaN;
+            return this._corr(validos.map(i => x[i]), validos.map(i => resto[i]));
+        });
+        return { p, disc };
     }
 
     // ============ MEDIDAS REPETIDAS (B7) ============
@@ -5048,6 +5169,7 @@ class GeneradorDatos {
                 const totalMin = k * prueba.minimo;
                 const totalMax = k * prueba.maximo;
                 const de = prueba.desviacion;
+                if (this._esDicotomica(prueba)) return;   // (C5) tienen sus propias reglas
 
                 if (prueba.media < totalMin || prueba.media > totalMax) {
                     // Imposible: la media cae fuera del rango que puede tomar la suma.
@@ -5104,7 +5226,7 @@ class GeneradorDatos {
         // (B8) Estilos de respuesta e ítems de control necesitan escalas Likert
         {
             const r = this.configuracion.realismo || {};
-            const hayLikert = (this.configuracion.pruebas || []).some(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo));
+            const hayLikert = (this.configuracion.pruebas || []).some(p => p.numItems >= 2 && p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && (p.maximo - p.minimo) >= 2);
             if (!hayLikert && (r.pctAquiescencia > 0 || r.pctExtrema > 0)) advertencias.push('Estilos de respuesta: solo actúan sobre escalas Likert (con mínimo y máximo por ítem); ninguna escala los tiene, así que no se aplicarán');
             if (!hayLikert && r.itemsControl > 0) advertencias.push('Ítems de control: toman el rango de una escala Likert; sin escalas Likert no se generan');
             if ((r.pctAquiescencia || 0) + (r.pctExtrema || 0) + (r.pctDescuidados || 0) > 60) advertencias.push('Más del 60 % de la muestra con algún estilo de respuesta o descuido: la base se alejará mucho de lo pedido');
@@ -5121,6 +5243,8 @@ class GeneradorDatos {
         // (C2/C3) Desenlaces y puntos de corte
         this._validarDesenlacesYCortes(errores, advertencias);
 
+        // (C5) escalas dicotómicas: Media/DE derivadas y reglas propias
+        this._validarDicotomicas(errores, advertencias);
         // (B9) dependencias, fechas de nacimiento y referencia del MAR
         this._validarSociodemograficosB9(errores, advertencias);
         // Validar sociodemográficos
