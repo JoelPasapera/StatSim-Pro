@@ -1577,6 +1577,20 @@
                         <h3>🔒 Privacidad y funcionamiento</h3>
                         <p>Todo corre en tu navegador: tus datos no se suben a ningún servidor propio. Solo salen las consultas a las bases académicas y, si usas las funciones de IA (variantes, criba, redactor), a la API de Groq con tus claves.</p>
                     </div>
+                    <div class="help-card" id="mantenimiento">
+                        <h3>🧹 Si la página no se actualiza</h3>
+                        <p>El navegador guarda copias de los archivos del sitio y, tras una actualización, puede mezclar una página nueva con
+                        un módulo viejo (la web «se queda» o faltan cosas), incluso después de Ctrl+F5. <strong>Recargar sin caché</strong> vuelve a
+                        descargar todos los archivos del sitio y recarga; no borra nada tuyo. <strong>Restablecer y recargar</strong> además borra el
+                        almacenamiento local (estado de los proxies del Buscador y flujo PRISMA de la sesión). En ambos casos, si tienes una configuración
+                        a medias en el Simulador, exporta antes el archivo maestro.</p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
+                            <button id="btnRecargarSinCache" type="button" class="btn btn-secondary">Recargar sin caché</button>
+                            <button id="btnRestablecerSitio" type="button" class="btn btn-outline">Restablecer y recargar</button>
+                        </div>
+                        <div id="mantenimientoVersiones" class="help-text" style="font-size:0.8em;"></div>
+                        <div id="mantenimientoLog" class="help-text" hidden style="margin-top:0.4rem; max-height:9em; overflow:auto; font-family:monospace; font-size:0.8em; white-space:pre-wrap;"></div>
+                    </div>
                 </div>
             </div>
         </section>
@@ -1809,6 +1823,8 @@
     
     <!-- Código de app.js -->
     <script src="app.js?v=39"></script>
+    <!-- Mantenimiento: recargar sin caché / restablecer (tarjeta de Ayuda) -->
+    <script src="mantenimiento.js?v=1"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
