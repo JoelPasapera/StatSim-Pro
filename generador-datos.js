@@ -194,6 +194,9 @@ class GeneradorDatos {
         this.configuracion.medidasRepetidas = this.recolectarMedidasRepetidas();
         // (C1) Estructura factorial por test (la interfaz la guarda como JSON)
         this.configuracion.estructuras = this.recolectarEstructuras();
+        // (C2) Desenlaces no continuos y (C3) puntos de corte clínicos
+        this.configuracion.desenlaces = this.recolectarDesenlaces();
+        this.configuracion.cortes = this.recolectarCortes();
 
         return this.configuracion;
     }
@@ -336,6 +339,116 @@ class GeneradorDatos {
             modelos.push({ tipo, x, m, y, c1, c2, c3 });
         });
         return modelos;
+    }
+    // (C2) Tabla de desenlaces: inputs [nombre, parámetro, efecto1, efecto2, efecto3],
+    // selects [tipo, predictor1, predictor2, predictor3]. Parámetro: prevalencia
+    // (binario, 0–1 o %), media (conteo) o categorías con proporciones (ordinal,
+    // gramática de la tabla II: «Bajo:30, Medio:50, Alto:20»). Efecto = OR (binario y
+    // ordinal) o IRR (conteo) por cada DE del predictor.
+    recolectarDesenlaces() {
+        const salida = [];
+        document.querySelectorAll('#bodyDesenlaces .fila-desenlace').forEach(fila => {
+            const inputs = fila.querySelectorAll('input'), selects = fila.querySelectorAll('select');
+            if (inputs.length < 5 || selects.length < 4) return;
+            const nombre = inputs[0].value.trim();
+            if (!nombre) return;
+            const tipo = ['binario', 'conteo', 'ordinal'].includes(selects[0].value) ? selects[0].value : 'binario';
+            const parametro = inputs[1].value.trim();
+            const predictores = [];
+            for (let j = 0; j < 3; j++) {
+                const variable = selects[j + 1].value.trim();
+                const efecto = parseFloat(inputs[j + 2].value);
+                if (variable && isFinite(efecto) && efecto > 0) predictores.push({ variable, efecto });
+            }
+            salida.push(this._normalizarDesenlace({ nombre, tipo, parametro, predictores }));
+        });
+        return salida;
+    }
+    _normalizarDesenlace(d) {
+        const out = { nombre: d.nombre, tipo: d.tipo, predictores: d.predictores || [], prevalencia: null, media: null, niveles: null, etiquetas: null };
+        const t = String(d.parametro || '').trim();
+        if (d.tipo === 'binario') {
+            // «0.25», «25%», o «No, Sí: 25%» (etiquetas para 0 y 1)
+            const m = /^(?:(.+?)\s*,\s*(.+?)\s*:\s*)?([0-9]+(?:[.,][0-9]+)?)\s*(%?)\s*$/.exec(t);
+            if (!m) throw new Error(`Desenlace «${d.nombre}»: indica la prevalencia (p. ej. 0.25 o 25 %; con etiquetas «No, Sí: 25 %»)`);
+            let p = parseFloat(m[3].replace(',', '.'));
+            if (m[4] === '%' || p > 1) p = p / 100;
+            out.prevalencia = p;
+            if (m[1] && m[2]) out.etiquetas = [m[1].trim(), m[2].trim()];
+        } else if (d.tipo === 'conteo') {
+            const v = parseFloat(t.replace(',', '.'));
+            if (!isFinite(v)) throw new Error(`Desenlace «${d.nombre}»: indica la media del conteo (p. ej. 2.5)`);
+            out.media = v;
+        } else {
+            const op = this._parsearOpcionesSocio(t, 'categorica', d.nombre);
+            if (!op.niveles) throw new Error(`Desenlace «${d.nombre}»: indica las categorías ordenadas con sus proporciones (p. ej. «Bajo:30, Medio:50, Alto:20»)`);
+            out.niveles = op.niveles;
+        }
+        return out;
+    }
+    // (C3) Tabla de puntos de corte: select [variable], input [texto]. Gramática:
+    // «Bajo, Medio, Alto @ 20, 30» (cortes fijos: < 20 Bajo; 20–29.99 Medio; ≥ 30 Alto)
+    // o «Bajo, Medio, Alto @ P25, P75» (cortes por percentiles de la muestra).
+    recolectarCortes() {
+        const salida = [];
+        document.querySelectorAll('#bodyCortes .fila-corte').forEach(fila => {
+            const sel = fila.querySelector('select'), inp = fila.querySelector('input');
+            const variable = sel ? sel.value.trim() : '';
+            if (!variable || !inp) return;
+            salida.push(this._parsearCortes(variable, inp.value));
+        });
+        return salida;
+    }
+    _parsearCortes(variable, texto) {
+        const t = String(texto || '').trim();
+        const partes = t.split('@');
+        if (partes.length !== 2) throw new Error(`Puntos de corte de «${variable}»: escribe las categorías y los cortes separados por «@» (p. ej. «Bajo, Medio, Alto @ 20, 30»)`);
+        const etiquetas = partes[0].split(',').map(s => s.trim()).filter(Boolean);
+        const cortesTxt = partes[1].split(',').map(s => s.trim()).filter(Boolean);
+        if (etiquetas.length < 2 || etiquetas.length > 10) throw new Error(`Puntos de corte de «${variable}»: entre 2 y 10 categorías`);
+        if (cortesTxt.length !== etiquetas.length - 1) throw new Error(`Puntos de corte de «${variable}»: ${etiquetas.length} categorías necesitan ${etiquetas.length - 1} cortes (hay ${cortesTxt.length})`);
+        const porPercentil = cortesTxt.every(c => /^p\s*[0-9]/i.test(c));
+        const cortes = cortesTxt.map(c => parseFloat(c.replace(/^p\s*/i, '').replace(',', '.')));
+        if (cortes.some(c => !isFinite(c))) throw new Error(`Puntos de corte de «${variable}»: cortes no numéricos`);
+        for (let i = 1; i < cortes.length; i++) if (!(cortes[i] > cortes[i - 1])) throw new Error(`Puntos de corte de «${variable}»: los cortes deben ir en orden creciente`);
+        if (porPercentil && cortes.some(c => c <= 0 || c >= 100)) throw new Error(`Puntos de corte de «${variable}»: los percentiles deben estar entre 1 y 99`);
+        return { variable, etiquetas, cortes, porPercentil };
+    }
+    _validarDesenlacesYCortes(errores, advertencias) {
+        const cfg = this.configuracion;
+        const nombres = this._nombresCorrelacionables();
+        const columnas = new Set(['ID']);
+        (cfg.sociodemograficos || []).forEach(s => columnas.add(s.categoria));
+        (cfg.pruebas || []).forEach(p => { columnas.add(this.columnaDeEscala(p)); this._itemsDe(p).forEach(c => columnas.add(c)); });
+        const vistos = new Set();
+        (cfg.desenlaces || []).forEach(d => {
+            const et = `Desenlace «${d.nombre}»`;
+            if (vistos.has(d.nombre) || columnas.has(d.nombre)) errores.push(`${et}: el nombre ya se usa en otra columna`);
+            vistos.add(d.nombre);
+            if (d.tipo === 'binario' && !(d.prevalencia > 0.02 && d.prevalencia < 0.98)) errores.push(`${et}: la prevalencia debe estar entre 2 % y 98 %`);
+            if (d.tipo === 'conteo' && !(d.media > 0 && d.media < 200)) errores.push(`${et}: la media del conteo debe ser positiva (y razonable)`);
+            if (!d.predictores.length) advertencias.push(`${et}: sin predictores, será una variable independiente de todo`);
+            d.predictores.forEach(pr => {
+                if (!nombres.has(pr.variable)) errores.push(`${et}: el predictor «${pr.variable}» no es una variable cuantitativa del estudio`);
+                if (!(pr.efecto > 0.1 && pr.efecto < 10)) errores.push(`${et}: el efecto de «${pr.variable}» debe ser un OR/IRR entre 0.1 y 10 (por cada DE)`);
+                else if (pr.efecto > 4 || pr.efecto < 0.25) advertencias.push(`${et}: un OR/IRR de ${pr.efecto} por DE es muy grande; la separación será casi perfecta`);
+            });
+            const repetidos = d.predictores.map(p => p.variable).filter((v, i, a) => a.indexOf(v) !== i);
+            if (repetidos.length) errores.push(`${et}: el predictor «${repetidos[0]}» está repetido`);
+        });
+        const vistosC = new Set();
+        (cfg.cortes || []).forEach(c => {
+            const et = `Puntos de corte de «${c.variable}»`;
+            if (!nombres.has(c.variable) || (cfg.sociodemograficos || []).some(s => s.categoria === c.variable)) errores.push(`${et}: solo se cortan escalas o puntajes generales`);
+            if (vistosC.has(c.variable)) errores.push(`${et}: la variable aparece dos veces`);
+            vistosC.add(c.variable);
+            const p = (cfg.pruebas || []).find(x => x.nombre === c.variable);
+            if (p && !c.porPercentil) {
+                const min = p.minimo !== null && p.maximo !== null ? p.numItems * p.minimo : -Infinity, max = p.minimo !== null && p.maximo !== null ? p.numItems * p.maximo : Infinity;
+                if (c.cortes.some(x => x <= min || x > max)) advertencias.push(`${et}: algún corte queda fuera del rango del total (${min}–${max}); esa categoría saldrá vacía`);
+                if (Math.abs(c.cortes[0] - p.media) > 3 * p.desviacion && Math.abs(c.cortes[c.cortes.length - 1] - p.media) > 3 * p.desviacion) advertencias.push(`${et}: los cortes están muy lejos de la media (${p.media} ± ${p.desviacion}); casi todos caerán en la misma categoría`);
+            }
+        });
     }
     // (C1) La tarjeta VII guarda las estructuras en #estructurasJSON:
     // [{ prueba, modo: 'cargas'|'alfa', factores: [nombres de dimensión],
@@ -566,6 +679,18 @@ class GeneradorDatos {
                 mapa[s.categoria] = `${s.categoria} (${s.ordinal ? 'ordinal' : (s.distribucion === 'binaria' ? 'binaria' : 'categórica')}: ${lista})` + (s.dependeDe ? `; asociada a ${s.dependeDe}` : '');
             }
             if (s.fechaNacimiento && !this._esSocioDiscreto(s)) mapa[`FechaNac_${s.categoriaCorta}`] = `Fecha de nacimiento (AAAA-MM-DD) coherente con «${s.categoria}» a la fecha ${s.fechaNacimiento === 'hoy' ? 'de generación' : s.fechaNacimiento}`;
+        });
+        // (C2) desenlaces y (C3) niveles por puntos de corte
+        ((this.configuracion && this.configuracion.desenlaces) || []).forEach(d => {
+            const pred = d.predictores.length ? `; depende de ${d.predictores.map(p => `${p.variable} (${d.tipo === 'conteo' ? 'IRR' : 'OR'} ${p.efecto} por DE)`).join(', ')}` : '';
+            if (d.tipo === 'binario') mapa[d.nombre] = `${d.nombre} (binario: 0 = ${d.etiquetas ? d.etiquetas[0] : 'no'}, 1 = ${d.etiquetas ? d.etiquetas[1] : 'sí'}; prevalencia ${Math.round(d.prevalencia * 100)} %${pred})`;
+            else if (d.tipo === 'conteo') mapa[d.nombre] = `${d.nombre} (conteo; media ${d.media}${pred})`;
+            else mapa[d.nombre] = `${d.nombre} (ordinal: ${d.niveles.map(x => `${x.codigo} = ${x.etiqueta}`).join(', ')}${pred})`;
+        });
+        ((this.configuracion && this.configuracion.cortes) || []).forEach(c => {
+            const nombre = `Nivel_${this._siglaDeVariable(c.variable)}`;
+            const cortes = c.porPercentil ? c.cortes.map(p => `P${p}`) : c.cortes;
+            mapa[nombre] = `Nivel de «${c.variable}»: ${c.etiquetas.map((e, k) => `${k + 1} = ${e}${k < cortes.length ? ` (< ${cortes[k]})` : ` (≥ ${cortes[cortes.length - 1]})`}`).join(', ')}`;
         });
         // (B8) columnas auxiliares de las imperfecciones
         mapa['Respuesta_descuidada'] = 'Marcador: 1 = respondiente descuidado (línea recta o al azar)';
@@ -976,6 +1101,8 @@ class GeneradorDatos {
 
         // (B9) fechas de nacimiento derivadas de las edades ya generadas
         this._rellenarFechasNacimiento(base);
+        // (C2) desenlaces no continuos a partir de las puntuaciones VERDADERAS (antes de imperfecciones)
+        this._generarDesenlaces(base);
         // Imperfecciones realistas (si se pidieron), antes de los percentiles.
         avisar(0.88, 'Aplicando imperfecciones realistas');
         this.resumenImperfecciones = this.aplicarImperfecciones(base);
@@ -1011,9 +1138,210 @@ class GeneradorDatos {
             });
         }
 
+        // (C3) niveles por puntos de corte sobre los totales FINALES (tras imperfecciones)
+        this._generarCortes(base);
+
         avisar(0.96, 'Base generada');
         this.datosGenerados = base;
         return base;
+    }
+    // ============ DESENLACES NO CONTINUOS (C2) ============
+    // Modelo latente con predictores estandarizados en la muestra:
+    //   η_i = Σ_j ln(efecto_j)·z_ij
+    //  · binario: Y = 1 si η + ε > c, ε logístico, c = cuantil muestral → prevalencia
+    //    EXACTA; la regresión logística recupera ln(OR) = ln(efecto) por DE;
+    //  · conteo: Y ~ Poisson(exp(β₀ + η)), β₀ por bisección para la media pedida
+    //    (la regresión de Poisson recupera ln(IRR));
+    //  · ordinal: u = η + ε, cortes en los cuantiles muestrales de las proporciones
+    //    pedidas (odds proporcionales: mismo OR en cada corte).
+    _columnaPredictor(base, nombre) {
+        const col = this._columnaDeVariable(nombre);
+        return col && base.tiene(col) ? base.columna(col).datos : null;
+    }
+    _columnaDeVariable(nombre) {
+        const cfg = this.configuracion;
+        const p = (cfg.pruebas || []).find(x => x.nombre === nombre);
+        if (p) return this.columnaDeEscala(p);
+        const g = (cfg.gruposPruebas || []).find(x => x.escalas.length >= 2 && this.nombreGeneral(x) === nombre);
+        if (g) return `General_${g.sigla}`;
+        const s = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
+        return s ? s.categoria : null;
+    }
+    _generarDesenlaces(base) {
+        const lista = this.configuracion.desenlaces || [];
+        if (!lista.length) return;
+        const n = base.n;
+        const logistico = () => { const u = Math.max(1e-12, Math.min(1 - 1e-12, this.aleatorio())); return Math.log(u / (1 - u)); };
+        lista.forEach(d => {
+            // η con predictores estandarizados en la muestra
+            const eta = new Float64Array(n);
+            d.predictores.forEach(pr => {
+                const datos = this._columnaPredictor(base, pr.variable);
+                if (!datos) return;
+                let m = 0, c = 0; for (let i = 0; i < n; i++) if (datos[i] === datos[i]) { m += datos[i]; c++; }
+                m /= Math.max(1, c);
+                let v = 0; for (let i = 0; i < n; i++) if (datos[i] === datos[i]) v += (datos[i] - m) ** 2;
+                const sd = Math.sqrt(v / Math.max(1, c - 1)) || 1;
+                const b = Math.log(pr.efecto);
+                for (let i = 0; i < n; i++) eta[i] += b * ((datos[i] === datos[i] ? datos[i] : m) - m) / sd;
+            });
+            const col = base.agregar(d.nombre, true).datos;
+            if (d.tipo === 'binario') {
+                const u = new Float64Array(n);
+                for (let i = 0; i < n; i++) u[i] = eta[i] + logistico();
+                const orden = Array.from({ length: n }, (_, i) => i).sort((a, b) => u[a] - u[b]);
+                const unos = Math.round(n * d.prevalencia);
+                for (let r = 0; r < n; r++) col[orden[r]] = r >= n - unos ? 1 : 0;
+                if (d.etiquetas) base.etiquetar(d.nombre, { 0: d.etiquetas[0], 1: d.etiquetas[1] });
+            } else if (d.tipo === 'conteo') {
+                let lo = -10, hi = 10;
+                for (let it = 0; it < 50; it++) { const b0 = (lo + hi) / 2; let s = 0; for (let i = 0; i < n; i++) s += Math.exp(b0 + eta[i]); if (s / n < d.media) lo = b0; else hi = b0; }
+                const b0 = (lo + hi) / 2;
+                for (let i = 0; i < n; i++) col[i] = this.generarPoisson(Math.exp(b0 + eta[i]));
+            } else {
+                const u = new Float64Array(n);
+                for (let i = 0; i < n; i++) u[i] = eta[i] + logistico();
+                const orden = Array.from({ length: n }, (_, i) => i).sort((a, b) => u[a] - u[b]);
+                const recuentos = this._recuentosExactos(d.niveles, n);
+                let pos = 0;
+                d.niveles.forEach((nv, k) => { for (let j = 0; j < recuentos[k]; j++) col[orden[pos++]] = nv.codigo; });
+                const etiquetas = {}; d.niveles.forEach(x => { etiquetas[x.codigo] = x.etiqueta; });
+                base.etiquetar(d.nombre, etiquetas);
+            }
+        });
+    }
+    // ============ PUNTOS DE CORTE (C3) ============
+    _generarCortes(base) {
+        const lista = this.configuracion.cortes || [];
+        if (!lista.length) return;
+        const n = base.n;
+        this.cortesGenerados = [];
+        lista.forEach(c => {
+            const colOrigen = this._columnaDeVariable(c.variable);
+            if (!colOrigen || !base.tiene(colOrigen)) return;
+            const datos = base.columna(colOrigen).datos;
+            let cortes = c.cortes.slice(), empateMax = 0;
+            if (c.porPercentil) {
+                // corte = primer valor cuyo rango supera el percentil; con totales enteros
+                // los empates en ese valor no se pueden repartir (una misma puntuación no
+                // puede quedar en dos niveles), así que las proporciones son aproximadas
+                const finitos = base.finitos(colOrigen).sort();
+                const m = finitos.length;
+                cortes = c.cortes.map(pct => { if (!m) return NaN; const pos = Math.min(m - 1, Math.max(0, Math.ceil(pct / 100 * m))); return finitos[pos]; });
+                let racha = 1; for (let i = 1; i < m; i++) { if (finitos[i] === finitos[i - 1]) racha++; else { empateMax = Math.max(empateMax, racha); racha = 1; } } empateMax = Math.max(empateMax, racha);
+            }
+            const nombre = `Nivel_${this._siglaDeVariable(c.variable)}`;
+            const col = base.agregar(nombre, true).datos;
+            for (let i = 0; i < n; i++) {
+                const v = datos[i];
+                if (!(v === v)) { col[i] = NaN; continue; }
+                let k = 0; while (k < cortes.length && v >= cortes[k]) k++;
+                col[i] = k + 1;
+            }
+            const etiquetas = {}; c.etiquetas.forEach((e, k) => { etiquetas[k + 1] = e; });
+            base.etiquetar(nombre, etiquetas);
+            this.cortesGenerados.push({ variable: c.variable, columna: nombre, etiquetas: c.etiquetas, cortes, porPercentil: c.porPercentil, percentiles: c.porPercentil ? c.cortes : null, empateMax });
+        });
+    }
+    _siglaDeVariable(nombre) {
+        const cfg = this.configuracion;
+        const p = (cfg.pruebas || []).find(x => x.nombre === nombre);
+        if (p) return this._claveEscala(p);
+        const g = (cfg.gruposPruebas || []).find(x => x.escalas.length >= 2 && this.nombreGeneral(x) === nombre);
+        if (g) return g.sigla;
+        const s = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
+        return s ? s.categoriaCorta : nombre.replace(/\s+/g, '_');
+    }
+    // GLM por mínimos cuadrados reponderados (logit o log), con intercepto.
+    // X: columnas de predictores (arreglos). Devuelve { beta, ee } o null.
+    _glm(y, X, familia) {
+        const n = y.length, p = X.length + 1;
+        let beta = new Array(p).fill(0);
+        if (familia === 'logit') { const m = y.reduce((s, v) => s + v, 0) / n; beta[0] = Math.log(Math.max(1e-6, m) / Math.max(1e-6, 1 - m)); }
+        else { const m = y.reduce((s, v) => s + v, 0) / n; beta[0] = Math.log(Math.max(1e-6, m)); }
+        const fila = i => { const x = new Array(p); x[0] = 1; for (let j = 1; j < p; j++) x[j] = X[j - 1][i]; return x; };
+        let info = null;
+        for (let it = 0; it < 30; it++) {
+            const A = Array.from({ length: p }, () => new Array(p + 1).fill(0));
+            for (let i = 0; i < n; i++) {
+                const x = fila(i); let eta = 0; for (let j = 0; j < p; j++) eta += beta[j] * x[j];
+                let mu, w;
+                if (familia === 'logit') { mu = 1 / (1 + Math.exp(-eta)); w = mu * (1 - mu); }
+                else { mu = Math.exp(Math.min(30, eta)); w = mu; }
+                if (!(w > 1e-9)) continue;
+                const z = eta + (y[i] - mu) / w;
+                for (let a = 0; a < p; a++) { for (let b = 0; b < p; b++) A[a][b] += w * x[a] * x[b]; A[a][p] += w * x[a] * z; }
+            }
+            info = A.map(f => f.slice(0, p));
+            for (let c = 0; c < p; c++) {
+                let piv = c; for (let r = c + 1; r < p; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+                if (Math.abs(A[piv][c]) < 1e-12) return null;
+                if (piv !== c) { const tmp = A[piv]; A[piv] = A[c]; A[c] = tmp; }
+                for (let r = 0; r < p; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k <= p; k++) A[r][k] -= f * A[c][k]; }
+            }
+            const nuevo = A.map((f, j) => f[p] / f[j]);
+            const cambio = Math.max(...nuevo.map((b, j) => Math.abs(b - beta[j])));
+            beta = nuevo;
+            if (cambio < 1e-7) break;
+        }
+        // errores estándar: diagonal de la inversa de la información
+        let ee = new Array(p).fill(NaN);
+        try {
+            const L = this.descomposicionCholesky(info.map(f => f.slice()));
+            const Linv = this._inversaTriangularInferior(L);
+            ee = Array.from({ length: p }, (_, j) => { let s = 0; for (let r = 0; r < p; r++) s += Linv[r][j] * Linv[r][j]; return Math.sqrt(s); });
+        } catch (e) { /* singular: sin EE */ }
+        return { beta, ee };
+    }
+    _informeDesenlacesYCortes(base, filas, num) {
+        const cfg = this.configuracion, n = base.n;
+        (cfg.desenlaces || []).forEach(d => {
+            if (!base.tiene(d.nombre)) return;
+            const y = base.columna(d.nombre).datos;
+            const casos = [];
+            const preds = d.predictores.map(pr => this._columnaPredictor(base, pr.variable)).filter(Boolean);
+            for (let i = 0; i < n; i++) if (y[i] === y[i] && preds.every(c => c[i] === c[i])) casos.push(i);
+            if (casos.length < 20) return;
+            const est = col => { const v = casos.map(i => col[i]); const m = v.reduce((s, x) => s + x, 0) / v.length; const sd = Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1)) || 1; return v.map(x => (x - m) / sd); };
+            const X = preds.map(est);
+            // prevalencia/proporciones sobre TODOS los casos con desenlace; los OR sobre los casos completos
+            const todosY = []; for (let i = 0; i < n; i++) if (y[i] === y[i]) todosY.push(y[i]);
+            if (d.tipo === 'binario') {
+                const yy = casos.map(i => y[i]);
+                const prev = todosY.reduce((s, v) => s + v, 0) / todosY.length;
+                filas.push({ tipo: 'prevalencia', variable: `${d.nombre} (desenlace binario)`, pedido: num(d.prevalencia * 100, 1) + '%', obtenido: num(prev * 100, 1) + '%', ok: Math.abs(prev - d.prevalencia) <= 1 / todosY.length + 1e-9 });
+                const fit = X.length ? this._glm(yy, X, 'logit') : null;
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE, regresión logística)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+            } else if (d.tipo === 'conteo') {
+                const yy = casos.map(i => y[i]);
+                const media = yy.reduce((s, v) => s + v, 0) / yy.length;
+                filas.push({ tipo: 'media', variable: `${d.nombre} (conteo)`, pedido: num(d.media, 2), obtenido: num(media, 2), ok: Math.abs(media - d.media) <= 3 * Math.sqrt(d.media / yy.length) + 0.02 });
+                const fit = X.length ? this._glm(yy, X, 'log') : null;
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'IRR', variable: `${d.nombre} ~ ${pr.variable} (IRR por DE, regresión de Poisson)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+            } else {
+                const yy = casos.map(i => y[i]);
+                const conteos = new Map(); todosY.forEach(v => conteos.set(v, (conteos.get(v) || 0) + 1));
+                const obt = d.niveles.map(nv => (conteos.get(nv.codigo) || 0) / todosY.length);
+                filas.push({ tipo: '%', variable: `${d.nombre} (ordinal: ${d.niveles.map(x => x.etiqueta).join(' / ')})`, pedido: d.niveles.map(x => Math.round(x.proporcion * 100) + '%').join(' / '), obtenido: obt.map(p => (p * 100).toFixed(1) + '%').join(' / '), ok: Math.max(...d.niveles.map((x, k) => Math.abs(obt[k] - x.proporcion))) <= 1 / todosY.length + 1e-9 });
+                // odds proporcionales: OR en la dicotomía más cercana a la mediana
+                let acum = 0, corte = 1; for (let k = 0; k < d.niveles.length - 1; k++) { acum += d.niveles[k].proporcion; if (Math.abs(acum - 0.5) < Math.abs((acum - d.niveles[k].proporcion) - 0.5) || k === 0) corte = k + 1; }
+                const yb = yy.map(v => (v > corte ? 1 : 0));
+                const fit = X.length ? this._glm(yb, X, 'logit') : null;
+                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE; odds proporcionales, dicotomía «> ${d.niveles[corte - 1].etiqueta}»)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2 * (isFinite(ee) ? ee : 0.15) + 0.03 }); });
+            }
+        });
+        (this.cortesGenerados || []).forEach(c => {
+            if (!base.tiene(c.columna)) return;
+            const datos = base.columna(c.columna).datos;
+            const conteos = new Map(); let total = 0;
+            for (let i = 0; i < n; i++) if (datos[i] === datos[i]) { conteos.set(datos[i], (conteos.get(datos[i]) || 0) + 1); total++; }
+            const obt = c.etiquetas.map((e, k) => (conteos.get(k + 1) || 0) / Math.max(1, total));
+            const pedido = c.porPercentil ? c.percentiles.concat([100]).map((p, k) => (p - (k ? c.percentiles[k - 1] : 0)) + '%').join(' / ') : `cortes en ${c.cortes.map(x => num(x, 2)).join(', ')}`;
+            // con empates en el corte (totales enteros), la desviación admisible es la masa del empate
+            const tol = c.porPercentil ? (c.empateMax + 1) / Math.max(1, total) + 1e-9 : 1;
+            const ok = c.porPercentil ? Math.max(...obt.map((p, k) => Math.abs(p - ((c.percentiles.concat([100])[k] - (k ? c.percentiles[k - 1] : 0)) / 100)))) <= tol : true;
+            filas.push({ tipo: 'niveles', variable: `${c.columna} (${c.variable}: ${c.etiquetas.join(' / ')})${c.porPercentil && c.empateMax > 1 ? ' — por percentil, con empates en los cortes' : ''}`, pedido, obtenido: obt.map(p => (p * 100).toFixed(1) + '%').join(' / '), ok });
+        });
     }
 
     // Dos columnas no pueden llamarse igual (antes, con filas-objeto, la segunda
@@ -1033,6 +1361,7 @@ class GeneradorDatos {
             if (p.tipo !== 'general') this._itemsDe(p).forEach((col, j) => registrar(col, `el ítem ${j + 1} de «${p.nombre}» (sigla ${p.nombreCorto})`));
         });
         (cfg.pruebas || []).forEach(p => registrar(this.columnaDeEscala(p), `el total de «${p.nombre}»`));
+        (cfg.desenlaces || []).forEach(d => registrar(d.nombre, `el desenlace «${d.nombre}»`));
         (cfg.gruposPruebas || []).forEach(g => { if (g.escalas.length >= 2) registrar(`General_${g.sigla}`, `el puntaje general del test «${g.nombre}»`); });
     }
 
@@ -1540,7 +1869,7 @@ class GeneradorDatos {
                 const fi = this._fiabilidadImplicita(propias)[indice];
                 alfasImplicitos.push({ p, fi });
                 if ((est.modo || 'cargas') !== 'alfa' && p.alfa > 0 && p.alfa < 1 && Math.abs(fi - p.alfa) > 0.03) advertencias.push(`Estructura factorial de «${est.prueba}»: las cargas de «${p.nombre}» implican ${indice === 'omega' ? 'ω' : 'α'} = ${fi.toFixed(2)}, distinto del ${p.alfa} de la tabla I; mandan las cargas (o elige el modo «respetar el α»)`);
-                if (p.numItems <= 4 && desajuste !== 'ninguno') advertencias.push(`Estructura factorial de «${est.prueba}»: con ${p.numItems} ítems en «${p.nombre}» el desajuste apenas se notará`);
+                if (p.numItems < 5 && desajuste !== 'ninguno') errores.push(`Estructura factorial de «${est.prueba}»: el desajuste necesita al menos 5 ítems por dimensión («${p.nombre}» tiene ${p.numItems}); elige «ninguno»`);
             });
             const r = cfg.realismo || {};
             if ((r.pctAquiescencia > 0 || r.pctExtrema > 0)) advertencias.push(`Estructura factorial de «${est.prueba}»: los estilos de respuesta añaden un factor de método propio que se sumará a la estructura pedida`);
@@ -2321,6 +2650,23 @@ class GeneradorDatos {
             ok('(C1) desajuste moderado: SRMR obtenido ≈ esperado por los pares', !!srmrMod && srmrMod.ok && parseFloat(srmrMod.obtenido) > 0.03, srmrMod ? `${srmrMod.pedido}→${srmrMod.obtenido}` : 'sin fila');
             ok('(C1) los totales siguen siendo exactos con estructura (Media, DE y suma de ítems)', inf24.filter(f => f.tipo === 'Media' || f.tipo === 'DE').every(f => f.ok) && g24.datosGenerados.aObjetos().slice(0, 50).every(f => Math.abs(Object.keys(f).filter(c => /^ST\d+$/.test(c)).reduce((s, c) => s + g24._recodificar(cfgC1b.pruebas[3], parseInt(c.slice(2), 10), f[c]), 0) - f.Dimension_ST) < 0.011), '');
             ok('(C1) un test sin matriz sale idéntico a antes (misma semilla, misma base)', JSON.stringify(generar(cfgBase({ tamanoMuestra: 60 })).d[0]) === JSON.stringify(generar(cfgBase({ tamanoMuestra: 60, estructuras: [] })).d[0]), '');
+            // 21) (C2/C3) desenlaces no continuos y puntos de corte
+            const cfgC2 = cfgBase({ tamanoMuestra: 2000, correlaciones: [{ a: 'Percepción', b: 'Estrés', r: -0.3 }],
+                desenlaces: [
+                    { nombre: 'Deserción', tipo: 'binario', prevalencia: 0.25, media: null, niveles: null, etiquetas: ['No', 'Sí'], predictores: [{ variable: 'Estrés', efecto: 2.0 }, { variable: 'Percepción', efecto: 0.6 }] },
+                    { nombre: 'Faltas', tipo: 'conteo', prevalencia: null, media: 2.5, niveles: null, etiquetas: null, predictores: [{ variable: 'Estrés', efecto: 1.4 }] },
+                    { nombre: 'Riesgo', tipo: 'ordinal', prevalencia: null, media: null, niveles: [{ codigo: 1, etiqueta: 'Bajo', proporcion: 0.5 }, { codigo: 2, etiqueta: 'Medio', proporcion: 0.3 }, { codigo: 3, etiqueta: 'Alto', proporcion: 0.2 }], etiquetas: null, predictores: [{ variable: 'Estrés', efecto: 1.8 }] }
+                ],
+                cortes: [{ variable: 'Estrés', etiquetas: ['Bajo', 'Medio', 'Alto'], cortes: [24, 36], porPercentil: false }, { variable: 'Percepción', etiquetas: ['Bajo', 'Alto'], cortes: [75], porPercentil: true }] });
+            const { g: g25, d: d25 } = generar(cfgC2);
+            const inf25 = g25.informePedidoObtenido(g25.datosGenerados);
+            const fila = (tipo, texto) => inf25.find(f => f.tipo === tipo && (!texto || f.variable.includes(texto)));
+            ok('(C2) binario: prevalencia exacta y OR por DE recuperados (2.0 y 0.6)', fila('prevalencia').ok && inf25.filter(f => f.tipo === 'OR' && f.variable.startsWith('Deserción')).every(f => f.ok), inf25.filter(f => f.tipo === 'OR' && f.variable.startsWith('Deserción')).map(f => `${f.pedido}→${f.obtenido}`).join(' ') + ' prev ' + fila('prevalencia').obtenido);
+            ok('(C2) conteo: media e IRR recuperados', fila('media').ok && fila('IRR').ok, `media ${fila('media').obtenido}; IRR ${fila('IRR').pedido}→${fila('IRR').obtenido}`);
+            ok('(C2) ordinal: proporciones exactas y OR de odds proporcionales', fila('%', 'Riesgo').ok && fila('OR', 'Riesgo').ok, `${fila('%', 'Riesgo').obtenido}; OR ${fila('OR', 'Riesgo').obtenido}`);
+            ok('(C2) etiquetas de texto del desenlace binario y del ordinal en la vista por objetos', ['No', 'Sí'].includes(d25[0].Deserción) && ['Bajo', 'Medio', 'Alto'].includes(d25[0].Riesgo) && Number.isInteger(d25[0].Faltas), `${d25[0].Deserción} ${d25[0].Riesgo} ${d25[0].Faltas}`);
+            ok('(C3) puntos de corte fijos: Nivel_ST con etiquetas coherentes con el total', d25.every(f => f.Nivel_ST === (f.Dimension_ST < 24 ? 'Bajo' : (f.Dimension_ST < 36 ? 'Medio' : 'Alto'))), g25.obtenerEtiquetas()['Nivel_ST']);
+            ok('(C3) puntos de corte por percentil: 75/25 dentro de la masa de empates (totales enteros)', fila('niveles', 'Nivel_PE').ok && Math.abs(d25.filter(f => f.Nivel_PE === 'Alto').length - 500) <= g25.cortesGenerados[1].empateMax + 1, fila('niveles', 'Nivel_PE').obtenido);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -2839,6 +3185,8 @@ class GeneradorDatos {
         this._informeSociodemograficos(base, filas, num);
         // 8) (C1) Estructura factorial: cargas, cruzadas, método, fiabilidad implícita, SRMR, KMO
         this._informeEstructuras(base, filas, num);
+        // 9) (C2/C3) Desenlaces no continuos y puntos de corte
+        this._informeDesenlacesYCortes(base, filas, num);
         return filas;
     }
     _informeSociodemograficos(base, filas, num) {
@@ -3350,17 +3698,25 @@ class GeneradorDatos {
     _baseDesdeObjetos(datos) {
         const socios = (this.configuracion && this.configuracion.sociodemograficos) || [];
         const traductores = new Map();
+        const conEtiquetas = [];   // [columna, {etiqueta → código}]
         socios.forEach(s => {
-            if (s.niveles && s.niveles.some(x => x.etiqueta)) { const m = new Map(); s.niveles.forEach(x => m.set(String(x.etiqueta), x.codigo)); traductores.set(s.categoria, v => (typeof v === 'string' && m.has(v)) ? m.get(v) : v); }
+            if (s.niveles && s.niveles.some(x => x.etiqueta)) { const m = new Map(); s.niveles.forEach(x => m.set(String(x.etiqueta), x.codigo)); conEtiquetas.push([s.categoria, m]); }
             if (s.fechaNacimiento && !this._esSocioDiscreto(s)) traductores.set(`FechaNac_${s.categoriaCorta}`, v => (typeof v === 'string' ? BaseColumnar.isoADias(v) : v));
         });
+        // (C2/C3) desenlaces con etiquetas y niveles por puntos de corte
+        ((this.configuracion && this.configuracion.desenlaces) || []).forEach(d => {
+            if (d.tipo === 'binario' && d.etiquetas) conEtiquetas.push([d.nombre, new Map([[d.etiquetas[0], 0], [d.etiquetas[1], 1]])]);
+            if (d.tipo === 'ordinal' && d.niveles) conEtiquetas.push([d.nombre, new Map(d.niveles.map(x => [String(x.etiqueta), x.codigo]))]);
+        });
+        ((this.configuracion && this.configuracion.cortes) || []).forEach(c => conEtiquetas.push([`Nivel_${this._siglaDeVariable(c.variable)}`, new Map(c.etiquetas.map((e, k) => [e, k + 1]))]));
+        conEtiquetas.forEach(([col, m]) => traductores.set(col, v => (typeof v === 'string' && m.has(v)) ? m.get(v) : v));
         if (!traductores.size) return BaseColumnar.desdeObjetos(datos);
         const copia = datos.map(f => { const o = Object.assign({}, f); traductores.forEach((tr, col) => { if (col in o) o[col] = tr(o[col]); }); return o; });
         const base = BaseColumnar.desdeObjetos(copia);
         socios.forEach(s => {
-            if (s.niveles && s.niveles.some(x => x.etiqueta) && base.tiene(s.categoria)) { const e = {}; s.niveles.forEach(x => { e[x.codigo] = x.etiqueta; }); base.etiquetar(s.categoria, e); }
             if (s.fechaNacimiento && !this._esSocioDiscreto(s) && base.tiene(`FechaNac_${s.categoriaCorta}`)) base.formatear(`FechaNac_${s.categoriaCorta}`, 'fecha');
         });
+        conEtiquetas.forEach(([col, m]) => { if (base.tiene(col)) { const e = {}; m.forEach((codigo, etiqueta) => { e[codigo] = etiqueta; }); base.etiquetar(col, e); } });
         return base;
     }
     // Niveles efectivos de una discreta (con o sin texto de opciones)
@@ -4552,6 +4908,8 @@ class GeneradorDatos {
         this._validarMedidasRepetidas(errores, advertencias);
         // (C1) Estructura factorial
         this._validarEstructuras(errores, advertencias);
+        // (C2/C3) Desenlaces y puntos de corte
+        this._validarDesenlacesYCortes(errores, advertencias);
 
         // (B9) dependencias, fechas de nacimiento y referencia del MAR
         this._validarSociodemograficosB9(errores, advertencias);
