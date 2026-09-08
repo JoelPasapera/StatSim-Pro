@@ -423,7 +423,7 @@ class GeneradorDatos {
         const vistos = new Set();
         (cfg.desenlaces || []).forEach(d => {
             const et = `Desenlace «${d.nombre}»`;
-            if (vistos.has(d.nombre) || columnas.has(d.nombre)) errores.push(`${et}: el nombre ya se usa en otra columna`);
+            if (vistos.has(d.nombre) || columnas.has(d.nombre) || nombres.has(d.nombre)) errores.push(`${et}: el nombre ya se usa en otra variable o columna; elige otro`);
             vistos.add(d.nombre);
             if (d.tipo === 'binario' && !(d.prevalencia > 0.02 && d.prevalencia < 0.98)) errores.push(`${et}: la prevalencia debe estar entre 2 % y 98 %`);
             if (d.tipo === 'conteo' && !(d.media > 0 && d.media < 200)) errores.push(`${et}: la media del conteo debe ser positiva (y razonable)`);
@@ -1212,10 +1212,10 @@ class GeneradorDatos {
     }
     // ============ PUNTOS DE CORTE (C3) ============
     _generarCortes(base) {
+        this.cortesGenerados = [];   // siempre: el informe no debe arrastrar cortes de otra base
         const lista = this.configuracion.cortes || [];
         if (!lista.length) return;
         const n = base.n;
-        this.cortesGenerados = [];
         lista.forEach(c => {
             const colOrigen = this._columnaDeVariable(c.variable);
             if (!colOrigen || !base.tiene(colOrigen)) return;
@@ -2667,6 +2667,7 @@ class GeneradorDatos {
             ok('(C2) etiquetas de texto del desenlace binario y del ordinal en la vista por objetos', ['No', 'Sí'].includes(d25[0].Deserción) && ['Bajo', 'Medio', 'Alto'].includes(d25[0].Riesgo) && Number.isInteger(d25[0].Faltas), `${d25[0].Deserción} ${d25[0].Riesgo} ${d25[0].Faltas}`);
             ok('(C3) puntos de corte fijos: Nivel_ST con etiquetas coherentes con el total', d25.every(f => f.Nivel_ST === (f.Dimension_ST < 24 ? 'Bajo' : (f.Dimension_ST < 36 ? 'Medio' : 'Alto'))), g25.obtenerEtiquetas()['Nivel_ST']);
             ok('(C3) puntos de corte por percentil: 75/25 dentro de la masa de empates (totales enteros)', fila('niveles', 'Nivel_PE').ok && Math.abs(d25.filter(f => f.Nivel_PE === 'Alto').length - 500) <= g25.cortesGenerados[1].empateMax + 1, fila('niveles', 'Nivel_PE').obtenido);
+            { g25.configuracion = JSON.parse(JSON.stringify(cfgBase({ tamanoMuestra: 80 }))); g25.configuracion.gruposPruebas = g25.agruparPruebas(g25.configuracion.pruebas); const b26 = g25.generarBaseDatos(); ok('(C3) una generación posterior sin cortes no arrastra niveles ni desenlaces al informe', !g25.informePedidoObtenido(b26).some(f => f.tipo === 'niveles' || f.tipo === 'OR') && !b26.nombres().some(c => /^Nivel_/.test(c)), ''); }
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
