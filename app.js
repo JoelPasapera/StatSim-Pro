@@ -208,6 +208,11 @@ function configurarGenerador() {
         const bA = document.getElementById('btnActualizarEstructura'); if (bA) bA.addEventListener('click', () => { const t = _selEst.value; if (t) { renderMatrizCargas(t); mostrarToast('Matriz reconciliada con la tabla I', 'success'); } });
         const bQ = document.getElementById('btnQuitarEstructura'); if (bQ) bQ.addEventListener('click', () => quitarEstructura());
     }
+    // (C2/C3) Desenlaces y puntos de corte
+    const _bC = document.getElementById('btnAgregarCorte'); if (_bC) _bC.addEventListener('click', () => agregarFilaCorte());
+    const _bD = document.getElementById('btnAgregarDesenlace'); if (_bD) _bD.addEventListener('click', () => agregarFilaDesenlace());
+    ['bodyCortes', 'bodyDesenlaces'].forEach(id => { const b = document.getElementById(id); if (b) { b.addEventListener('click', e => { if (e.target.closest('.btn-delete')) e.target.closest('tr').remove(); }); b.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('select[data-poblar]')) poblarSelectVariables(e.target, e.target.dataset.poblar); }); } });
+    const _bDs = document.getElementById('bodyDesenlaces'); if (_bDs) _bDs.addEventListener('change', e => { if (e.target.matches && e.target.matches('[aria-label="Tipo de desenlace"]')) actualizarFilaDesenlace(e.target.closest('tr')); });
     // (B7) Medidas repetidas
     const btnRepetida = document.getElementById('btnAgregarRepetida');
     if (btnRepetida) {
@@ -393,6 +398,120 @@ function nombresGeneralesDerivados() {
     return (typeof testsDefinidos === 'function' ? testsDefinidos() : [])
         .filter(t => (filasPorTest[t.prueba] || 0) >= 2)
         .map(t => (t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`));
+}
+// ---- (C2/C3) Tarjeta VIII: puntos de corte y desenlaces ----
+// Rellena un desplegable con variables: 'escalas' (escalas y puntajes generales)
+// o 'cuantitativas' (además, sociodemográficas continuas), conservando el valor.
+function poblarSelectVariables(sel, tipo) {
+    const actual = sel.value;
+    let nombres;
+    if (tipo === 'escalas') {
+        nombres = [];
+        document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la escala"]').forEach(inp => { const n = inp.value.trim(); if (n) nombres.push(n); });
+        nombres = nombres.concat(nombresGeneralesDerivados());
+    } else nombres = obtenerVariablesCorrelacionables();
+    sel.innerHTML = `<option value="">${tipo === 'escalas' ? 'Escala...' : 'Ninguno'}</option>` + nombres.map(n => `<option value="${escapeAttr(n)}"${n === actual ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('');
+    if (actual && !nombres.includes(actual)) sel.value = '';
+}
+function agregarFilaCorte(datos = null) {
+    const tbody = document.getElementById('bodyCortes');
+    if (!tbody) return null;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-corte';
+    fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Escala a cortar" data-poblar="escalas"><option value="">Escala...</option></select></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Bajo, Medio, Alto @ 20, 30  ·  o  @ P25, P75" maxlength="300" aria-label="Categorías y cortes"></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    const sel = fila.querySelector('[aria-label="Escala a cortar"]');
+    poblarSelectVariables(sel, 'escalas');
+    if (datos) { sel.value = datos.variable || ''; fila.querySelector('[aria-label="Categorías y cortes"]').value = datos.texto || ''; }
+    return fila;
+}
+function agregarFilaDesenlace(datos = null) {
+    const tbody = document.getElementById('bodyDesenlaces');
+    if (!tbody) return null;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-desenlace';
+    const pred = j => `<td><select class="input input-sm" aria-label="Predictor ${j}" data-poblar="cuantitativas"><option value="">Ninguno</option></select><input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.1" min="0.1" max="10" placeholder="OR/IRR por DE" aria-label="Efecto del predictor ${j}"></td>`;
+    fila.innerHTML = `
+        <td><input type="text" class="input input-sm" placeholder="Ej: Deserción" maxlength="60" aria-label="Nombre del desenlace"></td>
+        <td><select class="input input-sm" aria-label="Tipo de desenlace"><option value="binario">Binario (sí/no)</option><option value="conteo">Conteo</option><option value="ordinal">Ordinal</option></select></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: No, Sí: 25 %" maxlength="300" aria-label="Parámetro del desenlace"></td>
+        ${pred(1)}${pred(2)}${pred(3)}
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    fila.querySelectorAll('select[data-poblar]').forEach(s => poblarSelectVariables(s, 'cuantitativas'));
+    if (datos) {
+        const poner = (et, v) => { const el = fila.querySelector(`[aria-label="${et}"]`); if (el && v !== undefined && v !== null) el.value = v; };
+        poner('Nombre del desenlace', datos.nombre); poner('Tipo de desenlace', datos.tipo); poner('Parámetro del desenlace', datos.parametro);
+        (datos.predictores || []).forEach((p, j) => { poner(`Predictor ${j + 1}`, p.variable); poner(`Efecto del predictor ${j + 1}`, p.efecto); });
+    }
+    actualizarFilaDesenlace(fila);
+    return fila;
+}
+function actualizarFilaDesenlace(fila) {
+    if (!fila) return;
+    const tipo = (fila.querySelector('[aria-label="Tipo de desenlace"]') || {}).value;
+    const par = fila.querySelector('[aria-label="Parámetro del desenlace"]');
+    if (par) par.placeholder = tipo === 'conteo' ? 'Media, ej: 2.5' : (tipo === 'ordinal' ? 'Ej: Bajo:50, Medio:30, Alto:20' : 'Ej: No, Sí: 25 %');
+    fila.querySelectorAll('[aria-label^="Efecto del predictor"]').forEach(inp => { inp.placeholder = tipo === 'conteo' ? 'IRR por DE' : 'OR por DE'; });
+}
+function csvDeCortes() {
+    let csv = 'Variable,CategoriasCortes\n';
+    const esc = v => (String(v).includes(',') || String(v).includes('"') ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    document.querySelectorAll('#bodyCortes .fila-corte').forEach(f => { csv += `${esc((f.querySelector('select') || {}).value || '')},${esc((f.querySelector('input') || {}).value || '')}\n`; });
+    return csv;
+}
+function aplicarCSVCortes(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    const tbody = document.getElementById('bodyCortes'); if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0;
+    for (const linea of lineas.slice(1)) {
+        const [variable, texto] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        if (!variable) continue;
+        const fila = agregarFilaCorte({ variable, texto });
+        if (fila && fila.querySelector('select').value === '') { fila.remove(); continue; }
+        aplicadas++;
+    }
+    return aplicadas;
+}
+function csvDeDesenlaces() {
+    let csv = 'Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3\n';
+    const esc = v => (String(v).includes(',') || String(v).includes('"') ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    document.querySelectorAll('#bodyDesenlaces .fila-desenlace').forEach(f => {
+        const v = et => { const el = f.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
+        csv += [v('Nombre del desenlace'), v('Tipo de desenlace'), v('Parámetro del desenlace'), v('Predictor 1'), v('Efecto del predictor 1'), v('Predictor 2'), v('Efecto del predictor 2'), v('Predictor 3'), v('Efecto del predictor 3')].map(esc).join(',') + '\n';
+    });
+    return csv;
+}
+function aplicarCSVDesenlaces(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    const tbody = document.getElementById('bodyDesenlaces'); if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0;
+    for (const linea of lineas.slice(1)) {
+        const v = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        if (!v[0]) continue;
+        const predictores = [];
+        for (let j = 0; j < 3; j++) if (v[3 + 2 * j]) predictores.push({ variable: v[3 + 2 * j], efecto: v[4 + 2 * j] });
+        agregarFilaDesenlace({ nombre: v[0], tipo: v[1] || 'binario', parametro: v[2] || '', predictores });
+        aplicadas++;
+    }
+    return aplicadas;
 }
 // ---- (C1) Tarjeta VII: estructura factorial de cada test ----
 // Estado por test: { modo, factores, cargas: { <dimensión>: [[λ por factor] por ítem] }, metodo: {carga}|null, desajuste }.
@@ -3002,7 +3121,7 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###', repetidas: '###REPETIDAS###', estructura: '###ESTRUCTURA###' };
+const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###', repetidas: '###REPETIDAS###', estructura: '###ESTRUCTURA###', cortes: '###CORTES###', desenlaces: '###DESENLACES###' };
 // Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
@@ -3067,12 +3186,13 @@ function exportarConfigTodo() {
         const csvM = csvDeModelos();
         const csvR = csvDeRepetidas();
         const csvE = csvDeEstructuras();
+        const csvCo = csvDeCortes(), csvDe = csvDeDesenlaces();
         const nFilas = s => Math.max(0, String(s).trim().split(/\r?\n/).length - 1);
         if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0 && nFilas(csvD) === 0 && nFilas(csvM) === 0 && nFilas(csvR) === 0) {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '', MARCA_TODO.repetidas, csvR.trim(), '', MARCA_TODO.estructura, csvE.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '', MARCA_TODO.repetidas, csvR.trim(), '', MARCA_TODO.estructura, csvE.trim(), '', MARCA_TODO.cortes, csvCo.trim(), '', MARCA_TODO.desenlaces, csvDe.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
         mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es), ${nFilas(csvD)} diferencia(s), ${nFilas(csvM)} modelo(s), ${nFilas(csvR)} medida(s) repetida(s)`, 'success');
     } catch (error) {
@@ -3118,6 +3238,7 @@ function importarConfigTodo(e) {
             const csvM = bloqueHastaSiguiente(MARCA_TODO.modelos);
             const csvR = bloqueHastaSiguiente(MARCA_TODO.repetidas);
             const csvE = bloqueHastaSiguiente(MARCA_TODO.estructura);
+            const csvCo = bloqueHastaSiguiente(MARCA_TODO.cortes), csvDe = bloqueHastaSiguiente(MARCA_TODO.desenlaces);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
@@ -3131,8 +3252,11 @@ function importarConfigTodo(e) {
             const rR = csvR ? aplicarCSVRepetidas(csvR) : { aplicadas: 0, omitidas: 0 };
             const rE = csvE ? aplicarCSVEstructuras(csvE) : 0;
             if (!csvE) cargarEstructurasDesdeJSON('[]');
+            const rCo = csvCo ? aplicarCSVCortes(csvCo) : 0, rDe = csvDe ? aplicarCSVDesenlaces(csvDe) : 0;
+            if (!csvCo) { const b = document.getElementById('bodyCortes'); if (b) b.innerHTML = ''; }
+            if (!csvDe) { const b = document.getElementById('bodyDesenlaces'); if (b) b.innerHTML = ''; }
             const omitidas = rC.omitidas + rD.omitidas + rM.omitidas + rR.omitidas;
-            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (rE ? `, ${rE} estructura(s) factorial(es)` : '') + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
+            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (rE ? `, ${rE} estructura(s) factorial(es)` : '') + (rCo ? `, ${rCo} corte(s)` : '') + (rDe ? `, ${rDe} desenlace(s)` : '') + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
