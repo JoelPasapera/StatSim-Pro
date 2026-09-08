@@ -1951,8 +1951,8 @@ class GeneradorDatos {
                 // el ruido propio del ítem debe poder absorber el redondeo a enteros (varianza 1/12)
                 const mediaL = sumaL / Math.max(1, propias.length);
                 const ruidoPropio = sigmaItem * sigmaItem * (1 - mediaL * mediaL);
-                if (likert && ruidoPropio < 0.10) errores.push(`Estructura factorial de «${est.prueba}»: con DE ${p.desviacion} en ${p.numItems} ítems y cargas de ${mediaL.toFixed(2)}, el ruido propio de cada ítem de «${p.nombre}» (DE ${Math.sqrt(ruidoPropio).toFixed(2)}) es menor que el redondeo a enteros y las cargas no pueden cumplirse; sube la DE del total, baja las cargas o reduce los ítems`);
-                else if (likert && ruidoPropio < 0.16) advertencias.push(`Estructura factorial de «${est.prueba}»: los ítems de «${p.nombre}» tienen poco ruido propio frente al redondeo a enteros; las cargas saldrán algo atenuadas`);
+                if (likert && ruidoPropio < 0.16) errores.push(`Estructura factorial de «${est.prueba}»: con DE ${p.desviacion} en ${p.numItems} ítems y cargas de ${mediaL.toFixed(2)}, el ruido propio de cada ítem de «${p.nombre}» (DE ${Math.sqrt(ruidoPropio).toFixed(2)}) es menor que el redondeo a enteros y las cargas no pueden cumplirse; sube la DE del total, baja las cargas o reduce los ítems`);
+                else if (likert && ruidoPropio < 0.25) advertencias.push(`Estructura factorial de «${est.prueba}»: los ítems de «${p.nombre}» tienen poco ruido propio frente al redondeo a enteros; las cargas saldrán algo atenuadas`);
                 const fi = this._fiabilidadImplicita(propias)[indice];
                 alfasImplicitos.push({ p, fi });
                 if ((est.modo || 'cargas') !== 'alfa' && p.alfa > 0 && p.alfa < 1 && Math.abs(fi - p.alfa) > 0.03) advertencias.push(`Estructura factorial de «${est.prueba}»: las cargas de «${p.nombre}» implican ${indice === 'omega' ? 'ω' : 'α'} = ${fi.toFixed(2)}, distinto del ${p.alfa} de la tabla I; mandan las cargas (o elige el modo «respetar el α»)`);
@@ -2771,6 +2771,19 @@ class GeneradorDatos {
             ok('(C4) anidamiento en 20 aulas: CCI(1) por ANOVA ≈ 0.20 y Media/DE de Percepción intactas', f27('CCI') && f27('CCI').ok && inf27.filter(f => (f.tipo === 'Media' || f.tipo === 'DE') && f.variable === 'Percepción').every(f => f.ok), f27('CCI') && `${f27('CCI').pedido}→${f27('CCI').obtenido}`);
             const rtt27 = inf27.filter(f => f.tipo === 'r_tt'), de27 = inf27.filter(f => f.tipo === 'DE' && /Comprensión \(T3\)/.test(f.variable)), de1 = inf27.find(f => f.tipo === 'DE' && f.variable === 'Comprensión');
             ok('(C4) crecimiento: correlaciones entre ondas y DE creciente («abanico») implicadas por el modelo y cumplidas', rtt27.length === 2 && rtt27.every(f => f.ok) && de27.length === 1 && de27[0].ok && parseFloat(de27[0].pedido) > parseFloat(de1.pedido) * 1.03, `r ${rtt27.map(f => `${f.pedido}→${f.obtenido}`).join(' ')}; DE T1 ${de1 && de1.pedido} → T3 ${de27[0] && de27[0].pedido}→${de27[0] && de27[0].obtenido}`);
+            // 23) (C4, revisión) reproducibilidad con CCI, efecto de aula compartido entre ondas, interacción desbalanceada sobre una continua
+            const cfgC4b = cfgBase({ tamanoMuestra: 1200, sociodemograficos: sociosC4.map(s => s.categoria === 'Programa' ? Object.assign({}, s, { promedio: 0.3 }) : s).concat([{ categoria: 'Ingreso', categoriaCorta: 'In', distribucion: 'normal', promedio: 1500, desviacion: 600, minimo: 200, maximo: 6000, decimales: 0 }]),
+                diferenciasGrupo: [{ tipo: 'icc', cuantitativa: 'Estrés', agrupacion: 'Aula', d: 0.25 }, { tipo: 'interaccion', cuantitativa: 'Ingreso', agrupacion: 'Sexo', agrupacion2: 'Programa', d: -0.6 }, { tipo: 'd', cuantitativa: 'Ingreso', agrupacion: 'Programa', d: 0.3 }],
+                medidasRepetidas: [{ variable: 'Estrés', ondas: 2, estabilidad: 0.7, cambio: 0.2, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }] });
+            const { g: g28, d: d28 } = generar(cfgC4b);
+            const inf28 = g28.informePedidoObtenido(g28.datosGenerados);
+            const g28b = new GeneradorDatos(); g28b.configuracion = JSON.parse(JSON.stringify(cfgC4b)); g28b.configuracion.gruposPruebas = g28b.agruparPruebas(g28b.configuracion.pruebas); g28b.generarBaseDatos(); const d28b = g28b.datosGenerados.aObjetos();
+            ok('(C4) con CCI, la misma semilla reproduce la misma base (y una segunda generación en la misma instancia también)', JSON.stringify(d28[5]) === JSON.stringify(d28b[5]) && JSON.stringify(generar(cfgC4b).d[5]) === JSON.stringify(d28[5]), '');
+            const mediaAula = (col) => { const m = new Map(); d28.forEach(f => { if (!m.has(f.Aula)) m.set(f.Aula, []); m.get(f.Aula).push(f[col]); }); return Array.from(m.values()).map(v => v.reduce((s, x) => s + x, 0) / v.length); };
+            const rAulas = g28._corr(mediaAula('Dimension_ST'), mediaAula('Dimension_ST_T2'));
+            ok('(C4) el efecto de aula se comparte entre las ondas T1 y T2 (medias de aula muy correlacionadas)', rAulas > 0.8, `r entre medias de aula T1/T2 = ${rAulas.toFixed(2)}`);
+            const fInt = inf28.find(f => f.tipo === 'd×'), fD = inf28.find(f => f.tipo === 'd' && /Ingreso por Programa/.test(f.variable));
+            ok('(C4) interacción desbalanceada (Programa 30 %) sobre una sociodemográfica continua, con su efecto principal', fInt && fInt.ok && fD && fD.ok, `${fInt && fInt.pedido}→${fInt && fInt.obtenido}; d ${fD && fD.pedido}→${fD && fD.obtenido}`);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -3685,7 +3698,9 @@ class GeneradorDatos {
         (cfg.pruebas || []).forEach(p => { if (!p.sufijo) porSigla[p.nombreCorto] = p; });   // (B7) las ondas T2… no son dimensiones del General
         const vistas = new Set();          // (variable, agrupación) repetida: manda la primera fila, como en las correlaciones
         const sobreGeneral = [];
-        this._efectosCluster = this._efectosCluster || new Map();
+        // (C4) efectos de conglomerado: nuevos en cada generación (misma semilla ⇒
+        // misma base) y compartidos entre las ondas de una misma escala
+        this._efectosCluster = new Map();
         (cfg.diferenciasGrupo || []).forEach(dif => {
             const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
             const varC = this._varianzaCodigo(agrup);
@@ -3704,9 +3719,12 @@ class GeneradorDatos {
             }
             if (dif.tipo === 'icc') {
                 if (agrup.distribucion !== 'categorica' || !(esEscala || esSocio) || !(dif.d > 0 && dif.d < 0.95)) return;
-                const claveC = `${dif.cuantitativa}|icc|${dif.agrupacion}`;
-                if (vistas.has(claveC)) return; vistas.add(claveC);
-                // efectos aleatorios de cada conglomerado, sembrados, uno por (variable, agrupación)
+                const claveFila = `${dif.cuantitativa}|icc|${dif.agrupacion}`;
+                if (vistas.has(claveFila)) return; vistas.add(claveFila);
+                // efectos aleatorios de cada conglomerado, sembrados, uno por (escala base, agrupación):
+                // las ondas T2… comparten el efecto de aula de su escala
+                const pr = (cfg.pruebas || []).find(p => p.nombre === dif.cuantitativa);
+                const claveC = `${pr && pr.base ? pr.base.nombre : dif.cuantitativa}|icc|${dif.agrupacion}`;
                 if (!this._efectosCluster.has(claveC)) { const u = {}; this._nivelesDe(agrup).forEach(nv => { u[nv.codigo] = this.generarNormalEstandar(); }); this._efectosCluster.set(claveC, u); }
                 if (!efectivas.has(dif.cuantitativa)) efectivas.set(dif.cuantitativa, []);
                 efectivas.get(dif.cuantitativa).push({ agrup, d: dif.d, origen: 'explicita', tipo: 'icc', efectos: this._efectosCluster.get(claveC) });
