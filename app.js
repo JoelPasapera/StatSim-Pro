@@ -562,6 +562,21 @@ function guardarEstructurasJSON() {
     const el = document.getElementById('estructurasJSON');
     if (el) el.value = JSON.stringify(Object.values(estructurasUI));
 }
+// Antes de generar o exportar: cada estructura se reconcilia con la tabla I
+// (ítems añadidos o quitados, dimensiones renombradas) y las de tests que ya no
+// existen se descartan avisando.
+function reconciliarEstructurasTodas(avisar = true) {
+    const huerfanas = [];
+    Object.keys(estructurasUI).forEach(prueba => {
+        const est = estructuraReconciliada(prueba);
+        if (est) estructurasUI[prueba] = est; else { huerfanas.push(prueba); delete estructurasUI[prueba]; }
+    });
+    guardarEstructurasJSON();
+    const sel = document.getElementById('selectorTestEstructura');
+    if (sel && sel.value && estructurasUI[sel.value]) renderMatrizCargas(sel.value);
+    if (avisar && huerfanas.length) mostrarToast(`Estructura factorial descartada: «${huerfanas.join('», «')}» ya no está en la tabla I`, 'warning');
+    return huerfanas;
+}
 function cargarEstructurasDesdeJSON(texto) {
     Object.keys(estructurasUI).forEach(k => delete estructurasUI[k]);
     try { JSON.parse(texto || '[]').forEach(e => { if (e && e.prueba && e.cargas) estructurasUI[e.prueba] = e; }); } catch (e) { /* ignorar */ }
@@ -869,6 +884,7 @@ function generarBaseDatos() {
             throw new Error('Falta base-columnar.js: en index.html debe cargarse antes de generador-datos.js');
         }
         // Recolectar configuración
+        reconciliarEstructurasTodas();   // (C1) la matriz sigue a la tabla I
         generadorDatos.recolectarConfiguracion();
         // Validar
         const validacion = generadorDatos.validarConfiguracion();
@@ -3039,6 +3055,7 @@ function aplicarCSVGeneral(csv) {
 }
 function exportarConfigTodo() {
     try {
+        reconciliarEstructurasTodas(false);
         const partes = [];
         // Se reutilizan los MISMOS generadores de cada tabla (una sola fuente de verdad).
         const csvG = csvDeGeneral();
