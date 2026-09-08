@@ -471,9 +471,12 @@ class GeneradorDatos {
                 const et = `Informante «${c.etiqueta}» de «${c.variable}»`;
                 const p = (cfg.pruebas || []).find(x => x.nombre === c.variable && !x.sufijo && x.tipo !== 'general');
                 if (!p) { errores.push(`${et}: solo se puede añadir un informante a una escala (dimensión) de la tabla I`); return; }
-                const clave = `${c.variable}|${this._slugSufijo(c.etiqueta)}`;
+                const slug = this._slugSufijo(c.etiqueta);
+                const clave = `${c.variable}|${slug}`;
                 if (vistos.has(clave)) errores.push(`${et}: etiqueta repetida para la misma escala`);
                 vistos.add(clave);
+                if (/^T\d+$/i.test(slug)) errores.push(`${et}: la etiqueta «${c.etiqueta}» se confunde con una onda (T2, T3…); usa otra`);
+                if (!c.etiqueta || !c.etiqueta.trim()) advertencias.push(`${et}: sin etiqueta se usará «informante 2»`);
                 if (!(c.r > 0 && c.r < 0.99)) errores.push(`${et}: la concordancia r debe estar entre 0.01 y 0.98`);
                 if (Math.abs(c.sesgo) > 2) errores.push(`${et}: un sesgo de ${c.sesgo} DE no es plausible`);
                 if ((cfg.medidasRepetidas || []).some(m => m.variable === c.variable)) advertencias.push(`${et}: la escala también tiene ondas; el informante se genera solo para la onda 1`);
@@ -3078,6 +3081,12 @@ class GeneradorDatos {
             ok('(C7) jueces categóricos: κ de Fleiss ≈ 0.60 sobre los niveles de Estrés, con etiquetas', f32('κ') && f32('κ').ok && ['Bajo', 'Medio', 'Alto'].includes(d32[0].Juez1_ST), f32('κ') && `${f32('κ').pedido}→${f32('κ').obtenido}`);
             ok('(C7) jueces continuos: CCI(1) ≈ 0.80 sobre Percepción', f32('CCI jueces') && f32('CCI jueces').ok, f32('CCI jueces') && `${f32('CCI jueces').pedido}→${f32('CCI jueces').obtenido}`);
             ok('(C7) etiquetas de las columnas nuevas', /κ 0.6/.test(g32.obtenerEtiquetas()['Juez2_ST']) && /CCI 0.8/.test(g32.obtenerEtiquetas()['Juez1_PE']) && g32.obtenerEtiquetas()['Dimension_ST_madre'] === 'Estrés (madre)', g32.obtenerEtiquetas()['Juez2_ST']);
+            // (C7, revisión) informante de una dimensión con ondas y con puntaje general: no entra en el General ni cuenta como onda
+            const cfgC7b = cfgBase({ tamanoMuestra: 600, medidasRepetidas: [{ variable: 'Percepción', ondas: 2, estabilidad: 0.7, cambio: 0.3, agrupacion: '', cambioGrupo: null, modelo: 'ar1' }], concordancias: [{ tipo: 'informante', variable: 'Percepción', etiqueta: 'docente', r: 0.5, sesgo: 0.2 }] });
+            const { g: g33, d: d33 } = generar(cfgC7b);
+            const inf33 = g33.informePedidoObtenido(g33.datosGenerados);
+            ok('(C7) informante + ondas + General: columnas de las tres versiones, General intacto (sin el informante) y r_tt/r inf cumplidas', ['Dimension_PE', 'Dimension_PE_T2', 'Dimension_PE_docente'].every(c => c in d33[0]) && g33.configuracion.gruposPruebas.find(x => x.nombre === 'EQ-i').escalas.length === 3 && inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').length === 2 && inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').every(f => f.ok), inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').map(f => `${f.tipo} ${f.pedido}→${f.obtenido}`).join(' | '));
+            { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC7b)); gv.configuracion.concordancias[0].etiqueta = 'T2'; gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C7) validación: una etiqueta «T2» de informante se rechaza (se confunde con una onda)', v.errores.some(e => /se confunde con una onda/.test(e)), ''); }
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
