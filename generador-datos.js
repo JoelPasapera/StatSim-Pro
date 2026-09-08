@@ -476,9 +476,40 @@ class GeneradorDatos {
             if (!variable) return;
             const ondas = parseInt(inputs[0].value, 10), estabilidad = parseFloat(inputs[1].value), cambio = parseFloat(inputs[2].value), cambioGrupo = parseFloat(inputs[3].value);
             if (isNaN(estabilidad)) throw new Error(`Medida repetida «${variable}»: falta la estabilidad test-retest (r entre ondas)`);
-            salida.push({ variable, ondas: isNaN(ondas) ? 2 : ondas, estabilidad, cambio: isNaN(cambio) ? 0 : cambio, agrupacion: agrupacion || '', cambioGrupo: isNaN(cambioGrupo) ? null : cambioGrupo });
+            // (C4) modelo de crecimiento: pendientes individuales aleatorias
+            const selModelo = fila.querySelector('[aria-label="Modelo longitudinal"]');
+            const modelo = selModelo && selModelo.value === 'crecimiento' ? 'crecimiento' : 'ar1';
+            const dePend = fila.querySelector('[aria-label="DE de las pendientes"]'), rIP = fila.querySelector('[aria-label="Correlación intercepto-pendiente"]');
+            const dePendientes = dePend ? parseFloat(dePend.value) : NaN, rInterceptoPendiente = rIP ? parseFloat(rIP.value) : NaN;
+            salida.push({ variable, ondas: isNaN(ondas) ? 2 : ondas, estabilidad, cambio: isNaN(cambio) ? 0 : cambio, agrupacion: agrupacion || '', cambioGrupo: isNaN(cambioGrupo) ? null : cambioGrupo,
+                modelo, dePendientes: isNaN(dePendientes) ? 0 : dePendientes, rInterceptoPendiente: isNaN(rInterceptoPendiente) ? 0 : rInterceptoPendiente });
         });
         return salida;
+    }
+    // (C4) Interacción A×B y anidamiento (ICC) en la tabla IV
+    _validarEfectosCompuestos(errores, advertencias) {
+        const cfg = this.configuracion;
+        (cfg.diferenciasGrupo || []).forEach(dif => {
+            if (!dif.tipo || dif.tipo === 'd') return;
+            const esGeneral = this._esNombreGeneral(dif.cuantitativa);
+            const A = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
+            if (dif.tipo === 'interaccion') {
+                const et = `Interacción ${dif.agrupacion} × ${dif.agrupacion2 || '?'} sobre «${dif.cuantitativa}»`;
+                const B = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion2);
+                if (!dif.agrupacion2) errores.push(`${et}: elige la segunda agrupación`);
+                if (dif.agrupacion2 === dif.agrupacion) errores.push(`${et}: las dos agrupaciones deben ser distintas`);
+                if (!A || A.distribucion !== 'binaria' || (B && B.distribucion !== 'binaria')) errores.push(`${et}: la interacción se define entre dos variables BINARIAS (diseño 2×2)`);
+                if (esGeneral) errores.push(`${et}: la interacción se pide sobre una escala o continua, no sobre un puntaje general (pídela en sus dimensiones)`);
+                if (Math.abs(dif.d) > 2) errores.push(`${et}: una d de interacción de ${dif.d} no es plausible`);
+                if (A && B && A.dependeDe === B.categoria || B && A && B.dependeDe === A.categoria) advertencias.push(`${et}: las dos agrupaciones están asociadas entre sí; las celdas quedarán desbalanceadas`);
+            } else if (dif.tipo === 'icc') {
+                const et = `Anidamiento de «${dif.cuantitativa}» en ${dif.agrupacion}`;
+                if (!A || A.distribucion !== 'categorica') errores.push(`${et}: la variable de anidamiento debe ser CATEGÓRICA (p. ej. Aula con 1…K)`);
+                else { const K = this._nivelesDe(A).length; if (K < 3) errores.push(`${et}: hacen falta al menos 3 grupos (aulas, colegios…)`); else if (K < 8) advertencias.push(`${et}: con ${K} grupos la CCI estimada fluctuará bastante`); }
+                if (!(dif.d > 0 && dif.d < 0.9)) errores.push(`${et}: la CCI debe estar entre 0.01 y 0.90 (lo habitual en educación es 0.05–0.30)`);
+                if (esGeneral) errores.push(`${et}: el anidamiento se pide sobre una escala o continua, no sobre un puntaje general (pídelo en sus dimensiones)`);
+            }
+        });
     }
     _validarMedidasRepetidas(errores, advertencias) {
         const cfg = this.configuracion;
@@ -489,6 +520,11 @@ class GeneradorDatos {
             const etiqueta = `Medida repetida «${mr.variable}»`;
             const p = (cfg.pruebas || []).find(x => x.nombre === mr.variable && !x.sufijo);
             if (!p || p.tipo === 'general') { errores.push(`${etiqueta}: solo puede repetirse una escala de tipo dimensión de la tabla I`); return; }
+            if (mr.modelo === 'crecimiento') {
+                if (!(mr.dePendientes >= 0 && mr.dePendientes <= 1.5)) errores.push(`${etiqueta}: la DE de las pendientes debe estar entre 0 y 1.5 (en DE de T1)`);
+                if (!(Math.abs(mr.rInterceptoPendiente) < 0.95)) errores.push(`${etiqueta}: la correlación intercepto–pendiente debe estar entre −0.95 y 0.95`);
+                if (mr.ondas < 3) advertencias.push(`${etiqueta}: con solo dos ondas las pendientes individuales no se distinguen del error; el modelo de crecimiento luce con 3 o más`);
+            }
             if (mr.agrupacion && (cfg.modelos || []).some(md => md.tipo === 'moderacion' && md.y === mr.variable)) {
                 advertencias.push(`${etiqueta}: es criterio de una moderación; el cambio por grupo de sus ondas hereda el azar de las medias de grupo de T1 (usa el cambio global o quita la moderación)`);
             }
@@ -523,13 +559,21 @@ class GeneradorDatos {
             const selects = fila.querySelectorAll('select');
             const inputD = fila.querySelector('input');
             if (selects.length < 2 || !inputD) return;
-
-            const cuantitativa = selects[0].value;
-            const agrupacion = selects[1].value;
+            // (C4) filas nuevas: [tipo, cuantitativa, agrupación A, agrupación B]; filas antiguas: [cuantitativa, agrupación]
+            const selTipo = fila.querySelector('[aria-label="Tipo de efecto"]');
+            const selCuant = fila.querySelector('[aria-label="Variable cuantitativa"]') || selects[0];
+            const selAgrup = fila.querySelector('[aria-label="Variable de agrupación"]') || selects[1];
+            const selAgrup2 = fila.querySelector('[aria-label="Segunda agrupación"]');
+            const tipo = selTipo && ['interaccion', 'icc'].includes(selTipo.value) ? selTipo.value : 'd';
+            const cuantitativa = selCuant.value;
+            const agrupacion = selAgrup.value;
+            const agrupacion2 = tipo === 'interaccion' && selAgrup2 ? selAgrup2.value : '';
             const d = parseFloat(inputD.value);
 
             if (cuantitativa && agrupacion && cuantitativa !== agrupacion && !isNaN(d)) {
-                diferencias.push({ cuantitativa: cuantitativa, agrupacion: agrupacion, d: d });
+                const fila2 = { cuantitativa: cuantitativa, agrupacion: agrupacion, d: d, tipo };
+                if (tipo === 'interaccion') fila2.agrupacion2 = agrupacion2;
+                diferencias.push(fila2);
             }
         });
 
@@ -1385,6 +1429,23 @@ class GeneradorDatos {
             lista.forEach(e => {
                 const codigos = base.columna(e.agrup.categoria).datos;
                 const c = new Float64Array(n);
+                if (e.tipo === 'interaccion') {
+                    // (C4) producto de los códigos centrados: su pendiente es la diferencia de diferencias
+                    const codigos2 = base.columna(e.agrup2.categoria).datos;
+                    for (let i = 0; i < n; i++) c[i] = this._codigoCentrado(e.agrup, codigos[i]) * this._codigoCentrado(e.agrup2, codigos2[i]);
+                    partes.push({ agrup: e.agrup, agrup2: e.agrup2, tipo: 'interaccion', d: e.d, amplitud: e.amplitud, c, codigos, codigos2 });
+                    return;
+                }
+                if (e.tipo === 'icc') {
+                    // (C4) efecto de conglomerado estandarizado ENTRE PERSONAS (media 0, DE 1):
+                    // amplitud √CCI ⇒ varianza entre = CCI·σ² exacta, sin calibrar
+                    let m = 0; for (let i = 0; i < n; i++) { c[i] = e.efectos[codigos[i]] || 0; m += c[i]; }
+                    m /= n; let v = 0; for (let i = 0; i < n; i++) { c[i] -= m; v += c[i] * c[i]; }
+                    const sd = Math.sqrt(v / Math.max(1, n - 1)) || 1;
+                    for (let i = 0; i < n; i++) c[i] /= sd;
+                    partes.push({ agrup: e.agrup, tipo: 'icc', d: e.d, amplitud: e.amplitud, c, codigos, fija: true });
+                    return;
+                }
                 for (let i = 0; i < n; i++) c[i] = this._codigoCentrado(e.agrup, codigos[i]);
                 partes.push({ agrup: e.agrup, d: e.d, amplitud: e.amplitud, c, codigos });
             });
@@ -1395,6 +1456,32 @@ class GeneradorDatos {
         };
         recalcular();
         return { desp, partes, recalcular };
+    }
+    // (C4) d de interacción observada en un 2×2: [(m11 − m10) − (m01 − m00)] /
+    // DE agrupada dentro de las cuatro celdas.
+    _dInteraccion(valores, codA, codB) {
+        const celdas = [[[], []], [[], []]];
+        for (let i = 0; i < valores.length; i++) { const v = valores[i]; if (!(v === v)) continue; const a = codA[i] === 1 ? 1 : 0, b = codB[i] === 1 ? 1 : 0; celdas[a][b].push(v); }
+        if (celdas.some(f => f.some(c => c.length < 2))) return null;
+        let ss = 0, gl = 0;
+        const media = c => c.reduce((s, v) => s + v, 0) / c.length;
+        celdas.forEach(f => f.forEach(c => { const m = media(c); c.forEach(v => { ss += (v - m) ** 2; }); gl += c.length - 1; }));
+        const de = Math.sqrt(ss / Math.max(1, gl));
+        if (!(de > 0)) return null;
+        return ((media(celdas[1][1]) - media(celdas[1][0])) - (media(celdas[0][1]) - media(celdas[0][0]))) / de;
+    }
+    // (C4) CCI(1) por ANOVA de un factor: (MSB − MSW) / (MSB + (n₀ − 1)·MSW)
+    _iccAnova(valores, codigos) {
+        const grupos = new Map();
+        for (let i = 0; i < valores.length; i++) { const v = valores[i]; if (!(v === v)) continue; if (!grupos.has(codigos[i])) grupos.set(codigos[i], []); grupos.get(codigos[i]).push(v); }
+        const K = grupos.size; if (K < 2) return null;
+        let N = 0, sumaTotal = 0; grupos.forEach(g => { N += g.length; g.forEach(v => { sumaTotal += v; }); });
+        const mediaG = sumaTotal / N;
+        let ssb = 0, ssw = 0, sumN2 = 0;
+        grupos.forEach(g => { const m = g.reduce((s, v) => s + v, 0) / g.length; ssb += g.length * (m - mediaG) ** 2; g.forEach(v => { ssw += (v - m) ** 2; }); sumN2 += g.length * g.length; });
+        const msb = ssb / (K - 1), msw = ssw / Math.max(1, N - K);
+        const n0 = (N - sumN2 / N) / (K - 1);
+        return (msb - msw) / (msb + (n0 - 1) * msw);
     }
     // d marginal observada (pendiente sobre el código / DE agrupada dentro de
     // los grupos de ESA agrupación), como la calcula el informe.
@@ -2668,6 +2755,22 @@ class GeneradorDatos {
             ok('(C3) puntos de corte fijos: Nivel_ST con etiquetas coherentes con el total', d25.every(f => f.Nivel_ST === (f.Dimension_ST < 24 ? 'Bajo' : (f.Dimension_ST < 36 ? 'Medio' : 'Alto'))), g25.obtenerEtiquetas()['Nivel_ST']);
             ok('(C3) puntos de corte por percentil: 75/25 dentro de la masa de empates (totales enteros)', fila('niveles', 'Nivel_PE').ok && Math.abs(d25.filter(f => f.Nivel_PE === 'Alto').length - 500) <= g25.cortesGenerados[1].empateMax + 1, fila('niveles', 'Nivel_PE').obtenido);
             { g25.configuracion = JSON.parse(JSON.stringify(cfgBase({ tamanoMuestra: 80 }))); g25.configuracion.gruposPruebas = g25.agruparPruebas(g25.configuracion.pruebas); const b26 = g25.generarBaseDatos(); ok('(C3) una generación posterior sin cortes no arrastra niveles ni desenlaces al informe', !g25.informePedidoObtenido(b26).some(f => f.tipo === 'niveles' || f.tipo === 'OR') && !b26.nombres().some(c => /^Nivel_/.test(c)), ''); }
+            // 22) (C4) interacción 2×2, anidamiento con CCI y crecimiento con pendientes aleatorias
+            const sociosC4 = [
+                { categoria: 'Sexo', categoriaCorta: 'S', distribucion: 'binaria', promedio: 0.5, desviacion: 1, minimo: null, maximo: null, decimales: 0 },
+                { categoria: 'Programa', categoriaCorta: 'Pr', distribucion: 'binaria', promedio: 0.4, desviacion: 1, minimo: null, maximo: null, decimales: 0 },
+                { categoria: 'Aula', categoriaCorta: 'Au', distribucion: 'categorica', promedio: 0, desviacion: 1, minimo: 1, maximo: 20, decimales: 0 }
+            ];
+            const cfgC4 = cfgBase({ tamanoMuestra: 2000, sociodemograficos: sociosC4,
+                diferenciasGrupo: [{ tipo: 'd', cuantitativa: 'Estrés', agrupacion: 'Sexo', d: 0.4 }, { tipo: 'interaccion', cuantitativa: 'Estrés', agrupacion: 'Sexo', agrupacion2: 'Programa', d: 0.5 }, { tipo: 'icc', cuantitativa: 'Percepción', agrupacion: 'Aula', d: 0.20 }],
+                medidasRepetidas: [{ variable: 'Comprensión', ondas: 3, estabilidad: 0.6, cambio: 0.4, agrupacion: '', cambioGrupo: null, modelo: 'crecimiento', dePendientes: 0.5, rInterceptoPendiente: -0.2 }] });
+            const { g: g27 } = generar(cfgC4);
+            const inf27 = g27.informePedidoObtenido(g27.datosGenerados);
+            const f27 = tipo => inf27.find(f => f.tipo === tipo);
+            ok('(C4) interacción Sexo × Programa: diferencia de diferencias exacta, con el efecto principal de Sexo intacto', f27('d×') && f27('d×').ok && inf27.filter(f => f.tipo === 'd').every(f => f.ok), `d× ${f27('d×') && f27('d×').pedido}→${f27('d×') && f27('d×').obtenido}; d ${inf27.filter(f => f.tipo === 'd').map(f => f.obtenido).join(' ')}`);
+            ok('(C4) anidamiento en 20 aulas: CCI(1) por ANOVA ≈ 0.20 y Media/DE de Percepción intactas', f27('CCI') && f27('CCI').ok && inf27.filter(f => (f.tipo === 'Media' || f.tipo === 'DE') && f.variable === 'Percepción').every(f => f.ok), f27('CCI') && `${f27('CCI').pedido}→${f27('CCI').obtenido}`);
+            const rtt27 = inf27.filter(f => f.tipo === 'r_tt'), de27 = inf27.filter(f => f.tipo === 'DE' && /Comprensión \(T3\)/.test(f.variable)), de1 = inf27.find(f => f.tipo === 'DE' && f.variable === 'Comprensión');
+            ok('(C4) crecimiento: correlaciones entre ondas y DE creciente («abanico») implicadas por el modelo y cumplidas', rtt27.length === 2 && rtt27.every(f => f.ok) && de27.length === 1 && de27[0].ok && parseFloat(de27[0].pedido) > parseFloat(de1.pedido) * 1.03, `r ${rtt27.map(f => `${f.pedido}→${f.obtenido}`).join(' ')}; DE T1 ${de1 && de1.pedido} → T3 ${de27[0] && de27[0].pedido}→${de27[0] && de27[0].obtenido}`);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -3124,6 +3227,7 @@ class GeneradorDatos {
         // (modo exacto y n suficiente); si no, fluctúa como en una muestra real.
         const exactas = cfg.correlacionesExactas !== false && this.driversOrtogonalizados === true;
         (cfg.diferenciasGrupo || []).forEach(difPedida => {
+            if (difPedida.tipo && difPedida.tipo !== 'd') return;   // (C4) interacción y CCI van en su sección
             // (B7) en una onda T2… con cambio diferencial, la d efectiva se recompone
             // con la heredada del General: se informa esa, no la de la expansión
             const efectiva = difPedida.extraAmp !== undefined && this.diferenciasEfectivas
@@ -3188,7 +3292,36 @@ class GeneradorDatos {
         this._informeEstructuras(base, filas, num);
         // 9) (C2/C3) Desenlaces no continuos y puntos de corte
         this._informeDesenlacesYCortes(base, filas, num);
+        // 10) (C4) Interacciones 2×2 y anidamiento
+        this._informeEfectosCompuestos(base, filas, columnaDe, num);
         return filas;
+    }
+    _informeEfectosCompuestos(base, filas, columnaDe, num) {
+        const cfg = this.configuracion, n = base.n;
+        const exactas = cfg.correlacionesExactas !== false && this.driversOrtogonalizados === true;
+        (cfg.diferenciasGrupo || []).forEach(dif => {
+            if (!dif.tipo || dif.tipo === 'd') return;
+            const cv = columnaDe(dif.cuantitativa);
+            const A = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
+            if (!cv || !A || !base.tiene(cv) || !base.tiene(A.categoria)) return;
+            const valores = base.columna(cv).datos, codA = base.columna(A.categoria).datos;
+            if (dif.tipo === 'interaccion') {
+                const B = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion2);
+                if (!B || !base.tiene(B.categoria)) return;
+                const obs = this._dInteraccion(valores, codA, base.columna(B.categoria).datos);
+                if (obs === null) return;
+                // EE aproximado de la diferencia de diferencias: 2/√n̄ con n̄ por celda
+                const tol = exactas ? 0.06 : Math.max(0.06, 2 * 2 / Math.sqrt(Math.max(4, n / 4)));
+                filas.push({ tipo: 'd×', variable: `${dif.cuantitativa}: interacción ${dif.agrupacion} × ${dif.agrupacion2} (diferencia de diferencias / DE intra-celda)`, pedido: num(dif.d), obtenido: num(obs), ok: Math.abs(obs - dif.d) <= tol });
+            } else if (dif.tipo === 'icc') {
+                const obs = this._iccAnova(valores, codA);
+                if (obs === null) return;
+                const K = this._nivelesDe(A) ? this._nivelesDe(A).length : 2;
+                // el estimador ANOVA fluctúa con el número de conglomerados: ≈ (1 − CCI)·√(2/(K − 1))
+                const tol = Math.max(0.03, 1.2 * (1 - dif.d) * Math.sqrt(2 / Math.max(1, K - 1)));
+                filas.push({ tipo: 'CCI', variable: `${dif.cuantitativa}: coeficiente de correlación intraclase por ${dif.agrupacion} (${K} grupos; ANOVA)`, pedido: num(dif.d, 3), obtenido: num(obs, 3), ok: Math.abs(obs - dif.d) <= tol });
+            }
+        });
     }
     _informeSociodemograficos(base, filas, num) {
         const cfg = this.configuracion, socios = cfg.sociodemograficos || [];
@@ -3246,7 +3379,13 @@ class GeneradorDatos {
                 const x = [], y = [], g = [];
                 for (let i = 0; i < n; i++) if (isFinite(t1.datos[i]) && isFinite(tk.datos[i])) { x.push(t1.datos[i]); y.push(tk.datos[i]); if (codigos) g.push(codigos[i]); }
                 if (x.length < 10) return;
-                const rObs = this._corr(x, y), rPed = Math.pow(stab, cl.onda - 1);
+                const rObs = this._corr(x, y);
+                let rPed = Math.pow(stab, cl.onda - 1);
+                if (mr.modelo === 'crecimiento') {   // (C4) r implicada por el modelo de crecimiento
+                    const vb = Math.max(0, Math.min(0.99, mr.estabilidad)), ss = Math.max(0, mr.dePendientes || 0), rip = Math.max(-0.95, Math.min(0.95, mr.rInterceptoPendiente || 0));
+                    const tau = (cl.onda - 1) / (K - 1);
+                    rPed = (vb + rip * Math.sqrt(vb) * ss * tau) / Math.sqrt(1 + ss * ss * tau * tau + 2 * rip * Math.sqrt(vb) * ss * tau);
+                }
                 const etiqueta = `${mr.variable}: T1 → T${cl.onda}`;
                 filas.push({ tipo: 'r_tt', variable: `${etiqueta} estabilidad`, pedido: num(rPed, 3), obtenido: num(rObs, 3), ok: Math.abs(rObs - rPed) <= tolR });
                 const sd1 = desv(x) || 1;
@@ -3546,15 +3685,36 @@ class GeneradorDatos {
         (cfg.pruebas || []).forEach(p => { if (!p.sufijo) porSigla[p.nombreCorto] = p; });   // (B7) las ondas T2… no son dimensiones del General
         const vistas = new Set();          // (variable, agrupación) repetida: manda la primera fila, como en las correlaciones
         const sobreGeneral = [];
+        this._efectosCluster = this._efectosCluster || new Map();
         (cfg.diferenciasGrupo || []).forEach(dif => {
             const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
             const varC = this._varianzaCodigo(agrup);
             if (varC === null || !(typeof dif.d === 'number' && isFinite(dif.d)) || dif.d === 0) return;
+            const esEscala = (cfg.pruebas || []).some(p => p.nombre === dif.cuantitativa);
+            const esSocio = (cfg.sociodemograficos || []).some(s => s.categoria === dif.cuantitativa && !this._esSocioDiscreto(s));
+            // (C4) interacción A×B (diferencia de diferencias) y anidamiento (ICC)
+            if (dif.tipo === 'interaccion') {
+                const agrup2 = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion2);
+                if (!agrup2 || agrup.distribucion !== 'binaria' || agrup2.distribucion !== 'binaria' || !(esEscala || esSocio)) return;
+                const claveI = `${dif.cuantitativa}|${dif.agrupacion}×${dif.agrupacion2}`;
+                if (vistas.has(claveI)) return; vistas.add(claveI);
+                if (!efectivas.has(dif.cuantitativa)) efectivas.set(dif.cuantitativa, []);
+                efectivas.get(dif.cuantitativa).push({ agrup, agrup2, d: dif.d, origen: 'explicita', tipo: 'interaccion' });
+                return;
+            }
+            if (dif.tipo === 'icc') {
+                if (agrup.distribucion !== 'categorica' || !(esEscala || esSocio) || !(dif.d > 0 && dif.d < 0.95)) return;
+                const claveC = `${dif.cuantitativa}|icc|${dif.agrupacion}`;
+                if (vistas.has(claveC)) return; vistas.add(claveC);
+                // efectos aleatorios de cada conglomerado, sembrados, uno por (variable, agrupación)
+                if (!this._efectosCluster.has(claveC)) { const u = {}; this._nivelesDe(agrup).forEach(nv => { u[nv.codigo] = this.generarNormalEstandar(); }); this._efectosCluster.set(claveC, u); }
+                if (!efectivas.has(dif.cuantitativa)) efectivas.set(dif.cuantitativa, []);
+                efectivas.get(dif.cuantitativa).push({ agrup, d: dif.d, origen: 'explicita', tipo: 'icc', efectos: this._efectosCluster.get(claveC) });
+                return;
+            }
             const clave = `${dif.cuantitativa}|${dif.agrupacion}`;
             if (vistas.has(clave)) return;
             vistas.add(clave);
-            const esEscala = (cfg.pruebas || []).some(p => p.nombre === dif.cuantitativa);
-            const esSocio = (cfg.sociodemograficos || []).some(s => s.categoria === dif.cuantitativa && !this._esSocioDiscreto(s));
             if (esEscala || esSocio) { anadir(dif.cuantitativa, agrup, dif.d, 'explicita', dif.extraAmp); return; }
             const g = grupos.find(x => x.escalas.length >= 2 && this.nombreGeneral(x) === dif.cuantitativa);
             if (!g) return;
@@ -3576,10 +3736,13 @@ class GeneradorDatos {
         // σ·√(1 − Σ_k amp_k²·V_k). Con una sola agrupación coincide con la fórmula
         // anterior; con varias, la anterior subestimaba cada d (1.17 salía 1.03).
         const varianzaCodigo = agrup => this._varianzaCodigo(agrup) || 0;
-        const amplitud = e => e.d / Math.sqrt(1 + e.d * e.d * varianzaCodigo(e.agrup));
+        // (C4) varianza del término de cada entrada: código centrado (d), producto de
+        // códigos centrados (interacción: V_A·V_B) o efecto de conglomerado estandarizado (1)
+        const varianzaTermino = e => (e.tipo === 'interaccion' ? varianzaCodigo(e.agrup) * varianzaCodigo(e.agrup2) : (e.tipo === 'icc' ? 1 : varianzaCodigo(e.agrup)));
+        const amplitud = e => (e.tipo === 'icc' ? Math.sqrt(e.d) : e.d / Math.sqrt(1 + e.d * e.d * varianzaTermino(e)));
         const factorIntra = nombre => {
             let entre = 0;
-            (efectivas.get(nombre) || []).forEach(e => { const a = amplitud(e); entre += a * a * varianzaCodigo(e.agrup); });
+            (efectivas.get(nombre) || []).forEach(e => { const a = amplitud(e); entre += a * a * varianzaTermino(e); });
             // Si las diferencias pedidas se llevan toda la varianza no hay ruido
             // intra posible: se deja un mínimo (el informe delatará las d).
             return Math.sqrt(Math.max(0.04, 1 - entre));
@@ -3592,7 +3755,7 @@ class GeneradorDatos {
             const sigmaG = this._factorGeneral(req.g, req.dims) * req.dims.reduce((s, p) => s + p.desviacion, 0) / K;
             let deltaG = 0;
             req.dims.forEach(p => {
-                (efectivas.get(p.nombre) || []).forEach(e => { if (e.agrup === req.agrup) deltaG += amplitud(e) * p.desviacion / K; });
+                (efectivas.get(p.nombre) || []).forEach(e => { if (e.agrup === req.agrup && (!e.tipo || e.tipo === 'd')) deltaG += amplitud(e) * p.desviacion / K; });
             });
             const intra = Math.sqrt(Math.max(1e-12, sigmaG * sigmaG - deltaG * deltaG * varianzaCodigo(req.agrup)));
             return deltaG / intra;
@@ -3600,7 +3763,7 @@ class GeneradorDatos {
         this.diferenciasLimitadas = [];
         for (let ronda = 0; ronda < (sobreGeneral.length > 1 ? 4 : 1); ronda++) {
             sobreGeneral.forEach(req => {
-                const libres = req.dims.filter(p => !(efectivas.get(p.nombre) || []).some(e => e.agrup === req.agrup && e.origen === 'explicita'));
+                const libres = req.dims.filter(p => !(efectivas.get(p.nombre) || []).some(e => e.agrup === req.agrup && e.origen === 'explicita' && (!e.tipo || e.tipo === 'd')));
                 // quitar lo repartido en rondas anteriores para este General y agrupación
                 req.dims.forEach(p => { if (efectivas.has(p.nombre)) efectivas.set(p.nombre, efectivas.get(p.nombre).filter(e => !(e.origen === req.nombre && e.agrup === req.agrup))); });
                 if (!libres.length) {
@@ -3953,8 +4116,15 @@ class GeneradorDatos {
     // hacer los drivers ortogonales a ellas en modo exacto.
     _matrizCodigosGrupo(base) {
         const usados = new Map();
-        if (this.diferenciasEfectivas) this.diferenciasEfectivas.forEach(lista => lista.forEach(e => usados.set(e.agrup.categoria, e.agrup)));
+        const productos = new Map();
+        if (this.diferenciasEfectivas) this.diferenciasEfectivas.forEach(lista => lista.forEach(e => {
+            usados.set(e.agrup.categoria, e.agrup);
+            if (e.tipo === 'interaccion' && e.agrup2) { usados.set(e.agrup2.categoria, e.agrup2); productos.set(`${e.agrup.categoria}×${e.agrup2.categoria}`, [e.agrup, e.agrup2]); }
+        }));
         const columnas = [];
+        // (C4) el término de interacción también se ortogonaliza (si no, su correlación
+        // muestral con el driver confundiría la diferencia de diferencias)
+        productos.forEach(([a, b]) => { const va = base.columna(a.categoria).datos, vb = base.columna(b.categoria).datos; const col = new Array(base.n); for (let i = 0; i < base.n; i++) col[i] = (va[i] === 1 ? 1 : 0) * (vb[i] === 1 ? 1 : 0); columnas.push(col); });
         usados.forEach(agrup => {
             const valores = Array.from(base.columna(agrup.categoria).datos);
             if (agrup.distribucion === 'binaria') columnas.push(valores.map(v => (v === 1 ? 1 : 0)));
@@ -4043,7 +4213,21 @@ class GeneradorDatos {
                 clones.push(clon);
                 nueva.pruebas.push(clon);
             }
-            ondasDe.set(p.nombre, { mr, clones, stab: Math.max(-0.99, Math.min(0.99, mr.estabilidad)), agrup, c0, c1, K });
+            // (C4) crecimiento con pendientes aleatorias: T_k = μ_k + b + s·τ_k + e_k con
+            // τ_k = (k − 1)/(K − 1), Var(b) = estabilidad·σ², Var(s) = DEpend²·σ², Var(e) = (1 − estabilidad)·σ²,
+            // r(b, s) = rIP. La DE de cada onda crece («abanico») y las correlaciones
+            // entre ondas salen de la covarianza del modelo; todo entra como DE y r
+            // de los clones, exactas en modo exacto.
+            let rImplicada = null;
+            if (mr.modelo === 'crecimiento') {
+                const vb = Math.max(0, Math.min(0.99, mr.estabilidad)), ss = Math.max(0, mr.dePendientes || 0), rip = Math.max(-0.95, Math.min(0.95, mr.rInterceptoPendiente || 0));
+                const tau = k => (k - 1) / (K - 1);
+                const varOnda = k => 1 + ss * ss * tau(k) * tau(k) + 2 * rip * Math.sqrt(vb) * ss * tau(k);
+                const cov = (j, k) => vb + ss * ss * tau(j) * tau(k) + rip * Math.sqrt(vb) * ss * (tau(j) + tau(k));
+                rImplicada = (j, k) => cov(j, k) / Math.sqrt(varOnda(j) * varOnda(k));
+                clones.forEach(cl => { cl.desviacion = p.desviacion * Math.sqrt(varOnda(cl.onda)); });
+            }
+            ondasDe.set(p.nombre, { mr, clones, stab: Math.max(-0.99, Math.min(0.99, mr.estabilidad)), agrup, c0, c1, K, rImplicada });
         });
         // Correlaciones efectivas de la configuración base: implicadas por
         // mediación, tabla III y relleno intra-test (manda la primera aparición).
@@ -4060,11 +4244,12 @@ class GeneradorDatos {
             const nombres = g.escalas.map(s => ((cfg.pruebas || []).find(p => p.nombreCorto === s && !p.sufijo) || {}).nombre).filter(Boolean);
             for (let i = 0; i < nombres.length; i++) for (let j = i + 1; j < nombres.length; j++) anotar(nombres[i], nombres[j], rIntra);
         });
-        ondasDe.forEach(({ clones, stab }, nombre) => {
-            // estabilidad entre ondas (AR(1)); van DELANTE para que manden
+        ondasDe.forEach(({ clones, stab, rImplicada }, nombre) => {
+            // estabilidad entre ondas (AR(1) o modelo de crecimiento); van DELANTE para que manden
             const ondas = [{ nombre, onda: 1 }].concat(clones.map(c => ({ nombre: c.nombre, onda: c.onda })));
             for (let i = 0; i < ondas.length; i++) for (let j = i + 1; j < ondas.length; j++) {
-                nueva.correlaciones.unshift({ a: ondas[i].nombre, b: ondas[j].nombre, r: Math.pow(stab, ondas[j].onda - ondas[i].onda), origen: 'repetidas' });
+                const r = rImplicada ? rImplicada(ondas[i].onda, ondas[j].onda) : Math.pow(stab, ondas[j].onda - ondas[i].onda);
+                nueva.correlaciones.unshift({ a: ondas[i].nombre, b: ondas[j].nombre, r: Math.max(-0.99, Math.min(0.99, r)), origen: 'repetidas' });
             }
             // correlaciones de la base con las demás variables, atenuadas por onda
             efectivas.forEach(c => {
@@ -4092,18 +4277,21 @@ class GeneradorDatos {
         // interacción corta (−0.78 salía −0.64).
         ondasDe.forEach(({ clones, agrup, c0, c1, K }, nombre) => {
             (cfg.diferenciasGrupo || []).forEach(d => {
-                if (d.cuantitativa === nombre) clones.forEach(cl => nueva.diferenciasGrupo.push({ cuantitativa: cl.nombre, agrupacion: d.agrupacion, d: d.d }));
+                // (C4) se copian todos los campos: una interacción o una CCI de la base
+                // valen igual en cada onda (antes se copiaban como una d simple)
+                if (d.cuantitativa === nombre) clones.forEach(cl => nueva.diferenciasGrupo.push(Object.assign({}, d, { cuantitativa: cl.nombre })));
             });
             if (agrup && c1 !== c0) {
                 const V = this._varianzaCodigo(agrup) || 0;
-                const base = (cfg.diferenciasGrupo || []).find(x => x.cuantitativa === nombre && x.agrupacion === agrup.categoria);
+                const base = (cfg.diferenciasGrupo || []).find(x => x.cuantitativa === nombre && x.agrupacion === agrup.categoria && (!x.tipo || x.tipo === 'd'));
                 const d1 = base ? base.d : 0;
                 const amp1 = d1 / Math.sqrt(1 + d1 * d1 * V);
                 clones.forEach(cl => {
-                    const extraAmp = (c1 - c0) * (cl.onda - 1) / (K - 1);
+                    // en DE de T1: si la onda tiene otra DE (crecimiento), se convierte a la suya
+                    const extraAmp = (c1 - c0) * (cl.onda - 1) / (K - 1) * (cl.desviacion > 0 && cl.base ? cl.base.desviacion / cl.desviacion : 1);
                     const ampK = amp1 + extraAmp;
                     const dK = ampK / Math.sqrt(Math.max(0.05, 1 - ampK * ampK * V));
-                    const previa = nueva.diferenciasGrupo.find(x => x.cuantitativa === cl.nombre && x.agrupacion === agrup.categoria);
+                    const previa = nueva.diferenciasGrupo.find(x => x.cuantitativa === cl.nombre && x.agrupacion === agrup.categoria && (!x.tipo || x.tipo === 'd'));
                     // extraAmp queda anotado: si la base hereda una d de su General
                     // por esta misma agrupación, prepararDiferenciasGrupo la recompone
                     if (previa) { previa.d = dK; previa.extraAmp = extraAmp; }
@@ -4633,7 +4821,8 @@ class GeneradorDatos {
             // amplitudes actuales; cuenta en el mismo criterio de convergencia.
             const erroresD = [];
             funciones.forEach((f, a) => (f.partes || []).forEach(p => {
-                const obs = this._dMarginal(X[a], p.codigos);
+                if (p.fija) return;   // (C4) CCI: exacta por construcción
+                const obs = p.tipo === 'interaccion' ? this._dInteraccion(X[a], p.codigos, p.codigos2) : this._dMarginal(X[a], p.codigos);
                 if (obs === null) return;
                 erroresD.push({ f, p, obs });
                 maxError = Math.max(maxError, Math.abs(p.d - obs));
@@ -4907,6 +5096,8 @@ class GeneradorDatos {
         this._validarModelos(errores, advertencias);
         // (B7) Medidas repetidas
         this._validarMedidasRepetidas(errores, advertencias);
+        // (C4) Interacciones y anidamiento
+        this._validarEfectosCompuestos(errores, advertencias);
         // (C1) Estructura factorial
         this._validarEstructuras(errores, advertencias);
         // (C2/C3) Desenlaces y puntos de corte
