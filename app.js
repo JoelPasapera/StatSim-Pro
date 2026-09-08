@@ -659,8 +659,8 @@ function actualizarPanelEstructura() {
         if (likert && isFinite(sigmaItem)) {
             const ruido = sigmaItem * sigmaItem * (1 - mediaL * mediaL);
             if (sigmaItem > (d.maximo - d.minimo) / 2) { nota = ' · ⚠ las cargas son demasiado bajas para esa DE: los ítems no caben en el rango'; avisos.push(d.nombre); }
-            else if (ruido < 0.10) { nota = ' · ⚠ ruido propio menor que el redondeo: sube la DE del total o baja las cargas'; avisos.push(d.nombre); }
-            else if (ruido < 0.16) nota = ' · atención: poco ruido propio frente al redondeo';
+            else if (ruido < 0.16) { nota = ' · ⚠ ruido propio menor que el redondeo: sube la DE del total o baja las cargas'; avisos.push(d.nombre); }
+            else if (ruido < 0.25) nota = ' · atención: poco ruido propio frente al redondeo';
         }
         const comunalidadMax = Math.max(...filas.map((f, i) => f.reduce((s, c, j) => s + (j === di ? propias[i] * propias[i] : (+c || 0) ** 2), 0)));
         if (comunalidadMax > 0.95) { nota += ' · ⚠ alguna comunalidad supera 0.95'; avisos.push(d.nombre); }
