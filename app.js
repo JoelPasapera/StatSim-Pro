@@ -178,6 +178,10 @@ function configurarGenerador() {
                 e.target.closest('tr').remove();
             }
         });
+        // (C4) el tipo de efecto decide si hay segunda agrupación y qué pide la casilla de valor
+        bodyDiferencias.addEventListener('change', function (e) {
+            if (e.target.matches && e.target.matches('[aria-label="Tipo de efecto"]')) actualizarFilaDiferencia(e.target.closest('tr'));
+        });
     }
     // (B6) Modelos estructurales: mediación y moderación
     const btnModelo = document.getElementById('btnAgregarModelo');
@@ -227,7 +231,7 @@ function configurarGenerador() {
         });
         // sin agrupación, la d del grupo 1 no aplica
         bodyRepetidas.addEventListener('change', function (e) {
-            if (e.target.matches('[aria-label="Agrupación del cambio"]')) actualizarFilaRepetida(e.target.closest('tr'));
+            if (e.target.matches('[aria-label="Agrupación del cambio"]') || e.target.matches('[aria-label="Modelo longitudinal"]')) actualizarFilaRepetida(e.target.closest('tr'));
         });
     }
 }
@@ -245,6 +249,15 @@ function obtenerVariablesAgrupacion() {
     });
     return nombres;
 }
+// (C4) Ajusta una fila de la tabla IV a su tipo de efecto
+function actualizarFilaDiferencia(fila) {
+    if (!fila) return;
+    const tipo = (fila.querySelector('[aria-label="Tipo de efecto"]') || {}).value || 'd';
+    const sel2 = fila.querySelector('[aria-label="Segunda agrupación"]');
+    const inp = fila.querySelector('[aria-label="d de Cohen"]');
+    if (sel2) { sel2.disabled = tipo !== 'interaccion'; if (tipo !== 'interaccion') sel2.value = ''; }
+    if (inp) { inp.placeholder = tipo === 'icc' ? 'CCI, ej: 0.15' : (tipo === 'interaccion' ? 'd de interacción, ej: 0.5' : 'Ej: 0.5'); inp.step = tipo === 'icc' ? '0.01' : '0.1'; inp.title = tipo === 'icc' ? 'Coeficiente de correlación intraclase (0.01–0.90)' : (tipo === 'interaccion' ? 'Diferencia de diferencias en DE intra-celda' : 'd de Cohen'); }
+}
 function agregarFilaDiferencia() {
     const cuantitativas = obtenerVariablesCorrelacionables();
     const agrupaciones = obtenerVariablesAgrupacion();
@@ -258,8 +271,10 @@ function agregarFilaDiferencia() {
     const opcionesCuant = cuantitativas.map(n => `<option value="${n}">${n}</option>`).join('');
     const opcionesGrupo = agrupaciones.map(n => `<option value="${n}">${n}</option>`).join('');
     fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Tipo de efecto"><option value="d">Diferencia (d)</option><option value="interaccion">Interacción A × B</option><option value="icc">Anidamiento (CCI)</option></select></td>
         <td><select class="input input-sm" aria-label="Variable cuantitativa"><option value="">Variable...</option>${opcionesCuant}</select></td>
         <td><select class="input input-sm" aria-label="Variable de agrupación"><option value="">Agrupación...</option>${opcionesGrupo}</select></td>
+        <td><select class="input input-sm" aria-label="Segunda agrupación" disabled><option value="">—</option>${opcionesGrupo}</select></td>
         <td><input type="number" class="input input-sm" step="0.1" placeholder="Ej: 0.5" aria-label="d de Cohen"></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
@@ -772,6 +787,9 @@ function agregarFilaRepetida(datos = null) {
         <td><input type="number" class="input input-sm" step="0.1" placeholder="Ej: 0.5" aria-label="d de cambio"></td>
         <td><select class="input input-sm" aria-label="Agrupación del cambio"><option value="">Ninguna (cambio global)</option>${binarias}</select></td>
         <td><input type="number" class="input input-sm" step="0.1" placeholder="Ej: 0.8" aria-label="d de cambio del grupo 1" disabled></td>
+        <td><select class="input input-sm" aria-label="Modelo longitudinal"><option value="ar1">AR(1): estabilidad</option><option value="crecimiento">Crecimiento (pendientes)</option></select></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="0" max="1.5" placeholder="Ej: 0.5" aria-label="DE de las pendientes" disabled></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="-0.95" max="0.95" placeholder="Ej: -0.2" aria-label="Correlación intercepto-pendiente" disabled></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -785,6 +803,7 @@ function agregarFilaRepetida(datos = null) {
         const poner = (etiqueta, valor) => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); if (el && valor !== undefined && valor !== null) el.value = valor; };
         poner('Escala repetida', datos.variable); poner('Número de ondas', datos.ondas); poner('Estabilidad test-retest', datos.estabilidad);
         poner('d de cambio', datos.cambio); poner('Agrupación del cambio', datos.agrupacion || ''); poner('d de cambio del grupo 1', datos.cambioGrupo);
+        poner('Modelo longitudinal', datos.modelo === 'crecimiento' ? 'crecimiento' : 'ar1'); poner('DE de las pendientes', datos.dePendientes); poner('Correlación intercepto-pendiente', datos.rInterceptoPendiente);
     }
     actualizarFilaRepetida(fila);
     return fila;
@@ -797,6 +816,10 @@ function actualizarFilaRepetida(fila) {
     const conGrupo = !!(agrup && agrup.value);
     if (cambio) { cambio.placeholder = conGrupo ? 'grupo 0 (control)' : 'Ej: 0.5'; cambio.title = conGrupo ? 'd de cambio del grupo 0 (control) de T1 a la última onda' : 'd de cambio global de T1 a la última onda, en DE de T1'; }
     if (cambioG1) { cambioG1.disabled = !conGrupo; cambioG1.placeholder = conGrupo ? 'grupo 1 (experimental)' : '—'; if (!conGrupo) cambioG1.value = ''; }
+    // (C4) parámetros del crecimiento solo con ese modelo
+    const modelo = fila.querySelector('[aria-label="Modelo longitudinal"]');
+    const crec = !!(modelo && modelo.value === 'crecimiento');
+    ['DE de las pendientes', 'Correlación intercepto-pendiente'].forEach(et => { const el = fila.querySelector(`[aria-label="${et}"]`); if (el) { el.disabled = !crec; if (!crec) el.value = ''; } });
 }
 const FILA_PRUEBA_VACIA = { prueba: '', nombre: '', numItems: '', distribucion: 'normal', media: '', de: '', min: '', max: '', alfa: '', invertidos: '' };
 function agregarFilaPrueba() {
@@ -3007,11 +3030,11 @@ function aplicarCSVModelos(csv) {
 }
 // (B7) CSV de la tabla VI (medidas repetidas)
 function csvDeRepetidas() {
-    let csv = 'Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1\n';
+    let csv = 'Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente\n';
     const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
     document.querySelectorAll('#bodyRepetidas .fila-repetida').forEach(fila => {
         const v = etiqueta => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); return el ? el.value : ''; };
-        csv += `${esc(v('Escala repetida'))},${v('Número de ondas')},${v('Estabilidad test-retest')},${v('d de cambio')},${esc(v('Agrupación del cambio'))},${v('d de cambio del grupo 1')}\n`;
+        csv += `${esc(v('Escala repetida'))},${v('Número de ondas')},${v('Estabilidad test-retest')},${v('d de cambio')},${esc(v('Agrupación del cambio'))},${v('d de cambio del grupo 1')},${v('Modelo longitudinal') || 'ar1'},${v('DE de las pendientes')},${v('Correlación intercepto-pendiente')}\n`;
     });
     return csv;
 }
@@ -3022,9 +3045,9 @@ function aplicarCSVRepetidas(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const [variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        const [variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo, modelo, dePendientes, rInterceptoPendiente] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
         if (!variable) { omitidas++; continue; }
-        const fila = agregarFilaRepetida({ variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo });
+        const fila = agregarFilaRepetida({ variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo, modelo, dePendientes, rInterceptoPendiente });
         if (!fila) { omitidas++; continue; }
         const sel = fila.querySelector('[aria-label="Escala repetida"]');
         if (!sel || sel.value === '') { fila.remove(); omitidas++; continue; }
@@ -3034,11 +3057,11 @@ function aplicarCSVRepetidas(csv) {
 }
 // CSV de la tabla IV (diferencias por grupo): antes no viajaba en el archivo maestro
 function csvDeDiferencias() {
-    let csv = 'Cuantitativa,Agrupacion,d\n';
+    let csv = 'Cuantitativa,Agrupacion,d,Tipo,Agrupacion2\n';
     const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
     document.querySelectorAll('#bodyDiferencias .fila-diferencia').forEach(fila => {
-        const selects = fila.querySelectorAll('select'), inp = fila.querySelector('input');
-        csv += `${esc(selects[0] ? selects[0].value : '')},${esc(selects[1] ? selects[1].value : '')},${inp ? inp.value : ''}\n`;
+        const v = et => { const el = fila.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
+        csv += `${esc(v('Variable cuantitativa'))},${esc(v('Variable de agrupación'))},${v('d de Cohen')},${v('Tipo de efecto') || 'd'},${esc(v('Segunda agrupación'))}\n`;
     });
     return csv;
 }
@@ -3049,17 +3072,20 @@ function aplicarCSVDiferencias(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const [cuant, agrup, d] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        const [cuant, agrup, d, tipo, agrup2] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
         if (!cuant || !agrup) { omitidas++; continue; }
         const antes = tbody ? tbody.children.length : 0;
         agregarFilaDiferencia();
         const fila = tbody && tbody.children.length > antes ? tbody.lastElementChild : null;
         if (!fila) { omitidas++; continue; }
-        const selects = fila.querySelectorAll('select'), inp = fila.querySelector('input');
+        const q = et => fila.querySelector(`[aria-label="${et}"]`);
         const existe = (sel, val) => sel && Array.from(sel.options).some(o => o.value === val);
-        if (!existe(selects[0], cuant) || !existe(selects[1], agrup)) { fila.remove(); omitidas++; continue; }
-        selects[0].value = cuant; selects[1].value = agrup;
-        if (inp) inp.value = d === undefined ? '' : d;
+        if (!existe(q('Variable cuantitativa'), cuant) || !existe(q('Variable de agrupación'), agrup)) { fila.remove(); omitidas++; continue; }
+        q('Tipo de efecto').value = ['interaccion', 'icc'].includes(tipo) ? tipo : 'd';
+        actualizarFilaDiferencia(fila);
+        q('Variable cuantitativa').value = cuant; q('Variable de agrupación').value = agrup;
+        if (tipo === 'interaccion' && agrup2 && existe(q('Segunda agrupación'), agrup2)) q('Segunda agrupación').value = agrup2;
+        if (q('d de Cohen')) q('d de Cohen').value = d === undefined ? '' : d;
         aplicadas++;
     }
     return { aplicadas, omitidas };
