@@ -1351,8 +1351,11 @@ class GeneradorDatos {
             const extra = new Float64Array(k), cruzE = new Float64Array(k), metE = new Float64Array(k);
             if (perfil.cruzadas.length && zOtras) {
                 const z = typeof zOtras === 'function' ? zOtras(base) : zOtras;
+                // el centrado resta 1/k del término a cada ítem: se aplica c·k/(k − 1) para que
+                // el ítem conserve exactamente la cruzada pedida (los demás reciben −c/(k − 1))
+                const inflar = k / (k - 1);
                 let sumaC = 0;
-                perfil.cruzadas.forEach(({ item, sigla, c }) => { const zb = z[sigla]; if (typeof zb === 'number' && isFinite(zb)) { cruzE[item] += c * sigma0 * zb; sumaC += c * sigma0 * zb; extra[item] += c * c * sigma0 * sigma0; } });
+                perfil.cruzadas.forEach(({ item, sigla, c }) => { const zb = z[sigla]; if (typeof zb === 'number' && isFinite(zb)) { const v = c * inflar * sigma0 * zb; cruzE[item] += v; sumaC += v; extra[item] += c * c * sigma0 * sigma0; } });
                 for (let i = 0; i < k; i++) cruzE[i] -= sumaC / k;   // Σ = 0: el total no cambia
             }
             if (est.metodo && zOtras) {
