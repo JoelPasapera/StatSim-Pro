@@ -888,9 +888,11 @@
                         <table class="table" id="tablaDiferencias">
                             <thead>
                                 <tr>
+                                    <th title="Diferencia de medias (d de Cohen), interacción entre dos binarias (diseño 2×2: diferencia de diferencias en DE intra-celda) o anidamiento en grupos (coeficiente de correlación intraclase).">Tipo de efecto</th>
                                     <th>Variable cuantitativa</th>
                                     <th>Variable de agrupación</th>
-                                    <th>Tamaño del efecto (d de Cohen)</th>
+                                    <th title="Solo para la interacción: la segunda variable binaria del 2×2.">× Segunda agrupación</th>
+                                    <th title="d de Cohen (diferencia o interacción) o CCI (anidamiento, 0.01–0.90).">d / CCI</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -900,7 +902,7 @@
                     <p class="help-text" style="margin-top: 0.5rem;">
                         Hace que la media de una variable <strong>cuantitativa</strong> difiera según una variable de
                         <strong>agrupación</strong> (Binaria o Categórica), con el tamaño del efecto (d de Cohen)
-                        indicado. Alimenta la comparación de grupos (t / ANOVA). Sin filas = sin diferencias.
+                        indicado. Alimenta la comparación de grupos (t / ANOVA). Sin filas = sin diferencias. <strong>Interacción A × B</strong> (dos binarias): la diferencia entre grupos de A cambia según B en la d indicada (diseño factorial 2×2, ANOVA de dos factores); los efectos principales se piden aparte, en sus propias filas. <strong>Anidamiento (CCI)</strong>: la variable se parece más dentro de cada grupo de una categórica (aulas, colegios) que entre grupos, con la correlación intraclase indicada (modelos multinivel); con menos de ocho grupos la CCI estimada fluctúa mucho.
                     </p>
                 </div>
 
@@ -963,6 +965,9 @@
                                     <th title="Cambio de la media de T1 a la última onda, en DE de T1 (global, o del grupo 0 si hay agrupación)">d de cambio</th>
                                     <th title="Variable binaria (0 = control, 1 = experimental) que modera el cambio">Agrupación</th>
                                     <th title="Cambio de T1 a la última onda en el grupo 1, en DE de T1">d de cambio (grupo 1)</th>
+                                    <th title="AR(1): la correlación entre ondas decae con la distancia y la DE se mantiene. Crecimiento: cada persona tiene su propia pendiente (aleatoria); la DE crece con las ondas («abanico») y las correlaciones salen del modelo.">Modelo</th>
+                                    <th title="Solo en crecimiento: desviación estándar de las pendientes individuales de T1 a la última onda, en DE de T1 (0 = todos cambian igual; 0.5 típico).">DE pendientes</th>
+                                    <th title="Solo en crecimiento: correlación entre el nivel inicial y la pendiente (negativa = quienes empiezan alto cambian menos).">r nivel–pendiente</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -976,7 +981,7 @@
                         proceso AR(1)); las correlaciones de la escala con otras variables se propagan a cada onda atenuadas por ella.
                         La <strong>d de cambio</strong> desplaza la media de T1 a la última onda en DE de T1, de forma lineal entre ondas;
                         con una agrupación <strong>binaria</strong> cada grupo cambia lo suyo (diseño pre/post con grupo control) y el informe
-                        muestra el cambio por grupo y la interacción tiempo × grupo. Las diferencias por grupo de la tabla IV se mantienen en
+                        muestra el cambio por grupo y la interacción tiempo × grupo. Con el modelo de <strong>crecimiento</strong>, cada persona tiene su pendiente (con la DE indicada, en DE de T1) y una correlación nivel–pendiente; la DE de las ondas crece y las correlaciones entre ondas las implica el modelo (con tres ondas o más se ajusta un modelo de curva de crecimiento). Las diferencias por grupo de la tabla IV se mantienen en
                         todas las ondas; los puntajes generales derivados y los modelos usan solo la onda 1.
                     </p>
                 </div>
@@ -1692,7 +1697,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=2"></script>
-    <script src="generador-datos.js?v=18"></script>
+    <script src="generador-datos.js?v=19"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1764,7 +1769,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=35"></script>
+    <script src="app.js?v=36"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
