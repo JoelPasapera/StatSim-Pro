@@ -197,6 +197,8 @@ class GeneradorDatos {
         // (C2) Desenlaces no continuos y (C3) puntos de corte clínicos
         this.configuracion.desenlaces = this.recolectarDesenlaces();
         this.configuracion.cortes = this.recolectarCortes();
+        // (C7) Concordancia: informantes, jueces categóricos (κ) y jueces continuos (CCI)
+        this.configuracion.concordancias = this.recolectarConcordancias();
 
         return this.configuracion;
     }
@@ -419,6 +421,75 @@ class GeneradorDatos {
             out.niveles = op.niveles;
         }
         return out;
+    }
+    // (C7) Tabla de concordancia: selects [tipo, variable], inputs [etiqueta/n jueces, concordancia, sesgo]
+    recolectarConcordancias() {
+        const salida = [];
+        document.querySelectorAll('#bodyConcordancia .fila-concordancia').forEach(fila => {
+            const selects = fila.querySelectorAll('select'), inputs = fila.querySelectorAll('input');
+            if (selects.length < 2 || inputs.length < 3) return;
+            const tipo = ['informante', 'jueces', 'juecesContinuo'].includes(selects[0].value) ? selects[0].value : 'informante';
+            const variable = selects[1].value.trim();
+            if (!variable) return;
+            const concordancia = parseFloat(inputs[1].value);
+            if (isNaN(concordancia)) throw new Error(`Concordancia de «${variable}»: falta el valor de acuerdo (r, κ o CCI)`);
+            if (tipo === 'informante') {
+                const etiqueta = inputs[0].value.trim() || 'informante 2';
+                const sesgo = parseFloat(inputs[2].value);
+                salida.push({ tipo, variable, etiqueta, r: concordancia, sesgo: isNaN(sesgo) ? 0 : sesgo });
+            } else {
+                const jueces = parseInt(inputs[0].value, 10);
+                salida.push({ tipo, variable, jueces: isNaN(jueces) ? 2 : jueces, kappa: tipo === 'jueces' ? concordancia : null, icc: tipo === 'juecesContinuo' ? concordancia : null });
+            }
+        });
+        return salida;
+    }
+    _slugSufijo(texto) {
+        return String(texto || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 12) || 'inf2';
+    }
+    // Columna categórica que juzgan los jueces: el nivel de una escala con corte,
+    // un sociodemográfico binario/categórico o un desenlace binario/ordinal
+    _columnaCategoricaDe(nombre) {
+        const cfg = this.configuracion;
+        if ((cfg.cortes || []).some(c => c.variable === nombre)) return `Nivel_${this._siglaDeVariable(nombre)}`;
+        const s = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
+        if (s && (s.distribucion === 'binaria' || s.distribucion === 'categorica')) return s.categoria;
+        const d = (cfg.desenlaces || []).find(x => x.nombre === nombre);
+        if (d && (d.tipo === 'binario' || d.tipo === 'ordinal')) return d.nombre;
+        return null;
+    }
+    _validarConcordancias(errores, advertencias) {
+        const cfg = this.configuracion;
+        const nombres = this._nombresCorrelacionables();
+        const vistos = new Set(), juzgadas = new Set();
+        (cfg.concordancias || []).forEach(c => {
+            if (c.tipo !== 'informante') {
+                if (juzgadas.has(c.variable)) errores.push(`Jueces de «${c.variable}»: la variable ya tiene jueces en otra fila (una sola fila de jueces por variable)`);
+                juzgadas.add(c.variable);
+            }
+            if (c.tipo === 'informante') {
+                const et = `Informante «${c.etiqueta}» de «${c.variable}»`;
+                const p = (cfg.pruebas || []).find(x => x.nombre === c.variable && !x.sufijo && x.tipo !== 'general');
+                if (!p) { errores.push(`${et}: solo se puede añadir un informante a una escala (dimensión) de la tabla I`); return; }
+                const clave = `${c.variable}|${this._slugSufijo(c.etiqueta)}`;
+                if (vistos.has(clave)) errores.push(`${et}: etiqueta repetida para la misma escala`);
+                vistos.add(clave);
+                if (!(c.r > 0 && c.r < 0.99)) errores.push(`${et}: la concordancia r debe estar entre 0.01 y 0.98`);
+                if (Math.abs(c.sesgo) > 2) errores.push(`${et}: un sesgo de ${c.sesgo} DE no es plausible`);
+                if ((cfg.medidasRepetidas || []).some(m => m.variable === c.variable)) advertencias.push(`${et}: la escala también tiene ondas; el informante se genera solo para la onda 1`);
+            } else if (c.tipo === 'jueces') {
+                const et = `Jueces de «${c.variable}»`;
+                if (!this._columnaCategoricaDe(c.variable)) errores.push(`${et}: los jueces categóricos necesitan una variable categórica: una escala con puntos de corte (tabla VIII), un sociodemográfico binario/categórico o un desenlace binario/ordinal`);
+                if (!(c.jueces >= 2 && c.jueces <= 6)) errores.push(`${et}: entre 2 y 6 jueces`);
+                if (!(c.kappa > 0 && c.kappa < 0.99)) errores.push(`${et}: el kappa debe estar entre 0.01 y 0.98`);
+            } else {
+                const et = `Jueces (puntuación) de «${c.variable}»`;
+                const esCont = nombres.has(c.variable) && !this._esNombreGeneral(c.variable);
+                if (!esCont) errores.push(`${et}: los jueces con puntuación necesitan una escala o una sociodemográfica continua (no un puntaje general)`);
+                if (!(c.jueces >= 2 && c.jueces <= 6)) errores.push(`${et}: entre 2 y 6 jueces`);
+                if (!(c.icc > 0.05 && c.icc < 0.99)) errores.push(`${et}: la CCI debe estar entre 0.05 y 0.98`);
+            }
+        });
     }
     // (C3) Tabla de puntos de corte: select [variable], input [texto]. Gramática:
     // «Bajo, Medio, Alto @ 20, 30» (cortes fijos: < 20 Bajo; 20–29.99 Medio; ≥ 30 Alto)
@@ -779,6 +850,12 @@ class GeneradorDatos {
                 mapa[s.categoria] = `${s.categoria} (${s.ordinal ? 'ordinal' : (s.distribucion === 'binaria' ? 'binaria' : 'categórica')}: ${lista})` + (s.dependeDe ? `; asociada a ${s.dependeDe}` : '');
             }
             if (s.fechaNacimiento && !this._esSocioDiscreto(s)) mapa[`FechaNac_${s.categoriaCorta}`] = `Fecha de nacimiento (AAAA-MM-DD) coherente con «${s.categoria}» a la fecha ${s.fechaNacimiento === 'hoy' ? 'de generación' : s.fechaNacimiento}`;
+        });
+        // (C7) jueces
+        ((this.configuracion && this.configuracion.concordancias) || []).forEach(c => {
+            if (c.tipo === 'informante') return;
+            const sigla = this._siglaDeVariable(c.variable);
+            for (let j = 1; j <= (c.jueces || 2); j++) mapa[`Juez${j}_${sigla}`] = c.tipo === 'jueces' ? `Juez ${j}: categoría asignada a «${c.variable}» (κ ${c.kappa} entre jueces)` : `Juez ${j}: puntuación de «${c.variable}» (CCI ${c.icc} entre jueces)`;
         });
         // (C2) desenlaces y (C3) niveles por puntos de corte
         ((this.configuracion && this.configuracion.desenlaces) || []).forEach(d => {
@@ -1246,6 +1323,8 @@ class GeneradorDatos {
 
         // (C3) niveles por puntos de corte sobre los totales FINALES (tras imperfecciones)
         this._generarCortes(base);
+        // (C7) jueces: categóricos (κ) sobre una categórica ya generada, continuos (CCI) sobre una escala
+        this._generarJueces(base);
 
         avisar(0.96, 'Base generada');
         this.datosGenerados = base;
@@ -1313,6 +1392,111 @@ class GeneradorDatos {
                 d.niveles.forEach((nv, k) => { for (let j = 0; j < recuentos[k]; j++) col[orden[pos++]] = nv.codigo; });
                 const etiquetas = {}; d.niveles.forEach(x => { etiquetas[x.codigo] = x.etiqueta; });
                 base.etiquetar(d.nombre, etiquetas);
+            }
+        });
+    }
+    // ============ CONCORDANCIA ENTRE JUECES (C7) ============
+    // Jueces categóricos: cada juez repite la categoría VERDADERA con probabilidad
+    // √κ y, si no, sortea una de la distribución marginal. Con esa regla el κ de
+    // Cohen entre dos jueces (y el de Fleiss entre varios) vale exactamente κ en
+    // población, sea cual sea la distribución de las categorías.
+    // Jueces continuos: puntuación = verdadera + error N(0, σ·√((1 − CCI)/CCI)),
+    // así CCI(1) = Var(verdadera)/(Var(verdadera) + Var(error)) es la pedida.
+    _generarJueces(base) {
+        const lista = (this.configuracion.concordancias || []).filter(c => c.tipo === 'jueces' || c.tipo === 'juecesContinuo');
+        this.juecesGenerados = [];
+        if (!lista.length) return;
+        const n = base.n;
+        lista.forEach(c => {
+            const sigla = this._siglaDeVariable(c.variable);
+            if (c.tipo === 'jueces') {
+                const colV = this._columnaCategoricaDe(c.variable);
+                if (!colV || !base.tiene(colV)) return;
+                const verdad = base.columna(colV);
+                const conteos = new Map(); let total = 0;
+                for (let i = 0; i < n; i++) { const v = verdad.datos[i]; if (v === v) { conteos.set(v, (conteos.get(v) || 0) + 1); total++; } }
+                if (!total) return;
+                const categorias = Array.from(conteos.keys()).sort((a, b) => a - b), pi = categorias.map(k => conteos.get(k) / total);
+                const q = Math.sqrt(Math.max(0, Math.min(0.99, c.kappa)));
+                const columnas = [];
+                for (let j = 1; j <= c.jueces; j++) {
+                    const col = base.agregar(`Juez${j}_${sigla}`, true).datos;
+                    for (let i = 0; i < n; i++) {
+                        const v = verdad.datos[i];
+                        if (!(v === v)) { col[i] = NaN; continue; }
+                        if (this.aleatorio() < q) { col[i] = v; continue; }
+                        let u = this.aleatorio(), k = 0; while (k < pi.length - 1 && u >= pi[k]) { u -= pi[k]; k++; }
+                        col[i] = categorias[k];
+                    }
+                    if (verdad.etiquetas) base.etiquetar(`Juez${j}_${sigla}`, verdad.etiquetas);
+                    columnas.push(`Juez${j}_${sigla}`);
+                }
+                this.juecesGenerados.push({ tipo: 'jueces', variable: c.variable, columnaVerdad: colV, columnas, kappa: c.kappa, sigla });
+            } else {
+                const colV = this._columnaDeVariable(c.variable);
+                if (!colV || !base.tiene(colV)) return;
+                const verdad = base.columna(colV).datos;
+                let m = 0, k = 0; for (let i = 0; i < n; i++) if (verdad[i] === verdad[i]) { m += verdad[i]; k++; }
+                m /= Math.max(1, k); let v = 0; for (let i = 0; i < n; i++) if (verdad[i] === verdad[i]) v += (verdad[i] - m) ** 2;
+                const sd = Math.sqrt(v / Math.max(1, k - 1)) || 1;
+                const icc = Math.max(0.05, Math.min(0.98, c.icc));
+                const sdError = sd * Math.sqrt((1 - icc) / icc);
+                const columnas = [];
+                for (let j = 1; j <= c.jueces; j++) {
+                    const col = base.agregar(`Juez${j}_${sigla}`, false).datos;
+                    for (let i = 0; i < n; i++) col[i] = verdad[i] === verdad[i] ? Math.round((verdad[i] + sdError * this.generarNormalEstandar()) * 100) / 100 : NaN;
+                    columnas.push(`Juez${j}_${sigla}`);
+                }
+                this.juecesGenerados.push({ tipo: 'juecesContinuo', variable: c.variable, columnaVerdad: colV, columnas, icc: c.icc, sigla });
+            }
+        });
+    }
+    // κ de Fleiss (con 2 jueces coincide con el de Cohen salvo por los marginales) y acuerdo medio
+    _kappaFleiss(columnas) {
+        const n = columnas[0].length, m = columnas.length;
+        const categorias = new Map(); let N = 0; let sumaP = 0;
+        const filasValidas = [];
+        for (let i = 0; i < n; i++) { const vals = columnas.map(c => c[i]); if (vals.some(v => !(v === v))) continue; filasValidas.push(vals); vals.forEach(v => categorias.set(v, (categorias.get(v) || 0) + 1)); N++; }
+        if (N < 5) return null;
+        filasValidas.forEach(vals => { const cnt = new Map(); vals.forEach(v => cnt.set(v, (cnt.get(v) || 0) + 1)); let s = 0; cnt.forEach(x => { s += x * x; }); sumaP += (s - m) / (m * (m - 1)); });
+        const Pbar = sumaP / N;
+        let Pe = 0; categorias.forEach(x => { const p = x / (N * m); Pe += p * p; });
+        return Pe >= 1 ? null : { kappa: (Pbar - Pe) / (1 - Pe), acuerdo: Pbar };
+    }
+    _informeConcordancia(base, filas, num) {
+        const cfg = this.configuracion, n = base.n, exactas = cfg.correlacionesExactas !== false;
+        // informantes: r de concordancia y sesgo (media informante − media base, en DE de la base)
+        (cfg.pruebas || []).filter(p => p.informante && p.base).forEach(cl => {
+            const c1 = base.columna(this.columnaDeEscala(cl.base)), c2 = base.columna(this.columnaDeEscala(cl));
+            if (!c1 || !c2) return;
+            const x = [], y = [];
+            for (let i = 0; i < n; i++) if (isFinite(c1.datos[i]) && isFinite(c2.datos[i])) { x.push(c1.datos[i]); y.push(c2.datos[i]); }
+            if (x.length < 10) return;
+            const rPed = (cfg.correlaciones || []).find(c => c.origen === 'repetidas' && ((c.a === cl.base.nombre && c.b === cl.nombre) || (c.b === cl.base.nombre && c.a === cl.nombre)));
+            const rObs = this._corr(x, y);
+            if (rPed) filas.push({ tipo: 'r inf', variable: `${cl.base.nombre}: concordancia autoinforme ↔ ${cl.informante}`, pedido: num(rPed.r, 3), obtenido: num(rObs, 3), ok: Math.abs(rObs - rPed.r) <= (exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(n))) });
+            const mx = x.reduce((s, v) => s + v, 0) / x.length, my = y.reduce((s, v) => s + v, 0) / y.length;
+            const sd1 = Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) / Math.max(1, x.length - 1)) || 1;
+            const sesgoPed = (cl.media - cl.base.media) / cl.base.desviacion;
+            filas.push({ tipo: 'd sesgo', variable: `${cl.base.nombre}: sesgo de ${cl.informante} (media informante − media autoinforme, en DE)`, pedido: num(sesgoPed), obtenido: num((my - mx) / sd1), ok: Math.abs((my - mx) / sd1 - sesgoPed) <= (exactas ? 0.06 : Math.max(0.06, 2 / Math.sqrt(n))) });
+        });
+        // jueces
+        (this.juecesGenerados || []).forEach(j => {
+            const cols = j.columnas.map(c => base.tiene(c) ? base.columna(c).datos : null);
+            if (cols.some(c => !c)) return;
+            if (j.tipo === 'jueces') {
+                const kf = this._kappaFleiss(cols);
+                if (!kf) return;
+                const tol = Math.max(0.05, 2.5 / Math.sqrt(Math.max(4, n)));
+                filas.push({ tipo: 'κ', variable: `${j.variable}: κ de Fleiss entre ${j.columnas.length} jueces (acuerdo bruto ${(kf.acuerdo * 100).toFixed(0)} %)`, pedido: num(j.kappa, 2), obtenido: num(kf.kappa, 3), ok: Math.abs(kf.kappa - j.kappa) <= tol });
+            } else {
+                // CCI(1) con las personas como grupos y las puntuaciones de los jueces como réplicas
+                const valores = [], codigos = [];
+                for (let i = 0; i < n; i++) cols.forEach(c => { if (c[i] === c[i]) { valores.push(c[i]); codigos.push(i); } });
+                const icc = this._iccAnova(valores, codigos);
+                if (icc === null) return;
+                const tol = Math.max(0.03, 2 * (1 - j.icc) / Math.sqrt(Math.max(4, n)));
+                filas.push({ tipo: 'CCI jueces', variable: `${j.variable}: CCI(1) entre ${j.columnas.length} jueces (ANOVA, personas como grupos)`, pedido: num(j.icc, 2), obtenido: num(icc, 3), ok: Math.abs(icc - j.icc) <= tol });
             }
         });
     }
@@ -1468,6 +1652,7 @@ class GeneradorDatos {
         });
         (cfg.pruebas || []).forEach(p => registrar(this.columnaDeEscala(p), `el total de «${p.nombre}»`));
         (cfg.desenlaces || []).forEach(d => registrar(d.nombre, `el desenlace «${d.nombre}»`));
+        (cfg.concordancias || []).filter(c => c.tipo !== 'informante').forEach(c => { for (let j = 1; j <= (c.jueces || 2); j++) registrar(`Juez${j}_${this._siglaDeVariable(c.variable)}`, `el juez ${j} de «${c.variable}»`); });
         (cfg.gruposPruebas || []).forEach(g => { if (g.escalas.length >= 2) registrar(`General_${g.sigla}`, `el puntaje general del test «${g.nombre}»`); });
     }
 
@@ -2881,6 +3066,18 @@ class GeneradorDatos {
             const b31 = t => inf31.find(f => f.tipo === t && /Curvilínea/.test(f.variable));
             ok('(C6) curvilínea con X asimétrica: coeficientes recuperados igualmente', b31('β₁') && b31('β₁').ok && b31('β₂') && b31('β₂').ok, `${b31('β₁') && b31('β₁').obtenido} ${b31('β₂') && b31('β₂').obtenido}`);
             { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC6b)); gv.configuracion.modelos[0].c2 = -0.6; gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C6) validación: con X asimétrica y β₂ = −0.6 el R² real supera el 98 % y se rechaza', v.errores.some(e => /Curvilínea.*varianza de X²/.test(e)), v.errores.filter(e => /Curvilínea/.test(e)).map(e => e.slice(0, 90)).join(' | ')); }
+            // 26) (C7) concordancia: informante (r y sesgo), jueces categóricos (κ) y jueces continuos (CCI)
+            const cfgC7 = cfgBase({ tamanoMuestra: 1500, correlaciones: [{ a: 'Estrés', b: 'Percepción', r: -0.3 }],
+                cortes: [{ variable: 'Estrés', etiquetas: ['Bajo', 'Medio', 'Alto'], cortes: [24, 36], porPercentil: false }],
+                concordancias: [{ tipo: 'informante', variable: 'Estrés', etiqueta: 'madre', r: 0.55, sesgo: -0.4 }, { tipo: 'jueces', variable: 'Estrés', jueces: 3, kappa: 0.6 }, { tipo: 'juecesContinuo', variable: 'Percepción', jueces: 2, icc: 0.8 }] });
+            const { g: g32, d: d32 } = generar(cfgC7);
+            const inf32 = g32.informePedidoObtenido(g32.datosGenerados);
+            const f32 = t => inf32.find(f => f.tipo === t);
+            ok('(C7) informante: columnas con sufijo, r de concordancia exacta y sesgo −0.4 DE', Object.keys(d32[0]).includes('Dimension_ST_madre') && Object.keys(d32[0]).includes('ST1_madre') && f32('r inf') && f32('r inf').ok && f32('d sesgo') && f32('d sesgo').ok, `${f32('r inf') && f32('r inf').obtenido} · sesgo ${f32('d sesgo') && f32('d sesgo').obtenido}`);
+            ok('(C7) el informante conserva la r de la base con otra variable atenuada por la concordancia (−0.3·0.55)', Math.abs(corr(col(d32, 'Dimension_ST_madre'), col(d32, 'Dimension_PE')) - (-0.3 * 0.55)) < 0.03, corr(col(d32, 'Dimension_ST_madre'), col(d32, 'Dimension_PE')).toFixed(3));
+            ok('(C7) jueces categóricos: κ de Fleiss ≈ 0.60 sobre los niveles de Estrés, con etiquetas', f32('κ') && f32('κ').ok && ['Bajo', 'Medio', 'Alto'].includes(d32[0].Juez1_ST), f32('κ') && `${f32('κ').pedido}→${f32('κ').obtenido}`);
+            ok('(C7) jueces continuos: CCI(1) ≈ 0.80 sobre Percepción', f32('CCI jueces') && f32('CCI jueces').ok, f32('CCI jueces') && `${f32('CCI jueces').pedido}→${f32('CCI jueces').obtenido}`);
+            ok('(C7) etiquetas de las columnas nuevas', /κ 0.6/.test(g32.obtenerEtiquetas()['Juez2_ST']) && /CCI 0.8/.test(g32.obtenerEtiquetas()['Juez1_PE']) && g32.obtenerEtiquetas()['Dimension_ST_madre'] === 'Estrés (madre)', g32.obtenerEtiquetas()['Juez2_ST']);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -3418,6 +3615,8 @@ class GeneradorDatos {
         this._informeDesenlacesYCortes(base, filas, num);
         // 10) (C4) Interacciones 2×2 y anidamiento
         this._informeEfectosCompuestos(base, filas, columnaDe, num);
+        // 11) (C7) Concordancia entre informantes y jueces
+        this._informeConcordancia(base, filas, num);
         return filas;
     }
     _informeEfectosCompuestos(base, filas, columnaDe, num) {
@@ -3483,7 +3682,7 @@ class GeneradorDatos {
             vistas.add(mr.variable);
             const p = (cfg.pruebas || []).find(x => x.nombre === mr.variable && !x.sufijo);
             if (!p) return;
-            const clones = (cfg.pruebas || []).filter(x => x.base === p);
+            const clones = (cfg.pruebas || []).filter(x => x.base === p && x.onda);   // solo ondas (no informantes)
             if (!clones.length) return;
             const K = clones[clones.length - 1].onda;
             const t1 = base.columna(this.columnaDeEscala(p));
@@ -4036,6 +4235,12 @@ class GeneradorDatos {
             if (d.tipo === 'ordinal' && d.niveles) conEtiquetas.push([d.nombre, new Map(d.niveles.map(x => [String(x.etiqueta), x.codigo]))]);
         });
         ((this.configuracion && this.configuracion.cortes) || []).forEach(c => conEtiquetas.push([`Nivel_${this._siglaDeVariable(c.variable)}`, new Map(c.etiquetas.map((e, k) => [e, k + 1]))]));
+        // (C7) los jueces categóricos comparten las etiquetas de la variable que juzgan
+        ((this.configuracion && this.configuracion.concordancias) || []).filter(c => c.tipo === 'jueces').forEach(c => {
+            const colV = this._columnaCategoricaDe(c.variable);
+            const par = conEtiquetas.find(([col]) => col === colV);
+            if (par) for (let j = 1; j <= (c.jueces || 2); j++) conEtiquetas.push([`Juez${j}_${this._siglaDeVariable(c.variable)}`, par[1]]);
+        });
         conEtiquetas.forEach(([col, m]) => traductores.set(col, v => (typeof v === 'string' && m.has(v)) ? m.get(v) : v));
         if (!traductores.size) return BaseColumnar.desdeObjetos(datos);
         const copia = datos.map(f => { const o = Object.assign({}, f); traductores.forEach((tr, col) => { if (col in o) o[col] = tr(o[col]); }); return o; });
@@ -4492,7 +4697,8 @@ class GeneradorDatos {
     //  · los puntajes generales derivados y los modelos usan solo la onda 1.
     _expandirConfiguracion(cfg) {
         const lista = (cfg && cfg.medidasRepetidas) || [];
-        if (!lista.length || (cfg.pruebas || []).some(p => p.sufijo)) return cfg;
+        const hayInformantes = ((cfg && cfg.concordancias) || []).some(c => c.tipo === 'informante');
+        if ((!lista.length && !hayInformantes) || (cfg.pruebas || []).some(p => p.sufijo)) return cfg;
         const nueva = Object.assign({}, cfg, { pruebas: [], correlaciones: (cfg.correlaciones || []).slice(), diferenciasGrupo: (cfg.diferenciasGrupo || []).slice(), pruebasOriginales: cfg.pruebas });
         const repetidas = new Map();
         lista.forEach(mr => { if (!repetidas.has(mr.variable)) repetidas.set(mr.variable, mr); });
@@ -4582,6 +4788,27 @@ class GeneradorDatos {
                     }));
                 }
             });
+        });
+        // (C7) Informantes: un clon de la escala por informante, con sufijo propio,
+        // correlación r con la base (concordancia), sesgo d·σ en la media, las mismas
+        // correlaciones con las demás variables atenuadas por r y las mismas
+        // diferencias por grupo. Solo sobre la onda 1.
+        (cfg.concordancias || []).filter(c => c.tipo === 'informante').forEach(c => {
+            const p = (cfg.pruebas || []).find(x => x.nombre === c.variable && !x.sufijo && x.tipo !== 'general');
+            if (!p || !(c.r > 0 && c.r < 0.99)) return;
+            const sufijo = `_${this._slugSufijo(c.etiqueta)}`;
+            if (nueva.pruebas.some(x => x.sufijo === sufijo && x.base === p)) return;
+            const clon = Object.assign({}, p, { nombre: `${p.nombre} (${c.etiqueta})`, sufijo, base: p, informante: c.etiqueta, media: p.media + p.desviacion * (c.sesgo || 0) });
+            if (p.formaTotal) clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion);
+            const iBase = nueva.pruebas.indexOf(p);
+            nueva.pruebas.splice(iBase >= 0 ? iBase + 1 : nueva.pruebas.length, 0, clon);
+            nueva.correlaciones.unshift({ a: p.nombre, b: clon.nombre, r: c.r, origen: 'repetidas' });
+            efectivas.forEach(e => {
+                if (e.a !== p.nombre && e.b !== p.nombre) return;
+                const otro = e.a === p.nombre ? e.b : e.a;
+                nueva.correlaciones.push({ a: clon.nombre, b: otro, r: e.r * c.r, origen: 'repetidas' });
+            });
+            (cfg.diferenciasGrupo || []).forEach(d => { if (d.cuantitativa === p.nombre) nueva.diferenciasGrupo.push(Object.assign({}, d, { cuantitativa: clon.nombre })); });
         });
         // Diferencias por grupo: las de la base en cada onda + cambio diferencial.
         // La d es MARGINAL (d_k = Δ_k/DE agrupada), así que el desplazamiento
@@ -5422,6 +5649,8 @@ class GeneradorDatos {
         this._validarEstructuras(errores, advertencias);
         // (C2/C3) Desenlaces y puntos de corte
         this._validarDesenlacesYCortes(errores, advertencias);
+        // (C7) Concordancia
+        this._validarConcordancias(errores, advertencias);
 
         // (C5) escalas dicotómicas: Media/DE derivadas y reglas propias
         this._validarDicotomicas(errores, advertencias);
