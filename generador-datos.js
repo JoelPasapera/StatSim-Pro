@@ -215,6 +215,17 @@ class GeneradorDatos {
     _esNombreGeneral(nombre) {
         return (this.configuracion.gruposPruebas || []).some(g => g.escalas.length >= 2 && this.nombreGeneral(g) === nombre);
     }
+    // Varianza poblacional de x̃² para una forma dada (x̃ estandarizada); PRNG propio
+    _varianzaCuadradoForma(distribucion) {
+        if (!distribucion || distribucion === 'normal') return 2;
+        let semilla = 0x2545F491 ^ (String(distribucion).length * 977);
+        const u = () => { semilla = (semilla + 0x6D2B79F5) | 0; let x = Math.imul(semilla ^ (semilla >>> 15), 1 | semilla); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+        const normal = () => { const u1 = Math.max(1e-12, u()), u2 = u(); return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); };
+        const nS = 6000; let s1 = 0, s2 = 0;
+        for (let i = 0; i < nS; i++) { const x = this.transformarFormaZ(normal(), distribucion); const q = x * x; s1 += q; s2 += q * q; }
+        const m = s1 / nS;
+        return Math.max(0.1, s2 / nS - m * m);
+    }
     _validarModelos(errores, advertencias) {
         const cfg = this.configuracion;
         const modelos = cfg.modelos || [];
@@ -247,7 +258,7 @@ class GeneradorDatos {
         (cfg.gruposPruebas || []).forEach(g => { if (g.escalas.length >= 2) g.escalas.forEach(s => { const p = (cfg.pruebas || []).find(x => x.nombreCorto === s); if (p) dimsDeGeneral.set(p.nombre, this.nombreGeneral(g)); }); });
         const generalesConCorrelacion = new Set();
         (cfg.correlaciones || []).concat(this._correlacionesImplicadasPorMediacion()).forEach(c => { [c.a, c.b].forEach(v => { if (this._esNombreGeneral(v)) generalesConCorrelacion.add(v); }); });
-        modelos.filter(md => md.tipo === 'moderacion').forEach(md => {
+        modelos.filter(md => md.tipo === 'moderacion' || md.tipo === 'curvilinea').forEach(md => {
             [md.x, md.m, md.y].forEach(v => {
                 const gen = dimsDeGeneral.get(v);
                 if (gen && generalesConCorrelacion.has(gen)) advertencias.push(`Moderación ${md.x} × ${md.m} → ${md.y}: «${v}» es dimensión de «${gen}», que tiene correlaciones pedidas; el reparto entre dimensiones puede no cumplirse exactamente`);
@@ -276,7 +287,28 @@ class GeneradorDatos {
             fijarPareja(par(md.x, md.y), md.c1 + md.c2 * rho, etiqueta);
             fijarPareja(par(md.m, md.y), md.c2 + md.c1 * rho, etiqueta);
         });
+        modelos.filter(md => md.tipo === 'curvilinea' && md.x !== md.y).forEach(md => fijarPareja(par(md.x, md.y), md.c1, `Curvilínea ${md.x} → ${md.y}`));
         modelos.forEach((md, k) => {
+            // (C6) curvilínea: Y = β₁·X + β₂·X² (X estandarizada; X² centrada)
+            if (md.tipo === 'curvilinea') {
+                const et = `Curvilínea ${md.x} → ${md.y}`;
+                [md.x, md.y].forEach(v => { if (!nombres.has(v)) errores.push(`${et}: la variable «${v}» no existe entre las cuantitativas del estudio`); });
+                if (md.x === md.y) errores.push(`${et}: X e Y deben ser distintas`);
+                [md.x, md.y].forEach(v => { if (this._esNombreGeneral(v)) errores.push(`${et}: un puntaje general derivado no puede entrar en una relación curvilínea (usa sus dimensiones)`); });
+                if ([md.c1, md.c2].some(c => Math.abs(c) >= 1)) errores.push(`${et}: los coeficientes estandarizados deben estar entre −1 y 1`);
+                if (Math.abs(md.c2) < 0.05) advertencias.push(`${et}: con β₂ = ${md.c2} la curvatura apenas se notará (0.15–0.35 es lo visible)`);
+                if (criteriosModeracion.has(md.y)) errores.push(`${et}: «${md.y}» ya es criterio de otro modelo compuesto (una variable solo puede serlo de uno)`);
+                criteriosModeracion.add(md.y);
+                // Var(X²) = 2 con X normal; con otras formas se calcula (una uniforme la baja a 0.8, una asimétrica la sube mucho)
+                const pX = (cfg.pruebas || []).find(p => p.nombre === md.x), sX = (cfg.sociodemograficos || []).find(s => s.categoria === md.x);
+                const distX = pX ? pX.distribucion : (sX ? sX.distribucion : 'normal');
+                const varX2 = this._varianzaCuadradoForma(distX);
+                const r2 = md.c1 * md.c1 + md.c2 * md.c2 * varX2;
+                if (r2 >= 0.98) errores.push(`${et}: los coeficientes explican el ${(r2 * 100).toFixed(0)} % de la varianza de «${md.y}» (máximo 98 %${distX !== 'normal' ? `; con X ${distX} la varianza de X² es ${varX2.toFixed(1)}` : ''}); reduce β₁ o β₂`);
+                else if (distX === 'asimetrica') advertencias.push(`${et}: con X asimétrica, X y X² están correlacionadas: r(X,Y) se aparta de β₁ y el R² real es ${(r2 * 100).toFixed(0)} %`);
+                if (tablaIII.has(par(md.x, md.y))) advertencias.push(`${et}: la correlación ${md.x} ↔ ${md.y} de la tabla III se sustituye por la que implica β₁`);
+                return;
+            }
             const etiqueta = md.tipo === 'moderacion' ? `Moderación ${md.x} × ${md.m} → ${md.y}` : `Mediación ${md.x} → ${md.m} → ${md.y}`;
             [md.x, md.m, md.y].forEach(v => { if (!nombres.has(v)) errores.push(`${etiqueta}: la variable «${v}» no existe entre las cuantitativas del estudio`); });
             if (md.x === md.m || md.x === md.y || md.m === md.y) errores.push(`${etiqueta}: las tres variables deben ser distintas`);
@@ -329,12 +361,14 @@ class GeneradorDatos {
             const selects = fila.querySelectorAll('select');
             const inputs = fila.querySelectorAll('input');
             if (selects.length < 4 || inputs.length < 3) return;
-            const tipo = selects[0].value === 'moderacion' ? 'moderacion' : 'mediacion';
-            const x = selects[1].value, m = selects[2].value, y = selects[3].value;
-            const c1 = parseFloat(inputs[0].value), c2 = parseFloat(inputs[1].value), c3 = parseFloat(inputs[2].value);
+            const tipo = ['moderacion', 'curvilinea'].includes(selects[0].value) ? selects[0].value : 'mediacion';
+            const x = selects[1].value, y = selects[3].value;
+            // (C6) curvilínea: solo X e Y; β₁ (lineal) y β₂ (cuadrática)
+            const m = tipo === 'curvilinea' ? x : selects[2].value;
+            const c1 = parseFloat(inputs[0].value), c2 = parseFloat(inputs[1].value), c3 = tipo === 'curvilinea' ? 0 : parseFloat(inputs[2].value);
             if (!x || !m || !y) return;
             if ([c1, c2, c3].some(c => isNaN(c))) {
-                throw new Error(`Modelo ${tipo === 'moderacion' ? 'de moderación' : 'de mediación'} (${x} · ${m} · ${y}): faltan coeficientes`);
+                throw new Error(`Modelo ${tipo === 'moderacion' ? 'de moderación' : (tipo === 'curvilinea' ? 'curvilíneo' : 'de mediación')} (${x} · ${y}): faltan coeficientes`);
             }
             modelos.push({ tipo, x, m, y, c1, c2, c3 });
         });
@@ -489,6 +523,24 @@ class GeneradorDatos {
     // (C4) Interacción A×B y anidamiento (ICC) en la tabla IV
     _validarEfectosCompuestos(errores, advertencias) {
         const cfg = this.configuracion;
+        // Las diferencias por grupo pedidas sobre una misma variable no pueden llevarse
+        // toda su varianza (Σ amp²·V ≥ 0.9): no quedaría varianza intra para nada más
+        const porVariable = new Map();
+        (cfg.diferenciasGrupo || []).forEach(dif => {
+            if (dif.tipo && dif.tipo !== 'd' && dif.tipo !== 'interaccion') return;
+            const A = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion);
+            if (!A || !isFinite(dif.d)) return;
+            let V = this._varianzaCodigo(A);
+            if (dif.tipo === 'interaccion') { const B = (cfg.sociodemograficos || []).find(s => s.categoria === dif.agrupacion2); V = V * (this._varianzaCodigo(B) || 0); }
+            if (!(V > 0)) return;
+            const amp = dif.d / Math.sqrt(1 + dif.d * dif.d * V);
+            porVariable.set(dif.cuantitativa, (porVariable.get(dif.cuantitativa) || 0) + amp * amp * V);
+        });
+        (cfg.diferenciasGrupo || []).forEach(dif => { if (dif.tipo === 'icc') porVariable.set(dif.cuantitativa, (porVariable.get(dif.cuantitativa) || 0) + dif.d); });
+        porVariable.forEach((entre, nombre) => {
+            if (entre >= 0.9) errores.push(`«${nombre}»: las diferencias por grupo pedidas se llevan el ${Math.round(entre * 100)} % de su varianza (con una categórica de varios niveles la d es por unidad de código y crece deprisa); reduce las d o usa menos agrupaciones`);
+            else if (entre >= 0.6) advertencias.push(`«${nombre}»: las diferencias por grupo pedidas explican el ${Math.round(entre * 100)} % de su varianza; queda poca variación dentro de los grupos`);
+        });
         (cfg.diferenciasGrupo || []).forEach(dif => {
             if (!dif.tipo || dif.tipo === 'd') return;
             const esGeneral = this._esNombreGeneral(dif.cuantitativa);
@@ -1043,6 +1095,10 @@ class GeneradorDatos {
             const perfil = this.perfilesItems.get(p);
             if (perfil && perfil.estructura) { this._calibrarCargas(p); objetivoInterno.set(p, p.alfa); return; }   // (C1) las cargas mandan
             objetivoInterno.set(p, this.calibrarFiabilidad(p, indiceFiab));
+            // (C5) dicotómica: el recorte a 0/1 acerca a 0.5 las medias de los ítems
+            // extremos; se corrigen las medias de ítem del perfil hasta que las
+            // dificultades realizadas sean las pedidas (y con ellas el KR-20)
+            if (this._esDicotomica(p) && perfil && Array.isArray(p.dificultadesEfectivas)) this._calibrarDificultades(p, perfil, objetivoInterno.get(p), indiceFiab);
         });
         avisar(0.36, 'Generando participantes');
 
@@ -1092,7 +1148,7 @@ class GeneradorDatos {
                 const formaYaAplicada = !!(this.driversEnValor && this.driversEnValor.has(claveEscala));
                 const baseZ = driverEscala !== undefined ? driverEscala : this.generarNormalEstandar();
                 const total = this._totalObjetivo(prueba.media, prueba.desviacion * factorDEPrueba.get(prueba), baseZ,
-                    formaYaAplicada ? 'normal' : prueba.distribucion, despPrueba.get(prueba)[i]);
+                    formaYaAplicada ? 'normal' : (prueba.formaTotal || prueba.distribucion), despPrueba.get(prueba)[i]);
                 basesPrueba[idx] = baseZ;
                 totalesPrueba[idx] = total;
                 zDim[this._claveEscala(prueba)] = prueba.desviacion > 0 ? (total - prueba.media) / prueba.desviacion : 0;
@@ -1574,7 +1630,7 @@ class GeneradorDatos {
         const zOtras = (perfil && (perfil.cruzadas.length || (perfil.estructura && perfil.estructura.metodo))) ? this._zOtrasSimuladas(prueba, perfil) : null;
         for (let i = 0; i < nSim; i++) {
             const p = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo,
-                prueba.maximo, objetivoInterno, null, prueba.distribucion, indice,
+                prueba.maximo, objetivoInterno, null, prueba.formaTotal || prueba.distribucion, indice,
                 this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfil, zOtras);
             for (let j = 0; j < k; j++) cols[j][i] = p.items[j];
         }
@@ -2068,7 +2124,7 @@ class GeneradorDatos {
         const evaluar = () => {
             const cols = Array.from({ length: k }, () => new Array(nSim));
             for (let s = 0; s < nSim; s++) {
-                const r = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo, prueba.maximo, prueba.alfa, null, prueba.distribucion, 'alfa', this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfilPuro, null);
+                const r = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo, prueba.maximo, prueba.alfa, null, prueba.formaTotal || prueba.distribucion, 'alfa', this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfilPuro, null);
                 for (let j = 0; j < k; j++) cols[j][s] = r.items[j];   // el reparto ya devuelve los ítems en orientación recodificada
             }
             const cargas = this._pafUnFactor(this._matrizCorrelacion(cols));
@@ -2128,7 +2184,7 @@ class GeneradorDatos {
                 dims.forEach((p, a) => { zOtras[p.nombreCorto] = z[a]; });
                 zOtras['metodo:' + dims[0].prueba] = this.generarNormalEstandar();
                 porDim.forEach((d, a) => {
-                    const r = this.generarPuntajesPrueba(d.p.numItems, d.p.media, d.deIntra, d.p.minimo, d.p.maximo, d.p.alfa, z[a], d.p.distribucion, 'alfa', this._desplazamientoAleatorio(d.p.nombre, d.p.desviacion), d.perfil, zOtras);
+                    const r = this.generarPuntajesPrueba(d.p.numItems, d.p.media, d.deIntra, d.p.minimo, d.p.maximo, d.p.alfa, z[a], d.p.formaTotal || d.p.distribucion, 'alfa', this._desplazamientoAleatorio(d.p.nombre, d.p.desviacion), d.perfil, zOtras);
                     for (let j = 0; j < d.p.numItems; j++) d.cols[j][s] = r.items[j];
                 });
             }
@@ -2323,6 +2379,7 @@ class GeneradorDatos {
     // Es monótona, de modo que la estructura de correlación (factor latente F y
     // correlaciones objetivo) se preserva por orden de rango.
     transformarFormaZ(z, distribucion) {
+        if (typeof distribucion === 'function') return distribucion(z);   // (C5) forma propia de una escala (beta-binomial)
         switch (distribucion) {
             case 'uniforme': {
                 // z normal -> uniforme(0,1) por la CDF -> uniforme estandarizada.
@@ -2428,7 +2485,7 @@ class GeneradorDatos {
     }
     // Total FINAL de una escala a partir de su driver (Likert → entero acotado).
     _totalDesdeDriver(prueba, z, desplazamiento, factorDE, formaAplicada = false) {
-        const t = this._totalObjetivo(prueba.media, prueba.desviacion * factorDE, z, formaAplicada ? 'normal' : prueba.distribucion, desplazamiento);
+        const t = this._totalObjetivo(prueba.media, prueba.desviacion * factorDE, z, formaAplicada ? 'normal' : (prueba.formaTotal || prueba.distribucion), desplazamiento);
         return (prueba.minimo !== null && prueba.maximo !== null) ? this._totalEnteroLikert(prueba.numItems, prueba.minimo, prueba.maximo, t) : t;
     }
     // Valor FINAL de un sociodemográfico continuo (normal, asimétrico, uniforme):
@@ -2810,6 +2867,20 @@ class GeneradorDatos {
             ok('(C5) los ítems son 0/1 y la r con otra escala sigue exacta', d29.every(f => [0, 1].includes(f.CO1) && [0, 1].includes(f.CO15)) && inf29.filter(f => f.tipo === 'r').every(f => f.ok), inf29.filter(f => f.tipo === 'r').map(f => f.obtenido).join(' '));
             const cfgC5b = cfgBase({ tamanoMuestra: 100 }); cfgC5b.pruebas.push({ nombre: 'Síntomas', nombreCorto: 'SI', prueba: 'Lista', tipo: 'dimension', numItems: 10, media: 3, desviacion: 5, alfa: 0.75, minimo: 0, maximo: 1, distribucion: 'normal', invertidos: 0, dificultades: null });
             { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC5b)); gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C5) validación: avisa de que la DE la fijan las dificultades y el KR-20 (y no usa los avisos Likert)', v.advertencias.some(a => /Síntomas.*la DE la fijan/.test(a)) && !v.advertencias.some(a => /Síntomas.*medio punto/.test(a)), v.advertencias.filter(a => /Síntomas/.test(a)).map(a => a.slice(0, 80)).join(' | ')); }
+            // 25) (C6) relación curvilínea (U invertida) con X normal y con X asimétrica; Y conserva Media/DE y su r con terceras
+            const cfgC6 = cfgBase({ tamanoMuestra: 1500, correlaciones: [{ a: 'Estrés', b: 'Regulación', r: -0.30 }], modelos: [{ tipo: 'curvilinea', x: 'Percepción', m: 'Percepción', y: 'Estrés', c1: 0.20, c2: -0.30, c3: 0 }] });
+            const { g: g30 } = generar(cfgC6);
+            const inf30 = g30.informePedidoObtenido(g30.datosGenerados);
+            const b30 = t => inf30.find(f => f.tipo === t && /Curvilínea/.test(f.variable));
+            ok('(C6) curvilínea: β₁ = 0.20 y β₂ = −0.30 recuperados por regresión sobre X y X²', b30('β₁') && b30('β₁').ok && b30('β₂') && b30('β₂').ok, `${b30('β₁') && b30('β₁').obtenido} ${b30('β₂') && b30('β₂').obtenido}`);
+            ok('(C6) curvilínea: Media y DE de Y intactas, r(X,Y) = β₁ y r con una tercera variable exacta', inf30.filter(f => (f.tipo === 'Media' || f.tipo === 'DE') && f.variable === 'Estrés').every(f => f.ok) && inf30.filter(f => f.tipo === 'r').every(f => f.ok) && Math.abs(corr(col(g30.datosGenerados.aObjetos(), 'Dimension_PE'), col(g30.datosGenerados.aObjetos(), 'Dimension_ST')) - 0.20) < 0.03, inf30.filter(f => f.tipo === 'r').map(f => `${f.pedido}→${f.obtenido}`).join(' '));
+            const cfgC6b = cfgBase({ tamanoMuestra: 1500, modelos: [{ tipo: 'curvilinea', x: 'Percepción', m: 'Percepción', y: 'Estrés', c1: 0.20, c2: -0.30, c3: 0 }] });
+            cfgC6b.pruebas[0].distribucion = 'asimetrica';
+            const { g: g31 } = generar(cfgC6b);
+            const inf31 = g31.informePedidoObtenido(g31.datosGenerados);
+            const b31 = t => inf31.find(f => f.tipo === t && /Curvilínea/.test(f.variable));
+            ok('(C6) curvilínea con X asimétrica: coeficientes recuperados igualmente', b31('β₁') && b31('β₁').ok && b31('β₂') && b31('β₂').ok, `${b31('β₁') && b31('β₁').obtenido} ${b31('β₂') && b31('β₂').obtenido}`);
+            { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC6b)); gv.configuracion.modelos[0].c2 = -0.6; gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C6) validación: con X asimétrica y β₂ = −0.6 el R² real supera el 98 % y se rechaza', v.errores.some(e => /Curvilínea.*varianza de X²/.test(e)), v.errores.filter(e => /Curvilínea/.test(e)).map(e => e.slice(0, 90)).join(' | ')); }
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -3495,6 +3566,24 @@ class GeneradorDatos {
             });
             filas.push({ tipo: 'c′', variable: `${etiqueta}: c′ (${g.x} → ${g.y} directo)`, pedido: num(g.cprima), obtenido: num(betasY[0], 3), ok: Math.abs(betasY[0] - g.cprima) <= tol });
         });
+        // (C6) Curvilínea: regresión de Y (estandarizada) sobre z_X y z_X² centrada
+        modelos.filter(md => md.tipo === 'curvilinea').forEach(md => {
+            const cx = columna(md.x), cy = columna(md.y);
+            if (!cx || !cy) return;
+            const completos = [];
+            for (let i = 0; i < n; i++) if (isFinite(cx[i]) && isFinite(cy[i])) completos.push(i);
+            if (completos.length < 10) return;
+            const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / arr.length) || 1; return arr.map(v => (v - mu) / sd); };
+            const zx = est(completos.map(i => cx[i])), y = completos.map(i => cy[i]);
+            const q = zx.map(v => v * v); const mq = q.reduce((s, v) => s + v, 0) / q.length;
+            const betas = this._betasEstandarizadas(y, [zx, q.map(v => v - mq)], false);
+            if (!betas) return;
+            const conGrupos = !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(md.y) || []).length);
+            const tolM = conGrupos ? Math.max(tol, 2 / Math.sqrt(Math.max(4, completos.length))) : tol;
+            const etiqueta = `Curvilínea ${md.x} → ${md.y}`;
+            filas.push({ tipo: 'β₁', variable: `${etiqueta}: β₁ lineal (${md.x})`, pedido: num(md.c1), obtenido: num(betas[0], 3), ok: Math.abs(betas[0] - md.c1) <= tolM });
+            filas.push({ tipo: 'β₂', variable: `${etiqueta}: β₂ cuadrática (${md.x}², X estandarizada)`, pedido: num(md.c2), obtenido: num(betas[1], 3), ok: Math.abs(betas[1] - md.c2) <= tolM });
+        });
         // Moderación: regresión de Y (estandarizada) sobre z_X, z_W y z_X·z_W
         modelos.filter(md => md.tipo === 'moderacion').forEach(md => {
             const cx = columna(md.x), cw = columna(md.m), cy = columna(md.y);
@@ -3644,15 +3733,19 @@ class GeneradorDatos {
         // las FIJAN los coeficientes: r(X,Y) = β₁ + β₂·ρ, r(W,Y) = β₂ + β₁·ρ, con
         // ρ = r(X,W) tal como quedó en la matriz (tabla III, relleno intra-test o 0).
         this.modelosModeracion = [];
-        (this.configuracion.modelos || []).filter(md => md.tipo === 'moderacion').forEach(md => {
+        (this.configuracion.modelos || []).filter(md => md.tipo === 'moderacion' || md.tipo === 'curvilinea').forEach(mdCfg => {
+            // (C6) la curvilínea es la moderación con W = X: z_Y = β₁·x̃ + β₂·(x̃² − 1) + c·e
+            // (b2 = 0, b3 = β₂, ρ = 1); solo fija r(X,Y) = β₁
+            const md = mdCfg.tipo === 'curvilinea' ? { tipo: 'curvilinea', x: mdCfg.x, m: mdCfg.x, y: mdCfg.y, c1: mdCfg.c1, c2: 0, c3: mdCfg.c2 } : mdCfg;
             const iX = indicePorNombre[md.x], iW = indicePorNombre[md.m], iY = indicePorNombre[md.y];
-            if (iX === undefined || iW === undefined || iY === undefined || new Set([iX, iW, iY]).size < 3) return;
-            const rho = R[iX][iW];
+            const distintos = md.tipo === 'curvilinea' ? (iX !== undefined && iY !== undefined && iX !== iY) : (iX !== undefined && iW !== undefined && iY !== undefined && new Set([iX, iW, iY]).size === 3);
+            if (!distintos) return;
+            const rho = md.tipo === 'curvilinea' ? 1 : R[iX][iW];
             const r2 = md.c1 * md.c1 + md.c2 * md.c2 + 2 * md.c1 * md.c2 * rho + md.c3 * md.c3 * (1 + rho * rho);
             if (!(r2 < 0.98)) return;   // la validación ya lo habrá rechazado
             const rXY = Math.max(-0.99, Math.min(0.99, md.c1 + md.c2 * rho)), rWY = Math.max(-0.99, Math.min(0.99, md.c2 + md.c1 * rho));
             R[iX][iY] = R[iY][iX] = rXY;
-            R[iW][iY] = R[iY][iW] = rWY;
+            if (md.tipo !== 'curvilinea') { R[iW][iY] = R[iY][iW] = rWY; }
             // Modo NO exacto: la composición por fila usa los drivers ya con su
             // FORMA (lo que verá el analista, salvo recorte y redondeo); la
             // varianza del producto x̃·w̃ se estima por simulación porque con
@@ -3672,8 +3765,20 @@ class GeneradorDatos {
             }
             const mediaP = sumaP / nSim, varProducto = Math.max(0.05, sumaP2 / nSim - mediaP * mediaP);
             const r2Forma = md.c1 * md.c1 + md.c2 * md.c2 + 2 * md.c1 * md.c2 * mediaP + md.c3 * md.c3 * varProducto;
-            this.modelosModeracion.push({ iX, iW, iY, b1: md.c1, b2: md.c2, b3: md.c3, rho, r2, x: md.x, w: md.m, y: md.y, tx, tw, mediaProducto: mediaP, r2Forma: Math.min(0.98, r2Forma) });
+            this.modelosModeracion.push({ tipo: md.tipo, iX, iW, iY, b1: md.c1, b2: md.c2, b3: md.c3, rho, r2, x: md.x, w: md.m, y: md.y, tx, tw, mediaProducto: mediaP, r2Forma: Math.min(0.98, r2Forma) });
         });
+        // (C6, revisión) los criterios encadenados se componen en orden de dependencia:
+        // si la X (o W) de un modelo es el criterio de otro, ese otro va primero
+        if (this.modelosModeracion.length > 1) {
+            const lista = this.modelosModeracion.slice(), ordenada = [], hechos = new Set();
+            let guard = 0;
+            while (lista.length && guard++ < 50) {
+                const listo = lista.findIndex(md => !lista.some(o => o !== md && (o.iY === md.iX || o.iY === md.iW)));
+                const k = listo >= 0 ? listo : 0;   // ciclo: se respeta el orden dado
+                ordenada.push(lista[k]); lista.splice(k, 1);
+            }
+            this.modelosModeracion = ordenada.concat(lista);
+        }
         this.matrizForzada = false;
         this.correlVariables = variables;
         this.diagnosticoCorrelaciones = m > 0 ? this.diagnosticarMatriz(R, variables.map(v => v.nombre)) : { imposible: false, triadas: [], ajustes: [], R };
@@ -4267,7 +4372,11 @@ class GeneradorDatos {
         const varT = sumaPQ / Math.max(0.02, 1 - alfa * (k - 1) / k);
         return { dificultades: pi, media: pi.reduce((s, v) => s + v, 0) + k * min, desviacion: Math.sqrt(varT), sumaPQ };
     }
-    // Media y DE derivadas para todas las dicotómicas (idempotente)
+    // Media y DE derivadas para todas las dicotómicas (idempotente), más la FORMA
+    // del total: una suma de aciertos vive en [0, k] sin picos en los topes, así
+    // que el total se muestrea de una beta-binomial con esa media y esa varianza
+    // (cuantil de Φ(z), estandarizado): con una normal recortada la varianza se
+    // perdía en las colas (KR-20 0.80 salía 0.77) y aparecían picos en 0 y k.
     _ajustarDicotomicas(cfg) {
         (cfg.pruebas || []).forEach(p => {
             if (!this._esDicotomica(p) || p.sufijo) return;
@@ -4276,7 +4385,39 @@ class GeneradorDatos {
             if (Array.isArray(p.dificultades) && p.dificultades.length === p.numItems) p.media = imp.media;
             p.desviacionPedida = p.desviacion;
             p.desviacion = imp.desviacion;
+            p.formaTotal = this._formaBetaBinomial(p.numItems, p.media - p.numItems * p.minimo, imp.desviacion);
         });
+    }
+    _lgamma(x) {
+        // Lanczos (g = 7, n = 9)
+        const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+        if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - this._lgamma(1 - x);
+        x -= 1; let a = c[0]; const tt = x + 7.5;
+        for (let i = 1; i < 9; i++) a += c[i] / (x + i);
+        return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(tt) - tt + Math.log(a);
+    }
+    // Cuantil estandarizado de una beta-binomial(k, α, β) con media m·k y varianza v
+    _formaBetaBinomial(k, mediaSuma, de) {
+        const m = Math.max(0.01, Math.min(0.99, mediaSuma / k)), v = de * de;
+        const r = v / (k * m * (1 - m));   // sobredispersión respecto a la binomial
+        let pmf;
+        const lchoose = j => this._lgamma(k + 1) - this._lgamma(j + 1) - this._lgamma(k - j + 1);
+        if (r <= 1.02) {
+            pmf = Array.from({ length: k + 1 }, (_, j) => Math.exp(lchoose(j) + j * Math.log(m) + (k - j) * Math.log(1 - m)));
+        } else {
+            const s = Math.max(0.2, (k - Math.min(r, k - 0.05)) / (Math.min(r, k - 0.05) - 1)), al = m * s, be = (1 - m) * s;
+            const lB = this._lgamma(al) + this._lgamma(be) - this._lgamma(s);
+            pmf = Array.from({ length: k + 1 }, (_, j) => Math.exp(lchoose(j) + this._lgamma(j + al) + this._lgamma(k - j + be) - this._lgamma(k + s) - lB));
+        }
+        const total = pmf.reduce((a, b) => a + b, 0);
+        const cdf = []; let acum = 0; pmf.forEach(p => { acum += p / total; cdf.push(acum); });
+        let mu = 0, va = 0; pmf.forEach((p, j) => { mu += j * p / total; }); pmf.forEach((p, j) => { va += (j - mu) ** 2 * p / total; });
+        const sd = Math.sqrt(va) || 1;
+        return z => {
+            const u = this.normalCDF(z);
+            let j = 0; while (j < k && cdf[j] < u) j++;
+            return (j - mu) / sd;
+        };
     }
     _validarDicotomicas(errores, advertencias) {
         const cfg = this.configuracion;
@@ -4291,14 +4432,37 @@ class GeneradorDatos {
             if (!(pMedia > 0.05 && pMedia < 0.95)) errores.push(`${et}: la Media ${p.media} implica una proporción media de aciertos de ${pMedia.toFixed(2)}; debe estar entre 0.05 y 0.95 (con ${k} ítems, Media entre ${(k * p.minimo + 0.05 * k).toFixed(1)} y ${(k * p.minimo + 0.95 * k).toFixed(1)})`);
             if (!(p.alfa > 0.2 && p.alfa < 0.97)) errores.push(`${et}: el KR-20 objetivo debe estar entre 0.20 y 0.97`);
             const imp = this._dicotomicaImplicita(p, cfg.heterogeneidadItems);
-            // la DE derivada debe caber: con la Media cerca de un tope el total se recorta y el KR-20 no llega
-            const deMax = (typeof ReglasCoherencia !== 'undefined' && ReglasCoherencia.deMaxima) ? ReglasCoherencia.deMaxima(imp.media, k * p.minimo, k * p.maximo) : Infinity;
-            if (imp.desviacion > deMax) errores.push(`${et}: con Media ${imp.media.toFixed(2)} en ${k} ítems, el KR-20 ${p.alfa} exigiría una DE de ${imp.desviacion.toFixed(2)}, mayor que la máxima posible (${deMax.toFixed(2)}): el total se recortaría contra el tope y el KR-20 no se alcanzaría; acerca la Media a ${(k * p.minimo + k / 2).toFixed(1)}, baja el KR-20 o añade ítems`);
+            // la varianza derivada debe caber en una suma de k aciertos: el total se muestrea
+            // de una beta-binomial, cuya varianza máxima es k²·m(1 − m) (toda la masa en 0 y k)
+            const mProp = (imp.media - k * p.minimo) / k;
+            const sobredispersion = (imp.desviacion * imp.desviacion) / Math.max(1e-9, k * mProp * (1 - mProp));
+            if (sobredispersion >= 0.8 * k) errores.push(`${et}: con Media ${imp.media.toFixed(2)} en ${k} ítems, el KR-20 ${p.alfa} exigiría una DE de ${imp.desviacion.toFixed(2)}, que solo se alcanza con casi todas las puntuaciones en 0 o en ${k}; baja el KR-20, acerca la Media a ${(k * p.minimo + k / 2).toFixed(1)} o añade ítems`);
             if (Math.abs((p.desviacionPedida !== undefined ? p.desviacionPedida : p.desviacion) - imp.desviacion) > 0.05) advertencias.push(`${et}: en ítems dicotómicos la DE la fijan las dificultades y el KR-20: se usará DE = ${imp.desviacion.toFixed(2)} (en vez de ${(p.desviacionPedida !== undefined ? p.desviacionPedida : p.desviacion)})`);
             if (Array.isArray(p.dificultades) && p.dificultades.length === k && Math.abs(imp.media - p.media) > 0.01 && p.desviacionPedida === undefined) advertencias.push(`${et}: la Media será la suma de las dificultades (${imp.media.toFixed(2)})`);
             if ((cfg.estructuras || []).some(e => e.cargas && e.cargas[p.nombre])) errores.push(`${et}: la estructura factorial no está disponible para ítems dicotómicos (sus correlaciones son tetracóricas); usa las dificultades y el KR-20`);
             if (p.distribucion !== 'normal') advertencias.push(`${et}: la forma «${p.distribucion}» se aplica al total; con pocos ítems la distribución de aciertos ya es discreta`);
         });
+    }
+    // Ajuste iterativo de las medias de ítem (perfil.delta) de una dicotómica:
+    // simula el reparto y corrige δ_i por la diferencia entre la dificultad
+    // pedida y la realizada (4 pasadas; Σδ se mantiene en 0).
+    _calibrarDificultades(prueba, perfil, alfaInterno, indiceFiab, nSim = 1200) {
+        const k = prueba.numItems, objetivo = prueba.dificultadesEfectivas;
+        if (!objetivo || objetivo.length !== k || !perfil.delta) return;
+        const deIntra = prueba.desviacion * this._factorDE(prueba.nombre);
+        const zOtras = (perfil.cruzadas && perfil.cruzadas.length) ? this._zOtrasSimuladas(prueba, perfil) : null;
+        for (let pasada = 0; pasada < 4; pasada++) {
+            const suma = new Float64Array(k);
+            for (let s = 0; s < nSim; s++) {
+                const r = this.generarPuntajesPrueba(k, prueba.media, deIntra, prueba.minimo, prueba.maximo, alfaInterno, null, prueba.formaTotal || prueba.distribucion, indiceFiab, this._desplazamientoAleatorio(prueba.nombre, prueba.desviacion), perfil, zOtras);
+                for (let j = 0; j < k; j++) suma[j] += r.items[j] - prueba.minimo;
+            }
+            let maxDif = 0, media = 0;
+            const ajuste = new Float64Array(k);
+            for (let j = 0; j < k; j++) { const pSim = suma[j] / nSim; ajuste[j] = objetivo[j] - pSim; maxDif = Math.max(maxDif, Math.abs(ajuste[j])); media += ajuste[j] / k; }
+            if (maxDif < 0.01) break;
+            for (let j = 0; j < k; j++) perfil.delta[j] += 1.15 * (ajuste[j] - media);   // ligeramente sobrecorregido: el recorte lo amortigua
+        }
     }
     // Estadísticos de ítem de una dicotómica: dificultades observadas y discriminación (r ítem-resto)
     _estadisticosDicotomica(cols) {
@@ -4349,6 +4513,9 @@ class GeneradorDatos {
                     nombre: `${p.nombre} (T${k})`, sufijo: `_T${k}`, onda: k, base: p, ondasTotales: K,
                     media: p.media + p.desviacion * ((1 - p1) * c0 + p1 * c1) * frac
                 });
+                // (C5) dicotómica: la onda muestrea su total de una beta-binomial con SU media
+                // (con la de la base, un cambio menor de medio punto se perdía al redondear)
+                if (p.formaTotal) clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion);
                 clones.push(clon);
                 nueva.pruebas.push(clon);
             }
@@ -4364,7 +4531,16 @@ class GeneradorDatos {
                 const varOnda = k => 1 + ss * ss * tau(k) * tau(k) + 2 * rip * Math.sqrt(vb) * ss * tau(k);
                 const cov = (j, k) => vb + ss * ss * tau(j) * tau(k) + rip * Math.sqrt(vb) * ss * (tau(j) + tau(k));
                 rImplicada = (j, k) => cov(j, k) / Math.sqrt(varOnda(j) * varOnda(k));
-                clones.forEach(cl => { cl.desviacion = p.desviacion * Math.sqrt(varOnda(cl.onda)); });
+                clones.forEach(cl => {
+                    cl.desviacion = p.desviacion * Math.sqrt(varOnda(cl.onda));
+                    if (p.formaTotal) {
+                        cl.formaTotal = this._formaBetaBinomial(p.numItems, cl.media - p.numItems * p.minimo, cl.desviacion);
+                        // (C5) en una dicotómica el KR-20 depende de la varianza del total: la onda tiene el suyo
+                        const k = p.numItems, pi = p.dificultadesEfectivas || [];
+                        const sumaPQ = pi.length === k ? pi.reduce((s, v) => s + v * (1 - v), 0) : k * 0.25;
+                        cl.alfa = Math.max(0.05, Math.min(0.97, (k / (k - 1)) * (1 - sumaPQ / (cl.desviacion * cl.desviacion))));
+                    }
+                });
             }
             ondasDe.set(p.nombre, { mr, clones, stab: Math.max(-0.99, Math.min(0.99, mr.estabilidad)), agrup, c0, c1, K, rImplicada });
         });
@@ -4503,6 +4679,8 @@ class GeneradorDatos {
             salida.push({ a: md.x, b: md.y, r: Math.max(-0.99, Math.min(0.99, md.c1 + md.c2 * rho)), origen: 'moderación' });
             salida.push({ a: md.m, b: md.y, r: Math.max(-0.99, Math.min(0.99, md.c2 + md.c1 * rho)), origen: 'moderación' });
         });
+        // (C6) curvilínea: con X simétrica, X² es incorrelada con X ⇒ r(X,Y) = β₁
+        (cfg.modelos || []).filter(md => md.tipo === 'curvilinea' && md.x !== md.y).forEach(md => salida.push({ a: md.x, b: md.y, r: Math.max(-0.99, Math.min(0.99, md.c1)), origen: 'curvilínea' }));
         return salida;
     }
     // Pares fijados por algún modelo (la tabla III no manda sobre ellos).
@@ -4511,6 +4689,7 @@ class GeneradorDatos {
         const pares = new Set();
         this._correlacionesImplicadasPorMediacion().forEach(c => pares.add(par(c.a, c.b)));
         (this.configuracion.modelos || []).filter(md => md.tipo === 'moderacion').forEach(md => { pares.add(par(md.x, md.y)); pares.add(par(md.m, md.y)); });
+        (this.configuracion.modelos || []).filter(md => md.tipo === 'curvilinea').forEach(md => pares.add(par(md.x, md.y)));
         return pares;
     }
     // MODERACIÓN: el driver de Y se compone en el espacio normal de los drivers,
@@ -4829,7 +5008,8 @@ class GeneradorDatos {
         const p = new Float64Array(n);
         let mp = 0; for (let i = 0; i < n; i++) { p[i] = zx[i] * zw[i]; mp += p[i]; }
         mp /= n; for (let i = 0; i < n; i++) p[i] -= mp;
-        const er = this._residualizarColumna(e, [zx, zw, p]);
+        // (C6) curvilínea: W es X, así que el diseño es [x̃, x̃² centrado] (sin columna repetida)
+        const er = this._residualizarColumna(e, md.tipo === 'curvilinea' ? [zx, p] : [zx, zw, p]);
         const estructural = new Float64Array(n);
         let ms = 0; for (let i = 0; i < n; i++) { estructural[i] = md.b1 * zx[i] + md.b2 * zw[i] + md.b3 * p[i]; ms += estructural[i]; }
         ms /= n;
@@ -4865,8 +5045,8 @@ class GeneradorDatos {
                 // se vuelve a aplicar.
                 const enValor = conDif(p.nombre);
                 const fn = { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: p.nombre,
-                    conForma: !esCriterio && p.distribucion && p.distribucion !== 'normal', formaAplicada: false,
-                    transformar: z => (esCriterio ? z : this.transformarFormaZ(z, p.distribucion)),
+                    conForma: !esCriterio && (!!p.formaTotal || (p.distribucion && p.distribucion !== 'normal')), formaAplicada: false,
+                    transformar: z => (esCriterio ? z : this.transformarFormaZ(z, p.formaTotal || p.distribucion)),
                     valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor || esCriterio || fn.formaAplicada) };
                 return fn;
             }
