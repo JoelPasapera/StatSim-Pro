@@ -1041,6 +1041,67 @@
                     </p>
                 </div>
 
+                <!-- Tabla VIII: Desenlaces y puntos de corte (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VIII. Desenlaces no continuos y puntos de corte (opcional)</h3>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de desenlaces y puntos de corte" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota"><strong>Puntos de corte</strong>: convierte el total de una escala en niveles con nombre (bajo/medio/alto, positivo/negativo) para tablas cruzadas, prevalencias y chi-cuadrado. <strong>Desenlaces</strong>: crea una variable criterio que no es continua (sí/no, un conteo, una escala ordinal) y que depende de las escalas que elijas con la fuerza que indiques, para regresión logística con odds ratio, regresión de Poisson o regresión ordinal.</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0 0 0.5rem;">
+                        <strong>Puntos de corte de escalas</strong>
+                        <button id="btnAgregarCorte" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar corte
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaCortes">
+                            <thead>
+                                <tr>
+                                    <th>Escala o puntaje general</th>
+                                    <th title="Categorías separadas por coma, «@» y los cortes: «Bajo, Medio, Alto @ 20, 30» (fijos: < 20 Bajo; 20 a 29.99 Medio; ≥ 30 Alto) o «Bajo, Medio, Alto @ P25, P75» (percentiles de la muestra).">Categorías @ cortes</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyCortes"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">Crea la columna <code>Nivel_&lt;sigla&gt;</code> con los nombres de las categorías (códigos 1…K en el motor). Cortes fijos: cada corte marca desde dónde empieza la categoría siguiente. Cortes por percentil (P25, P75…): se toman de la muestra generada; con totales enteros los empates en el corte hacen que las proporciones sean aproximadas, y el informe lo indica.</p>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0.9rem 0 0.5rem;">
+                        <strong>Desenlaces (variables criterio no continuas)</strong>
+                        <button id="btnAgregarDesenlace" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar desenlace
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="table" id="tablaDesenlaces">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th title="Binario: prevalencia (0.25 o 25 %; con etiquetas «No, Sí: 25 %»). Conteo: media (2.5). Ordinal: categorías ordenadas con proporciones («Bajo:50, Medio:30, Alto:20»).">Prevalencia / media / categorías</th>
+                                    <th>Predictor 1 · OR/IRR</th>
+                                    <th>Predictor 2 · OR/IRR</th>
+                                    <th>Predictor 3 · OR/IRR</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyDesenlaces"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">
+                        El efecto es el <strong>odds ratio</strong> (binario y ordinal) o la <strong>razón de tasas</strong> (conteo) por cada
+                        desviación estándar del predictor: 1 = sin efecto, 2 = duplica la odds, 0.5 = la reduce a la mitad. Los predictores pueden ser
+                        escalas, puntajes generales o sociodemográficas continuas; el desenlace se calcula con las puntuaciones verdaderas, antes de las
+                        imperfecciones. La prevalencia y las proporciones salen exactas en la muestra; el informe recupera los OR por regresión logística,
+                        los IRR por regresión de Poisson y, en el ordinal, el OR de odds proporcionales.
+                    </p>
+                </div>
+
                 <!-- Botones de Acción -->
                 <div class="actions-bar">
                     <button id="btnGenerar" class="btn btn-primary btn-lg">
@@ -1631,7 +1692,7 @@
          generador y también generador-worker.js, que carga ambos con estas
          mismas versiones) -->
     <script src="base-columnar.js?v=2"></script>
-    <script src="generador-datos.js?v=17"></script>
+    <script src="generador-datos.js?v=18"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
     <script src="etiquetas-variables.js?v=9"></script>
@@ -1703,7 +1764,7 @@
     <script src="analisis-graficos.js?v=1"></script>
     
     <!-- Código de app.js -->
-    <script src="app.js?v=34"></script>
+    <script src="app.js?v=35"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
