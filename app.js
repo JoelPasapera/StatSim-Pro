@@ -212,6 +212,14 @@ function configurarGenerador() {
         const bA = document.getElementById('btnActualizarEstructura'); if (bA) bA.addEventListener('click', () => { const t = _selEst.value; if (t) { renderMatrizCargas(t); mostrarToast('Matriz reconciliada con la tabla I', 'success'); } });
         const bQ = document.getElementById('btnQuitarEstructura'); if (bQ) bQ.addEventListener('click', () => quitarEstructura());
     }
+    // (C7) Concordancia
+    const _bK = document.getElementById('btnAgregarConcordancia'); if (_bK) _bK.addEventListener('click', () => agregarFilaConcordancia());
+    const _bKb = document.getElementById('bodyConcordancia');
+    if (_bKb) {
+        _bKb.addEventListener('click', e => { if (e.target.closest('.btn-delete')) e.target.closest('tr').remove(); });
+        _bKb.addEventListener('focusin', e => { if (e.target.matches && e.target.matches('[aria-label="Variable de concordancia"]')) poblarVariableConcordancia(e.target); });
+        _bKb.addEventListener('change', e => { if (e.target.matches && e.target.matches('[aria-label="Tipo de concordancia"]')) actualizarFilaConcordancia(e.target.closest('tr')); });
+    }
     // (C2/C3) Desenlaces y puntos de corte
     const _bC = document.getElementById('btnAgregarCorte'); if (_bC) _bC.addEventListener('click', () => agregarFilaCorte());
     const _bD = document.getElementById('btnAgregarDesenlace'); if (_bD) _bD.addEventListener('click', () => agregarFilaDesenlace());
@@ -419,6 +427,87 @@ function nombresGeneralesDerivados() {
     return (typeof testsDefinidos === 'function' ? testsDefinidos() : [])
         .filter(t => (filasPorTest[t.prueba] || 0) >= 2)
         .map(t => (t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`));
+}
+// ---- (C7) Tarjeta IX: concordancia ----
+// Variables según el tipo: informante y jueces con puntuación → escalas (sin generales);
+// jueces categóricos → escalas con corte, sociodemográficas binarias/categóricas y desenlaces binarios/ordinales.
+function poblarVariableConcordancia(sel) {
+    const fila = sel.closest('.fila-concordancia');
+    const tipo = (fila.querySelector('[aria-label="Tipo de concordancia"]') || {}).value || 'informante';
+    const actual = sel.value;
+    let nombres = [];
+    if (tipo === 'jueces') {
+        document.querySelectorAll('#bodyCortes .fila-corte select').forEach(s => { if (s.value) nombres.push(s.value); });
+        document.querySelectorAll('#bodySocio .fila-socio').forEach(f => { const dist = (f.querySelector('select') || {}).value; const nombre = ((f.querySelector('input') || {}).value || '').trim(); if (nombre && (dist === 'binaria' || dist === 'categorica')) nombres.push(nombre); });
+        document.querySelectorAll('#bodyDesenlaces .fila-desenlace').forEach(f => { const nombre = ((f.querySelector('[aria-label="Nombre del desenlace"]') || {}).value || '').trim(); const t = (f.querySelector('[aria-label="Tipo de desenlace"]') || {}).value; if (nombre && t !== 'conteo') nombres.push(nombre); });
+    } else {
+        document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la escala"]').forEach(inp => { const n = inp.value.trim(); if (n) nombres.push(n); });
+        if (tipo === 'juecesContinuo') document.querySelectorAll('#bodySocio .fila-socio').forEach(f => { const dist = (f.querySelector('select') || {}).value; const nombre = ((f.querySelector('input') || {}).value || '').trim(); if (nombre && ['normal', 'asimetrica', 'uniforme'].includes(dist)) nombres.push(nombre); });
+    }
+    nombres = nombres.filter((v, i, arr) => arr.indexOf(v) === i);
+    sel.innerHTML = '<option value="">Variable...</option>' + nombres.map(n => `<option value="${escapeAttr(n)}"${n === actual ? ' selected' : ''}>${escapeAttr(n)}</option>`).join('');
+    if (actual && !nombres.includes(actual)) sel.value = '';
+}
+function agregarFilaConcordancia(datos = null) {
+    const tbody = document.getElementById('bodyConcordancia');
+    if (!tbody) return null;
+    const fila = document.createElement('tr');
+    fila.className = 'fila-concordancia';
+    fila.innerHTML = `
+        <td><select class="input input-sm" aria-label="Tipo de concordancia"><option value="informante">Informante / forma paralela</option><option value="jueces">Jueces: categoría (κ)</option><option value="juecesContinuo">Jueces: puntuación (CCI)</option></select></td>
+        <td><select class="input input-sm" aria-label="Variable de concordancia"><option value="">Variable...</option></select></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: madre" maxlength="30" aria-label="Etiqueta o número de jueces"></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="0.01" max="0.98" placeholder="Ej: 0.60" aria-label="Concordancia"></td>
+        <td><input type="number" class="input input-sm" step="0.1" min="-2" max="2" placeholder="Ej: -0.3" aria-label="Sesgo del informante"></td>
+        <td>
+            <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(fila);
+    if (datos) {
+        const poner = (et, v) => { const el = fila.querySelector(`[aria-label="${et}"]`); if (el && v !== undefined && v !== null) el.value = v; };
+        poner('Tipo de concordancia', datos.tipo || 'informante');
+        poblarVariableConcordancia(fila.querySelector('[aria-label="Variable de concordancia"]'));
+        poner('Variable de concordancia', datos.variable); poner('Etiqueta o número de jueces', datos.etiqueta); poner('Concordancia', datos.concordancia); poner('Sesgo del informante', datos.sesgo);
+    } else poblarVariableConcordancia(fila.querySelector('[aria-label="Variable de concordancia"]'));
+    actualizarFilaConcordancia(fila);
+    return fila;
+}
+function actualizarFilaConcordancia(fila) {
+    if (!fila) return;
+    const tipo = (fila.querySelector('[aria-label="Tipo de concordancia"]') || {}).value || 'informante';
+    const et = fila.querySelector('[aria-label="Etiqueta o número de jueces"]'), con = fila.querySelector('[aria-label="Concordancia"]'), ses = fila.querySelector('[aria-label="Sesgo del informante"]');
+    if (et) { et.placeholder = tipo === 'informante' ? 'Ej: madre' : 'N.º de jueces, ej: 3'; et.type = tipo === 'informante' ? 'text' : 'number'; if (tipo !== 'informante') { et.min = '2'; et.max = '6'; et.step = '1'; } }
+    if (con) con.placeholder = tipo === 'informante' ? 'r, ej: 0.60' : (tipo === 'jueces' ? 'κ, ej: 0.70' : 'CCI, ej: 0.80');
+    if (ses) { ses.disabled = tipo !== 'informante'; if (tipo !== 'informante') ses.value = ''; }
+    const sel = fila.querySelector('[aria-label="Variable de concordancia"]');
+    if (sel) poblarVariableConcordancia(sel);
+}
+function csvDeConcordancia() {
+    let csv = 'Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo\n';
+    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    document.querySelectorAll('#bodyConcordancia .fila-concordancia').forEach(f => {
+        const v = et => { const el = f.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
+        csv += `${v('Tipo de concordancia')},${esc(v('Variable de concordancia'))},${esc(v('Etiqueta o número de jueces'))},${v('Concordancia')},${v('Sesgo del informante')}\n`;
+    });
+    return csv;
+}
+function aplicarCSVConcordancia(csv) {
+    const lineas = String(csv || '').trim().split(/\r?\n/).filter(l => l.trim());
+    const tbody = document.getElementById('bodyConcordancia'); if (tbody) tbody.innerHTML = '';
+    let aplicadas = 0;
+    for (const linea of lineas.slice(1)) {
+        const [tipo, variable, etiqueta, concordancia, sesgo] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        if (!variable) continue;
+        const fila = agregarFilaConcordancia({ tipo, variable, etiqueta, concordancia, sesgo });
+        if (fila && fila.querySelector('[aria-label="Variable de concordancia"]').value === '') { fila.remove(); continue; }
+        aplicadas++;
+    }
+    return aplicadas;
 }
 // ---- (C2/C3) Tarjeta VIII: puntos de corte y desenlaces ----
 // Rellena un desplegable con variables: 'escalas' (escalas y puntajes generales)
@@ -3179,7 +3268,7 @@ function importarConfigCorrelaciones(e) {
 // Formato: bloques separados por marcadores ###SECCION### — legible, editable
 // a mano y compatible con los CSV sueltos de cada tabla.
 // ============================================================================
-const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###', repetidas: '###REPETIDAS###', estructura: '###ESTRUCTURA###', cortes: '###CORTES###', desenlaces: '###DESENLACES###' };
+const MARCA_TODO = { general: '###GENERAL###', tests: '###TESTS###', pruebas: '###PRUEBAS###', socio: '###SOCIODEMOGRAFICOS###', corr: '###CORRELACIONES###', dif: '###DIFERENCIAS###', modelos: '###MODELOS###', repetidas: '###REPETIDAS###', estructura: '###ESTRUCTURA###', cortes: '###CORTES###', desenlaces: '###DESENLACES###', concordancia: '###CONCORDANCIA###' };
 // Campos de la tarjeta «Configuración General» que viajan en el archivo maestro.
 const CAMPOS_GENERAL = [
     { id: 'tamanoMuestra', clave: 'TamanoMuestra' },
@@ -3244,13 +3333,13 @@ function exportarConfigTodo() {
         const csvM = csvDeModelos();
         const csvR = csvDeRepetidas();
         const csvE = csvDeEstructuras();
-        const csvCo = csvDeCortes(), csvDe = csvDeDesenlaces();
+        const csvCo = csvDeCortes(), csvDe = csvDeDesenlaces(), csvK = csvDeConcordancia();
         const nFilas = s => Math.max(0, String(s).trim().split(/\r?\n/).length - 1);
         if (nFilas(csvP) === 0 && nFilas(csvS) === 0 && nFilas(csvC) === 0 && nFilas(csvD) === 0 && nFilas(csvM) === 0 && nFilas(csvR) === 0) {
             mostrarToast('No hay nada configurado para exportar', 'warning');
             return;
         }
-        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '', MARCA_TODO.repetidas, csvR.trim(), '', MARCA_TODO.estructura, csvE.trim(), '', MARCA_TODO.cortes, csvCo.trim(), '', MARCA_TODO.desenlaces, csvDe.trim(), '');
+        partes.push(MARCA_TODO.general, csvG.trim(), '', MARCA_TODO.tests, csvT.trim(), '', MARCA_TODO.pruebas, csvP.trim(), '', MARCA_TODO.socio, csvS.trim(), '', MARCA_TODO.corr, csvC.trim(), '', MARCA_TODO.dif, csvD.trim(), '', MARCA_TODO.modelos, csvM.trim(), '', MARCA_TODO.repetidas, csvR.trim(), '', MARCA_TODO.estructura, csvE.trim(), '', MARCA_TODO.cortes, csvCo.trim(), '', MARCA_TODO.desenlaces, csvDe.trim(), '', MARCA_TODO.concordancia, csvK.trim(), '');
         descargarArchivo(partes.join('\n'), 'configuracion_completa_simulador.csv', 'text/csv');
         mostrarToast(`Configuración completa exportada: general + ${nFilas(csvP)} prueba(s), ${nFilas(csvS)} variable(s), ${nFilas(csvC)} correlación(es), ${nFilas(csvD)} diferencia(s), ${nFilas(csvM)} modelo(s), ${nFilas(csvR)} medida(s) repetida(s)`, 'success');
     } catch (error) {
@@ -3296,7 +3385,7 @@ function importarConfigTodo(e) {
             const csvM = bloqueHastaSiguiente(MARCA_TODO.modelos);
             const csvR = bloqueHastaSiguiente(MARCA_TODO.repetidas);
             const csvE = bloqueHastaSiguiente(MARCA_TODO.estructura);
-            const csvCo = bloqueHastaSiguiente(MARCA_TODO.cortes), csvDe = bloqueHastaSiguiente(MARCA_TODO.desenlaces);
+            const csvCo = bloqueHastaSiguiente(MARCA_TODO.cortes), csvDe = bloqueHastaSiguiente(MARCA_TODO.desenlaces), csvK = bloqueHastaSiguiente(MARCA_TODO.concordancia);
             // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
             // (sus desplegables se llenan a partir de las anteriores).
             const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
@@ -3313,8 +3402,10 @@ function importarConfigTodo(e) {
             const rCo = csvCo ? aplicarCSVCortes(csvCo) : 0, rDe = csvDe ? aplicarCSVDesenlaces(csvDe) : 0;
             if (!csvCo) { const b = document.getElementById('bodyCortes'); if (b) b.innerHTML = ''; }
             if (!csvDe) { const b = document.getElementById('bodyDesenlaces'); if (b) b.innerHTML = ''; }
+            const rK = csvK ? aplicarCSVConcordancia(csvK) : 0;
+            if (!csvK) { const b = document.getElementById('bodyConcordancia'); if (b) b.innerHTML = ''; }
             const omitidas = rC.omitidas + rD.omitidas + rM.omitidas + rR.omitidas;
-            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (rE ? `, ${rE} estructura(s) factorial(es)` : '') + (rCo ? `, ${rCo} corte(s)` : '') + (rDe ? `, ${rDe} desenlace(s)` : '') + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
+            mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (rE ? `, ${rE} estructura(s) factorial(es)` : '') + (rCo ? `, ${rCo} corte(s)` : '') + (rDe ? `, ${rDe} desenlace(s)` : '') + (rK ? `, ${rK} fila(s) de concordancia` : '') + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
