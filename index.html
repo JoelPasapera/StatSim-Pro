@@ -1588,7 +1588,7 @@
                             <button id="btnRecargarSinCache" type="button" class="btn btn-secondary" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(false) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Recargar sin caché</button>
                             <button id="btnRestablecerSitio" type="button" class="btn btn-outline" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(true) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Restablecer y recargar</button>
                         </div>
-                        <div id="mantenimientoVersiones" class="help-text" style="font-size:0.8em;"></div>
+                        <details id="mantenimientoVersiones" class="help-text" style="font-size:0.8em;"><summary style="cursor:pointer;">Versiones cargadas (diagnóstico; también en la consola del navegador)</summary><div id="mantenimientoVersionesLista" style="margin-top:0.3rem; white-space:normal;"></div></details>
                         <div id="mantenimientoLog" class="help-text" hidden style="margin-top:0.4rem; max-height:9em; overflow:auto; font-family:monospace; font-size:0.8em; white-space:pre-wrap;"></div>
                     </div>
                 </div>
@@ -1824,7 +1824,7 @@
     <!-- Código de app.js -->
     <script src="app.js?v=39"></script>
     <!-- Mantenimiento: recargar sin caché / restablecer (tarjeta de Ayuda) -->
-    <script src="mantenimiento.js?v=2"></script>
+    <script src="mantenimiento.js?v=3"></script>
     
     <!-- Tutoriales de youtube por seccion -->
     <script src="video-tutoriales.js?v=2"></script>
