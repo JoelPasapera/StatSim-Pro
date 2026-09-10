@@ -114,11 +114,15 @@
         }
     }
 
+    // Versiones de los módulos cargados: en la consola (diagnóstico completo) y,
+    // en la tarjeta, dentro de un desplegable cerrado que no ocupa espacio.
+    let versionesRegistradas = false;
     function pintarVersiones() {
-        const ver = document.getElementById('mantenimientoVersiones');
-        if (!ver) return;
-        const versiones = Array.from(document.querySelectorAll('script[src]')).map(s => s.getAttribute('src')).filter(src => /\?v=/.test(src)).map(src => src.replace(/\.js\?v=/, ' v')).join(' · ');
-        ver.textContent = versiones ? `Versiones cargadas: ${versiones}` : '';
+        const lista = Array.from(document.querySelectorAll('script[src]')).map(s => s.getAttribute('src')).filter(src => /\?v=/.test(src)).map(src => src.replace(/\.js\?v=/, ' v'));
+        if (!lista.length) return;
+        if (!versionesRegistradas && typeof console !== 'undefined' && console.info) { console.info('[StatSim] Versiones cargadas:\n' + lista.join('\n')); versionesRegistradas = true; }
+        const ver = document.getElementById('mantenimientoVersionesLista');
+        if (ver) ver.textContent = lista.join(' · ');
     }
     // Delegación en el documento: los botones funcionan aunque la sección de Ayuda
     // se vuelva a pintar después de cargar (los oyentes puestos sobre el botón se
