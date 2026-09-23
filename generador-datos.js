@@ -1228,7 +1228,7 @@ class GeneradorDatos {
                 const formaYaAplicada = !!(this.driversEnValor && this.driversEnValor.has(claveEscala));
                 const baseZ = driverEscala !== undefined ? driverEscala : this.generarNormalEstandar();
                 const total = this._totalObjetivo(prueba.media, prueba.desviacion * factorDEPrueba.get(prueba), baseZ,
-                    formaYaAplicada ? 'normal' : (prueba.formaTotal || prueba.distribucion), despPrueba.get(prueba)[i]);
+                    prueba.formaTotal ? prueba.formaTotal : (formaYaAplicada ? 'normal' : prueba.distribucion), despPrueba.get(prueba)[i]);
                 basesPrueba[idx] = baseZ;
                 totalesPrueba[idx] = total;
                 zDim[this._claveEscala(prueba)] = prueba.desviacion > 0 ? (total - prueba.media) / prueba.desviacion : 0;
@@ -2495,7 +2495,19 @@ class GeneradorDatos {
         const perfiles = new Map();
         (cfg.pruebas || []).forEach(p => {
             // (B7) una onda T2… usa el MISMO instrumento: mismo perfil que su base
-            if (p.base && perfiles.has(p.base)) { perfiles.set(p, perfiles.get(p.base)); return; }
+            if (p.base && perfiles.has(p.base)) {
+                const base = perfiles.get(p.base);
+                // (Revisión transversal, F-6) un clon dicotómico (onda o informante) tiene su
+                // propia media y sus propias dificultades: necesita sus δ (medias de ítem)
+                // para calibrarse aparte; el resto del perfil se comparte
+                if (this._esDicotomica(p) && Array.isArray(p.dificultadesEfectivas)) {
+                    const k = p.numItems, mediaItem = p.media / k;
+                    const delta = new Float64Array(k);
+                    for (let i = 0; i < k; i++) delta[i] = p.dificultadesEfectivas[i] + p.minimo - mediaItem;
+                    perfiles.set(p, Object.assign({}, base, { delta }));
+                } else perfiles.set(p, base);
+                return;
+            }
             const k = p.numItems;
             const perfil = { delta: new Float64Array(k), peso: new Float64Array(k).fill(k > 0 ? 1 / k : 0), cruzadas: [] };
             if (k >= 2) {
@@ -2613,7 +2625,12 @@ class GeneradorDatos {
 
     // Valor de una distribución de Poisson con media lambda (algoritmo de Knuth).
     generarPoisson(lambda) {
-        if (lambda <= 0) return 0;
+        if (!(lambda > 0)) return 0;
+        // (Revisión del generador, 2026-09-15) el método de Knuth necesita e^−λ: con
+        // λ > 700 se desborda a 0 y el bucle devolvía ≈ 1075 fuera cual fuese λ (una
+        // media de 1000 salía 748). Para λ grande, transformación normal con
+        // corrección de continuidad (error relativo < 1 % desde λ ≈ 30).
+        if (lambda > 30) return Math.max(0, Math.round(lambda + Math.sqrt(lambda) * this.generarNormalEstandar() - 0.5 + this.aleatorio()));
         const limite = Math.exp(-lambda);
         let k = 0;
         let producto = 1;
@@ -2664,6 +2681,26 @@ class GeneradorDatos {
 
     // Total CONTINUO objetivo de una escala: Media + DE·forma(z) + desplazamiento.
     _totalObjetivo(mediaTotal, desviacionTotal, base, distribucion, desplazamiento) {
+        // (Revisión transversal, F-5) forma propia (beta-binomial de una dicotómica): el
+        // cuantil se aplica al LATENTE completo (driver intra + desplazamiento por grupos,
+        // en unidades de la DE total), así el total es un entero de la forma pedida.
+        // Antes se escalaba el cuantil discreto por la DE intra y se sumaba el
+        // desplazamiento: al redondear, los valores se agolpaban y la varianza caía un 8 %.
+        if (typeof distribucion === 'function' && distribucion.sigma > 0) {
+            // cada grupo (cada valor del desplazamiento) tiene SU beta-binomial: media
+            // desplazada y DE intra; las formas se cachean por (desplazamiento, DE)
+            let desp = desplazamiento || 0;
+            if (!desp && Math.abs(desviacionTotal - distribucion.sigma) < 1e-9) return mediaTotal + distribucion.sigma * distribucion(base);
+            // el desplazamiento se cuantiza a σ/50 (error ≤ 0.01·σ): con efectos continuos
+            // (CCI) la caché queda acotada a unas decenas de formas en vez de una por persona
+            const paso = distribucion.sigma / 50;
+            desp = Math.round(desp / paso) * paso;
+            const clave = Math.round(desp / paso) + '|' + Math.round(desviacionTotal * 1000);
+            const cache = distribucion.cache || (distribucion.cache = new Map());
+            let forma = cache.get(clave);
+            if (!forma) { forma = this._formaBetaBinomial(distribucion.k, mediaTotal + desp - distribucion.k * distribucion.minimo, desviacionTotal); cache.set(clave, forma); }
+            return mediaTotal + desp + desviacionTotal * forma(base);
+        }
         return mediaTotal + desviacionTotal * this.transformarFormaZ(base, distribucion) + desplazamiento;
     }
     // Total ENTERO de una escala Likert: recorte al rango alcanzable [k·mín, k·máx]
@@ -2673,7 +2710,8 @@ class GeneradorDatos {
     }
     // Total FINAL de una escala a partir de su driver (Likert → entero acotado).
     _totalDesdeDriver(prueba, z, desplazamiento, factorDE, formaAplicada = false) {
-        const t = this._totalObjetivo(prueba.media, prueba.desviacion * factorDE, z, formaAplicada ? 'normal' : (prueba.formaTotal || prueba.distribucion), desplazamiento);
+        // la forma propia (beta-binomial) se aplica SIEMPRE al final, aunque el driver ya venga igualado por grupos
+        const t = this._totalObjetivo(prueba.media, prueba.desviacion * factorDE, z, prueba.formaTotal ? prueba.formaTotal : (formaAplicada ? 'normal' : prueba.distribucion), desplazamiento);
         return (prueba.minimo !== null && prueba.maximo !== null) ? this._totalEnteroLikert(prueba.numItems, prueba.minimo, prueba.maximo, t) : t;
     }
     // Valor FINAL de un sociodemográfico continuo (normal, asimétrico, uniforme):
@@ -3087,6 +3125,12 @@ class GeneradorDatos {
             const inf33 = g33.informePedidoObtenido(g33.datosGenerados);
             ok('(C7) informante + ondas + General: columnas de las tres versiones, General intacto (sin el informante) y r_tt/r inf cumplidas', ['Dimension_PE', 'Dimension_PE_T2', 'Dimension_PE_docente'].every(c => c in d33[0]) && g33.configuracion.gruposPruebas.find(x => x.nombre === 'EQ-i').escalas.length === 3 && inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').length === 2 && inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').every(f => f.ok), inf33.filter(f => f.tipo === 'r_tt' || f.tipo === 'r inf').map(f => `${f.tipo} ${f.pedido}→${f.obtenido}`).join(' | '));
             { const gv = new GeneradorDatos(); gv.configuracion = JSON.parse(JSON.stringify(cfgC7b)); gv.configuracion.concordancias[0].etiqueta = 'T2'; gv.configuracion.gruposPruebas = gv.agruparPruebas(gv.configuracion.pruebas); const v = gv.validarConfiguracion(); ok('(C7) validación: una etiqueta «T2» de informante se rechaza (se confunde con una onda)', v.errores.some(e => /se confunde con una onda/.test(e)), ''); }
+            // 27) (Revisión transversal F-1) CCI por aula sobre una escala: α y cargas siguen calibradas
+            const cfgF1 = cfgBase({ tamanoMuestra: 1500, sociodemograficos: [{ categoria: 'Aula', categoriaCorta: 'Au', distribucion: 'categorica', promedio: 0, desviacion: 1, minimo: 1, maximo: 20, decimales: 0 }], diferenciasGrupo: [{ tipo: 'icc', cuantitativa: 'Percepción', agrupacion: 'Aula', d: 0.2 }, { tipo: 'icc', cuantitativa: 'Comprensión', agrupacion: 'Aula', d: 0.15 }], estructuras: [{ prueba: 'EQ-i', modo: 'cargas', factores: ['Percepción', 'Comprensión', 'Regulación'], cargas: { 'Comprensión': Array.from({ length: 8 }, () => [0, 0.65, 0]) }, metodo: null, desajuste: 'ninguno' }] });
+            const { g: g34 } = generar(cfgF1);
+            const inf34 = g34.informePedidoObtenido(g34.datosGenerados);
+            const fA = inf34.find(f => f.tipo === 'α' && f.variable === 'Percepción'), fL = inf34.find(f => f.tipo === 'λ' && /Comprensión/.test(f.variable)), fC = inf34.filter(f => f.tipo === 'CCI');
+            ok('(F-1) con CCI por aula, el α de la escala y las cargas de la estructura siguen siendo los pedidos, y la CCI también', fA && fA.ok && fL && fL.ok && fC.length === 2 && fC.every(f => f.ok), `α ${fA && fA.obtenido} · λ ${fL && fL.obtenido} · CCI ${fC.map(f => f.obtenido).join(' ')}`);
             // 9) (A3) muestra sin reemplazo uniforme (la fila 1 ya no sale favorecida)
             const g8 = new GeneradorDatos(); let vecesFila0 = 0; const reps = 1500;
             for (let s = 1; s <= reps; s++) { g8.inicializarAleatorio(s); if (g8._muestraSinReemplazo(60, 6).includes(0)) vecesFila0++; }
@@ -4481,10 +4525,18 @@ class GeneradorDatos {
         const lista = this.diferenciasEfectivas ? this.diferenciasEfectivas.get(nombre) : undefined;
         if (!lista || !lista.length || !(sigmaTotal > 0)) return 0;
         let total = 0;
+        // (Revisión transversal, F-1) cada tipo de entrada se simula como se genera:
+        //  · d: código sorteado con las PROPORCIONES reales de la agrupación (no uniforme);
+        //  · interacción: producto de dos códigos centrados;
+        //  · CCI: efecto de conglomerado estandarizado ≈ N(0,1) con amplitud √CCI.
+        // Antes la CCI se trataba como un código lineal (amplitud·(aula − media)): con
+        // 20 aulas la varianza simulada era 30 veces la real y el α calibrado salía 0.47.
+        const sortear = agrup => { const niv = this._nivelesDe(agrup); return niv ? this._sortearNivel(niv) : this.generarCategoria(agrup.minimo, agrup.maximo); };
         lista.forEach(e => {
-            const codigo = e.agrup.distribucion === 'binaria' ? this.generarBinaria(e.agrup.promedio)
-                : this.generarCategoria(e.agrup.minimo, e.agrup.maximo);
-            total += e.amplitud * sigmaTotal * this._codigoCentrado(e.agrup, codigo);
+            if (e.tipo === 'icc') { total += e.amplitud * sigmaTotal * this.generarNormalEstandar(); return; }
+            const c1 = this._codigoCentrado(e.agrup, sortear(e.agrup));
+            if (e.tipo === 'interaccion' && e.agrup2) { total += e.amplitud * sigmaTotal * c1 * this._codigoCentrado(e.agrup2, sortear(e.agrup2)); return; }
+            total += e.amplitud * sigmaTotal * c1;
         });
         return total;
     }
@@ -4600,6 +4652,7 @@ class GeneradorDatos {
             p.desviacionPedida = p.desviacion;
             p.desviacion = imp.desviacion;
             p.formaTotal = this._formaBetaBinomial(p.numItems, p.media - p.numItems * p.minimo, imp.desviacion);
+            p.formaTotal.minimo = p.minimo;
         });
     }
     _lgamma(x) {
@@ -4627,11 +4680,85 @@ class GeneradorDatos {
         const cdf = []; let acum = 0; pmf.forEach(p => { acum += p / total; cdf.push(acum); });
         let mu = 0, va = 0; pmf.forEach((p, j) => { mu += j * p / total; }); pmf.forEach((p, j) => { va += (j - mu) ** 2 * p / total; });
         const sd = Math.sqrt(va) || 1;
-        return z => {
+        const forma = z => {
             const u = this.normalCDF(z);
             let j = 0; while (j < k && cdf[j] < u) j++;
             return (j - mu) / sd;
         };
+        forma.sigma = de; forma.k = k;   // DE de la forma y número de ítems (formas por grupo en _totalObjetivo)
+        return forma;
+    }
+    // Dificultades de un clon (onda o informante) de una dicotómica: las de la base
+    // desplazadas por la diferencia de medias repartida entre los ítems
+    _desplazarDificultades(clon, base) {
+        if (!Array.isArray(base.dificultadesEfectivas) || !base.numItems) return;
+        const delta = (clon.media - base.media) / base.numItems;
+        clon.dificultadesEfectivas = base.dificultadesEfectivas.map(v => Math.max(0.02, Math.min(0.98, v + delta)));
+    }
+    _validarBasicos(errores, advertencias) {
+        const cfg = this.configuracion;
+        const pruebas = cfg.pruebas || [], socios = cfg.sociodemograficos || [];
+        const nombresEscala = new Set();
+        pruebas.forEach(p => {
+            const et = `Escala «${p.nombre || '(sin nombre)'}»`;
+            if (!p.nombre || !String(p.nombre).trim()) errores.push('Hay una escala sin nombre en la tabla I');
+            if (nombresEscala.has(p.nombre)) errores.push(`${et}: hay dos escalas con el mismo nombre`);
+            nombresEscala.add(p.nombre);
+            if (!(p.numItems >= 1)) errores.push(`${et}: el número de ítems debe ser al menos 1`);
+            if (!(p.desviacion > 0)) errores.push(`${et}: la DE debe ser mayor que 0`);
+            if (p.alfa !== undefined && p.alfa !== null && p.alfa !== 0 && !(p.alfa > 0 && p.alfa < 1)) errores.push(`${et}: la fiabilidad objetivo debe estar entre 0 y 1 (tiene ${p.alfa})`);
+            if ((p.invertidos || 0) > p.numItems) errores.push(`${et}: hay más ítems invertidos (${p.invertidos}) que ítems (${p.numItems})`);
+            if (p.minimo !== null && p.maximo !== null && isFinite(p.minimo) && isFinite(p.maximo) && p.minimo >= p.maximo) errores.push(`${et}: el mínimo por ítem (${p.minimo}) debe ser menor que el máximo (${p.maximo})`);
+            if (Array.isArray(p.dificultades) && p.dificultades.some(v => !(v >= 0 && v <= 1))) errores.push(`${et}: las dificultades son proporciones de acierto entre 0 y 1`);
+        });
+        const nombresSocio = new Set();
+        socios.forEach(s => {
+            const et = `Variable «${s.categoria || '(sin nombre)'}»`;
+            if (!s.categoria || !String(s.categoria).trim()) errores.push('Hay una variable sociodemográfica sin nombre en la tabla II');
+            if (nombresSocio.has(s.categoria)) errores.push(`${et}: hay dos sociodemográficas con el mismo nombre`);
+            nombresSocio.add(s.categoria);
+            if (nombresEscala.has(s.categoria)) errores.push(`${et}: se llama igual que una escala; cambia uno de los dos nombres`);
+            if (s.distribucion === 'binaria' && !(s.promedio >= 0 && s.promedio <= 1)) errores.push(`${et}: en una binaria el promedio es la proporción de unos, entre 0 y 1 (tiene ${s.promedio})`);
+            if (['normal', 'asimetrica', 'uniforme'].includes(s.distribucion)) {
+                if (!(s.desviacion > 0)) errores.push(`${et}: la DE debe ser mayor que 0`);
+                if (s.minimo !== null && s.maximo !== null && isFinite(s.minimo) && isFinite(s.maximo)) {
+                    if (s.minimo >= s.maximo) errores.push(`${et}: el mínimo (${s.minimo}) debe ser menor que el máximo (${s.maximo})`);
+                    else if (s.promedio < s.minimo || s.promedio > s.maximo) errores.push(`${et}: la media ${s.promedio} está fuera del rango ${s.minimo}–${s.maximo}`);
+                }
+            }
+            if (s.distribucion === 'categorica' && !s.niveles && !(s.maximo > s.minimo)) errores.push(`${et}: una categórica necesita mín < máx (códigos 1…K)`);
+            if (s.distribucion === 'conteo' && !(s.promedio > 0)) errores.push(`${et}: la media de un conteo debe ser mayor que 0`);
+            else if (s.distribucion === 'conteo' && s.promedio > 1000) errores.push(`${et}: una media de ${s.promedio} eventos no es plausible (máximo 1000)`);
+            if (s.dependeDe && s.fuerza > 0.95) advertencias.push(`${et}: la fuerza de la asociación se limita a 0.95`);
+            if (s.niveles && s.niveles.some(x => !(x.proporcion > 0))) advertencias.push(`${et}: alguna categoría tiene proporción 0 y saldrá vacía`);
+        });
+        const nombres = this._nombresCorrelacionables();
+        const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+        const vistas = new Map();
+        (cfg.correlaciones || []).forEach(c => {
+            const et = `Correlación ${c.a} ↔ ${c.b}`;
+            if (!nombres.has(c.a) || !nombres.has(c.b)) { errores.push(`${et}: alguna de las dos variables no existe entre las cuantitativas`); return; }
+            if (c.a === c.b) { errores.push(`${et}: una variable no se correlaciona consigo misma`); return; }
+            if (!(Math.abs(c.r) < 1)) errores.push(`${et}: r debe estar entre −1 y 1 (tiene ${c.r})`);
+            const k = par(c.a, c.b);
+            if (vistas.has(k) && Math.abs(vistas.get(k) - c.r) > 1e-9) errores.push(`${et}: la pareja aparece dos veces con valores distintos (${vistas.get(k)} y ${c.r})`);
+            vistas.set(k, c.r);
+        });
+        (cfg.diferenciasGrupo || []).forEach(d => {
+            if (d.tipo && d.tipo !== 'd') return;
+            const et = `Diferencia «${d.cuantitativa}» por ${d.agrupacion}`;
+            if (!nombres.has(d.cuantitativa)) errores.push(`${et}: la variable cuantitativa no existe`);
+            const A = socios.find(s => s.categoria === d.agrupacion);
+            if (!A) errores.push(`${et}: la agrupación no existe entre las sociodemográficas`);
+            else if (!(A.distribucion === 'binaria' || A.distribucion === 'categorica')) errores.push(`${et}: la agrupación debe ser binaria o categórica («${d.agrupacion}» es ${A.distribucion})`);
+            else if (A.distribucion === 'binaria' && !(A.promedio > 0.005 && A.promedio < 0.995)) errores.push(`${et}: la binaria «${d.agrupacion}» tiene proporción ${A.promedio}: sin los dos grupos no hay diferencia posible`);
+            if (!(Math.abs(d.d) <= 3)) errores.push(`${et}: una d de ${d.d} no es plausible (máximo 3)`);
+        });
+        (cfg.cortes || []).forEach(c => { for (let i = 1; i < c.cortes.length; i++) if (!(c.cortes[i] > c.cortes[i - 1])) errores.push(`Puntos de corte de «${c.variable}»: los cortes deben ir en orden creciente`); });
+        const r = cfg.realismo || {};
+        ['pctPerdidos', 'pctDescuidados', 'pctDigitacion', 'pctAquiescencia', 'pctExtrema'].forEach(k => { if (r[k] !== undefined && !(r[k] >= 0 && r[k] <= 100)) errores.push(`Imperfecciones: ${k} debe ser un porcentaje entre 0 y 100 (tiene ${r[k]})`); });
+        if (r.mecanismoPerdidos && !['MCAR', 'MAR', 'MNAR'].includes(r.mecanismoPerdidos)) advertencias.push(`Imperfecciones: mecanismo de perdidos «${r.mecanismoPerdidos}» desconocido; se usará MCAR`);
+        if (cfg.semilla !== null && cfg.semilla !== undefined && cfg.semilla !== '' && !isFinite(Number(cfg.semilla))) advertencias.push(`La semilla «${cfg.semilla}» no es un número: la base será aleatoria (no reproducible)`);
     }
     _validarDicotomicas(errores, advertencias) {
         const cfg = this.configuracion;
@@ -4730,7 +4857,11 @@ class GeneradorDatos {
                 });
                 // (C5) dicotómica: la onda muestrea su total de una beta-binomial con SU media
                 // (con la de la base, un cambio menor de medio punto se perdía al redondear)
-                if (p.formaTotal) clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion);
+                if (p.formaTotal) { clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion); clon.formaTotal.minimo = p.minimo; }
+                // (Revisión transversal, F-2) las dificultades de la onda se desplazan con su
+                // media: si la media sube 0.4·σ, cada ítem sube (Δmedia)/k; sin esto la
+                // calibración y el informe perseguían las dificultades de T1 en una onda con otra media
+                this._desplazarDificultades(clon, p);
                 clones.push(clon);
                 nueva.pruebas.push(clon);
             }
@@ -4749,7 +4880,7 @@ class GeneradorDatos {
                 clones.forEach(cl => {
                     cl.desviacion = p.desviacion * Math.sqrt(varOnda(cl.onda));
                     if (p.formaTotal) {
-                        cl.formaTotal = this._formaBetaBinomial(p.numItems, cl.media - p.numItems * p.minimo, cl.desviacion);
+                        cl.formaTotal = this._formaBetaBinomial(p.numItems, cl.media - p.numItems * p.minimo, cl.desviacion); cl.formaTotal.minimo = p.minimo;
                         // (C5) en una dicotómica el KR-20 depende de la varianza del total: la onda tiene el suyo
                         const k = p.numItems, pi = p.dificultadesEfectivas || [];
                         const sumaPQ = pi.length === k ? pi.reduce((s, v) => s + v * (1 - v), 0) : k * 0.25;
@@ -4808,7 +4939,8 @@ class GeneradorDatos {
             const sufijo = `_${this._slugSufijo(c.etiqueta)}`;
             if (nueva.pruebas.some(x => x.sufijo === sufijo && x.base === p)) return;
             const clon = Object.assign({}, p, { nombre: `${p.nombre} (${c.etiqueta})`, sufijo, base: p, informante: c.etiqueta, media: p.media + p.desviacion * (c.sesgo || 0) });
-            if (p.formaTotal) clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion);
+            if (p.formaTotal) { clon.formaTotal = this._formaBetaBinomial(p.numItems, clon.media - p.numItems * p.minimo, p.desviacion); clon.formaTotal.minimo = p.minimo; }
+            this._desplazarDificultades(clon, p);
             const iBase = nueva.pruebas.indexOf(p);
             nueva.pruebas.splice(iBase >= 0 ? iBase + 1 : nueva.pruebas.length, 0, clon);
             nueva.correlaciones.unshift({ a: p.nombre, b: clon.nombre, r: c.r, origen: 'repetidas' });
@@ -5281,8 +5413,8 @@ class GeneradorDatos {
                 // se vuelve a aplicar.
                 const enValor = conDif(p.nombre);
                 const fn = { enValor, esCriterio, desp, partes: partes.partes, recalcularDesp: partes.recalcular, nombre: p.nombre,
-                    conForma: !esCriterio && (!!p.formaTotal || (p.distribucion && p.distribucion !== 'normal')), formaAplicada: false,
-                    transformar: z => (esCriterio ? z : this.transformarFormaZ(z, p.formaTotal || p.distribucion)),
+                    conForma: !esCriterio && !p.formaTotal && (p.distribucion && p.distribucion !== 'normal'), formaAplicada: false,
+                    transformar: z => (esCriterio || p.formaTotal ? z : this.transformarFormaZ(z, p.distribucion)),
                     valor: (i, base) => this._totalDesdeDriver(p, base, desp[i], f, enValor || esCriterio || fn.formaAplicada) };
                 return fn;
             }
@@ -5562,9 +5694,13 @@ class GeneradorDatos {
             advertencias.push('Tamaño muestral < 30: Los análisis estadísticos pueden tener bajo poder');
         }
 
-        if (this.configuracion.tamanoMuestra > 10000) {
-            advertencias.push('Tamaño muestral muy grande: Puede ser poco realista');
-        }
+        // (Revisión transversal, F-7) tope duro: por encima de 1 000 000 de filas la
+        // memoria del navegador no alcanza (con 90 columnas son 400 MB de datos) y la
+        // generación se caía sin aviso; entre 200 000 y 1 000 000 se avisa del coste
+        if (!(this.configuracion.tamanoMuestra >= 2)) errores.push('El tamaño muestral debe ser al menos 2');
+        else if (this.configuracion.tamanoMuestra > 1000000) errores.push(`Tamaño muestral ${this.configuracion.tamanoMuestra}: el máximo es 1 000 000 de filas (la memoria del navegador no da para más)`);
+        else if (this.configuracion.tamanoMuestra > 200000) advertencias.push(`Tamaño muestral ${this.configuracion.tamanoMuestra}: la generación tardará varios segundos y el CSV pesará más de 25 MB`);
+        else if (this.configuracion.tamanoMuestra > 10000) advertencias.push('Tamaño muestral muy grande: puede ser poco realista para una tesis');
 
         // Ya no se exige una fila «General»: el puntaje general de cada test se
         // deriva automáticamente como PROMEDIO de sus dimensiones.
@@ -5661,6 +5797,9 @@ class GeneradorDatos {
         // (C7) Concordancia
         this._validarConcordancias(errores, advertencias);
 
+        // (Revisión transversal, F4) comprobaciones básicas que solo hacía la interfaz al recolectar;
+        // la validación debe bastar por sí sola (archivo maestro, Worker, uso desde código)
+        this._validarBasicos(errores, advertencias);
         // (C5) escalas dicotómicas: Media/DE derivadas y reglas propias
         this._validarDicotomicas(errores, advertencias);
         // (B9) dependencias, fechas de nacimiento y referencia del MAR
