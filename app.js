@@ -133,6 +133,16 @@ function configurarGenerador() {
     // (B9) «Depende de»: se puebla al enfocar con las otras binarias/categóricas
     document.getElementById('bodySocio').addEventListener('focusin', function (e) {
         if (e.target.matches && e.target.matches('[aria-label="Depende de"]')) poblarDependeDe(e.target);
+        // (F5) el nombre anterior de la variable, para propagar un renombrado a las demás tablas
+        const filaS = e.target.closest ? e.target.closest('.fila-socio') : null;
+        if (filaS && filaS.querySelector('input') === e.target) e.target.dataset.anterior = e.target.value.trim();
+    });
+    document.getElementById('bodySocio').addEventListener('change', function (e) {
+        const fila = e.target.closest ? e.target.closest('.fila-socio') : null;
+        if (!fila || fila.querySelector('input') !== e.target) return;
+        const anterior = (e.target.dataset.anterior || '').trim(), nuevo = e.target.value.trim();
+        if (anterior && nuevo && anterior !== nuevo) renombrarVariableEnTablas(anterior, nuevo);
+        e.target.dataset.anterior = nuevo;
     });
     const _refMAR = document.getElementById('referenciaMAR');
     if (_refMAR) _refMAR.addEventListener('focusin', () => poblarReferenciaMAR());
@@ -1021,7 +1031,7 @@ function eliminarFilaSocio(fila) {
 const MotorGeneracion = (() => {
     // Versión de generador-worker.js: súbela cuando cambie ese archivo (no
     // tiene etiqueta <script> en index.html, así que se declara aquí).
-    const VERSION_WORKER = 2;
+    const VERSION_WORKER = 3;
     let worker = null;
     let contador = 0;
 
@@ -3404,6 +3414,8 @@ function importarConfigTodo(e) {
             if (!csvDe) { const b = document.getElementById('bodyDesenlaces'); if (b) b.innerHTML = ''; }
             const rK = csvK ? aplicarCSVConcordancia(csvK) : 0;
             if (!csvK) { const b = document.getElementById('bodyConcordancia'); if (b) b.innerHTML = ''; }
+            // (F5) la referencia del MAR que no exista en el estudio importado se descarta (evita un error de validación heredado)
+            poblarReferenciaMAR();
             const omitidas = rC.omitidas + rD.omitidas + rM.omitidas + rR.omitidas;
             mostrarToast(`Configuración completa importada: ${rG ? 'general + ' : ''}${rP} prueba(s), ${rS} variable(s), ${rC.aplicadas} correlación(es), ${rD.aplicadas} diferencia(s), ${rM.aplicadas} modelo(s), ${rR.aplicadas} medida(s) repetida(s)` + (rE ? `, ${rE} estructura(s) factorial(es)` : '') + (rCo ? `, ${rCo} corte(s)` : '') + (rDe ? `, ${rDe} desenlace(s)` : '') + (rK ? `, ${rK} fila(s) de concordancia` : '') + (omitidas ? ` · ${omitidas} fila(s) omitida(s) por variables inexistentes` : ''), 'success');
         } catch (error) {
@@ -3497,7 +3509,8 @@ function _filaPruebaConDatos(f) {
 function renombrarVariableEnTablas(viejo, nuevo) {
     if (!viejo || !nuevo || viejo === nuevo) return 0;
     let cambios = 0;
-    document.querySelectorAll('#bodyCorrelaciones select, #bodyDiferencias select, #bodyModelos select, #bodyRepetidas select').forEach(sel => {
+    // (Revisión transversal, F5) también las tablas VIII y IX, la referencia del MAR y «Depende de»
+    document.querySelectorAll('#bodyCorrelaciones select, #bodyDiferencias select, #bodyModelos select, #bodyRepetidas select, #bodyCortes select, #bodyDesenlaces select, #bodyConcordancia select, #referenciaMAR, #bodySocio select[aria-label="Depende de"]').forEach(sel => {
         Array.from(sel.options).forEach(op => { if (op.value === viejo) { op.value = nuevo; op.textContent = nuevo; cambios++; } });
     });
     return cambios;
