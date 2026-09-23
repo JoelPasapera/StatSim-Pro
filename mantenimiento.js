@@ -136,5 +136,17 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', pintarVersiones); else pintarVersiones();
     window.addEventListener('load', pintarVersiones);
 
-    window.StatSimMantenimiento = { recargarSinCache };
+    // Autotest del generador bajo demanda (el módulo no se carga con la página):
+    //   StatSimMantenimiento.autotest()  →  carga generador-autotest.js y lo ejecuta en la consola
+    function autotest() {
+        return new Promise((resolver, rechazar) => {
+            const correr = () => resolver(window.GeneradorDatos.autotest());
+            if (window.GeneradorDatos && typeof window.GeneradorDatos.autotest === 'function') return correr();
+            const s = document.createElement('script');
+            s.src = 'generador-autotest.js?v=' + encodeURIComponent(window.GENERADOR_VERSION || '1');
+            s.onload = correr; s.onerror = () => rechazar(new Error('No se pudo cargar generador-autotest.js'));
+            document.head.appendChild(s);
+        });
+    }
+    window.StatSimMantenimiento = { recargarSinCache, autotest };
 })();
