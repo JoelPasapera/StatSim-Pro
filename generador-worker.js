@@ -48,7 +48,9 @@
                 tipo: 'listo',
                 base: { n: serial.n, columnas: serial.columnas },
                 informe,
-                configuracion: generador.configuracion,   // expandida (B7: ondas T2… como escalas)
+                // expandida (B7: ondas T2… como escalas); sin funciones: la forma beta-binomial de las
+                // dicotómicas (C5) vive como clausura en cada escala y postMessage no puede clonarla
+                configuracion: JSON.parse(JSON.stringify(generador.configuracion, (k, v) => (typeof v === 'function' ? undefined : v))),
                 diagnosticoCorrelaciones: generador.diagnosticoCorrelaciones,
                 resumenImperfecciones: generador.resumenImperfecciones,
                 diferenciasLimitadas: generador.diferenciasLimitadas || [],
