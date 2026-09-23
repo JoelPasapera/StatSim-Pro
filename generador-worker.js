@@ -9,7 +9,7 @@
  * Carga sus dependencias con la misma versión (?v=) que index.html usa para
  * la página, que app.js le pasa en la URL del Worker:
  *     new Worker('generador-worker.js?v=1&b=1&g=11')
- *        b → base-columnar.js?v=b      g → generador-datos.js?v=g
+ *        b → base-columnar.js?v=b      g → GENERADOR_VERSION (manifiesto y módulos)
  *
  * Protocolo (mensajes hacia el Worker):
  *     { id, configuracion }              → genera con esa configuración
@@ -22,7 +22,9 @@
 (function () {
     const parametros = new URLSearchParams(self.location.search);
     const version = (clave) => encodeURIComponent(parametros.get(clave) || '1');
-    importScripts(`base-columnar.js?v=${version('b')}`, `generador-datos.js?v=${version('g')}`);
+    importScripts(`base-columnar.js?v=${version('b')}`, `generador-manifiesto.js?v=${version('g')}`);
+    // el generador es modular: los módulos, en el orden del manifiesto, con la versión común
+    importScripts(...self.GENERADOR_MODULOS.map(m => `${m}?v=${encodeURIComponent(self.GENERADOR_VERSION)}`));
 
     self.onmessage = function (evento) {
         const mensaje = evento.data || {};
