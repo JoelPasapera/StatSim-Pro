@@ -1,0 +1,83 @@
+/* ========================================
+   TABLA DESPLAZABLE (tablas de configuración anchas del Simulador)
+   Marcado: <div class="table-container tabla-desplazable" data-columnas-fijas="0|1|2"><table class="table">…
+   · Cada control tiene un ancho mínimo legible: si la fila no cabe en la tarjeta, la tabla crece y se
+     desplaza en horizontal en lugar de estrujar las columnas.
+   · src/shared/tabla-desplazable.js añade una barra de desplazamiento que se queda al pie de la ventana
+     mientras la tabla está a la vista, fija las columnas de identificación y marca el borde con más contenido.
+     Sin ese script la tabla conserva su barra nativa.
+   ======================================== */
+.tabla-desplazable {
+    --fondo-fija: #111a2b;                                  /* fondo opaco equivalente al de la fila */
+}
+@supports (color: color-mix(in srgb, red, blue)) {
+    .tabla-desplazable { --fondo-fija: color-mix(in srgb, rgb(14 21 36) 35%, var(--surface)); }
+}
+.tabla-desplazable .table th,
+.tabla-desplazable .table td { padding: 0.6rem 0.65rem; }
+.tabla-desplazable .table td { vertical-align: top; }       /* todos los campos de una fila en la misma línea; los avisos, debajo */
+
+/* anchos mínimos legibles por tipo de control */
+.tabla-desplazable .table td .input { width: 100%; }
+.tabla-desplazable .table td input.input[type="number"] { min-width: 5.5rem; }
+.tabla-desplazable .table td input.input[type="text"] { min-width: 14rem; }
+.tabla-desplazable .table td select.input { min-width: 9rem; }
+.tabla-desplazable .table td .campo-hint { min-width: 14rem; max-width: 17rem; }
+
+/* columnas fijas: solo en pantallas anchas (en un móvil ocuparían casi toda la vista) */
+@media (min-width: 761px) {
+    .tabla-desplazable { scroll-padding-left: var(--ancho-fijas, 0px); }   /* al tabular, ningún campo queda tapado por las columnas fijas */
+
+    /* columnas fijas a la izquierda (las posiciones las mide el script). Solo las columnas declaradas reciben «left»:
+       las celdas de cabecera ya son sticky (top) y cualquier otra con «left» se quedaría pegada al borde. */
+    .tabla-desplazable[data-columnas-fijas="1"] .table :is(th, td):nth-child(1),
+    .tabla-desplazable[data-columnas-fijas="2"] .table :is(th, td):nth-child(1) { left: var(--fija-1, 0px); }
+    .tabla-desplazable[data-columnas-fijas="2"] .table :is(th, td):nth-child(2) { left: var(--fija-2, 0px); }
+    .tabla-desplazable[data-columnas-fijas="1"] .table td:nth-child(1),
+    .tabla-desplazable[data-columnas-fijas="2"] .table td:nth-child(-n+2) {
+        position: sticky; z-index: 2;
+        background-color: var(--fondo-fija);
+        background-image: linear-gradient(var(--tinte-fila, transparent), var(--tinte-fila, transparent));
+    }
+    .tabla-desplazable[data-columnas-fijas="1"] .table th:nth-child(1),
+    .tabla-desplazable[data-columnas-fijas="2"] .table th:nth-child(-n+2) { z-index: 3; }
+    .tabla-desplazable .table tbody tr:nth-child(even) { --tinte-fila: rgba(148, 163, 197, 0.03); }
+    .tabla-desplazable .table tbody tr:hover { --tinte-fila: rgba(230, 185, 63, 0.055); }
+    /* borde de la última columna fija: una línea siempre y una sombra cuando hay contenido desplazado debajo
+       (con border-collapse los bordes de celda no acompañan al sticky; el pseudo-elemento sí) */
+    .tabla-desplazable[data-columnas-fijas="1"] .table :is(th, td):nth-child(1)::after,
+    .tabla-desplazable[data-columnas-fijas="2"] .table :is(th, td):nth-child(2)::after {
+        content: ''; position: absolute; top: 0; bottom: 0; left: 100%; width: 1px;
+        background: var(--color-border); pointer-events: none;
+    }
+    .tabla-desplazable-marco.desplazada .tabla-desplazable[data-columnas-fijas="1"] .table :is(th, td):nth-child(1)::after,
+    .tabla-desplazable-marco.desplazada .tabla-desplazable[data-columnas-fijas="2"] .table :is(th, td):nth-child(2)::after {
+        width: 14px;
+        background: linear-gradient(var(--color-border), var(--color-border)) left / 1px 100% no-repeat,
+                    linear-gradient(to right, rgba(0, 0, 0, 0.5), transparent);
+    }
+}
+
+/* marco que crea el script: contenedor + barra flotante */
+.tabla-desplazable-marco { position: relative; }
+.tabla-desplazable-marco.hay-mas-derecha > .tabla-desplazable {   /* fundido: queda contenido a la derecha */
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 2.25rem);
+    mask-image: linear-gradient(to left, transparent 0, #000 2.25rem);
+}
+.barra-desplazable { display: none; }
+.tabla-desplazable-marco.desborda > .barra-desplazable {
+    display: block;
+    position: sticky; bottom: 0; z-index: 4;
+    overflow-x: scroll; overflow-y: hidden;
+    background: var(--surface-2);
+    border: 1px solid var(--border-soft); border-top: none;
+    border-radius: 0 0 var(--radius-md) var(--radius-md);
+    scrollbar-width: auto;                                 /* más gruesa que la global (thin): fácil de agarrar */
+    scrollbar-color: rgba(230, 185, 63, 0.55) transparent;
+}
+.barra-desplazable-relleno { height: 1px; }
+.tabla-desplazable-marco.desborda > .tabla-desplazable.con-barra-flotante {   /* una sola barra: la flotante */
+    scrollbar-width: none;
+    border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+}
+.tabla-desplazable-marco.desborda > .tabla-desplazable.con-barra-flotante::-webkit-scrollbar { display: none; }

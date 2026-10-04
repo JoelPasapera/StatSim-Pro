@@ -1,0 +1,13 @@
+{
+  "name": "statsim-pro",
+  "private": true,
+  "type": "module",
+  "description": "StatSim Pro — estadística para tesis de psicología, sin frameworks",
+  "scripts": {
+    "test": "node tests/run.js",
+    "test:completo": "node tests/run.js completo",
+    "test:cobertura": "node --test --experimental-test-coverage tests/unit tests/integration tests/ui",
+    "test:completo:node": "node tests/run.js completo solo=node",
+    "test:completo:resto": "node tests/run.js completo solo=escenarios,extra,oraculos"
+  }
+}

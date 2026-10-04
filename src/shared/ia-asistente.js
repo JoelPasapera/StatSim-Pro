@@ -1,0 +1,658 @@
+// shared/ia-asistente.js — asistente de IA (Gemini con respaldo en Groq): servicio compartido por el Buscador y el Redactor.
+// Origen: ia-asistente.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
+
+
+// ========================================
+// ASISTENTE DE IA (vía Cloudflare Workers) — módulo central.
+// Centraliza TODA la comunicación con los modelos de IA.
+//
+// DOS PROVEEDORES, SEPARADOS POR TAREA:
+//   · Worker Groq   → criterios, variantes y filtrado de relevancia.
+//   · Worker Gemini → redacción del marco teórico e identificación de variables
+//     (tareas de redacción científica larga: contexto y salida más generosos).
+//
+// Cada Worker guarda sus claves en secretos de Cloudflare y rota entre ellas.
+// Aquí solo enviamos los mensajes (con keyHint para dirigir el canal) y
+// recibimos texto. La interfaz {messages → {texto}} es idéntica en ambos.
+// ========================================
+const IAAsistente = {
+    // URL del Worker de Groq (criterios / variantes / relevancia).
+    WORKER_URL: 'https://myworker.joelpasapera101.workers.dev',
+    // URL del Worker de Gemini (redacción del marco teórico). AJUSTA esta línea
+    // con la URL real de tu Worker nuevo (el Worker se llama 'gemini' en tu Cloudflare).
+    WORKER_REDACTOR_URL: 'https://gemini.joelpasapera101.workers.dev',
+    TIMEOUT_MS: 90000, // la redacción larga con Gemini puede tardar más que Groq
+    // Máximo de fuentes POR LLAMADA de redacción. No es un límite del corpus:
+    // el plan del redactor crea tantas partes como haga falta (ceil(total/MAX))
+    // para cubrir TODAS las fuentes equitativamente. Este techo protege la
+    // CALIDAD de la síntesis (2-5 ejes de 6-12 fuentes) y la cuota por request.
+    MAX_FUENTES_SECCION: 32,
+    // Modelo potente de Groq para tareas de razonamiento (relevancia).
+    MODELO_POTENTE: 'openai/gpt-oss-120b',
+    disponible() {
+        return typeof this.WORKER_URL === 'string' && this.WORKER_URL.startsWith('http');
+    },
+    _numClavesCache: null,
+    _numClavesRedactorCache: null,
+    // Pregunta a un Worker cuántas claves tiene (GET → { claves: N }). Es la
+    // pieza que hace el paralelismo AUTO-ESCALABLE: añades GROQ_KEY_N o
+    // GEMINI_KEY_N en Cloudflare (y pulsas Deploy) y el número sube solo, sin
+    // tocar la página. Reintenta una vez por si el primer GET falla en frío.
+    async _consultarClaves(url, etiqueta) {
+        for (let intento = 0; intento < 2; intento++) {
+            try {
+                const r = await fetch(url, { method: 'GET', cache: 'no-store' });
+                const d = await r.json();
+                if (d && Number.isInteger(d.claves) && d.claves > 0) return d.claves;
+                console.warn('[' + etiqueta + '] el Worker respondió sin un conteo válido de claves:', d);
+            } catch (e) {
+                if (intento === 1) console.warn('[' + etiqueta + '] no se pudo leer el nº de claves del Worker (' + url + '): ' + e.message
+                    + ' — ¿URL correcta y desplegada? Se usa 1 canal como mínimo seguro.');
+            }
+        }
+        return null;
+    },
+    // ¿Cuántas claves tiene el Worker de Groq? (canales del filtrado paralelo).
+    async numClaves() {
+        if (this._numClavesCache) return this._numClavesCache;
+        const n = await this._consultarClaves(this.WORKER_URL, 'Groq');
+        // Sin respuesta: 1 canal (mínimo seguro y honesto). NO inventa un número
+        // mayor que el real, para no lanzar más lotes de los que hay claves.
+        this._numClavesCache = n || 1;
+        return this._numClavesCache;
+    },
+    // ¿Cuántas claves tiene el Worker de Gemini? (canales del redactor). Misma
+    // filosofía auto-escalable: añade GEMINI_KEY_N en Cloudflare y listo.
+    async numClavesRedactor() {
+        if (this._numClavesRedactorCache) return this._numClavesRedactorCache;
+        const n = await this._consultarClaves(this.WORKER_REDACTOR_URL, 'Gemini');
+        this._numClavesRedactorCache = n || 1;
+        return this._numClavesRedactorCache;
+    },
+    // ---- Llamada base al modelo ----
+    // messages: [{role:'system'|'user'|'assistant', content:'...'}]
+    // opciones: { temperature, max_tokens, response_format, model, keyHint,
+    //             worker: URL del Worker a usar (por defecto, el de Groq) }
+    async chat(messages, opciones = {}) {
+        if (!this.disponible()) throw new Error('El asistente de IA no está configurado.');
+        if (!Array.isArray(messages) || !messages.length) throw new Error('No hay mensajes que enviar.');
+        const url = opciones.worker || this.WORKER_URL;
+        const cuerpo = { messages };
+        if (typeof opciones.temperature === 'number') cuerpo.temperature = opciones.temperature;
+        if (typeof opciones.max_tokens === 'number') cuerpo.max_tokens = opciones.max_tokens;
+        if (opciones.response_format) cuerpo.response_format = opciones.response_format;
+        if (opciones.model) cuerpo.model = opciones.model;
+        if (Number.isInteger(opciones.keyHint)) cuerpo.keyHint = opciones.keyHint;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), this.TIMEOUT_MS);
+        let r;
+        try {
+            r = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(cuerpo),
+                signal: ctrl.signal
+            });
+        } catch (e) {
+            clearTimeout(t);
+            if (e.name === 'AbortError') { const err = new Error('La IA tardó demasiado en responder (timeout del cliente).'); err.codigo = 'TIMEOUT'; err.reintentable = true; throw err; }
+            const err = new Error('No se pudo conectar con el asistente de IA. Revisa tu conexión.'); err.codigo = 'RED'; err.reintentable = true; throw err;
+        }
+        clearTimeout(t);
+        let data;
+        try { data = await r.json(); } catch (e) { const err = new Error('El asistente devolvió una respuesta no válida.'); err.codigo = 'RESPUESTA_ILEGIBLE'; err.reintentable = true; throw err; }
+        if (!r.ok || data.error) {
+            const codigo = data.codigo || (r.status === 429 ? 'CUOTA_GEMINI' : r.status === 413 ? 'CUERPO_EXCEDE' : 'HTTP_' + r.status);
+            const err = new Error(this._mensajePorCodigo(codigo, data)
+                + (data.pista ? ' · Detalle del proveedor: «' + String(data.pista).slice(0, 180) + '»' : ''));
+            err.codigo = codigo;
+            err.httpStatus = r.status;
+            if (data.retry) err.retry = data.retry;   // segundos sugeridos por el Worker (Retry-After)
+            err.diag = data.diag;               // solo llega si el Worker está en TEST_MODE
+            err.reintentable = this._esReintentable(codigo);
+            throw err;
+        }
+        if (data.truncado && typeof console !== 'undefined') console.warn('[IA] Respuesta posiblemente TRUNCADA (MAX_TOKENS): la sección pudo quedar a media frase.');
+        // Centinela para el ensamblador: con 10 canales en paralelo un flag global
+        // tendría carreras; el marcador viaja pegado al propio texto.
+        return (data.texto || '').trim() + (data.truncado ? '\n[[TRUNCADO_MAX_TOKENS]]' : '');
+    },
+    // Mapa código→mensaje claro para el usuario/dueño. Cada uno dice QUÉ pasó
+    // y, cuando aplica, QUÉ hacer.
+    _mensajePorCodigo(codigo, data) {
+        const M = {
+            CUOTA_GEMINI: 'Cuota de Gemini agotada en una clave (se reintenta con otra).',
+            CUOTA_TODAS: 'Todas las claves de Gemini están en su límite por minuto. Reintenta en ~1 min.',
+            LIMITE_DIARIO: 'Se alcanzó el límite diario configurado del servicio.',
+            IP_RATE: 'Demasiadas solicitudes desde esta red en poco tiempo. Espera unos segundos.',
+            GLOBAL_SATURADO: 'El servicio está saturado ahora mismo. Reintenta en un momento.',
+            BREAKER_ABIERTO: 'El servicio se pausó tras varios fallos seguidos. Reintenta en ~30 s.',
+            SALIDA_TRUNCADA: 'La sección era demasiado extensa para una sola generación (se trocea en partes más pequeñas).',
+            BLOQUEO_SEGURIDAD: 'Gemini bloqueó el contenido por sus filtros de seguridad; reintentar no ayuda.',
+            RESPUESTA_VACIA: 'Gemini devolvió una respuesta vacía.',
+            TIMEOUT: 'Gemini tardó demasiado en responder (sección muy grande o servicio lento).',
+            GEMINI_5XX: 'Error temporal del servidor de Gemini.',
+            CLAVE_INVALIDA: 'Una clave de Gemini es inválida o expiró (se reintenta con otra).',
+            CLAVE_REGION: 'Todas las claves probadas pertenecen a cuentas cuya región no soporta la API de Gemini: reemplaza esas claves en el Worker (identifícalas con ?probar=1&clave=N).',
+            GEMINI_4XX: 'Gemini rechazó la petición con TODAS las claves (400): casi siempre es texto corrupto en la matriz (caracteres rotos del scraping) — reimporta la matriz para que el saneador los limpie, o revisa la fila más reciente.',
+            CUERPO_EXCEDE: 'La petición supera el tamaño permitido por el servidor.',
+            CHARS_EXCEDE: 'El contexto enviado es demasiado largo.',
+            ORIGEN: 'Esta página no está autorizada para usar el asistente de IA.',
+            TOKEN: 'Falta o es inválido el token de acceso al asistente.',
+            RED: 'No se pudo contactar con el servicio de IA.'
+        };
+        let base = M[codigo] || (data && data.error) || 'Error desconocido del asistente.';
+        if (data && data.diag && data.diag.detalle) base += ' [' + data.diag.detalle + ']'; // solo con TEST_MODE
+        return base;
+    },
+    // Fallos transitorios: reintentar tiene sentido. Los demás, no.
+    _esReintentable(codigo) {
+        return ['CUOTA_GEMINI', 'CUOTA_TODAS', 'IP_RATE', 'GLOBAL_SATURADO', 'BREAKER_ABIERTO',
+                'TIMEOUT', 'GEMINI_5XX', 'GROQ_5XX', 'CUOTA_GROQ', 'CLAVE_INVALIDA', 'RESPUESTA_ILEGIBLE', 'RED', 'RESPUESTA_VACIA'].includes(codigo);
+    },
+    async chatConReintento(messages, opciones = {}, intentos = 4) {
+        let ultimoError = null;
+        for (let i = 0; i < intentos; i++) {
+            try {
+                const txt = await this.chat(messages, opciones);
+                if (txt && txt.trim()) return txt;
+                ultimoError = new Error('La IA devolvió una respuesta vacía.');
+                ultimoError.codigo = 'RESPUESTA_VACIA';
+            } catch (e) {
+                ultimoError = e;
+                // Error definitivo (bloqueo de seguridad, truncado, 4xx): no insistir.
+                if (e && e.reintentable === false) throw e;
+            }
+            // Espera creciente con jitter — y CUOTA-consciente: 4 s de backoff ante
+            // una ventana de 60 s era reintentar a ciegas; el Retry-After del Worker manda.
+            const esCuota = /^CUOTA/.test((ultimoError && ultimoError.codigo) || '');
+            const espera = esCuota
+                ? (this._ESPERA_CUOTA_LOOP_MS ?? Math.min(Math.max((ultimoError && ultimoError.retry) || 12, 8), 20) * 1000)
+                : Math.min(400 * Math.pow(2, i), 4000) + Math.random() * 300;
+            if (i < intentos - 1) await new Promise(r => setTimeout(r, espera));
+        }
+        throw ultimoError || new Error('La IA no respondió tras varios intentos.');
+    },
+    // ============================================================
+    // FUNCIÓN 1: generar criterios de inclusión/exclusión (Groq)
+    // ============================================================
+    async generarCriterios(problema) {
+        const p = String(problema || '').trim();
+        if (p.length < 15) throw new Error('Describe primero el problema de investigación (al menos una frase completa).');
+        const anioActual = new Date().getFullYear();
+        const anioDesde = anioActual - 5;
+        const system = 'Eres un metodólogo experto en revisiones sistemáticas de literatura científica, '
+            + 'especializado en psicología y ciencias sociales. Redactas criterios de selección de estudios '
+            + 'claros, aplicables y NO excesivamente restrictivos: el objetivo es reunir la mejor evidencia '
+            + 'disponible, no descartar estudios valiosos. Respondes en español, conciso y estructurado.';
+        const user = `A partir del siguiente problema de investigación, redacta los criterios de INCLUSIÓN y `
+            + `EXCLUSIÓN para seleccionar artículos científicos en una revisión de antecedentes.\n\n`
+            + `DATO IMPORTANTE: el año actual es ${anioActual}. La ventana temporal recomendada es de los `
+            + `últimos 5 años, es decir, desde ${anioDesde} hasta ${anioActual} (AMBOS INCLUIDOS). No uses `
+            + `ningún otro año como límite; usa exactamente ${anioDesde}–${anioActual}.\n\n`
+            + `PRINCIPIOS para los criterios (síguelos con cuidado):\n`
+            + `- INCLUSIÓN: define la población/variables/diseño de forma que capture la evidencia relevante. `
+            + `Si el problema menciona una población concreta, céntrate en ella, pero permite estudios que `
+            + `aporten al tema aunque sean en poblaciones cercanas si son pertinentes.\n`
+            + `- EXCLUSIÓN: sé MÍNIMO y prudente. NO excluyas por defecto otras poblaciones, otros idiomas, `
+            + `diseños cualitativos, revisiones, meta-análisis ni tesis: todos pueden aportar. Excluye solo lo `
+            + `que de verdad no sirve: trabajos sin datos o metodología verificable, duplicados, o claramente `
+            + `fuera de la ventana temporal (${anioDesde}–${anioActual}).\n`
+            + `- INCLUYE SIEMPRE un criterio de exclusión por DISTANCIA TEMÁTICA, pero formulado como un FILTRO `
+            + `GRUESO: descartar únicamente los estudios que NO traten ninguna de las variables o constructos `
+            + `centrales del problema, es decir, los que pertenecen a un campo claramente ajeno. Por ejemplo, si `
+            + `el tema trata sobre inteligencia emocional e inteligencia cognitiva, se descartarían estudios `
+            + `centrados solo en temas sin conexión (p. ej. inteligencia artificial, diabetes u otras áreas no `
+            + `relacionadas). PERO este criterio NO debe descartar estudios muy específicos que SÍ pertenecen al `
+            + `tema, como los que abordan una sola de las variables o una de sus dimensiones o subdimensiones: `
+            + `esos se conservan, porque cuando la evidencia es escasa (temas novedosos o poco estudiados) los `
+            + `estudios parciales o tangenciales dentro del tema son valiosos. Redacta este criterio dejando `
+            + `clara esa diferencia: fuera del tema = descartar; dentro del tema aunque sea específico = conservar.\n`
+            + `- Para el idioma: si procede, prioriza español e inglés en INCLUSIÓN, pero NO conviertas eso en `
+            + `una exclusión tajante de otros idiomas (la evidencia internacional cuenta).\n\n`
+            + `Devuelve EXACTAMENTE dos secciones con estos encabezados literales:\n`
+            + `CRITERIOS DE INCLUSIÓN:\n`
+            + `(viñetas con "- ")\n\n`
+            + `CRITERIOS DE EXCLUSIÓN:\n`
+            + `(viñetas con "- ")\n\n`
+            + `Sé específico y conciso (4 a 6 viñetas por sección). No añadas introducción ni cierre.\n\n`
+            + `PROBLEMA DE INVESTIGACIÓN:\n${p}`;
+        return await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.4, max_tokens: 4000 }
+        );
+    },
+    // ============================================================
+    // FUNCIÓN 2: generar variantes de la consulta (Groq)
+    // ============================================================
+    async generarVariantes(consulta, cantidad = 5) {
+        const q = String(consulta || '').trim();
+        if (q.length < 3) throw new Error('Escribe primero los términos de búsqueda.');
+        const n = Math.max(2, Math.min(12, parseInt(cantidad, 10) || 5));
+        const system = 'Eres un experto en recuperación de información académica y revisiones '
+            + 'sistemáticas. Generas frases de búsqueda alternativas para bases de datos científicas, '
+            + 'maximizando la cobertura sin perder el foco temático. Conoces la sinonimia y las dimensiones '
+            + 'teóricas de los constructos en psicología y ciencias sociales.';
+        const user = `Genera EXACTAMENTE ${n} ecuaciones de búsqueda alternativas a la consulta dada, para `
+            + `bases académicas de salud y psicología. Cada una debe seguir una ESTRATEGIA metodológica `
+            + `DISTINTA, como haría un metodólogo de revisiones sistemáticas:\n`
+            + `1) Terminología técnica de tesauro: los términos tipo DeCS/MeSH de los constructos.\n`
+            + `2) Sinónimos del constructo Y de la población (p. ej. adolescentes → jóvenes, estudiantes de secundaria).\n`
+            + `3) Operadores: truncamiento con * y alternativas con OR entre paréntesis, p. ej. (ansiedad OR estrés) AND adolesc*.\n`
+            + `4) Constructos o marcos teóricos estrechamente relacionados (sin cambiar de tema).\n`
+            + `5) Instrumentos de medición típicos de esas variables (p. ej. TMMS-24, STAI, PHQ-9), si existen.\n`
+            + `Si se piden más de 5, combina estrategias SIN repetir la misma jugada con otras palabras.\n`
+            + `Reglas de salida:\n`
+            + `- Cada línea es una consulta de palabras clave, NO una pregunta ni una oración larga.\n`
+            + `- Prohibido el parafraseo trivial (cambiar una palabra por su sinónimo obvio y nada más).\n`
+            + `- Mantén SIEMPRE el foco del tema original.\n`
+            + `- Responde SOLO con las ${n} líneas, sin numeración, sin viñetas, sin comillas, sin texto adicional.\n`
+            + `CONSULTA ORIGINAL:\n${q}`;
+        const texto = await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.6, max_tokens: 4000 }
+        );
+        const variantes = texto.split(/\r?\n/)
+            .map(l => l.replace(/^\s*(?:\d+[.)\-]\s*|[-*•]\s*)/, '').replace(/^["'«»]|["'«»]$/g, '').trim())
+            .filter(l => l.length > 2)
+            .filter(l => l.toLowerCase() !== q.toLowerCase());
+        const vistas = new Set();
+        const unicas = variantes.filter(v => { const k = v.toLowerCase(); if (vistas.has(k)) return false; vistas.add(k); return true; });
+        if (!unicas.length) throw new Error('La IA no devolvió variantes válidas. Inténtalo de nuevo.');
+        return unicas.slice(0, n);
+    },
+    // ============================================================
+    // FUNCIÓN 4 (Redactor): extraer las VARIABLES del problema (Gemini)
+    // ============================================================
+    // ===== FICHA DE INSTRUMENTOS (auto-fundamentada en la matriz) =====
+    // Una llamada extrae qué instrumentos aparecen en los resúmenes y qué
+    // constructo mide cada uno SEGÚN LA PROPIA MATRIZ. Esa verdad se inyecta
+    // en todas las partes y se verifica al ensamblar: cero listas a mano.
+    // ===== RESPALDO GROQ: Gemini×2 → Groq×1 (3 intentos totales) =====
+    // Los dos Workers son gemelos de contrato: mismo cuerpo, mismos códigos.
+    // El error combinado conserva el código PRIMARIO de Gemini para que el
+    // flujo del redactor (encogido en 4xx, etc.) siga funcionando igual.
+    _rescatesGroq: 0,
+    // Groq free: 8K tokens/MINUTO por clave — una petición de 25 fuentes (~9-10K
+    // tokens) supera el presupuesto del minuto ENTERO y da 413 con las 23 claves.
+    // El respaldo recorta el LISTADO de fuentes (nunca la TAREA ni el problema)
+    // hasta caber; los marcadores [F#] de las recortadas caen como inválidos y
+    // el sistema los caza — degradación honesta, no muerte.
+    // MATEMÁTICA DEL 413 (aprendida a golpes): el pre-flight de Groq cuenta
+    // prompt + max_tokens contra los 8K TPM. Español académico tokeniza a ~3
+    // chars/token ⇒ entrada ≤ 14K chars (~4.6K tok) + salida ≤ 2800 = ~7.4K < 8K.
+    _LIM_CHARS_RESPALDO: 14000,
+    _MAX_TOKENS_RESPALDO: 2800,
+    // COMPRESIÓN, no amputación: TODAS las fuentes viajan al respaldo (cita y
+    // título íntegros → todos los [F#] siguen válidos). Lo que se comprime es el
+    // CUERPO de cada resumen: frase de apertura + las frases CON CIFRAS (r=, β,
+    // N=, p<, %…) — el jugo que las reglas de magnitudes exigen. Problema,
+    // variables, TAREA y reglas: intocables.
+    _comprimirResumen(txt, tope) {
+        const t = String(txt || '').trim();
+        if (t.length <= tope) return t;
+        const frases = t.split(/(?<=[.!?])\s+/);
+        const esCifra = f => /[rβdR²]\s*=|N\s*=|p\s*[<≤=]|%|OR\s*=|IC\s*95|CI\s*95|α\s*=/i.test(f);
+        const partes = [frases[0] ? frases[0].slice(0, Math.max(90, Math.floor(tope * 0.45))) : ''];
+        // (?:\.(?=\d)|[^.!?]) permite el punto DECIMAL (r=.43) y para solo en fin de frase
+        const ctxCifra = /(?:\.(?=\d)|[^.!?]){0,25}(?:[rβdR²]\s*=|N\s*=|p\s*[<≤=]|%|OR\s*=|IC\s*95|CI\s*95|α\s*=)(?:\.(?=\d)|[^.!?]){0,110}/i;
+        for (const f of frases.slice(1)) {
+            if (partes.length >= 3) break;
+            if (esCifra(f)) {
+                const mm = f.match(ctxCifra);   // ventana CENTRADA en la cifra (el regex ya acota el tamaño)
+                partes.push((mm ? mm[0] : f.slice(0, 140)).trim());
+            }
+        }
+        let out = partes.filter(Boolean).join(' … ');
+        return out.length > tope ? out.slice(0, tope - 1) + '…' : out;
+    },
+    _recortarParaRespaldo(mensajes) {
+        const total = mensajes.reduce((a, m) => a + String(m.content || '').length, 0);
+        if (total <= this._LIM_CHARS_RESPALDO) return mensajes;
+        return mensajes.map(m => {
+            if (m.role !== 'user') return m;
+            const c = String(m.content || '');
+            const extra = total - c.length;                         // system + demás mensajes: TAMBIÉN cuentan tokens
+            const bloques = c.split(/\n(?=\[F\d+\] )/);          // [cabecera, bloque F1, F2, …, últimoBloque+TAREA]
+            if (bloques.length < 3) {
+                // Sin listado [F#] (p. ej. el corpus de la FICHA, hasta 42K):
+                // poda genérica de cola en frontera de línea — los resúmenes del
+                // corpus son muestreo re-derivable, no contenido de tesis.
+                const tope = this._LIM_CHARS_RESPALDO - extra - 400;
+                if (c.length <= tope) return m;
+                const corte = c.lastIndexOf('\n', tope);
+                return { ...m, content: c.slice(0, corte > 500 ? corte : tope) + '\n(…corpus recortado por el límite del respaldo…)' };
+            }
+            const ultimo = bloques[bloques.length - 1];
+            const iTarea = ultimo.lastIndexOf('\nTAREA:');
+            const colaTarea = iTarea >= 0 ? ultimo.slice(iTarea) : '';
+            if (iTarea >= 0) bloques[bloques.length - 1] = ultimo.slice(0, iTarea);
+            const fijo = extra + bloques[0].length + colaTarea.length + 200;
+            const presupuesto = Math.max(2000, this._LIM_CHARS_RESPALDO - fijo);
+            const nBloques = bloques.length - 1;
+            // Dos rondas de tope por resumen: normal y, si aún no cabe, mínima —
+            // pero SIEMPRE con las N fuentes completas en cita y título.
+            for (const tope of [Math.max(120, Math.floor(presupuesto / nBloques) - 130), 90]) {
+                const comprimidos = bloques.slice(1).map(b => {
+                    const iRes = b.indexOf('RESUMEN: ');
+                    if (iRes < 0) return b;
+                    const cab = b.slice(0, iRes + 9);
+                    return cab + this._comprimirResumen(b.slice(iRes + 9), tope);
+                });
+                const cuerpo = bloques[0] + '\n' + comprimidos.join('\n') + colaTarea;
+                if (extra + cuerpo.length <= this._LIM_CHARS_RESPALDO - 100 || tope === 90)
+                    return { ...m, content: cuerpo };
+            }
+            return m;
+        });
+    },
+    async _chatConRespaldo(mensajes, opciones = {}) {
+        try {
+            const tG = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 2);
+            this._ultimoProveedor = 'gemini';
+            return tG;
+        } catch (e1) {
+            // Tormenta de cuota-por-minuto: esperar a que RUEDE la ventana y dar a
+            // Gemini UNA oportunidad más vale oro — cura el patrón «corridas seguidas»
+            // aunque el redactor viejo siga en caché sin su propia espera.
+            if (/^CUOTA/.test(e1.codigo || '')) {
+                const esperaS = Math.min(60, Math.max(12, e1.retry || 15));
+                if (typeof console !== 'undefined') console.warn(`[IA] Cuota Gemini agotada: esperando ${esperaS} s a que ruede la ventana…`);
+                await new Promise(r => setTimeout(r, (this._ESPERA_CUOTA_RESPALDO_MS ?? esperaS * 1000)));
+                try { const tG3 = await this.chatConReintento(mensajes, { ...opciones, worker: this.WORKER_REDACTOR_URL }, 1); this._ultimoProveedor = 'gemini'; return tG3; }
+                catch (e1b) { e1 = e1b; }
+            }
+            if (typeof console !== 'undefined') console.warn(`[IA] Gemini agotado (${e1.codigo || '?'}): probando respaldo Groq…`);
+            try {
+                // Rescate con el modelo grande (elección del dueño): más músculo para prosa académica.
+                const mensajesG = this._recortarParaRespaldo(mensajes);
+                const opG = { ...opciones, worker: this.WORKER_URL, model: 'openai/gpt-oss-120b',
+                    max_tokens: Math.min(this._MAX_TOKENS_RESPALDO, opciones.max_tokens || this._MAX_TOKENS_RESPALDO) };
+                const texto = await this.chatConReintento(mensajesG, opG, 1);
+                this._rescatesGroq++;
+                this._ultimoProveedor = 'groq';
+                return texto;
+            } catch (e2) {
+                const err = new Error(`Gemini y Groq fallaron — Gemini [${e1.codigo || '?'}]: ${e1.message} · Groq [${e2.codigo || '?'}]: ${e2.message}`);
+                err.codigo = e1.codigo; err.reintentable = e1.reintentable;
+                err.codigoRespaldo = e2.codigo;
+                throw err;
+            }
+        }
+    },
+    // Defensa en profundidad: NINGÚN string viaja al modelo sin pasar por aquí.
+    _limpiarParaModelo(x) {
+        return String(x == null ? '' : x)
+            .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, '')
+            .replace(/(^|[^\uD800-\uDBFF])([\uDC00-\uDFFF])/g, '$1')
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    },
+    // ===== F3: pulido quirúrgico de párrafos señalados por los radares =====
+    // El modelo SOLO reescribe los párrafos objetivo; la seguridad (citas
+    // idénticas, sin F#, longitud) la valida el redactor MECÁNICAMENTE.
+    async pulirPasajes(seccionTitulo, items, opciones = {}) {
+        if (!items || !items.length) return [];
+        // Tandas de 4: más objetivos en una llamada arriesga truncar el JSON.
+        if (items.length > 4) {
+            const todo = [];
+            for (let k = 0; k < items.length; k += 4)
+                todo.push(...await this.pulirPasajes(seccionTitulo, items.slice(k, k + 4), opciones));
+            return todo;
+        }
+        const P = x => this._limpiarParaModelo(x);
+        const system = 'Eres un editor de estilo académico de élite. Reescribes párrafos puntuales de un marco '
+            + 'teórico bajo REGLAS DURAS: (1) conserva EXACTAMENTE las mismas citas — mismos apellidos y años, '
+            + 'ni añadas, ni quites, ni cambies ninguna (puedes alternar entre forma narrativa «Autor (año)» y '
+            + 'parentética «(Autor, año)»); (2) no inventes ni alteres datos, cifras o afirmaciones; '
+            + '(3) PROHIBIDO cualquier marcador tipo F seguido de número; (4) longitud similar al original '
+            + '(±30 %); (5) devuelve ÚNICAMENTE JSON válido: {"reescritos":[{"i":N,"texto":"..."}]} con los '
+            + 'mismos índices recibidos. Si un párrafo no puede mejorarse cumpliendo las reglas, devuélvelo igual.';
+        const user = `SECCIÓN: ${P(seccionTitulo)}\n\nPÁRRAFOS A PULIR (cada uno con su tarea):\n\n`
+            + items.map(it => `[${it.i}] TAREA (${it.tipo}): ${P(it.instruccion)}\nPÁRRAFO ORIGINAL:\n${P(it.texto)}`).join('\n\n---\n\n');
+        const texto = await this._chatConRespaldo(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.5, max_tokens: 2600, response_format: { type: 'json_object' }, ...opciones });
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').replace(/\[\[TRUNCADO_MAX_TOKENS\]\]\s*$/, '').trim()); }
+        catch (e) { const m = texto.match(/\{[\s\S]*\}/); data = m ? JSON.parse(m[0]) : null; }
+        const arr = (data && Array.isArray(data.reescritos)) ? data.reescritos : [];
+        return arr.filter(r => r && Number.isInteger(r.i) && typeof r.texto === 'string' && r.texto.trim().length > 40)
+            .map(r => ({ i: r.i, texto: r.texto.trim() }));
+    },
+    async extraerFichaInstrumentos(fuentes) {
+        const conResumen = (fuentes || []).filter(f => f && (f.resumen || '').length > 40).slice(0, 60);
+        if (!conResumen.length) return [];
+        let corpus = '';
+        for (const f of conResumen) {
+            const linea = `- ${this._limpiarParaModelo(f.titulo).slice(0, 110)}: ${this._limpiarParaModelo(f.resumen).slice(0, 320)}\n`;
+            if (corpus.length + linea.length > 42000) break;
+            corpus += linea;
+        }
+        const system = 'Eres un metodólogo experto. Identificas instrumentos de medición '
+            + '(tests, escalas, inventarios, cuestionarios) mencionados en resúmenes académicos y el '
+            + 'constructo EXACTO que cada uno mide según esos textos. Respondes ÚNICAMENTE en JSON válido.';
+        const user = 'De los siguientes resúmenes, extrae los instrumentos de medición mencionados. '
+            + 'Para cada uno: nombre (como aparece, p. ej. «Inventario de Bar-On»), sigla si la hay '
+            + '(p. ej. «EQ-i:YV»), el constructo que mide SEGÚN LOS TEXTOS (p. ej. «inteligencia '
+            + 'emocional») y la familia (autor del modelo teórico al que pertenece según los textos: '
+            + '«Bar-On», «Mayer y Salovey», «Goleman/Boyatzis», «Wechsler»…; "" si el texto no lo dice). '
+            + 'Solo instrumentos realmente nombrados; nada inventado.\n\n'
+            + 'Responde SOLO con: {"instrumentos": [{"nombre": "...", "sigla": "...", "constructo": "...", "familia": "..."}]}\n\n'
+            + 'RESÚMENES:\n' + corpus;
+        const texto = await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0, max_tokens: 2000, response_format: { type: 'json_object' } });
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
+        catch (e) { const m = texto.match(/\{[\s\S]*\}/); data = m ? JSON.parse(m[0]) : null; }
+        const items = (data && Array.isArray(data.instrumentos)) ? data.instrumentos : [];
+        const vistos = new Set();
+        return items.filter(i => i && i.nombre && i.constructo).map(i => ({
+            nombre: String(i.nombre).trim().slice(0, 80),
+            sigla: String(i.sigla || '').trim().slice(0, 30),
+            constructo: String(i.constructo).trim().toLowerCase().slice(0, 60),
+            familia: String(i.familia || '').trim().slice(0, 50)
+        })).filter(i => {
+            const k = (i.sigla || i.nombre).toLowerCase();
+            if (vistos.has(k)) return false;
+            vistos.add(k); return true;
+        }).slice(0, 20);
+    },
+    async extraerVariables(problema) {
+        const p = String(problema || '').trim();
+        if (p.length < 15) throw new Error('Describe primero el problema de investigación.');
+        const system = 'Eres un metodólogo experto en psicología. Identificas las variables de estudio '
+            + 'de un problema de investigación y las defines conceptualmente con precisión académica. '
+            + 'Respondes ÚNICAMENTE en JSON válido.';
+        const user = `Identifica las VARIABLES DE ESTUDIO del siguiente problema de investigación `
+            + `(normalmente 2, a veces 1 o 3). Para cada una da su nombre técnico y una definición `
+            + `conceptual breve (1-2 frases, sin citas).\n\n`
+            + `Responde SOLO con: {"variables": [{"nombre": "...", "definicion": "..."}]}\n\n`
+            + `PROBLEMA:\n${p}`;
+        const texto = await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0.3, max_tokens: 1500, response_format: { type: 'json_object' } });
+        let data;
+        try { data = JSON.parse(texto.replace(/```json|```/g, '').trim()); }
+        catch (e) {
+            const m = texto.match(/\{[\s\S]*\}/);
+            if (m) { try { data = JSON.parse(m[0]); } catch (e2) { throw new Error('La IA no devolvió variables válidas.'); } }
+            else throw new Error('La IA no devolvió variables válidas.');
+        }
+        const vars = (data && Array.isArray(data.variables)) ? data.variables : [];
+        const limpias = vars.filter(v => v && v.nombre).map(v => ({
+            nombre: String(v.nombre).trim(),
+            definicion: String(v.definicion || '').trim()
+        }));
+        if (!limpias.length) throw new Error('No se identificaron variables. Revisa el problema de investigación.');
+        return limpias;
+    },
+    // ============================================================
+    // FUNCIÓN 5 (Redactor): redactar UNA sección del marco teórico (Gemini)
+    // ============================================================
+    // ANTI-ALUCINACIÓN: solo cita las fuentes listadas, con la cita corta EXACTA
+    // ya construida; textuales solo desde los resúmenes.
+    // SÍNTESIS CIENTÍFICA: el texto se organiza por IDEAS, no por autores — la
+    // diferencia entre una matriz de revisión y un marco teórico de verdad.
+    async redactarSeccion(spec) {
+        // El techo por llamada es configurable (MAX_FUENTES_SECCION): el plan
+        // del redactor reparte el corpus completo en tantas partes como haga
+        // falta, así que ninguna fuente queda fuera por este recorte.
+        const fuentes = (spec.fuentes || []).slice(0, this.MAX_FUENTES_SECCION);
+        if (!fuentes.length) throw new Error('No hay fuentes disponibles para redactar esta sección.');
+        const P = x => this._limpiarParaModelo(x);
+        const listado = fuentes.map((f, i) =>
+            `[F${i + 1}] CITA EXACTA A USAR: ${P(f.cita)}\n`
+            + `      Título: ${P(f.titulo) || '(sin título)'} (${f.anio || 's. f.'})\n`
+            + `      RESUMEN: ${(P(f.resumen) || '(sin resumen)').slice(0, 700)}`
+        ).join('\n\n');
+        const system = 'Eres un investigador senior que redacta marcos teóricos con nivel de publicación '
+            + 'científica (español formal, normas APA 7).\n\n'
+            + '== REGLAS ANTI-ALUCINACIÓN (INVIOLABLES) ==\n'
+            + '(1) SOLO puedes usar las fuentes de la lista. Para citar, cierra cada afirmación con su(s) '
+            + 'MARCADOR(es) de evidencia SIEMPRE entre CORCHETES: [F3] para una fuente, [F3, F7] para varias que '
+            + 'convergen — JAMÁS entre paréntesis (F3) ni sueltos — pegados '
+            + 'tras el enunciado, antes del punto. PROHIBIDO escribir citas parentéticas (Autor, año) a mano: '
+            + 'el sistema las genera desde el marcador. Las menciones narrativas ("García (2020) halló…") sí '
+            + 'usan el apellido tal como aparece en la CITA EXACTA, y la afirmación cierra igualmente con su '
+            + 'marcador. PROHIBIDO mencionar autores, años o estudios que no estén en la lista. '
+            + '(2) Las citas textuales (entre comillas) solo pueden ser frases copiadas LITERALMENTE de los '
+            + 'RESÚMENES dados; si no hay frase literal útil, parafrasea. '
+            + '(3) REGLA DE ORO: toda afirmación cierra con su marcador; cada párrafo contiene al menos un '
+            + 'marcador; si un párrafo no puede sustentarse en las fuentes, NO lo escribas. '
+            + '(4) Si las fuentes no cubren un punto, NO lo desarrolles ni lo disculpes fuente por fuente: '
+            + 'los vacíos de evidencia se enuncian UNA sola vez, con formulación propia y distinta cada vez, '
+            + 'al cierre — MÁXIMO UN vacío por parte. (5) NO escribas la lista de referencias al final. '
+            + '(6) Sin viñetas NI subtítulos internos: prosa corrida académica, sin encabezados dentro de la parte. '
+            + '(7) Cada instrumento se nombra con su constructo CORRECTO según el resumen: un inventario de '
+            + 'inteligencia emocional (p. ej., EQ-i) JAMÁS se etiqueta como «de coeficiente intelectual», ni al revés. '
+            + '(8) PROHIBIDO abrir la parte o cualquier párrafo con fórmulas genéricas tipo «la relación entre X e Y '
+            + 'es un campo de estudio complejo» o variantes: entra directo al contenido específico del eje. '
+            + '(9) PROHIBIDO reformular la misma conclusión más de una vez: si ya afirmaste una idea con sus '
+            + 'fuentes, no vuelvas a enunciarla con otras palabras en otro párrafo. '
+            + '(10) PROHIBIDO encadenar más de DOS enunciados seguidos que empiecen con cita narrativa '
+            + '(«Autor (año) halló…»): agrupa por IDEA con una frase-tema tuya y mete los estudios dentro '
+            + 'como respaldo — el tren «A halló… B encontró… C reportó… D observó…» delata falta de síntesis. '
+            + '(11) DEFINICIÓN OPERACIONAL ESTRICTA: cada VARIABLE se usa EXACTAMENTE con la definición dada '
+            + 'arriba; los constructos vecinos (CI, inteligencia general, funciones ejecutivas…) solo aparecen '
+            + 'para DIFERENCIARLOS explícitamente de la variable, jamás como sinónimos intercambiables. '
+            + '(12) ALINEACIÓN MODELO↔INSTRUMENTO: si adoptas un modelo teórico y anclas un instrumento, ambos '
+            + 'deben pertenecer a la MISMA familia según la FICHA; si la matriz mezcla familias, DECLARA la '
+            + 'elección y justifica la correspondencia — jamás afirmes que un instrumento «se ancla» en un '
+            + 'modelo de otra familia sin justificarlo. El posicionamiento se decide UNA sola vez y se repite '
+            + 'IDÉNTICO en todas las secciones. '
+            + '(13) PROHIBIDO el formato markdown: sin asteriscos de énfasis, sin listas con guiones o '
+            + 'números, sin encabezados — prosa corrida pura. '
+            + '(14) EXTENSIÓN: apunta a 550-850 palabras por parte, en párrafos de 4 a 7 frases; ni '
+            + 'telegramas ni muros. '
+            + 'Dos secciones no pueden adoptar familias distintas para el mismo instrumento.\n\n'
+            + '== REGLAS DE SÍNTESIS CIENTÍFICA (LA DIFERENCIA ENTRE UNA MATRIZ Y UN MARCO TEÓRICO) ==\n'
+            + '(A) ORGANIZA POR EJES TEMÁTICOS, JAMÁS POR AUTORES. El protagonista de cada párrafo es una '
+            + 'IDEA (un hallazgo del conjunto de la evidencia, una convergencia, una controversia), nunca un '
+            + 'estudio individual. Estructura de cada párrafo: idea central → explicación → evidencia '
+            + 'integrada de VARIOS estudios → matices o divergencias → microconclusión.\n'
+            + '(B) PROHIBIDO EL PATRÓN FICHA: nunca escribas secuencias tipo "X et al. (año) realizaron un '
+            + 'estudio con el objetivo de… en una muestra de… encontrando que…" repetidas autor tras autor. '
+            + 'Los datos de muestra, instrumento o diseño solo se mencionan cuando SON el argumento (por '
+            + 'ejemplo, para explicar por qué dos estudios divergen).\n'
+            + '(C) EVIDENCIA AGRUPADA: cuando varios estudios sostienen la misma idea, preséntala UNA vez y '
+            + 'agrupa sus marcadores al final del enunciado: "[F2, F5, F9]". Jamás repitas el mismo marcador '
+            + 'dentro de un grupo. Regla de compresión: varios estudios por párrafo; NUNCA '
+            + 'un-estudio-un-párrafo.\n'
+            + '(C2) EL PROTAGONISTA ES TU ARGUMENTO, no los estudios: cada párrafo abre con una '
+            + 'afirmación-síntesis TUYA del eje (cerrada con los marcadores que la respaldan) y los estudios '
+            + 'entran DESPUÉS como evidencia que la sostiene, matiza o desafía — nunca como sujetos que '
+            + 'desfilan. Alterna conectores de integración y de contraste con fórmulas VARIADAS: «En conjunto, '
+            + 'estos estudios sugieren…», «Tomada en su conjunto, la evidencia apunta…», «Sin embargo, esta '
+            + 'conclusión no es uniforme: …», «Esta convergencia se rompe cuando…» — sin usar la misma fórmula '
+            + 'dos veces en la parte.\n'
+            + '(D) DIÁLOGO OBLIGATORIO ENTRE ESTUDIOS: en cada sección incluye al menos una comparación '
+            + 'explícita del tipo "los hallazgos de X coinciden con los de Y en…; sin embargo, mientras X '
+            + 'enfatiza…, Y se centra en…, lo que sugiere que…". Señala convergencias, divergencias y vacíos '
+            + 'del conjunto.\n'
+            + '(E) EJEMPLO DEL ESTILO EXIGIDO — Forma INCORRECTA (matriz): "Pérez (2021) encontró que correr '
+            + 'mejora la salud cardiovascular. Gómez (2022) encontró que caminar mejora la presión arterial. '
+            + 'Ruiz (2023) encontró que la bicicleta reduce el colesterol." Forma CORRECTA (síntesis): "La '
+            + 'evidencia reciente coincide en señalar que la práctica regular de ejercicio físico produce '
+            + 'beneficios cardiovasculares consistentes, incluyendo mejoras en la presión arterial, el perfil '
+            + 'lipídico y la capacidad cardiorrespiratoria [F1, F2, F3]." Escribe '
+            + 'SIEMPRE en la forma correcta.\n'
+            + '(F) MAGNITUDES CON DIENTES: cuando el RESUMEN reporte estadísticos (r, β, R², d, OR, N, p), '
+            + 'INTÉGRALOS en la síntesis — el contraste numérico entre estudios (r = .45 frente a r = .12) ES '
+            + 'la controversia real. PROHIBIDO inventar o redondear cifras que no estén en los resúmenes.\n'
+            + '(G) CIERRE CON SENTIDO: cada eje temático termina conectando lo que el conjunto de la '
+            + 'evidencia permite concluir — y, cuando corresponda, el vacío o inconsistencia que justifica '
+            + 'nuevas investigaciones.';
+        const lecturas = /Antecedentes|Estado de la cuesti/i.test(spec.titulo || '')
+            ? ' Si los años y poblaciones de las fuentes lo permiten, añade una breve lectura TEMPORAL '
+            + '(qué ha cambiado del año más antiguo al más reciente del conjunto) y una CONTEXTUAL '
+            + '(contrastes entre regiones o poblaciones de los estudios).'
+            : '';
+        const user = `PROBLEMA DE INVESTIGACIÓN:\n${P(spec.problema)}\n\n`
+            + `VARIABLES DE ESTUDIO:\n${P(spec.variablesTexto)}\n\n`
+            + `FUENTES DISPONIBLES (las ÚNICAS que puedes citar):\n${listado}\n\n`
+            + `TAREA: redacta la sección «${spec.titulo}» del marco teórico.\n${P(spec.instrucciones)}${lecturas}\n\n`
+            + `ANTES DE ESCRIBIR: agrupa mentalmente las fuentes en 2-5 ejes temáticos según lo que sus `
+            + `resúmenes evidencian (convergencias, divergencias, poblaciones o niveles de análisis); luego `
+            + `redacta un desarrollo por eje siguiendo las reglas de síntesis. Usa las fuentes PERTINENTES `
+            + `al problema y al eje; una fuente que no aporta al argumento se OMITE en silencio — PROHIBIDO `
+            + `mencionarla solo para justificar su presencia o para señalar que "no aborda" el tema. OMITIR `
+            + `fuentes sueltas JAMÁS significa entregar una sección vacía: si pocas encajan de lleno, redacta `
+            + `BREVE (uno o dos párrafos) con las más cercanas y decláralo con honestidad académica. PROHIBIDO `
+            + `rellenar con estudios de poblaciones, patologías o campos ajenos al problema (otras enfermedades, `
+            + `otras profesiones, otros contextos no relacionados) solo para dar volumen: un párrafo pertinente `
+            + `vale más que una página de relleno. Reparte las pertinentes dentro de los ejes (agrupadas por `
+            + `idea), nunca en fila india.\n\n`
+            + `Extensión: desarrolla con amplitud y profundidad lo que las fuentes permitan sustentar. `
+            + `Empieza directamente con el texto (sin repetir el título).`;
+        return await this._chatConRespaldo([{ role: 'system', content: system }, { role: 'user', content: user }], { temperature: 0.45, max_tokens: 8000, keyHint: spec.keyHint });
+    },
+    // ============================================================
+    // FUNCIÓN 3: evaluar la RELEVANCIA de un lote de artículos (Groq)
+    // ============================================================
+    async evaluarLoteRelevancia(criterios, articulos, keyHint) {
+        if (!Array.isArray(articulos) || !articulos.length) return [];
+        const crit = String(criterios || '').trim();
+        const system = 'Eres un revisor sistemático experto en psicología y ciencias sociales. Evalúas la '
+            + 'relevancia de artículos para un problema de investigación, según unos criterios dados. Eres '
+            + 'riguroso pero NO excesivamente restrictivo: un estudio específico que aborda una sola variable '
+            + 'o una dimensión del tema SIGUE siendo relevante (puntúa 3), porque cuando la evidencia es escasa '
+            + 'esos estudios aportan. Solo lo que pertenece a un campo claramente ajeno es no relevante (1). '
+            + 'Respondes ÚNICAMENTE en JSON válido, sin texto adicional.';
+        const listado = articulos.map((a, i) => {
+            const resumen = (a.resumen || '').slice(0, 600);
+            return `[${i}] TÍTULO: ${a.titulo || '(sin título)'}\n    RESUMEN: ${resumen || '(sin resumen disponible)'}`;
+        }).join('\n\n');
+        const user = `CRITERIOS DE SELECCIÓN (inclusión/exclusión):\n${crit || '(no se proporcionaron; evalúa por afinidad temática general)'}\n\n`
+            + `Evalúa la relevancia de CADA uno de los siguientes ${articulos.length} artículos para el tema, `
+            + `según los criterios. Asigna a cada uno:\n`
+            + `- "puntua": entero del 1 al 5 (5=muy relevante, aborda directamente el tema; 4=relevante; `
+            + `3=moderada, aborda una variable o dimensión del tema; 2=poco relevante, tangencial; `
+            + `1=no relevante, de un campo ajeno).\n`
+            + `- "motivo": justificación BREVE (máximo 15 palabras) de por qué esa puntuación.\n\n`
+            + `Recuerda: un estudio específico DENTRO del tema (una variable, una dimensión) es al menos 3. `
+            + `Solo lo claramente ajeno al tema es 1.\n\n`
+            + `ARTÍCULOS:\n${listado}\n\n`
+            + `Responde SOLO con un objeto JSON con esta forma exacta:\n`
+            + `{"evaluaciones": [{"i": 0, "puntua": 4, "motivo": "..."}, {"i": 1, "puntua": 2, "motivo": "..."}, ...]}\n`
+            + `Incluye los ${articulos.length} artículos (índices 0 a ${articulos.length - 1}).`;
+        const texto = await this.chatConReintento(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.2, max_tokens: 3000, model: this.MODELO_POTENTE, response_format: { type: 'json_object' }, keyHint },
+            3
+        );
+        let data;
+        try {
+            const limpio = texto.replace(/```json|```/g, '').trim();
+            data = JSON.parse(limpio);
+        } catch (e) {
+            const m = texto.match(/\{[\s\S]*\}/);
+            if (m) { try { data = JSON.parse(m[0]); } catch (e2) { throw new Error('La IA no devolvió una evaluación válida.'); } }
+            else throw new Error('La IA no devolvió una evaluación válida.');
+        }
+        const evals = (data && Array.isArray(data.evaluaciones)) ? data.evaluaciones : [];
+        return articulos.map((a, i) => {
+            const ev = evals.find(e => e.i === i) || {};
+            let puntua = parseInt(ev.puntua, 10);
+            if (!(puntua >= 1 && puntua <= 5)) puntua = 0;
+            return { idx: a.idx, puntua, motivo: (ev.motivo || '').toString().slice(0, 120) };
+        });
+    }
+};
+export { IAAsistente };

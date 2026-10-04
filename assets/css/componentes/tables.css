@@ -1,0 +1,24 @@
+/* ========================================
+   TABLES
+   ======================================== */
+.table-container { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-soft); }
+.table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; background: rgba(14, 21, 36, 0.35); }
+.table thead { background-color: var(--surface-2); }
+.table th {
+    padding: 0.9rem 1rem; text-align: left; font-weight: 650;
+    color: var(--color-secondary);
+    border-bottom: 1px solid var(--color-border);
+    font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase;
+    position: sticky; top: 0; background-color: var(--surface-2); z-index: 1;
+}
+.table td { padding: 0.7rem 1rem; border-bottom: 1px solid var(--border-soft); }
+.table tbody tr { transition: background-color var(--transition-fast); }
+.table tbody tr:nth-child(even) { background-color: rgba(148, 163, 197, 0.03); }
+.table tbody tr:hover { background-color: rgba(230, 185, 63, 0.055); }
+.table-scroll {
+    max-height: 400px; overflow-y: auto; overflow-x: auto;
+    border-radius: var(--radius-md); border: 1px solid var(--border-soft);
+}
+.table-preview { font-size: 0.875rem; }
+.table-preview th, .table-preview td { padding: 0.625rem; }
+

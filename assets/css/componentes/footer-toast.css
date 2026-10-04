@@ -1,0 +1,65 @@
+/* ========================================
+   FOOTER · TOAST
+   ======================================== */
+.footer {
+    background-color: rgba(14, 21, 36, 0.6);
+    border-top: 1px solid var(--border-soft);
+    padding: var(--spacing-xl) 0; text-align: center; margin-top: var(--spacing-2xl);
+}
+.footer p { color: var(--color-text-secondary); font-size: 0.875rem; }
+.toast {
+    position: fixed; bottom: -120px; left: 50%; transform: translateX(-50%);
+    background: rgba(19, 28, 46, 0.92);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    backdrop-filter: blur(10px);
+    padding: 1rem 1.6rem; border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg), var(--edge-light);
+    transition: bottom var(--transition-slow);
+    z-index: 1000; font-size: 0.9375rem;
+    max-width: min(90vw, 640px); line-height: 1.4; text-align: left;
+}
+.toast.show { bottom: 2rem; }
+.toast.success { border-color: rgba(74, 222, 128, 0.5); box-shadow: 0 12px 36px rgba(74, 222, 128, 0.12); }
+.toast.error { border-color: rgba(248, 113, 113, 0.55); box-shadow: 0 12px 36px rgba(248, 113, 113, 0.14); }
+.toast.warning { border-color: rgba(251, 191, 36, 0.55); }
+
+/* ========================================
+   GRÁFICOS — "modo papel" (los SVG de d3 y los exportables se dibujan
+   sobre blanco: son la vista previa de lo que irá al documento Word).
+   Sobrescribe con `body` los <style> inline del index sin tocarlo.
+   ======================================== */
+body .chart-container {
+    background: linear-gradient(180deg, var(--surface-2), var(--surface) 22%);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--edge-light);
+}
+body .chart-title { color: var(--color-primary); }
+/* Los SVG de d3 dibujan ejes y textos oscuros: el filtro los adapta al tema
+   SOLO en pantalla (es CSS puro: la exportación a Word serializa el SVG
+   original y sale en claro, correcto para el documento). */
+/* Cobertura total: cualquier SVG de gráfico del Analizador (los iconos de
+   16/20 px quedan fuera). Inversión completa + brillo para que ejes y
+   etiquetas grises de d3 salgan CLARAMENTE legibles sobre el tema. */
+#analizador svg[width]:not([width="14"]):not([width="16"]):not([width="18"]):not([width="20"]):not([width="24"]) {
+    filter: invert(1) hue-rotate(180deg) brightness(1.32) contrast(1.12) saturate(1.25);
+    border-radius: 6px;
+}
+#prismaLienzo, #metaLienzo, #redResultado { color-scheme: light; }
+#redResultado { background: #fbfaf7 !important; color: #1f2430 !important; border-color: var(--border-soft) !important; }
+#metaResultado { background: var(--color-bg-tertiary) !important; color: var(--color-text) !important; border-color: var(--border-soft) !important; }
+
+/* ---- Módulos con estilos claros propios: versión nocturna ---- */
+body #arbolPsico .arb-col { background: var(--color-bg-tertiary); border-color: var(--border-soft); }
+body #arbolPsico .arb-item { color: var(--color-secondary); }
+body #arbolPsico .arb-item:hover { background: rgba(230, 185, 63, 0.08); color: #f3d787; }
+body #arbolPsico .arb-item.act { background: var(--accent-soft); color: #f3d787; border-left-color: var(--color-accent); }
+body #arbolPsico .arb-item .arb-n { color: var(--color-text-secondary); }
+body #arbolPsico .arb-cab { background: linear-gradient(135deg, #2E5BBA, #4a74d0); }
+body #arbolPsico .arb-total { color: #f3d787; background: var(--accent-soft); }
+body #arbolPsico .arb-ruta, body #arbolPsico .arb-vacio { color: var(--color-text-secondary); }
+tr.exp-detalle > td { background: rgba(76, 125, 255, 0.07) !important; border-left-color: #4c7dff !important; }
+#prismaEditor, #expTablaCont { background: transparent; }
+

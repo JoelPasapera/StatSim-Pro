@@ -1,0 +1,39 @@
+/* ========================================
+   PSICOMETRÍA (Analizador): validez de contenido (V de Aiken) y análisis de instrumentos
+   ======================================== */
+.aiken-rejilla { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--spacing-md); margin: var(--spacing-md) 0; }
+.criterio-aiken {
+    border: 1px solid var(--border-soft); border-radius: var(--radius-md);
+    padding: var(--spacing-sm); margin-bottom: var(--spacing-sm); background: rgba(14, 21, 36, 0.35);
+}
+.criterio-aiken-cabecera { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; margin-bottom: 0.5rem; }
+.criterio-aiken-cabecera .input { flex: 1 1 14rem; max-width: 22rem; }
+.criterio-aiken textarea.input {
+    width: 100%; min-height: 9rem; resize: vertical;
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Courier New', monospace; font-size: 0.85rem;
+    white-space: pre; tab-size: 10; overflow-x: auto;
+}
+.acciones-fila { display: flex; flex-wrap: wrap; gap: 0.6rem; margin: var(--spacing-sm) 0; }
+.insignia { display: inline-block; padding: 0.12rem 0.55rem; border-radius: 999px; font-size: 0.78rem; font-weight: 650; white-space: nowrap; }
+.insignia-valido { background: rgba(74, 222, 128, 0.14); color: var(--color-success); }
+.insignia-revisar { background: rgba(251, 191, 36, 0.14); color: var(--color-warning); }
+.insignia-no_valido { background: rgba(248, 113, 113, 0.14); color: var(--color-error); }
+.aiken-subtitulo { margin: 1.1rem 0 0.5rem; font-size: 1rem; color: var(--color-primary); }
+.aiken-titulo { font-size: 1.15rem; margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--border-soft); }
+.aiken-parrafo {
+    line-height: 1.7; padding: var(--spacing-sm); margin: 0;
+    border-left: 3px solid var(--color-accent); background: rgba(230, 185, 63, 0.05); border-radius: var(--radius-sm);
+}
+.aiken-referencias { margin-top: 0.6rem; color: var(--color-text-secondary); font-size: 0.85rem; }
+.aiken-referencias p { padding-left: 1.5rem; text-indent: -1.5rem; margin: 0.35rem 0; }
+.aiken-errores, .aiken-avisos { border-radius: var(--radius-sm); padding: 0.6rem 0.9rem; margin: 0.5rem 0; font-size: 0.9rem; }
+.aiken-errores { background: rgba(248, 113, 113, 0.08); border: 1px solid rgba(248, 113, 113, 0.35); color: var(--color-error); }
+.aiken-avisos { background: rgba(251, 191, 36, 0.07); border: 1px solid rgba(251, 191, 36, 0.3); color: var(--color-warning); }
+.aiken-errores ul, .aiken-avisos ul { margin: 0.3rem 0 0 1.1rem; }
+.rejilla-psico { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--spacing-md); margin: var(--spacing-sm) 0; }
+.boot-progreso { display: flex; align-items: center; gap: 0.8rem; margin: 0.4rem 0; }
+.boot-progreso progress { flex: 1 1 auto; max-width: 28rem; height: 0.7rem; accent-color: var(--color-accent); }
+td.calculando { color: var(--color-text-secondary); text-align: center; animation: pulso-calculo 1.2s ease-in-out infinite; }
+@keyframes pulso-calculo { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { td.calculando { animation: none; } }
+.table tr.fila-pie td { border-top: 1px solid var(--border-soft); font-style: italic; color: var(--color-text-secondary); }

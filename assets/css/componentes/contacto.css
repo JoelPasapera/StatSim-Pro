@@ -1,0 +1,21 @@
+/* ========================================
+   CONTACTO — versión nocturna (gana a los <style> del index vía `body`)
+   ======================================== */
+body #contacto .perfil-card {
+    background: linear-gradient(160deg, rgba(76, 125, 255, 0.1), rgba(230, 185, 63, 0.045) 55%, transparent);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--shadow-md), var(--edge-light);
+}
+body #contacto .perfil-foto { border-color: var(--surface-2); box-shadow: 0 0 0 3px var(--color-accent), 0 0 0 6px rgba(230, 185, 63, 0.2), 0 8px 22px rgba(0, 0, 0, 0.45); }
+body #contacto .perfil-fallback { border-color: var(--surface-2); }
+body #contacto .perfil-nombre { color: var(--color-primary); }
+body #contacto .perfil-tag { color: var(--color-accent); }
+body #contacto .perfil-bio { color: var(--color-text-secondary); }
+body #contacto .contact-card { background: var(--surface); border-color: var(--color-border); }
+body #contacto .contact-card h3 { color: var(--color-text); }
+body #contacto .contact-card .icon { color: var(--color-accent); }
+body #contacto .contact-card:hover { box-shadow: 0 8px 22px rgba(0, 0, 0, 0.4); }
+body #contacto .contact-card[href*="github"]:hover { border-color: #e7ecf6; }
+body #contacto .contact-card[href*="github"]:hover .icon,
+body #contacto .contact-card[href*="github"]:hover h3 { color: #e7ecf6; }
+

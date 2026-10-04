@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StatSim Pro — Tu tesis de psicología: de la idea al Word APA</title>
+    <meta name="description" content="Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 9 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.">
+    <link rel="canonical" href="https://joelpasapera.github.io/StatSim-Pro/">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="Joel Pasapera">
+    <!-- Open Graph: la tarjeta que aparece al compartir el link -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="StatSim Pro">
+    <meta property="og:title" content="StatSim Pro — Tu tesis de psicología: de la idea al Word APA">
+    <meta property="og:description" content="Explora problemáticas latentes, busca antecedentes, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y en tu navegador.">
+    <meta property="og:url" content="https://joelpasapera.github.io/StatSim-Pro/">
+    <meta property="og:image" content="https://joelpasapera.github.io/StatSim-Pro/assets/img/og-image.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="StatSim Pro — Laboratorio de tesis e investigación en psicología">
+    <meta property="og:locale" content="es_PE">
+    <!-- Twitter/X -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="StatSim Pro — Tu tesis de psicología: de la idea al Word APA">
+    <meta name="twitter:description" content="Explora problemáticas, busca antecedentes, analiza datos y exporta en Word APA 7. Gratis, en tu navegador.">
+    <meta name="twitter:image" content="https://joelpasapera.github.io/StatSim-Pro/assets/img/og-image.png">
+    <!--Etiqueta HTML del registro en Google Search Console -->
+    <meta name="google-site-verification" content="czErNJ37oiVznnZ1ae98qZXNAZpxFX5SZTqxoKIMdHA" />
+    <!-- Datos estructurados: lo que Google lee para entender tu app -->
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"WebApplication","name":"StatSim Pro","alternateName":"StatSimPro","url":"https://joelpasapera.github.io/StatSim-Pro/","description":"Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 9 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"es","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"Joel Pasapera","url":"https://github.com/JoelPasapera"},"featureList":"Explorador de problemáticas latentes, Buscador de antecedentes (Scopus, PubMed, SciELO, OpenAlex, Crossref, ALICIA, OMS, ONU, Google Académico), Simulador de bases de datos, Analizador estadístico (correlación, regresión, ANOVA, SEM), Exportación Word APA 7, Diagrama PRISMA, Meta-análisis"}
+    </script>
+    <!-- Tipografías -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0b0f19">
+    <!-- Styles -->
+    <link rel="stylesheet" href="assets/css/styles.css?v=13">
+    <style>
+        .chart-grid {
+            display: grid;
+            /* min(450px, 100%) permite que las columnas encojan por debajo de
+               450px en pantallas estrechas en lugar de desbordar. */
+            grid-template-columns: repeat(auto-fit, minmax(min(450px, 100%), 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .chart-container {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .chart-wrapper {
+            width: 100%;
+            height: 320px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* Ocultar gráficos inicialmente */
+        .chart-grid {
+            display: none;
+        }
+
+        /* Mostrar gráficos cuando hay datos */
+        .chart-grid.show {
+            display: grid;
+        }
+
+        /* Los gráficos SVG tienen tamaño fijo; en pantallas estrechas se
+           escalan proporcionalmente para no desbordar su contenedor. */
+        #contenedorGraficos svg,
+        #graficoDispersion svg,
+        #qqVariable1 svg,
+        #qqVariable2 svg,
+        #cajaGrupos svg {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    
+    <!-- ============================================================
+         PRECONNECT — calentamiento de conexiones (solo rendimiento).
+         Le pide al navegador abrir POR ADELANTADO la conexión con
+         estos servidores (DNS + handshake TLS, ~100-300 ms) mientras
+         la página todavía está cargando. Así, la PRIMERA petición
+         real de la sesión sale con el saludo ya hecho.
+           · crossref / openalex → los usan DIRECTO las fuentes
+             complementarias y el enriquecimiento de resúmenes.
+           · allorigins → el proxy CORS mejor rankeado del arsenal.
+         Quitar estas líneas no rompe nada: solo se pierde ese
+         arranque en frío una vez por sesión.
+         ============================================================ -->
+    <link rel="preconnect" href="https://api.crossref.org" crossorigin>
+    <link rel="preconnect" href="https://api.openalex.org" crossorigin>
+    <link rel="preconnect" href="https://api.allorigins.win" crossorigin>
+</head>
+
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo-group">
+                    <h1 class="logo">StatSim<span class="accent">Pro</span></h1>
+                    <span class="author-signature">por Joel Pasapera</span>
+                </div>
+                <nav class="nav">
+                    <a href="#explorador" class="nav-link">Explorador</a>
+                    <a href="#buscador" class="nav-link">Buscador</a>
+                    <a href="#simulador" class="nav-link active" aria-current="page">Simulador</a>
+                    <a href="#analizador" class="nav-link">Analizador</a>
+                    <a href="#ayuda" class="nav-link">Ayuda</a>
+                    <a href="#contacto" class="nav-link">Contacto</a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="main">
+        <!-- Sección Hero -->
+        <!-- Portada de bienvenida (independiente de las secciones) -->
+        <!-- Portada de bienvenida a pantalla completa -->
+        <div id="heroPortada" class="hero-portada">
+            <div class="hero">
+                <video class="hero-video" autoplay muted loop playsinline preload="metadata"
+                       onerror="this.style.display='none'">
+                    <source src="assets/video/portada.mp4" type="video/mp4">
+                </video>
+                <div class="hero-velo"></div>
+                <svg class="hero-red" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                    <g stroke="#aebbdb" stroke-opacity="0.08" fill="none">
+                        <path d="M80 220L210 90L390 160L560 60L730 190M210 90L330 250L390 160M560 60L620 240L390 160M330 250L620 240"/>
+                    </g>
+                    <g fill="#e6b93f">
+                        <circle class="pulso" cx="210" cy="90" r="3"/>
+                        <circle cx="390" cy="160" r="2.4" fill="#aebbdb" fill-opacity="0.35"/>
+                        <circle class="pulso2" cx="620" cy="240" r="3"/>
+                    </g>
+                </svg>
+                <p class="hero-eyebrow">Investigación en Psicología</p>
+                <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
+                <p class="hero-lema">De una idea difusa a una tesis defendible.<br>
+                <span class="hero-lema-sub">Encuentra temas y problemáticas, explora antecedentes, trabaja con datos y obtén análisis y resultados que te ayuden a avanzar en tu investigación de principio a fin — gratis y 100 % en tu navegador.</span></p>
+                <a href="#explorador" class="btn btn-primary btn-lg hero-cta">Comenzar mi investigación →</a>
+                <p class="hero-chips"><span>🔭 Explora problemáticas</span><span>🔎 Busca antecedentes</span><span>🎲 Genera bases de datos</span><span>📊 Analiza y exporta en Word APA 7</span></p>
+            </div>
+
+            <!-- El Recorrido: descubre el producto scrolleando -->
+            <div id="recorrido" class="recorrido" aria-label="Qué puedes hacer con StatSim Pro">
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">01 · Explora</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Descubre qué investigar</h3>
+                    <p class="rec-texto rec-anim rec-d2">Cruza las noticias del mundo con la producción académica y encuentra problemáticas latentes: mucho ruido mediático, pocos antecedentes. Ahí vive tu tesis.</p>
+                    <svg class="rec-visual rec-anim rec-d3" viewBox="0 0 560 150" aria-hidden="true">
+                        <g stroke="#e6b93f" stroke-opacity="0.5" fill="none"><path d="M40 110L160 45L300 95L430 30L520 80M160 45L240 120L300 95M430 30L370 115"/></g>
+                        <g><circle cx="40" cy="110" r="4" fill="#8caaff"/><circle cx="160" cy="45" r="5" fill="#e6b93f"/><circle cx="300" cy="95" r="4" fill="#8caaff"/><circle cx="430" cy="30" r="6" fill="#e6b93f"/><circle cx="240" cy="120" r="3.5" fill="#aebbdb"/><circle cx="370" cy="115" r="3.5" fill="#aebbdb"/><circle cx="520" cy="80" r="4" fill="#8caaff"/></g>
+                    </svg>
+                </section>
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">02 · Busca</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Todos tus antecedentes, un solo lugar</h3>
+                    <p class="rec-texto rec-anim rec-d2">Búsqueda simultánea con variantes generadas por IA, criba con criterios de inclusión y relevancia, y una matriz con referencias APA lista para el marco teórico.</p>
+                    <div class="rec-chips rec-anim rec-d3">
+                        <span><b>Google Académico</b></span><span><b>Scopus</b></span><span><b>PubMed</b></span><span><b>SciELO</b></span><span><b>ALICIA</b></span><span><b>OpenAlex</b></span><span><b>Crossref</b></span><span><b>OMS · IRIS</b></span><span><b>ONU</b></span>
+                    </div>
+                </section>
+                <section class="rec-cap">
+                    <p class="rec-num rec-anim">03 · Simula y analiza</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Datos que se entienden</h3>
+                    <p class="rec-texto rec-anim rec-d2">Genera bases sintéticas reproducibles o carga las tuyas: descriptivos, normalidad, correlación con protocolo automático, regresión, comparación de grupos y SEM — cada resultado explica su porqué.</p>
+                    <svg class="rec-visual rec-anim rec-d3" viewBox="0 0 560 150" aria-hidden="true">
+                        <path d="M20 140 C 160 140, 200 20, 280 20 S 400 140, 540 140" fill="none" stroke="#8caaff" stroke-width="2.5" stroke-opacity="0.85"/>
+                        <path d="M20 140 C 160 140, 200 20, 280 20 S 400 140, 540 140 L 540 148 L 20 148 Z" fill="#8caaff" fill-opacity="0.08"/>
+                        <line x1="280" y1="20" x2="280" y2="148" stroke="#e6b93f" stroke-width="1.5" stroke-dasharray="4 4"/>
+                    </svg>
+                </section>
+                <section class="rec-cap rec-final">
+                    <p class="rec-num rec-anim">04 · Defiende</p>
+                    <h3 class="rec-titulo rec-anim rec-d2">Capítulos en Word APA 7</h3>
+                    <p class="rec-texto rec-anim rec-d2">Marco teórico y resultados con tablas y figuras numeradas, exportados en .docx — gratis y 100 % en tu navegador: tus datos nunca salen de tu equipo.</p>
+                    <div class="rec-word rec-anim rec-d3" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="rec-cta-zona rec-anim rec-d3" style="margin-top:2rem;">
+                        <a href="#explorador" class="btn btn-primary btn-lg rec-cta">Comenzar mi investigación →</a>
+                        <p class="rec-nota">Sin registro · Sin instalación</p>
+                    </div>
+                </section>
+            </div>
+            
+        </div>
+        <div class="nodo-linterna" aria-hidden="true"></div>
+        <div class="red-viva" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+        <script>
+        (function(){
+            var h = document.getElementById("heroPortada"), r = document.getElementById("recorrido");
+            function ocultar() {
+                if (h) { h.classList.add("oculto");
+                    var vd = h.querySelector(".hero-video");
+                    if (vd) { if (vd.pause) vd.pause(); vd.removeAttribute("src");
+                        vd.querySelectorAll("source").forEach(function(s){ s.remove(); });
+                        if (vd.load) vd.load(); vd.remove(); } }
+                if (r) r.classList.add("oculto");
+            }
+            function irExplorador(ev) { ev.preventDefault(); ocultar();
+                var ls = document.querySelectorAll(".nav-link");
+                for (var i = 0; i < ls.length; i++) {
+                    if (ls[i].getAttribute("href") === "#explorador") { ls[i].click(); break; } } }
+            document.querySelectorAll(".nav-link").forEach(function(l){ l.addEventListener("click", ocultar); });
+            document.querySelectorAll(".hero-cta, .rec-cta").forEach(function(b){ b.addEventListener("click", irExplorador); });
+            // Respaldo del Recorrido para navegadores sin scroll-driven animations:
+            var soporta = false;
+            try { soporta = !!(window.CSS && CSS.supports && CSS.supports("animation-timeline: view()")); } catch(e) {}
+            if (!soporta && r && window.IntersectionObserver) {
+                var io = new IntersectionObserver(function(es){ es.forEach(function(e){
+                    if (e.isIntersecting) { e.target.classList.add("visible"); io.unobserve(e.target); } }); }, { threshold: 0.25 });
+                r.querySelectorAll(".rec-anim").forEach(function(el){ io.observe(el); });
+            }
+            var lin = document.querySelector(".nodo-linterna"), pend = false, mx = 0, my = 0;
+            if (lin) { window.addEventListener("pointermove", function(e){ mx = e.clientX; my = e.clientY;
+                if (!pend) { pend = true; requestAnimationFrame(function(){
+                    lin.style.transform = "translate3d(" + mx + "px," + my + "px,0)"; pend = false; }); } }, { passive: true }); }
+        })();
+        </script>
+        
+        <!-- Sección Explorador -->
+        <section id="explorador" class="section">
+            <div class="container">
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Explorador<span class="oro">de Problemáticas</span></h2>
+                        <p class="ana-parrafo">Escribe un tema que te interese y descubre dónde hay una tesis esperándote: StatSim Pro cruza las noticias del mundo con la producción académica y te muestra qué problemáticas suenan fuerte pero aún tienen pocos estudios — con un mapa mundial para explorar por país.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Escribe un tema</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Mide ruido vs academia</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Tu problemática</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" data-scroll="seccionExplorar" href="#explorador">Explorar temas</a>
+                            <a class="btn btn-outline ana-cta-tutorial" href="#explorador">▶ Ver tutorial</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video"></div>
+                </div>
+                <div id="seccionExplorar"></div>
+            </div>
+        </section>
+        
+        <!-- Sección Simulador -->
+        <section id="simulador" class="section active">
+            <div class="container">
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Generador<span class="oro">de Datos</span></h2>
+                        <p class="ana-parrafo">Diseña tu instrumento — pruebas, escalas, ítems — y genera en segundos una base de datos sintética y reproducible para practicar todo el flujo de análisis sin arriesgar datos reales. Expórtala, o pásala directo al Analizador con un clic.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Define tus pruebas</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Genera la base</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Al Analizador</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" data-scroll="cardConfigGeneral" href="#simulador">Generar mi base</a>
+                            <a class="btn btn-outline ana-cta-tutorial" href="#simulador">▶ Ver tutorial</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video"></div>
+                </div>
+
+                <!-- Barra global: mueve las TRES configuraciones de una vez.
+                     Vive fuera de las tablas porque no pertenece a ninguna. -->
+                <div class="card" style="padding:0.9rem 1.1rem;">
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <div style="flex:1 1 260px; min-width:220px;">
+                            <strong style="display:block;">⚙️ Configuración completa del Simulador</strong>
+                            <span class="help-text">Guarda o restaura de una sola vez TODO el Simulador: configuración general (muestra, semilla, percentiles) y las tres tablas de abajo.</span>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button id="btnImportarTodo" type="button" class="btn btn-primary" title="Importar de una vez las tres configuraciones (pruebas + sociodemográficos + correlaciones)">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar TODO
+                            </button>
+                            <button id="btnExportarTodo" type="button" class="btn btn-primary" title="Exportar de una vez las tres configuraciones en un solo archivo">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar TODO
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Configuración General -->
+                <div class="card" id="cardConfigGeneral">
+    <h3 class="card-title">Configuración General</h3>
+    <!-- Fila 1: parámetros básicos (3 columnas fluidas) -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--spacing-lg);">
+        <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía del tamaño muestral" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Cuántas personas (filas) tendrá la base. Pon el N de tu estudio, por ejemplo 120 si encuestaste a 120 estudiantes. Con N pequeño (menos de 50) los resultados fluctúan más; con N grande el archivo pesa más.</span>
+        </div>
+        <label for="tamanoMuestra">Tamaño Muestral (N)</label>
+        <input type="number" id="tamanoMuestra" class="input" min="2" max="100000" value="100" placeholder="Ej: 100">
+        <span class="help-text">Número de participantes/unidades de análisis</span>
+        </div>
+        <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía de la selección por rango" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Para simular una muestra <strong>seleccionada</strong> (admitidos por un examen, personal contratado): las tablas describen a la población y la base guarda solo el porcentaje superior o inferior de una variable. La selección reduce su dispersión y <strong>atenúa sus correlaciones</strong> (restricción de rango; Thorndike, 1949). Déjalo en «Sin selección» para una muestra corriente.</span>
+        </div>
+        <label for="seleccionVariable">Selección de la muestra (restricción de rango)</label>
+        <select id="seleccionVariable" class="input" aria-label="Variable de selección"><option value="">Sin selección</option></select>
+        <div id="camposSeleccion" style="display:none;gap:0.5rem;margin-top:0.4rem;flex-wrap:wrap;align-items:center;">
+            <select id="seleccionLado" class="input input-sm" aria-label="Lado de la selección" style="flex:1 1 7rem;"><option value="superior">Superior</option><option value="inferior">Inferior</option></select>
+            <input type="number" id="seleccionProporcion" class="input input-sm" min="5" max="95" step="1" value="30" aria-label="Porcentaje seleccionado" style="flex:0 0 4.5rem;"><span aria-hidden="true">%</span>
+        </div>
+        <span class="help-text" id="notaSeleccion"></span>
+        </div>
+        <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía de la semilla" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Un número cualquiera (42, 2025, lo que quieras) para poder volver a generar <strong>exactamente la misma base</strong> otro día: misma semilla + misma configuración = misma base. Si lo dejas vacío, cada vez saldrá una base distinta.</span>
+        </div>
+        <label for="semilla">Semilla (opcional)</label>
+        <input type="number" id="semilla" class="input" step="1" placeholder="Ej: 42">
+        <span class="help-text">Misma semilla = mismos datos (reproducible). Vacío = aleatorio.</span>
+        </div>
+        <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía del índice de fiabilidad" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Decide qué coeficiente va a cumplir la base: el valor de fiabilidad que escribas en la tabla I (por ejemplo 0.85) será lo que salga al analizar, como <strong>α de Cronbach</strong> o como <strong>ω de McDonald</strong>. Si tu tesis reporta α (lo más habitual), deja α; si reporta ω, elige ω. Entre ambos la diferencia suele ser de centésimas.</span>
+        </div>
+        <label for="indiceFiabilidad">Índice de fiabilidad objetivo</label>
+        <select id="indiceFiabilidad" class="input">
+        <option value="alfa" selected>α de Cronbach</option>
+        <option value="omega">ω de McDonald</option>
+        </select>
+        <span class="help-text">Determina a qué coeficiente se ajusta la columna «objetivo» de la tabla I. El ω admite que los ítems midan con distinta precisión (modelo congenérico); el α presupone que todos miden por igual.</span>
+        </div>
+        <div class="form-group">
+        <div class="orden-guia" role="note" aria-label="Guía de la heterogeneidad de los ítems" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Hace que los ítems se parezcan a los de un cuestionario real: unos con respuestas más altas que otros y unos que miden mejor que otros. <strong>No cambia nada de lo que pides</strong> (media, DE, fiabilidad, correlaciones): solo lo hace creíble ítem por ítem. Deja <strong>Leve</strong>; usa <strong>Ninguna</strong> si quieres ítems idénticos entre sí, y <strong>Moderada</strong> o <strong>Alta</strong> si vas a hacer análisis factorial y quieres cargas más variadas.</span>
+        </div>
+        <label for="heterogeneidadItems">Heterogeneidad de los ítems</label>
+        <select id="heterogeneidadItems" class="input">
+        <option value="ninguna">Ninguna (ítems paralelos)</option>
+        <option value="leve" selected>Leve</option>
+        <option value="moderada">Moderada</option>
+        <option value="alta">Alta</option>
+        </select>
+        <span class="help-text">Realismo a nivel de ítem: medias distintas (ítems «fáciles» y «difíciles»), cargas desiguales y algunas cargas cruzadas leves entre dimensiones del mismo test, todo derivado de la semilla. No cambia la Media, la DE, las correlaciones ni la fiabilidad pedidas: solo cómo se reparten entre los ítems (se nota en el AFE/AFC y en las correlaciones ítem-total).</span>
+        </div>
+    </div>
+    <!-- Fila 2: opciones de generación (tarjetas emparejadas) -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); margin-top: var(--spacing-sm);">
+        <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
+        <div class="form-group" style="margin:0;">
+        <div class="orden-guia" role="note" aria-label="Guía de correlaciones exactas" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Fuerza que la correlación <em>observada</em> en la muestra coincida exactamente con la <em>objetivo</em> fijada en la tabla III (si pides r = 0.40, obtienes 0.40), en lugar de fluctuar por azar como haría cualquier muestra real (con n = 250 y r = 0.40, la desviación típica de ese azar ronda ±0.05). Actívalo cuando diseñes un caso con parámetros conocidos —una base para enseñar un análisis o comprobar un procedimiento—; desactívalo cuando quieras que los estudiantes experimenten el error de muestreo o que la simulación se comporte como datos recogidos en campo. Afecta a las correlaciones entre dimensiones, sociodemográficas numéricas y puntajes generales; no altera medias, desviaciones ni fiabilidad.</span>
+        </div>
+        <label for="correlacionesExactas" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="correlacionesExactas" style="width: auto; margin: 0;" checked>
+        Correlaciones exactas
+        </label>
+        <span class="help-text">La muestra reproduce EXACTAMENTE las correlaciones objetivo de la tabla III (r = 0.40 sale 0.40). Desactívalo para que haya error de muestreo, como en datos reales.</span>
+        </div>
+        </div>
+        <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.8rem 0.95rem;">
+        <div class="form-group" style="margin:0;">
+        <div class="orden-guia" role="note" aria-label="Guía de percentiles" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Añade a la base una columna <em>PC_</em> por cada escala y por cada puntaje General con la posición relativa (0–100) de cada persona dentro de la muestra generada, calculada por rango medio: porcentaje de casos con puntaje inferior más la mitad de los empates. Un PC de 75 significa que la persona supera aproximadamente al 75 % de la muestra. Sirve para construir y explicar baremos, para ilustrar la diferencia entre puntaje directo y puntaje normativo, y para clasificar niveles (bajo, medio, alto) sin depender de la escala original. Si un total queda vacío por valores perdidos, su percentil también queda vacío. Desactívalo si solo necesitas los puntajes directos: la base será más ligera.</span>
+        </div>
+        <label for="generarPercentiles" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+        <input type="checkbox" id="generarPercentiles" style="width: auto; margin: 0;">
+        Generar percentiles (PC_)
+        </label>
+        <span class="help-text">Añade una columna PC_ por escala: posición relativa (0–100) de cada persona en la muestra. Útil para baremos; desactívalo si no lo necesitas.</span>
+        </div>
+        </div>
+    </div>
+    <!-- Fila 3: imperfecciones realistas (ancho completo; cada control con su guía práctica encima) -->
+    <div style="border:1px solid var(--color-border, #2a3550); border-radius:10px; padding:0.9rem 1rem; margin-top: var(--spacing-md);">
+        <strong>Imperfecciones realistas (opcional)</strong>
+        <span class="help-text" style="display:block; margin-bottom:0.7rem;">Una base real nunca es perfecta. Con todo en 0 la base sale limpia, como hasta ahora; lo que inyectes se resume tras generar, y medias, α y correlaciones se desvían de lo pedido en la medida de lo inyectado (el informe lo muestra). Los seis controles son independientes y se pueden combinar.</span>
+        <div class="orden-guia" role="note" aria-label="Los seis controles de imperfecciones" style="margin:0 0 0.9rem;">
+            <span class="orden-guia-titulo">Los seis controles:</span>
+            <span class="orden-paso"><span class="orden-num">1</span> Valores perdidos</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">2</span> Respuestas descuidadas</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">3</span> Errores de digitación</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">4</span> Estilos de respuesta</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">5</span> Ítems de control</span>
+            <span class="orden-flecha" aria-hidden="true">→</span>
+            <span class="orden-paso"><span class="orden-num">6</span> Tiempo de respuesta</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem;">
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía de los valores perdidos" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Deja vacías algunas respuestas a ítems, como cuando un participante se salta preguntas. Sirve para practicar el diagnóstico de los perdidos y su tratamiento (eliminar casos o imputar).</span>
+        </div>
+        <label for="pctPerdidos">1 · Valores perdidos (% de celdas)</label>
+        <input type="number" id="pctPerdidos" class="input" value="0" min="0" max="30" step="1" title="Porcentaje de respuestas a ítems que quedan vacías.">
+        <select id="mecanismoPerdidos" class="input" style="margin-top:0.35rem;" title="MCAR: al azar. MAR: más frecuentes en quienes puntúan bajo en la primera variable sociodemográfica numérica (o en la primera escala).">
+        <option value="MCAR" selected>MCAR — completamente al azar</option>
+        <option value="MAR">MAR — dependen de una variable observada</option>
+        <option value="MNAR">MNAR — dependen de la propia puntuación</option>
+        </select>
+        <div style="display:flex; gap:0.35rem; margin-top:0.35rem;">
+        <select id="referenciaMAR" class="input" style="flex:1 1 60%;" title="MAR: variable numérica u ordinal observada de la que dependen los perdidos (vacío = la primera sociodemográfica numérica o, si no hay, la primera escala).">
+        <option value="">Referencia automática</option>
+        </select>
+        <select id="sentidoMAR" class="input" style="flex:1 1 40%;" title="Quiénes pierden más: los que puntúan bajo o los que puntúan alto en la referencia (MAR) o en la propia escala (MNAR).">
+        <option value="bajos" selected>Pierden más los bajos</option>
+        <option value="altos">Pierden más los altos</option>
+        </select>
+        </div>
+        <span class="help-text"><em>MCAR</em> los reparte completamente al azar; <em>MAR</em> los concentra en un extremo (bajos o altos) de la variable de referencia que elijas (por defecto, la primera sociodemográfica numérica o, si no hay, la primera escala); <em>MNAR</em> los concentra en un extremo de la propia escala que se omite (quien puntúa alto en depresión deja ítems de depresión sin responder), el mecanismo que la imputación no puede corregir. Regla del 80 %: si a una escala le falta más del 20 % de sus ítems, su total, su General y su percentil quedan vacíos; si falta menos, el total se prorratea.</span>
+        </div>
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía de las respuestas descuidadas" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Convierte a algunas personas en respondientes inatentos: marcan el mismo valor en todos los ítems (línea recta) o responden al azar. Sirve para entrenar la limpieza de datos: los índices de consistencia y de atención los delatan como en una muestra real.</span>
+        </div>
+        <label for="pctDescuidados">2 · Respuestas descuidadas (% de personas)</label>
+        <input type="number" id="pctDescuidados" class="input" value="0" min="0" max="20" step="1" title="Participantes que responden sin atender: línea recta (mismo valor en todos los ítems) o al azar.">
+        <select id="tipoDescuidado" class="input" style="margin-top:0.35rem;">
+        <option value="mixto" selected>Mixto (mitad línea recta, mitad al azar)</option>
+        <option value="linea">Solo línea recta</option>
+        <option value="aleatorio">Solo respuestas al azar</option>
+        </select>
+        <label for="marcarDescuidados" style="display:flex; align-items:center; gap:0.4rem; margin-top:0.35rem; cursor:pointer;">
+        <input type="checkbox" id="marcarDescuidados" style="width:auto; margin:0;"> Añadir columnas marcadoras (descuidados y estilos, para corregir el ejercicio)
+        </label>
+        <span class="help-text">Sus totales se recalculan a partir de esas respuestas. Las columnas marcadoras identifican a esos casos (y a los de estilos de respuesta): apagadas para que el ejercicio sea genuino, encendidas para que el docente pueda corregirlo.</span>
+        </div>
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía de los errores de digitación" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Mete en algunas personas un ítem con un valor imposible (un «44» donde solo cabe 1–5, un «50» por «5»), el atípico más común en bases transcritas a mano. Sirve para practicar la detección de valores fuera de rango y su corrección antes de analizar.</span>
+        </div>
+        <label for="pctDigitacion">3 · Errores de digitación (% de personas)</label>
+        <input type="number" id="pctDigitacion" class="input" value="0" min="0" max="10" step="1" title="Un ítem con un valor imposible (p. ej. 44 en una escala de 1 a 5): el atípico más común en bases reales.">
+        <span class="help-text">Producen valores fuera de rango que el análisis debe detectar y limpiar; el total arrastra el error hasta que se corrige el ítem.</span>
+        </div>
+        </div>
+        <!-- (B8) Estilos de respuesta, ítems de control y tiempo -->
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 0.8rem; margin-top:0.9rem;">
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía de los estilos de respuesta" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Da a algunas personas una forma sesgada de responder: <strong>aquiescencia</strong> (tienden a estar de acuerdo con todo, también con los ítems invertidos, lo que baja la consistencia interna) o <strong>respuesta extrema</strong> (usan sobre todo los extremos de la escala). Sirve para ver esos sesgos en el análisis de ítems y en el α.</span>
+        </div>
+        <label for="pctAquiescencia">4 · Aquiescencia (% de personas)</label>
+        <input type="number" id="pctAquiescencia" class="input" value="0" min="0" max="40" step="1" title="Personas que tienden a estar de acuerdo con todo: suman puntos a la respuesta bruta de cada ítem, también en los invertidos (tras recodificar, empujan en contra y bajan la consistencia).">
+        <label for="pctExtrema" style="margin-top:0.35rem;">Respuesta extrema (% de personas)</label>
+        <input type="number" id="pctExtrema" class="input" value="0" min="0" max="40" step="1" title="Personas que usan sobre todo los extremos de la escala: sus respuestas saltan al extremo de su lado.">
+        <select id="intensidadEstilos" class="input" style="margin-top:0.35rem;" title="Intensidad de ambos estilos (varía ±30 % entre personas).">
+        <option value="leve">Intensidad leve</option>
+        <option value="moderada" selected>Intensidad moderada</option>
+        <option value="alta">Intensidad alta</option>
+        </select>
+        <span class="help-text">La aquiescencia suma puntos a la respuesta bruta de cada ítem; la extrema mueve las respuestas al extremo de su lado. Solo actúan sobre escalas Likert y en personas que no son descuidadas; la intensidad varía ±30 % entre personas.</span>
+        </div>
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía de los ítems de control" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Añade ítems del tipo «marque el valor máximo» (columnas <code>Control_1…</code>): los atentos aciertan y los descuidados fallan. Sirve para practicar la depuración por atención: quien falla el control se descarta.</span>
+        </div>
+        <label for="itemsControl">5 · Ítems de control (0–3)</label>
+        <input type="number" id="itemsControl" class="input" value="0" min="0" max="3" step="1" title="Ítems del tipo «marque X»: columnas Control_1… con el rango de una escala Likert. Los atentos aciertan (97 %); los descuidados responden su patrón y fallan.">
+        <span class="help-text">Toman el rango de las escalas Likert por turno; la respuesta correcta es el máximo del rango; los atentos aciertan el 97 %.</span>
+        </div>
+        <div>
+        <div class="orden-guia" role="note" aria-label="Guía del tiempo de respuesta" style="margin:0 0 0.6rem;">
+            <span class="orden-guia-titulo">Para qué sirve:</span>
+            <span class="orden-nota">Añade la columna <code>Tiempo_respuesta_seg</code> con lo que tardó cada persona en responder; los descuidados tardan mucho menos. Sirve como criterio de depuración: los tiempos demasiado cortos se descartan.</span>
+        </div>
+        <label for="tiempoMinutos">6 · Tiempo de respuesta (mediana en minutos; 0 = sin columna)</label>
+        <input type="number" id="tiempoMinutos" class="input" value="0" min="0" max="600" step="1" title="Añade Tiempo_respuesta_seg: log-normal alrededor de la mediana; los descuidados tardan entre un 25 % y un 55 % de lo normal.">
+        <span class="help-text">Log-normal alrededor de la mediana pedida; los descuidados tardan entre el 25 % y el 55 % de lo normal (mínimo 30 s).</span>
+        </div>
+        </div>
+    </div>
+</div>
+
+                <!-- Tabla I: Pruebas Aplicadas -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">I. Pruebas Aplicadas</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="btnImportarPruebas" class="btn btn-outline"
+                                title="Importar configuración desde CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar CSV
+                            </button>
+                            <button id="btnExportarPruebas" class="btn btn-outline"
+                                title="Exportar configuración a CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar CSV
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="margin:0 0 1.1rem; padding:0.85rem 1rem; border:1px solid var(--color-border, #2a3550); border-radius:10px;">
+                        <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin-bottom:0.5rem;">
+                            <div>
+                                <strong>Pruebas del estudio</strong>
+                                <span class="help-text" style="display:block;">Declara cada test, la variable psicológica que mide, sus dimensiones separadas por coma y la correlación esperada entre ellas. Al escribir las dimensiones, la tabla de escalas de abajo se completa sola con una fila por dimensión (tú rellenas ítems, media, DE…); si cambias el nombre de una dimensión, se renombra su fila y donde se use (correlaciones, modelos…); las filas que ya existan se conservan. El puntaje General de cada test aparece como variable correlacionable en la tabla III. Si un test no tiene dimensiones (p. ej., el Raven), escribe una sola, la variable que mide: esa escala es su variable general (columna <em>General_</em> en la base) y la r entre dimensiones no aplica.</span>
+                            </div>
+                            <button id="btnAgregarTest" type="button" class="btn btn-secondary">+ Agregar Prueba</button>
+                        </div>
+                        <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                            <table class="table" id="tablaTests">
+                                <thead>
+                                    <tr>
+                                        <th>Prueba (test)</th>
+                                        <th>Variable psicológica que mide</th>
+                                        <th title="Escribe las dimensiones del test separadas por coma: la tabla de escalas de abajo se completa sola con una fila por dimensión (luego rellena ítems, media, DE…). Si el test tiene una sola escala, escribe su nombre.">Dimensiones (separadas por coma)</th>
+                                        <th title="Correlación esperada entre las dimensiones del test (típicamente 0.30–0.60). Da coherencia al puntaje General y permite correlacionarlo con otras variables. No aplica a un test unidimensional (una sola dimensión)." style="cursor:help; text-decoration:underline dotted;">r entre dimensiones</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bodyTests"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="orden-guia" role="note" aria-label="Orden para completar los datos">
+                        <span class="orden-guia-titulo">Completa en este orden:</span>
+                        <span class="orden-paso"><span class="orden-num">1</span> Prueba</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">2</span> Escala</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">3</span> N° de ítems</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">4</span> Mín por ítem</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">5</span> Máx por ítem</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">6</span> <span class="etiquetaFiabilidad">α</span> objetivo <em>(opcional)</em></span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">7</span> Media</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">8</span> Desviación estándar</span>
+                        <span class="orden-nota">Cada fila es UNA escala o dimensión. Las filas que comparten Prueba se agrupan, y el
+                            <strong>puntaje general de cada test se calcula automáticamente</strong> como el promedio de sus dimensiones
+                            (columna con prefijo <em>General_</em>, redondeada a entero); no hay que configurarlo a mano.
+                            Si un test tiene una sola escala (test unidimensional, como el Raven), esa escala ES su variable
+                            general: su columna también lleva el prefijo <em>General_</em> y es la suma de sus ítems.
+                            Cada campo se desbloquea al completar el anterior.</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0 0 0.6rem;">
+                        <div>
+                            <strong>Escalas / dimensiones del estudio</strong>
+                            <span class="help-text" style="display:block;">Se completa sola con las dimensiones declaradas arriba (los cambios de nombre también se reflejan). «Actualizar desde las pruebas» reconstruye esta tabla siguiendo el cuadro de arriba y quita las filas que ya no figuren allí; «Agregar» añade una fila a mano, que también se anota arriba.</span>
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                            <button id="btnActualizarDesdeTests" type="button" class="btn btn-outline" title="Reconstruye la tabla de escalas a partir del cuadro de pruebas: crea las filas que faltan, ordena como arriba y elimina las que no estén declaradas (conserva los datos de las filas que se quedan).">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M13 8A5 5 0 1 1 11.5 4.5M11.5 2V4.5H9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Actualizar desde las pruebas
+                            </button>
+                            <button id="btnAgregarPrueba" type="button" class="btn btn-secondary" title="Añade una fila a mano (por ejemplo, una escala que no quieras declarar arriba); se anota en las dimensiones de su prueba.">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" />
+                                </svg>
+                                Agregar Escala / Dimensión
+                            </button>
+                        </div>
+                    </div>
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="2">
+                        <table class="table" id="tablaPruebas">
+                            <thead>
+                                <tr>
+                                    <th>Prueba (test)</th>
+                                    <th>Escala / Dimensión</th>
+                                    <th>N° de Ítems</th>
+                                    <th>Distribución</th>
+                                    <th>Media (M)</th>
+                                    <th>Desviación Estándar (DE)</th>
+                                    <th>Mín por Ítem</th>
+                                    <th>Máx por Ítem</th>
+                                    <th id="thFiabilidad" title="Fiabilidad objetivo de cada escala. Indica qué proporción de la puntuación refleja el constructo y no el error de medida: con 0.85, en torno al 85 % de la varianza del total es señal y el 15 % restante, ruido. El α de Cronbach asume que todos los ítems miden con la misma precisión; el ω de McDonald no lo exige y pondera cada ítem según su carga, por lo que se considera la estimación preferible cuando esa igualdad no está garantizada. Deje el campo vacío o en 0 para obtener ítems independientes entre sí." style="cursor:help; text-decoration:underline dotted;">α objetivo</th>
+                                    <th title="Cuántos ítems de la escala se puntúan al revés (los últimos). Se guardan reflejados, como en una base real: quien analice debe recodificarlos antes de sumar o calcular la fiabilidad." style="cursor:help; text-decoration:underline dotted;">Ítems inv.</th>
+                                    <th title="Solo en escalas dicotómicas (Mín 0, Máx 1: acierto/error, sí/no): proporción de unos de cada ítem, separadas por coma (0.90, 0.75, 0.50…). Con ellas, la Media es su suma y la DE se calcula con el KR-20.">Dificultades</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyPruebas"></tbody>
+                        </table>
+                    </div>
+                    <div class="leyenda-pruebas">
+                        <p class="leyenda-titulo">Guía de cada campo:</p>
+                        <ol>
+                            <li>
+                                <strong>Prueba (test):</strong> se elige del desplegable, que se alimenta del cuadro
+                                <em>Pruebas del estudio</em> situado sobre la tabla (donde se declara cada instrumento y la
+                                variable psicológica que mide). Varias filas con la misma prueba quedan agrupadas como sus
+                                dimensiones, y el sistema añade sola la columna <em>General_</em> con el promedio de todas ellas. Si la
+                                prueba tiene una sola fila, es unidimensional: esa escala es su variable general (columna <em>General_</em>).
+                            </li>
+                            <li>
+                                <strong>Escala / Dimensión:</strong> nombre de la subescala o dimensión de esa prueba
+                                (Ej: "Memoria de trabajo", "Atención"). Cada fila representa UNA escala con sus propias
+                                medidas (ítems, rango, Media, DE). La sigla del nombre de la escala se usa para nombrar
+                                sus ítems en la base (Ej: "Memoria de trabajo" → MDT1, MDT2, … y su total Dimension_MDT, o General_MDT
+                                si es la única escala de su prueba). Si dos escalas tienen las mismas iniciales, la segunda alarga
+                                su sigla con letras, nunca con números (Intrapersonal → I1, I2…; Interpersonal → IN1, IN2…).
+                            </li>
+                            <li>
+                                <strong>Tipo — Dimensión o General:</strong> <em>Dimensión</em> es una subescala con sus
+                                propios ítems. <em>General</em> es la escala general del test, <strong>obligatoria y
+                                única por prueba</strong>: en "Escala" escribe el nombre de la variable que el test
+                                pretende medir (Ej: "Inteligencia emocional"). La escala general es una sola columna de
+                                datos, por eso NO lleva N° de ítems ni α (se desactivan); su <em>Mín y Máx son de la
+                                escala general completa</em>, no por ítem, y su Media y DE describen ese puntaje
+                                general. Aunque un test no tenga dimensiones, siempre lleva su fila General.
+                            </li>
+                            <li>
+                                <strong>N° de ítems:</strong> cantidad de ítems (preguntas) de ESA escala, según la
+                                ficha técnica. Fijo a priori e invariable de aplicación en aplicación.
+                            </li>
+                            <li>
+                                <strong>Mín / Máx por ítem:</strong> rango de valores posibles de <em>cada ítem
+                                individual</em> de esa escala (Ej: Likert 0–5, 1–7). Obligatorios y fijos según la ficha
+                                técnica; determinan el rango alcanzable del puntaje directo de la escala: desde
+                                <em>N° de ítems × Mín</em> hasta <em>N° de ítems × Máx</em>.
+                            </li>
+                            <li>
+                                <strong><span class="etiquetaFiabilidad">α</span> objetivo (opcional):</strong> fiabilidad deseada de la escala (0–0.99): la proporción de la puntuación total que refleja el constructo y no el error de medida. Con un valor (Ej: 0.85) los ítems comparten un factor común y la escala alcanzará aproximadamente esa fiabilidad en el índice elegido arriba —α de Cronbach u ω de McDonald—; el generador se autocalibra para que el valor observado coincida con el solicitado. Vacío o 0 = ítems independientes.</li>
+                            <li>
+                                <strong>Ítems invertidos (opcional):</strong> número de ítems de la escala que se puntúan al revés (serán los últimos). La base los entrega <em>sin recodificar</em>, tal como llegan de un cuestionario real: antes de sumar o de calcular la fiabilidad hay que reflejarlos (mín + máx − valor). El diccionario del Analizador los marca como «INVERTIDO».
+                            </li>
+                            <li>
+                                <strong>Distribución:</strong> forma del puntaje directo de la escala. <em>Normal</em> =
+                                campana (necesaria para análisis paramétricos como Pearson); <em>Uniforme</em> = plana;
+                                <em>Asimétrica</em> = con cola positiva (efecto suelo, típico de escalas clínicas).
+                            </li>
+                            <li>
+                                <strong>Media (del puntaje DIRECTO de la escala):</strong> promedio esperado del puntaje
+                                directo de la escala (la suma de sus ítems en cada participante), <em>no</em> de los
+                                ítems individuales. <strong>Regla de coherencia:</strong> como es una suma, la Media solo
+                                puede estar entre <em>N° de ítems × Mín</em> y <em>N° de ítems × Máx</em>; la página
+                                calcula ese rango en vivo y no permite valores fuera de él. (Ej: si el Mín por ítem es 1,
+                                la Media nunca puede ser menor que el número de ítems.)
+                            </li>
+                            <li>
+                                <strong>Desviación estándar (del puntaje DIRECTO):</strong> dispersión esperada de los
+                                puntajes directos de la escala alrededor de su Media (no por ítem). Una DE pequeña indica
+                                que la mayoría puntuará cerca del promedio. (Ej: "quiero que los puntajes se dispersen
+                                ±12 puntos" → DE = 12.) Su rango recomendado tiene <em>máximo</em> (evita el recorte
+                                contra los topes) y <em>mínimo</em> según N (evita que la suma de enteros salga
+                                "escalonada").
+                            </li>
+                            <li>
+                                <strong>¿Cómo se usan Media y DE juntas?</strong> Si colocas Media = 80 y DE = 12, le
+                                dices al programa: "quiero que el puntaje directo de ESTA escala tenga media 80 y
+                                desviación estándar 12". <em>No</em> significa "cada ítem con media 80".
+                            </li>
+                            <li>
+                                <strong>Puntaje directo vs. puntaje escalar:</strong> aquí siempre configuras el
+                                <em>puntaje directo</em> (suma cruda de ítems). Los puntajes escalares o convertidos
+                                (CI = 100±15, puntuaciones T = 50±10, eneatipos, etc.) son transformaciones por baremos
+                                y NO corresponden a la suma de ítems: no uses esos valores como Media/DE aquí.
+                            </li>
+                            <li>
+                                <strong>Qué genera el programa por cada persona encuestada (en este orden de
+                                columnas):</strong>
+                                (a) los <em>ítems</em> de cada dimensión (Ej: MDT1…MDT15);
+                                (b) los <em>puntajes directos de las dimensiones</em> = suma de sus ítems (Total_MDT,
+                                Total_CV, …);
+                                (c) al final, el <em>puntaje de la Escala general</em> de cada prueba (Total_IE);
+                                y (d) opcionalmente, si activas la casilla <em>"Generar percentiles"</em> en
+                                Configuración General, los <em>percentiles</em> de cada puntaje (PC_…, en el mismo
+                                orden: dimensiones y luego generales): la posición relativa de esa persona dentro de la
+                                muestra generada (0–100).
+                            </li>
+                        </ol>
+                    </div>
+                </div>
+
+                <!-- Tabla II: Datos Sociodemográficos -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">II. Datos Sociodemográficos</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="btnImportarSocio" class="btn btn-outline"
+                                title="Importar configuración desde CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar CSV
+                            </button>
+                            <button id="btnExportarSocio" class="btn btn-outline" title="Exportar configuración a CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar CSV
+                            </button>
+                            <button id="btnAgregarSocio" class="btn btn-secondary">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2"
+                                        stroke-linecap="round" />
+                                </svg>
+                                Agregar Variable
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="orden-guia" role="note" aria-label="Orden para completar los datos sociodemográficos">
+                        <span class="orden-guia-titulo">Completa en este orden:</span>
+                        <span class="orden-paso"><span class="orden-num">1</span> Categoría</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">2</span> Distribución</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">3</span> Promedio y Desviación</span>
+                        <span class="orden-flecha" aria-hidden="true">→</span>
+                        <span class="orden-paso"><span class="orden-num">4</span> Mín, Máx y Decimales <em>(opcionales)</em></span>
+                        <span class="orden-nota">Los campos se desbloquean al escribir la Categoría (Ej: "Edad", "Sexo").</span>
+                    </div>
+
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                        <table class="table" id="tablaSocio">
+                            <thead>
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Distribución</th>
+                                    <th>Promedio</th>
+                                    <th>Desviación Estándar</th>
+                                    <th>Mínimo</th>
+                                    <th>Máximo</th>
+                                    <th>N° Decimales</th>
+                                    <th title="Binaria/categórica: nombres de las categorías separados por coma, con proporción opcional («Soltero:60, Casado:40») o en orden («Primaria < Secundaria < Superior»). Continua: «fecha» añade la fecha de nacimiento a partir de la edad.">Categorías / opciones</th>
+                                    <th title="Asociación con otra variable binaria o categórica: quien está en una categoría de aquella tiende a caer en las categorías altas de esta. Fuerza: r latente (0.2 leve, 0.4 moderada, 0.6 fuerte).">Depende de · fuerza</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodySocio">
+                                <!-- Fila inicial -->
+                                <tr class="fila-socio">
+                                    <td>
+                                        <input type="text" class="input input-sm" placeholder="Ej: Edad" aria-label="Categoría">
+                                    </td>
+                                    <td>
+                                        <select class="input input-sm" aria-label="Distribución">
+                                            <option value="normal">Normal</option>
+                                            <option value="uniforme">Uniforme</option>
+                                            <option value="asimetrica">Asimétrica</option>
+                                            <option value="conteo">Conteo (Poisson)</option>
+                                            <option value="binaria">Binaria (0/1)</option>
+                                            <option value="categorica">Categórica</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="number" class="input input-sm" placeholder="Ej: 20" step="0.01" aria-label="Promedio">
+                                    </td>
+                                    <td>
+                                        <input type="number" class="input input-sm" placeholder="Ej: 2.5" step="0.01"
+                                            min="0.01" aria-label="Desviación estándar">
+                                    </td>
+                                    <td>
+                                        <input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" aria-label="Mínimo">
+                                    </td>
+                                    <td>
+                                        <input type="number" class="input input-sm" placeholder="Ej: 25" step="0.01" aria-label="Máximo">
+                                    </td>
+                                    <td>
+                                        <input type="number" class="input input-sm" placeholder="Ej: 2" min="0" max="4"
+                                            value="2" aria-label="Número de decimales">
+                                    </td>
+                                    <td><input type="text" class="input input-sm" placeholder="Ej: Femenino, Masculino" maxlength="400" value="" aria-label="Categorías u opciones" title="Binaria/categórica: «Femenino, Masculino», «Soltero:60, Casado:40» (proporciones) o «Primaria < Secundaria < Superior» (ordinal). Continua (edad): «fecha» o «fecha:AAAA-MM-DD» para añadir la fecha de nacimiento."></td>
+                                    <td>
+                                        <select class="input input-sm" aria-label="Depende de" title="Otra variable binaria o categórica de la que depende esta (asociación)."><option value="">Ninguna</option></select>
+                                        <input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.05" min="0" max="0.95" value="0.4" placeholder="fuerza 0–0.95" aria-label="Fuerza de la asociación" title="Fuerza de la asociación (r latente): 0.2 leve, 0.4 moderada, 0.6 fuerte.">
+                                    </td>
+                                    <td>
+                                        <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
+                                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                                <path
+                                                    d="M3 4H13M5 4V3C5 2.44772 5.44772 2 6 2H10C10.5523 2 11 2.44772 11 3V4M6 7V11M10 7V11M4 4H12L11.5 13C11.5 13.5523 11.0523 14 10.5 14H5.5C4.94772 14 4.5 13.5523 4.5 13L4 4Z"
+                                                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+                                            </svg>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        <strong>Distribución:</strong> <em>Normal</em> y <em>Asimétrica</em> usan Promedio y DE;
+                        <em>Uniforme</em> y <em>Categórica</em> usan Mín/Máx (la categórica genera niveles enteros
+                        equiprobables); <em>Conteo (Poisson)</em> usa el Promedio como tasa; <em>Binaria</em> usa el
+                        Promedio como proporción de unos (p. ej. 0.5). <strong>Mín/Máx:</strong> rango de valores.
+                        <strong>Decimales:</strong> precisión (0-4).
+                        <strong>Categorías / opciones:</strong> en binarias y categóricas, los nombres de las categorías separados por coma
+                        («Femenino, Masculino»; la binaria codifica 0 la primera y 1 la segunda), con proporciones si las quieres
+                        («Soltero:60, Casado:30, Divorciado:10») o en orden si es ordinal («Primaria &lt; Secundaria &lt; Superior»). En modo
+                        exacto las proporciones salen exactas en la muestra. La base y el CSV muestran los nombres; el motor y las pruebas
+                        estadísticas trabajan con los códigos. En una variable continua que sea una edad, «fecha» (o «fecha:AAAA-MM-DD»)
+                        añade la columna <code>FechaNac_…</code> con una fecha de nacimiento coherente con la edad a esa fecha.
+                        <strong>Depende de:</strong> hace que una binaria o categórica esté asociada a otra (p. ej. Grado según Zona) con la
+                        fuerza indicada; el informe muestra la V de Cramér obtenida. Para que una variable continua difiera según un grupo,
+                        usa la tabla IV.
+                    </p>
+                </div>
+
+                <!-- Tabla III: Correlaciones objetivo (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">III. Correlaciones Objetivo (opcional)</h3>
+                        <div style="display: flex; gap: 10px;">
+                            <button id="btnImportarCorrelaciones" type="button" class="btn btn-outline" title="Importar correlaciones desde CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 12V3M8 3L5 6M8 3L11 6M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Importar CSV
+                            </button>
+                            <button id="btnExportarCorrelaciones" type="button" class="btn btn-outline" title="Exportar correlaciones a CSV">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V12M8 12L5 9M8 12L11 9M3 13H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                </svg>
+                                Exportar CSV
+                            </button>
+                        <button id="btnAgregarCorrelacion" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Correlación
+                        </button>
+                        </div>
+                    </div>
+                    <div class="table-container tabla-desplazable">
+                        <table class="table" id="tablaCorrelaciones">
+                            <thead>
+                                <tr>
+                                    <th>Variable A (X)</th>
+                                    <th>Variable B (Y)</th>
+                                    <th>r, o fuerza η</th>
+                                    <th>Tipo de relación</th>
+                                    <th title="Cómo se reparte la dispersión de B a lo largo de A: homogénea, en abanico o en triángulo (condición necesaria)">Nube</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyCorrelaciones"></tbody>
+                        </table>
+                        <p class="help-text" style="margin-top:0.4rem;"><strong>Tipo de relación</strong> (según el <em>Atlas de relaciones entre variables</em>): con «Lineal», el número es la r de Pearson, con signo. Con una forma no lineal —logarítmica, sigmoide, U, cíclica…—, B depende de A a través de esa curva y el número es la <strong>fuerza η</strong> (0 a 0.97), la correlación entre B y la curva; la r de Pearson saldrá la que implique la forma (cerca de 0 en una U aunque la relación sea fuerte). La curvatura se aprecia mejor si A tiene distribución uniforme.</p>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Define la correlación deseada entre dos variables <strong>cuantitativas</strong> (totales de
+                        escala o sociodemográficas continuas: Normal/Asimétrica). El generador construye los datos para
+                        que la correlación observada se acerque a la pedida (corrige la atenuación por la fiabilidad de
+                        las escalas). Para escalas, usa un α objetivo &gt; 0. Sin filas = variables independientes.
+                    </p>
+                </div>
+
+                <!-- Tabla IV: Diferencias por grupo (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">IV. Diferencias por Grupo (opcional)</h3>
+                        <button id="btnAgregarDiferencia" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Diferencia
+                        </button>
+                    </div>
+                    <div class="table-container tabla-desplazable">
+                        <table class="table" id="tablaDiferencias">
+                            <thead>
+                                <tr>
+                                    <th title="Diferencia de medias (d de Cohen), interacción entre dos binarias (diseño 2×2: diferencia de diferencias en DE intra-celda) o anidamiento en grupos (coeficiente de correlación intraclase).">Tipo de efecto</th>
+                                    <th>Variable cuantitativa</th>
+                                    <th>Variable de agrupación</th>
+                                    <th title="Solo para la interacción: la segunda variable binaria del 2×2.">× Segunda agrupación</th>
+                                    <th title="d de Cohen (diferencia o interacción) o CCI (anidamiento, 0.01–0.90).">d / CCI</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyDiferencias"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Hace que la media de una variable <strong>cuantitativa</strong> difiera según una variable de
+                        <strong>agrupación</strong> (Binaria o Categórica), con el tamaño del efecto (d de Cohen)
+                        indicado. Alimenta la comparación de grupos (t / ANOVA). Sin filas = sin diferencias. <strong>Interacción A × B</strong> (dos binarias): la diferencia entre grupos de A cambia según B en la d indicada (diseño factorial 2×2, ANOVA de dos factores); los efectos principales se piden aparte, en sus propias filas. <strong>Anidamiento (CCI)</strong>: la variable se parece más dentro de cada grupo de una categórica (aulas, colegios) que entre grupos, con la correlación intraclase indicada (modelos multinivel); con menos de ocho grupos la CCI estimada fluctúa mucho.
+                    </p>
+                </div>
+
+                <!-- Tabla V: Modelos estructurales (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">V. Modelos Estructurales: mediación, moderación y terceras variables (opcional)</h3>
+                        <button id="btnAgregarModelo" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Modelo
+                        </button>
+                    </div>
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                        <table class="table" id="tablaModelos">
+                            <thead>
+                                <tr>
+                                    <th>Modelo</th>
+                                    <th>X (predictora)</th>
+                                    <th>Mediador M / Moderador W / Tercera variable Z</th>
+                                    <th>Y (criterio)</th>
+                                    <th title="Mediación: a (X→M). Moderación: β₁ (X). Terceras variables: r(Z,X)">Coef. 1</th>
+                                    <th title="Mediación: b (M→Y, controlando X). Moderación: β₂ (W). Terceras variables: r(Z,Y)">Coef. 2</th>
+                                    <th title="Mediación: c′ (X→Y directo, controlando M). Moderación: β₃ (interacción X×W). Terceras variables: la relación verdadera de X con Y (la parcial; en el colisionador, la de orden cero)">Coef. 3</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyModelos"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Coeficientes <strong>estandarizados</strong>. <strong>Mediación</strong> X → M → Y: <em>a</em> (X→M), <em>b</em> (M→Y controlando X)
+                        y <em>c′</em> (X→Y directo); el efecto indirecto es <em>a·b</em> y el total <em>c′ + a·b</em>. Dos filas con la misma X e Y y
+                        distinto mediador forman una mediación paralela. <strong>Curvilínea</strong> Y = β₁X + β₂X²: relación en U (β₂ &gt; 0) o U invertida (β₂ &lt; 0), con X estandarizada; el informe la recupera con una regresión sobre X y X². <strong>Moderación</strong> Y = β₁X + β₂W + β₃·X·W: la interacción se
+                        construye con X y W estandarizadas, tal como la estimará una regresión con el término producto; la forma de Y la define
+                        el modelo (normal). <strong>Terceras variables</strong> (Z en la columna del mediador; se piden r(Z,X), r(Z,Y) y la relación
+verdadera de X con Y): en la <strong>confusión</strong>, Z causa X e Y y la relación verdadera es la parcial (con 0, la de orden cero
+es espuria); en la <strong>supresión</strong>, Z se relaciona con X y no con Y, y controlarla aumenta la relación; en el
+<strong>colisionador</strong>, X e Y causan Z, la verdadera es la de orden cero y controlar Z crea una relación que no existe (si además
+se selecciona la muestra por Z, con la selección por rango, aparece la paradoja de Berkson). El informe verifica las tres
+correlaciones y la parcial. Las correlaciones que implican los coeficientes sustituyen a las de la tabla III para esas parejas;
+                        el informe «pedido vs. obtenido» muestra cada coeficiente recuperado por regresión sobre la base generada.
+                    </p>
+                </div>
+
+                <!-- Tabla VI: Medidas repetidas (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VI. Medidas Repetidas: pre/post y seguimiento (opcional)</h3>
+                        <button id="btnAgregarRepetida" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                            </svg>
+                            Agregar Medida Repetida
+                        </button>
+                    </div>
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                        <table class="table" id="tablaRepetidas">
+                            <thead>
+                                <tr>
+                                    <th>Escala</th>
+                                    <th title="Número de mediciones (2 = pre/post; hasta 4)">Ondas</th>
+                                    <th title="Correlación test-retest entre ondas consecutivas; en AR(1), entre T1 y T3 es su cuadrado; con interceptos aleatorios, la misma entre cualquier par de ondas: la parte de la varianza que es de la persona (ICC)">Estabilidad (r)</th>
+                                    <th title="Cambio de la media de T1 a la última onda, en DE de T1 (global, o del grupo 0 si hay agrupación)">d de cambio</th>
+                                    <th title="Variable binaria (0 = control, 1 = experimental) que modera el cambio">Agrupación</th>
+                                    <th title="Cambio de T1 a la última onda en el grupo 1, en DE de T1">d de cambio (grupo 1)</th>
+                                    <th title="AR(1): la correlación entre ondas decae con la distancia y la DE se mantiene. Crecimiento: cada persona tiene su propia pendiente (aleatoria); la DE crece con las ondas («abanico») y las correlaciones salen del modelo. Interceptos aleatorios: la misma correlación entre cualquier par de ondas y la misma DE; es el necesario para separar la relación entre personas y dentro de la persona.">Modelo</th>
+                                    <th title="Solo en crecimiento: desviación estándar de las pendientes individuales de T1 a la última onda, en DE de T1 (0 = todos cambian igual; 0.5 típico).">DE pendientes</th>
+                                    <th title="Solo en crecimiento: correlación entre el nivel inicial y la pendiente (negativa = quienes empiezan alto cambian menos).">r nivel–pendiente</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyRepetidas"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Repite una escala en 2 a 4 ondas. La onda 1 conserva sus columnas; las siguientes añaden ítems, total y percentil con
+                        sufijo <code>_T2</code>, <code>_T3</code>… (mismo instrumento: mismo α, forma y perfil de ítems). La
+                        <strong>estabilidad</strong> es la correlación entre ondas consecutivas (entre no consecutivas decae como en un
+                        proceso AR(1)); las correlaciones de la escala con otras variables se propagan a cada onda atenuadas por ella (con <strong>interceptos aleatorios</strong>, la estabilidad es la misma entre cualquier par de ondas y esas correlaciones son iguales en todas).
+                        La <strong>d de cambio</strong> desplaza la media de T1 a la última onda en DE de T1, de forma lineal entre ondas;
+                        con una agrupación <strong>binaria</strong> cada grupo cambia lo suyo (diseño pre/post con grupo control) y el informe
+                        muestra el cambio por grupo y la interacción tiempo × grupo. Con el modelo de <strong>crecimiento</strong>, cada persona tiene su pendiente (con la DE indicada, en DE de T1) y una correlación nivel–pendiente; la DE de las ondas crece y las correlaciones entre ondas las implica el modelo (con tres ondas o más se ajusta un modelo de curva de crecimiento). Las diferencias por grupo de la tabla IV se mantienen en
+                        todas las ondas; los puntajes generales derivados y los modelos usan solo la onda 1.
+                    </p>
+                    <div class="bloque-niveles" style="margin-top: 1rem;">
+                        <div class="card-header">
+                            <h4 class="card-title">Relación entre personas y dentro de la persona (opcional)</h4>
+                            <button id="btnAgregarNivel" type="button" class="btn btn-secondary">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                                Agregar relación
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table class="table" id="tablaNiveles">
+                                <thead>
+                                    <tr>
+                                        <th>Escala X</th>
+                                        <th>Escala Y</th>
+                                        <th title="Relación entre los niveles propios de las personas: quien tiene más X, ¿tiene más Y?">r entre personas</th>
+                                        <th title="Relación entre las fluctuaciones de cada persona de onda a onda: cuando su X sube, ¿sube su Y?">r dentro de la persona</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bodyNiveles"></tbody>
+                            </table>
+                        </div>
+                        <p class="help-text" style="margin-top: 0.5rem;">
+                            Con medidas repetidas, una relación existe en dos niveles que pueden no parecerse, ni en el signo: <strong>entre
+                            personas</strong> (quien escribe más rápido comete menos errores, porque es más hábil) y <strong>dentro de la
+                            persona</strong> (los días que escribe más rápido comete más errores). Las dos escalas deben repetirse con el modelo
+                            <strong>Interceptos aleatorios</strong> y el mismo número de ondas: su estabilidad es la parte de la varianza que es de
+                            la persona. En una misma onda, la correlación mezcla los dos niveles; entre ondas distintas solo queda la parte entre
+                            personas. El informe verifica las dos correlaciones, la de las medias de cada persona (atenuada con pocas ondas) y la de
+                            una sola onda, y dice qué muestran los datos.
+                        </p>
+                    </div>
+                    <div class="bloque-paneles" style="margin-top: 1rem;">
+                        <div class="card-header">
+                            <h4 class="card-title">Relaciones en el tiempo: rezagada y recíproca (panel cruzado, opcional)</h4>
+                            <button id="btnAgregarPanel" type="button" class="btn btn-secondary">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                                Agregar relación en el tiempo
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table class="table" id="tablaPaneles">
+                                <thead>
+                                    <tr>
+                                        <th>Tipo</th>
+                                        <th>Escala X</th>
+                                        <th>Escala Y</th>
+                                        <th title="Correlación de X e Y medidas en la misma onda (la misma en todas)">r misma onda</th>
+                                        <th title="β tipificado de X en una onda sobre Y en la siguiente, controlando la Y anterior">Efecto X → Y</th>
+                                        <th title="β tipificado de Y en una onda sobre X en la siguiente, controlando la X anterior (solo en la recíproca)">Efecto Y → X</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bodyPaneles"></tbody>
+                            </table>
+                        </div>
+                        <p class="help-text" style="margin-top: 0.5rem;">
+                            Cada onda depende de la anterior: en la <strong>rezagada</strong>, X de una onda predice a Y en la siguiente más allá
+                            de lo que Y ya traía (el efecto X → Y es el β de X controlando la Y anterior); en la <strong>recíproca</strong>, además,
+                            Y predice a X. Las dos escalas deben repetirse con el modelo <strong>AR(1)</strong> y el mismo número de ondas; su
+                            estabilidad sigue siendo la r entre ondas consecutivas, y la parte que no explica el efecto cruzado es la
+                            autorregresión. Con efectos cruzados, la r entre ondas lejanas ya no es la estabilidad elevada a la distancia, y las
+                            variables que no se repiten se propagan por la misma dinámica. El informe estima los efectos cruzados y los
+                            autorregresivos por regresión y dice qué muestran los datos. El panel cruzado supone que no hay diferencias
+                            estables entre personas (sin interceptos aleatorios).
+                        </p>
+                    </div>
+                    <div class="bloque-histeresis" style="margin-top: 1rem;">
+                        <div class="card-header">
+                            <h4 class="card-title">Estados con histéresis (opcional)</h4>
+                            <button id="btnAgregarHisteresis" type="button" class="btn btn-secondary">
+                                <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                                </svg>
+                                Agregar estado
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table class="table" id="tablaHisteresis">
+                                <thead>
+                                    <tr>
+                                        <th>Escala</th>
+                                        <th>Estado</th>
+                                        <th title="Etiqueta del estado bajo (código 0)">Bajo</th>
+                                        <th title="Etiqueta del estado alto (código 1)">Alto</th>
+                                        <th title="Percentil de la escala en T1 por encima del cual se entra en el estado alto">Entrada (pc)</th>
+                                        <th title="Percentil de la escala en T1 por debajo del cual se sale del estado alto">Salida (pc)</th>
+                                        <th title="Porcentaje de observaciones en que el estado no sigue la regla">Nitidez (%)</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bodyHisteresis"></tbody>
+                            </table>
+                        </div>
+                        <p class="help-text" style="margin-top: 0.5rem;">
+                            Un estado de dos valores (por ejemplo, ansiedad clínica: No o Sí) que depende del <strong>camino</strong> de una
+                            escala repetida: se entra cuando la escala supera el umbral de entrada y solo se sale cuando baja del de salida,
+                            más bajo; entre los dos (la franja) se conserva el estado de la onda anterior. Así, con la misma puntuación hoy, dos
+                            personas pueden estar en estados distintos según de dónde vengan. Los umbrales son percentiles de la escala en T1
+                            (80 y 40 por defecto); la <strong>nitidez</strong> es el porcentaje de observaciones que no siguen la regla, como en
+                            datos reales (5 % por defecto: con 0 la separación sería perfecta y una regresión logística con el estado anterior
+                            no convergería). Se crea una columna Estado por onda, calculada sobre las puntuaciones antes de las imperfecciones.
+                            El informe verifica la regla y la memoria, y muestra el fenómeno, el bucle (la puntuación media al entrar y al salir)
+                            y cuántas personas cambian de estado.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Tabla VII: Estructura factorial (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VII. Estructura Factorial de cada test (opcional)</h3>
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button id="btnProponerCargas" type="button" class="btn btn-outline" title="Rellena las cargas propias a partir del α (u ω) de la tabla I y de la heterogeneidad elegida; las cruzadas quedan en 0.">Proponer cargas desde el α</button>
+                            <button id="btnActualizarEstructura" type="button" class="btn btn-outline" title="Vuelve a leer la tabla I (dimensiones, número de ítems, invertidos) y reconcilia la matriz conservando las cargas ya escritas.">Actualizar desde la tabla I</button>
+                            <button id="btnQuitarEstructura" type="button" class="btn btn-outline" title="Elimina la estructura de este test: sus ítems volverán a repartirse con el perfil automático.">Quitar estructura</button>
+                        </div>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de la estructura factorial" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota">Decide qué estructura deben recuperar el AFE y el AFC sobre los ítems de un test: la carga de cada ítem en su dimensión, las cargas cruzadas, un factor de método para los ítems invertidos y cuánto desajuste. Los factores son las dimensiones del test declaradas en la tabla I; los totales (media, DE, correlaciones, d…) no cambian: la estructura solo decide cómo se reparte cada total entre sus ítems. Si no rellenas nada, los ítems se reparten como hasta ahora.</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.8rem; margin-bottom: 0.8rem;">
+                        <div>
+                            <label for="selectorTestEstructura">Test</label>
+                            <select id="selectorTestEstructura" class="input"><option value="">Elige un test de la tabla I…</option></select>
+                        </div>
+                        <div>
+                            <label for="modoEstructura">Qué manda</label>
+                            <select id="modoEstructura" class="input" title="«Las cargas»: el α queda implícito por las cargas (se muestra abajo). «El α de la tabla I»: las cargas se reescalan en bloque para cumplir exactamente ese α; solo cuenta su patrón relativo.">
+                                <option value="cargas" selected>Las cargas (el α queda implícito)</option>
+                                <option value="alfa">El α de la tabla I (las cargas se reescalan)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="metodoCarga">Factor de método en los ítems invertidos (carga; 0 = ninguno)</label>
+                            <input type="number" id="metodoCarga" class="input" value="0" min="0" max="0.6" step="0.05" title="Un factor común a los ítems invertidos del test (efecto de redacción), típico 0.15–0.35: en el AFE aparece como factor de los ítems en negativo y en el AFC como residuos correlacionados. Queda como contraste invertidos/directos porque los ítems suman el total.">
+                        </div>
+                        <div>
+                            <label for="desajusteEstructura">Desajuste del modelo</label>
+                            <select id="desajusteEstructura" class="input" title="Residuos correlacionados entre pares de ítems para que el AFC no ajuste perfectamente: ninguno (CFI ≈ 1), leve, moderado o alto. El informe da el SRMR que producen.">
+                                <option value="ninguno" selected>Ninguno (ajuste casi perfecto)</option>
+                                <option value="leve">Leve</option>
+                                <option value="moderado">Moderado</option>
+                                <option value="alto">Alto</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                        <table class="table" id="tablaCargas">
+                            <thead id="headCargas"><tr><th>Ítem</th></tr></thead>
+                            <tbody id="bodyCargas"></tbody>
+                        </table>
+                    </div>
+                    <div id="panelEstructura" class="help-text" style="margin-top:0.6rem; display:block;">Elige un test para ver o construir su matriz de cargas.</div>
+                    <textarea id="estructurasJSON" hidden aria-hidden="true">[]</textarea>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        Cada fila es un ítem (INV = invertido; su carga se define sobre el ítem recodificado, así que en la base bruta cargará
+                        en negativo) y cada columna una dimensión: la celda de su propia dimensión es la carga propia (0.10–0.95); las demás,
+                        cargas cruzadas (0 = ninguna). Con «las cargas mandan», el α u ω de cada dimensión queda implícito por las cargas y se muestra
+                        debajo; con «el α de la tabla I manda», el patrón se reescala en bloque para cumplirlo. Las correlaciones entre factores son las
+                        de la tabla III (o el r intra del test). El informe «pedido vs. obtenido» recupera las cargas por ejes principales, las cruzadas,
+                        el factor de método, la fiabilidad implícita, el SRMR frente a la matriz implicada y el KMO con Bartlett. Los ítems de cada
+                        dimensión siguen sumando exactamente su total; por eso sus residuos llevan una correlación negativa leve (−1/(k−1)) que con
+                        seis o más ítems el AFC no distingue de un modelo puro.
+                    </p>
+                </div>
+
+                <!-- Tabla VIII: Desenlaces y puntos de corte (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">VIII. Desenlaces no continuos y puntos de corte (opcional)</h3>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de desenlaces y puntos de corte" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota"><strong>Puntos de corte</strong>: convierte el total de una escala en niveles con nombre (bajo/medio/alto, positivo/negativo) para tablas cruzadas, prevalencias y chi-cuadrado. <strong>Desenlaces</strong>: crea una variable criterio que no es continua (sí/no, un conteo, una escala ordinal) y que depende de las escalas que elijas con la fuerza que indiques, para regresión logística con odds ratio, regresión de Poisson o regresión ordinal.</span>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0 0 0.5rem;">
+                        <strong>Puntos de corte de escalas</strong>
+                        <button id="btnAgregarCorte" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar corte
+                        </button>
+                    </div>
+                    <div class="table-container tabla-desplazable">
+                        <table class="table" id="tablaCortes">
+                            <thead>
+                                <tr>
+                                    <th>Escala o puntaje general</th>
+                                    <th title="Categorías separadas por coma, «@» y los cortes: «Bajo, Medio, Alto @ 20, 30» (fijos: < 20 Bajo; 20 a 29.99 Medio; ≥ 30 Alto) o «Bajo, Medio, Alto @ P25, P75» (percentiles de la muestra).">Categorías @ cortes</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyCortes"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">Crea la columna <code>Nivel_&lt;sigla&gt;</code> con los nombres de las categorías (códigos 1…K en el motor). Cortes fijos: cada corte marca desde dónde empieza la categoría siguiente. Cortes por percentil (P25, P75…): se toman de la muestra generada; con totales enteros los empates en el corte hacen que las proporciones sean aproximadas, y el informe lo indica.</p>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap; margin:0.9rem 0 0.5rem;">
+                        <strong>Desenlaces (variables criterio no continuas)</strong>
+                        <button id="btnAgregarDesenlace" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar desenlace
+                        </button>
+                    </div>
+                    <div class="table-container tabla-desplazable" data-columnas-fijas="1">
+                        <table class="table" id="tablaDesenlaces">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th title="Binario: prevalencia (0.25 o 25 %; con etiquetas «No, Sí: 25 %»). Conteo: media (2.5). Ordinal: categorías ordenadas con proporciones («Bajo:50, Medio:30, Alto:20»).">Prevalencia / media / categorías</th>
+                                    <th>Predictor 1 · OR/IRR</th>
+                                    <th>Predictor 2 · OR/IRR</th>
+                                    <th>Predictor 3 · OR/IRR</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyDesenlaces"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">
+                        El efecto es el <strong>odds ratio</strong> (binario y ordinal) o la <strong>razón de tasas</strong> (conteo) por cada
+                        desviación estándar del predictor: 1 = sin efecto, 2 = duplica la odds, 0.5 = la reduce a la mitad. Los predictores pueden ser
+                        escalas, puntajes generales o sociodemográficas continuas; el desenlace se calcula con las puntuaciones verdaderas, antes de las
+                        imperfecciones. La prevalencia y las proporciones salen exactas en la muestra; el informe recupera los OR por regresión logística,
+                        los IRR por regresión de Poisson y, en el ordinal, el OR de odds proporcionales.
+                    </p>
+                </div>
+
+                <!-- Tabla IX: Concordancia (opcional) -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">IX. Concordancia entre informantes y jueces (opcional)</h3>
+                        <button id="btnAgregarConcordancia" type="button" class="btn btn-secondary">
+                            <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+                            Agregar fila
+                        </button>
+                    </div>
+                    <div class="orden-guia" role="note" aria-label="Guía de concordancia" style="margin:0 0 0.8rem;">
+                        <span class="orden-guia-titulo">Para qué sirve:</span>
+                        <span class="orden-nota"><strong>Informante</strong>: una segunda versión de la escala respondida por otra persona (madre, docente) o una forma paralela, con la concordancia que indiques y, si quieres, un sesgo (el informante puntúa más alto o más bajo). <strong>Jueces</strong>: varios evaluadores clasifican a cada persona en una categoría (κ de Cohen o Fleiss) o le asignan una puntuación (CCI), con el acuerdo que pidas.</span>
+                    </div>
+                    <div class="table-container tabla-desplazable">
+                        <table class="table" id="tablaConcordancia">
+                            <thead>
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th title="Informante y jueces con puntuación: una escala. Jueces categóricos: una escala con puntos de corte (tabla VIII), un sociodemográfico binario/categórico o un desenlace binario/ordinal.">Variable</th>
+                                    <th title="Informante: nombre del informante (madre, docente, forma B). Jueces: cuántos (2–6).">Etiqueta / N.º de jueces</th>
+                                    <th title="Informante: correlación con el autoinforme (0.3–0.7 típico). Jueces categóricos: κ objetivo. Jueces con puntuación: CCI objetivo.">Concordancia (r / κ / CCI)</th>
+                                    <th title="Solo informante: cuánto puntúa más (o menos) que el autoinforme, en DE.">Sesgo (d)</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bodyConcordancia"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.4rem;">
+                        El informante crea las columnas de la escala con el sufijo de su etiqueta (ítems, total y percentil), con el mismo
+                        instrumento y la correlación pedida con el autoinforme (exacta en modo exacto); sus correlaciones con las demás variables
+                        quedan atenuadas por esa concordancia y hereda las diferencias por grupo. Los jueces crean columnas <code>Juez1_…</code>,
+                        <code>Juez2_…</code>: en los categóricos cada juez repite la categoría verdadera con probabilidad √κ y si no sortea una
+                        según su frecuencia (el κ resultante es el pedido, sea cual sea la distribución); en los de puntuación, cada juez añade un error
+                        que deja la CCI(1) pedida. El informe compara r, sesgo, κ de Fleiss y CCI con lo pedido.
+                    </p>
+                </div>
+
+                <!-- Botones de Acción -->
+                <div class="actions-bar">
+                    <button id="btnGenerar" class="btn btn-primary btn-lg">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path d="M10 3V17M10 17L6 13M10 17L14 13" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        Generar Base de Datos
+                    </button>
+                    <button id="btnDescargarCSV" class="btn btn-outline" disabled title="Separador ; y decimales con coma — abre en columnas en Excel en español">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path
+                                d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        ⬇ CSV (Excel español)
+                    </button>
+                    <button id="btnDescargarCSVIntl" class="btn btn-outline" disabled title="Separador , y decimales con punto — estándar internacional, Google Sheets y Excel en inglés">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path
+                                d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        ⬇ CSV (internacional)
+                    </button>
+                </div>
+
+                <!-- Avance de la generación (la base se genera en un Web Worker) -->
+                <div id="progresoGeneracion" class="progreso-generacion" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" hidden>
+                    <div class="progreso-generacion__barra"><div class="progreso-generacion__relleno"></div></div>
+                    <span class="progreso-generacion__texto">Preparando… 0 %</span>
+                </div>
+
+                <!-- Diagnóstico de correlaciones incompatibles (solo aparece si hubo ajuste) -->
+                <div id="diagnosticoCorrelaciones" class="card" style="display: none; border-left: 4px solid #d4a72c;"></div>
+
+                <!-- Informe pedido vs obtenido: cierra el ciclo «lo que se pide es lo que se entrega» -->
+                <div id="informePedidoObtenido" class="card" style="display: none;">
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
+                        <div>
+                            <h3 class="card-title" style="margin:0;">Verificación: pedido vs. obtenido</h3>
+                            <span class="help-text">Cada parámetro configurado, medido sobre la base recién generada. Útil como evidencia en el anexo metodológico.</span>
+                        </div>
+                        <button id="btnDescargarInforme" type="button" class="btn btn-outline">⬇ Descargar informe (CSV)</button>
+                    </div>
+                    <div class="table-container" style="margin-top:0.8rem;">
+                        <table class="table" id="tablaInforme">
+                            <thead><tr><th>Parámetro</th><th>Variable</th><th>Pedido</th><th>Obtenido</th><th>Estado</th></tr></thead>
+                            <tbody id="bodyInforme"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Preview de Datos Generados -->
+                <div id="previewContainer" class="card" style="display: none;">
+                    <h3 class="card-title">Vista Previa de Datos Generados</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">Participantes</span>
+                            <span class="stat-value" id="statParticipantes">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Variables</span>
+                            <span class="stat-value" id="statVariables">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Pruebas</span>
+                            <span class="stat-value" id="statPruebas">0</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="table table-preview" id="tablaPreview">
+                            <thead id="previewHead"></thead>
+                            <tbody id="previewBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Analizador -->
+        <section id="analizador" class="section">
+            <div class="container">
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Analizador<span class="oro">Estadístico</span></h2>
+                        <p class="ana-parrafo">Carga tus datos — o usa los del Simulador — y deja que StatSim Pro determine los análisis que necesitas. Obtén resultados explicados en lenguaje claro y genera tu capítulo de resultados en Word con formato APA 7.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Carga tus datos</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Analiza con guía</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Word APA 7</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" data-scroll="cardCargarDatos" href="#analizador">Empezar análisis</a>
+                            <a class="btn btn-outline ana-cta-tutorial" href="#analizador">▶ Ver tutorial</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video" id="anaHeroVideo"></div>
+                </div>
+
+                <!-- Cargar Datos -->
+                <div class="card" id="cardCargarDatos">
+                    <h3 class="card-title">Cargar Datos</h3>
+                    <div class="upload-area">
+                        <div class="upload-options">
+                            <button id="btnUsarGenerados" class="btn btn-outline" disabled>
+                                <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path
+                                        d="M9 3H6C4.89543 3 4 3.89543 4 5V15C4 16.1046 4.89543 17 6 17H14C15.1046 17 16 16.1046 16 15V8M9 3L16 10M9 3V8C9 9.10457 9.89543 10 11 10H16"
+                                        stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                                Usar Datos Generados
+                            </button>
+                            <span class="divider-text">o</span>
+                            <label for="fileInput" class="btn btn-primary">
+                                <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                    <path
+                                        d="M10 13V3M10 3L7 6M10 3L13 6M3 13V14C3 15.6569 4.34315 17 6 17H14C15.6569 17 17 15.6569 17 14V13"
+                                        stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                        stroke-linejoin="round" />
+                                </svg>
+                                Subir Archivo CSV
+                            </label>
+                            <input type="file" id="fileInput" accept=".csv" style="display: none;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Datos Cargados -->
+                <div id="datosContainer" class="card" style="display: none;">
+                    <h3 class="card-title">Datos Cargados</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <span class="stat-label">N</span>
+                            <span class="stat-value" id="analisisN">0</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-label">Variables</span>
+                            <span class="stat-value" id="analisisVars">0</span>
+                        </div>
+                    </div>
+                    <div class="table-scroll">
+                        <table class="table table-preview" id="tablaDatosAnalisis">
+                            <thead id="analisisHead"></thead>
+                            <tbody id="analisisBody"></tbody>
+                        </table>
+                    </div>
+                    <p class="help-text" style="margin-top: 0.5rem;">
+                        <strong>Aclaración:</strong> Verifique que todos los ítems inversos hayan sido recodificados a
+                        puntaje directo. Para aclarar, un ítem directo es aquel cuyo puntaje más elevado contribuye a
+                        una mayor presencia o nivel de la variable. Por el contrario, un ítem inverso es aquel cuyo
+                        puntaje más alto contribuye a una menor presencia o nivel de la variable. La inclusión de ítems
+                        inversos es una estrategia de diseño deliberada para controlar sesgos de respuesta
+                    </p>
+                </div>
+                
+                <!-- Configuración de Investigación -->
+                <div class="card">
+                    <h3 class="card-title">1. Configuración de la Investigación</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label class="label" for="tituloTesis">Título de la tesis (para el documento Word)</label>
+                            <input type="text" id="tituloTesis" class="input"
+                                placeholder="Ej: Inteligencia emocional e inteligencia cognitiva en estudiantes de secundaria de Lima Metropolitana, 2026">
+                        </div>
+                        <div class="form-group">
+                            <label for="unidadAnalisis">Unidad de Análisis</label>
+                            <input type="text" id="unidadAnalisis" class="input"
+                                placeholder="Ej: adolescentes, estudiantes, adultos">
+                            <span class="help-text">Población o grupo de estudio</span>
+                        </div>
+                        <div class="form-group">
+                            <label for="lugarContexto">Lugar/Contexto</label>
+                            <input type="text" id="lugarContexto" class="input"
+                                placeholder="Ej: Lima Metropolitana, Región Cusco">
+                            <span class="help-text">Ubicación geográfica o contexto del estudio</span>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Configuración de Dimensiones -->
+                <div class="card">
+                    <h3 class="card-title">2. Configuración de Dimensiones (Opcional)</h3>
+                    <div id="configuradorDimensiones"></div>
+                </div> 
+ 
+                <div id="editorEtiquetas" style="display: none;"></div>
+
+                <!-- Validez de contenido por juicio de expertos (V de Aiken): la monta src/analizador/psicometria/aiken-ui.js -->
+                <div id="validezContenidoContainer" class="card"></div>
+
+                <!-- Análisis factorial exploratorio: lo monta src/analizador/psicometria/afe-ui.js -->
+                <div id="afeContainer" class="card"></div>
+
+                <!-- Concordancia entre evaluadores (κ y CCI): la monta src/analizador/psicometria/concordancia-ui.js -->
+                <div id="concordanciaContainer" class="card"></div>
+
+                <!-- Invarianza de medición (AFC multigrupo): la monta src/analizador/psicometria/invarianza-ui.js -->
+                <div id="invarianzaContainer" class="card"></div>
+
+                <!-- Diagnóstico de la forma de una relación: lo monta src/analizador/relaciones/diagnostico-forma-ui.js -->
+                <div id="diagnosticoFormaContainer" class="card"></div>
+
+                <div id="seleccionContainer" class="card">
+                    <h3 class="card-title">Análisis Estadístico</h3>
+                    
+                    <div class="form-group">
+                        <label id="labelTipoAnalisis">Tipo de análisis</label>
+                        <div class="radio-group" role="radiogroup" aria-labelledby="labelTipoAnalisis">
+                            <label class="radio-label">
+                                <input type="radio" name="tipoAnalisis" value="correlacion" checked>
+                                <span>Correlación (dos variables cuantitativas)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="tipoAnalisis" value="comparacion">
+                                <span>Comparación de grupos</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="tipoAnalisis" value="asociacion">
+                                <span>Asociación de dos variables categóricas (Chi²)</span>
+                            </label>
+                        </div>
+                        <p id="hintTipoAnalisis" class="help-text" style="margin:0.4rem 0 0;"></p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="variable1" id="labelVariable1">Variable 1</label>
+                            <select id="variable1" class="input">
+                                <option value="">Seleccionar variable...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="variable2" id="labelVariable2">Variable 2</label>
+                            <select id="variable2" class="input">
+                                <option value="">Seleccionar variable...</option>
+                            </select>
+                        </div>
+                        <div id="varsExtraCont" style="display:contents"></div>
+                        <div style="flex-basis:100%;">
+                            <button type="button" id="btnAgregarVariable" class="btn btn-outline" style="padding:0.3rem 0.8rem; margin-top:0.4rem; display:none;">＋ Agregar variable</button>
+                            <p id="hintMultiVars" class="help-text" style="display:none; margin:0.3rem 0 0;">Con 3 o más variables, el análisis pasa a ser una <b>matriz de correlaciones</b> entre todas ellas.</p>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label id="labelTipoPrueba">Tipo de Prueba</label>
+                        <div class="radio-group" role="radiogroup" aria-labelledby="labelTipoPrueba">
+                            <label class="radio-label">
+                                <input type="radio" name="tipoPrueba" value="bilateral" checked>
+                                <span>Bilateral (2 colas)</span>
+                            </label>
+                            <label class="radio-label">
+                                <input type="radio" name="tipoPrueba" value="unilateral">
+                                <span>Unilateral (1 cola)</span>
+                            </label>
+                        </div>
+                        
+                        <div class="form-group" style="margin-top:1rem;">
+                            <label class="label" id="regTituloOpc" style="margin-bottom:0.2rem;">Regresión (predicción bivariada) — opcional</label>
+                            <p class="help-text" style="margin:0 0 0.5rem;">Déjala en blanco para omitirla. Si eliges ambas variables, el análisis de regresión (modelo, comparación de formas funcionales y gráfico) se añadirá a los resultados de la correlación y al Word.</p>
+                            <div class="form-row">
+                                <div class="form-group"><label for="regDep" style="font-weight:normal;">Variable dependiente (Y — lo que se predice)</label>
+                                    <select id="regDep" class="input"><option value="">Seleccionar variable…</option></select></div>
+                                <div class="form-group"><label for="regInd" style="font-weight:normal;">Variable independiente (X — el predictor)</label>
+                                    <select id="regInd" class="input"><option value="">Seleccionar variable…</option></select></div>
+                                <div id="regPredsCont" style="display:contents"></div>
+                                <div style="flex-basis:100%;">
+                                    <button type="button" id="btnAgregarPredictor" class="btn btn-outline" style="padding:0.3rem 0.8rem; margin-top:0.4rem;">＋ Agregar predictor</button>
+                                    <div id="regOpciones" style="margin-top:0.5rem; display:none;">
+                                        <label style="display:block; font-size:0.9em; margin:0.15rem 0;"><input type="checkbox" id="regInter" style="margin-right:0.4rem;">Incluir interacción entre los dos primeros predictores (moderación, centrada)</label>
+                                        <label style="display:block; font-size:0.9em; margin:0.15rem 0;"><input type="checkbox" id="regCuad" style="margin-right:0.4rem;">Incluir el cuadrado del primer predictor (efecto curvilíneo, tipo U / U invertida)</label>
+                                        <label style="display:block; font-size:0.9em; margin:0.15rem 0;"><input type="checkbox" id="regPoisson" style="margin-right:0.4rem;">Mi variable dependiente es un <b>conteo de eventos</b> (usar regresión de Poisson)</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button id="btnAnalizar" class="btn btn-primary btn-lg">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="2" />
+                            <path d="M12 12L17 17" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        </svg>
+                        Ejecutar Análisis
+                    </button>
+                </div>
+
+                <div id="cgSlot"></div>
+
+                <!-- Agregar dentro de la sección analizador, después del título principal -->
+                <div class="chart-grid" id="contenedorGraficos">
+                    <div class="chart-container">
+                        <h3 class="chart-title">Distribución de Puntajes: Teórica vs. Empírica</h3>
+                        <div id="distribucion-gaussiana" class="chart-wrapper"></div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3 class="chart-title">Matriz de Correlaciones por Variable</h3>
+                        <div id="matriz-correlacion" class="chart-wrapper"></div>
+                    </div>
+
+                    <div class="chart-container">
+                        <h3 class="chart-title">Diagrama de Caja</h3>
+                        <div id="diagrama-caja" class="chart-wrapper"></div>
+                    </div>
+
+                </div>
+
+                <!-- Selección de Variables -->
+                <!-- Editor de etiquetas: solo visible al cargar una base EXTERNA -->
+
+
+                <!-- Contenedores vacíos - el JS llenará todo -->
+
+                <!-- Marco Metodológico -->
+                <div id="marcoMetodologicoContainer" style="display: none;"></div>
+
+                <!-- Objetivos específicos por dimensiones (parte del marco) -->
+                <div id="resultadosDimensiones" style="display: none;"></div>
+
+                <!-- Tabla 1 (sociodemográfica) y niveles descriptivos -->
+                <div id="resultadosSociodemografica" style="display: none;"></div>
+                <div id="resultadosNiveles" style="display: none;"></div>
+                <div id="resultadosHallazgosSocio" style="display: none;"></div>
+
+                <!-- Estadísticos descriptivos -->
+                <div id="resultadosDescriptivas" style="display: none;"></div>
+
+                <!-- Análisis de fiabilidad (alfa de Cronbach) -->
+                <div id="resultadosFiabilidad" style="display: none;"></div>
+
+                <!-- Pruebas de normalidad -->
+                <div id="pruebasNormalidadContainer" style="display: none;"></div>
+
+                <!-- Resultados de análisis -->
+                <div id="resultadosCorrelacion" style="display: none;"></div>
+                <div id="resultadosRegresion" style="display: none;"></div>
+                <div id="resultadosDispersion" style="display: none;"></div>
+                <div id="resultadosDecision" style="display: none;"></div>
+                <div id="resultadosReporteAPA" style="display: none;"></div>
+                <div id="resultadosDiscusion" style="display: none;"></div>
+
+                <!-- Resultados de comparación de grupos -->
+                <div id="resultadosComparacion" style="display: none;"></div>
+
+                <!-- Resultados de chi-cuadrado de independencia -->
+                <div id="resultadosChiCuadrado" style="display: none;"></div>
+
+                <!-- Exportar capítulo a Word (APA 7) -->
+                <button id="btnExportarWord" class="btn btn-primary">
+                    📄 Exportar capítulo a Word (APA 7)
+                </button>
+
+                <!-- Botón Descargar Resultados -->
+                <button id="btnDescargarResultados" class="btn btn-outline">
+                    <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                        <path
+                            d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                    Descargar Resultados
+                </button>
+
+                <!-- Sección de referencias bibliográficas: citar a sampieri por ejemplo  -->
+                <div id="resultadosContainer" class="card" style="display: none;">
+                    <h3 class="card-title">Referencias bibliográficas</h3>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Buscador de Antecedentes -->
+        <section id="buscador" class="section">
+            <div class="container">
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Buscador<span class="oro">de Antecedentes</span></h2>
+                        <p class="ana-parrafo">Escribe tu tema y busca a la vez en 9 bases académicas — de Google Académico a Scopus y la OMS. Criba los resultados con tus criterios de inclusión y relevancia, y llévate una matriz con referencias APA lista para alimentar tu marco teórico.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Busca en 9 bases</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Criba y puntúa</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Matriz APA</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" data-scroll="seccionAntecedentes" href="#buscador">Buscar antecedentes</a>
+                            <a class="btn btn-outline ana-cta-tutorial" href="#buscador">▶ Ver tutorial</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video"></div>
+                </div>
+                <div id="seccionAntecedentes"></div>
+            </div>
+        </section>
+
+        <!-- Sección Ayuda -->
+        <section id="ayuda" class="section" style="min-height:auto; padding-bottom:1.5rem;">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Ayuda y Documentación</h2>
+                    <p class="section-subtitle">Qué hace cada sección y cómo encajan en el flujo de una tesis</p>
+                </div>
+
+                <div class="help-grid">
+                    <div class="help-card">
+                        <h3>🧭 El flujo completo de una tesis</h3>
+                        <p>StatSim Pro acompaña las dos mitades del trabajo: la teórica (Buscador → matriz de fuentes → Redactor del marco teórico) y la empírica (Simulador o tus propios datos → Analizador → capítulo de resultados en Word). Cada pieza alimenta a la siguiente.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>🔎 Buscador de antecedentes</h3>
+                        <p>Busca a la vez en Google Académico, Scopus, PubMed, SciELO, ALICIA, OpenAlex, Crossref y los repositorios oficiales de la OMS y la ONU. La búsqueda intensiva expande tu consulta con variantes generadas por IA; luego cribas con criterios de inclusión/exclusión y relevancia (1–5) y obtienes una matriz con referencias APA y enlaces.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>✍️ Redactor del marco teórico</h3>
+                        <p>A partir de tu matriz redacta el Capítulo I (planteamiento y justificación, con un vacío coherente con tu pregunta correlacional) y el Capítulo II (antecedentes con orden internacional → nacional, bases y modelos teóricos con delimitación conceptual anclada a tus instrumentos). Solo cita fuentes reales de tu matriz y descarga en Word (.docx).</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>🎲 Simulador de datos</h3>
+                        <p>Genera bases sintéticas reproducibles (tamaño muestral, semilla y propiedades de cada variable) para practicar todo el flujo sin exponer datos reales — y envíalas al Analizador con un clic.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>📊 Análisis estadístico</h3>
+                        <p>Protocolo automático de descriptivos, normalidad y correlación (elige Pearson o Spearman según tus datos y te explica por qué); regresión simple y múltiple con comparación de modelos por AIC; comparación de grupos (t, U, ANOVA, Kruskal-Wallis) con ANCOVA y MANOVA opcionales mediante preguntas guiadas; y SEM con sintaxis de lavaan, motor de decisión previo, diagrama de rutas y comparación de modelos.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>💡 Pedagogía de los porqués</h3>
+                        <p>Cada resultado responde qué es, cómo se interpreta y por qué la estadística funciona así (por qué Spearman usa rangos, por qué el ANOVA compara varianzas, por qué Holm supera a Bonferroni…). El objetivo: que el documento enseñe, no solo reporte.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>📄 Exportación Word APA</h3>
+                        <p>Capítulo de resultados con tablas y figuras numeradas al estilo APA, y marco teórico en .docx cuyas referencias incluyen solo lo realmente citado. Los datos también se exportan en Excel/CSV.</p>
+                    </div>
+                    <div class="help-card">
+                        <h3>🔒 Privacidad y funcionamiento</h3>
+                        <p>Todo corre en tu navegador: tus datos no se suben a ningún servidor propio. Solo salen las consultas a las bases académicas y, si usas las funciones de IA (variantes, criba, redactor), a la API de Groq con tus claves.</p>
+                    </div>
+                    <div class="help-card" id="mantenimiento">
+                        <h3>🧹 Si la página no se actualiza</h3>
+                        <p>El navegador guarda copias de los archivos del sitio y, tras una actualización, puede mezclar una página nueva con
+                        un módulo viejo (la web «se queda» o faltan cosas), incluso después de Ctrl+F5. <strong>Recargar sin caché</strong> vuelve a
+                        descargar todos los archivos del sitio y recarga; no borra nada tuyo. <strong>Restablecer y recargar</strong> además borra el
+                        almacenamiento local (estado de los proxies del Buscador y flujo PRISMA de la sesión). En ambos casos, si tienes una configuración
+                        a medias en el Simulador, exporta antes el archivo maestro.</p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
+                            <button id="btnRecargarSinCache" type="button" class="btn btn-secondary" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(false) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Recargar sin caché</button>
+                            <button id="btnRestablecerSitio" type="button" class="btn btn-outline" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(true) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Restablecer y recargar</button>
+                        </div>
+                        <details id="mantenimientoVersiones" class="help-text" style="font-size:0.8em;"><summary style="cursor:pointer;">Versiones cargadas (diagnóstico; también en la consola del navegador)</summary><div id="mantenimientoVersionesLista" style="margin-top:0.3rem; white-space:normal;"></div></details>
+                        <div id="mantenimientoLog" class="help-text" hidden style="margin-top:0.4rem; max-height:9em; overflow:auto; font-family:monospace; font-size:0.8em; white-space:pre-wrap;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Sección Contacto -->
+        <section id="contacto" class="section" style="min-height:auto; padding-top:1.25rem; padding-bottom:3rem;">
+            <div class="container">
+                <div class="section-header">
+                    <h2 class="section-title">Contacto y Redes Sociales</h2>
+                    <p class="section-subtitle">La persona detrás de StatSim Pro</p>
+                </div>
+
+                <div class="perfil-card">
+                    <img src="assets/img/Joel.png" alt="Joel Pasapera" class="perfil-foto"
+                        onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                    <div class="perfil-fallback">JP</div>
+                    <h3 class="perfil-nombre">Joel Pasapera</h3>
+                    <p class="perfil-tag">Psicología · Estadística · Divulgación — creador de StatSim Pro</p>
+                    <p class="perfil-bio">StatSim Pro nació como la herramienta para ser de apoyo en investigaciones de ciencias de la salud y creció hasta convertirse en lo que tienes delante: un laboratorio completo donde la estadística no solo se calcula — se entiende. Lo construyo con un estándar doble: rigor publicable y pedagogía exhaustiva, porque una tesis se defiende mejor cuando puedes explicar el porqué de cada número. Si esta herramienta te ahorra noches de lucha con el SPSS o te enseña algo que ningún manual te explicó, ya cumplió su misión.</p>
+                </div>
+
+                <div class="contact-grid">
+
+                    <a href="https://www.facebook.com/joel.pasaperapinto.1" target="_blank" class="contact-card">
+                        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                        <h3>Facebook</h3>
+                        <p>Sígueme para novedades y artículos.</p>
+                    </a>
+
+                    <a href="https://www.instagram.com/joel.pasapera/" target="_blank" class="contact-card">
+                        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
+                        <h3>Instagram</h3>
+                        <p>Contenido diario y un vistazo a mi vida profesional.</p>
+                    </a>
+
+                    <a href="https://www.youtube.com/@JoelPasapera" target="_blank" class="contact-card">
+                        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                        <h3>YouTube</h3>
+                        <p>Tutoriales de programación y análisis de datos en video.</p>
+                    </a>
+
+                    <a href="https://github.com/JoelPasapera" target="_blank" class="contact-card">
+                        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+                        <h3>GitHub</h3>
+                        <p>Revisa mis proyectos y contribuciones de código abierto.</p>
+                    </a>
+
+                    <a href="https://www.tiktok.com/@joelpasapera101" target="_blank" class="contact-card">
+                        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
+                        <h3>TikTok</h3>
+                        <p>Tips rápidos de tecnología y ciencia de datos.</p>
+                    </a>
+
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Sección Contacto -->
+    <style>
+        /* ---- Rediseño de la sección Contacto ---- */
+        #contacto .perfil-card {
+            max-width: 760px; margin: 0 auto 2rem; padding: 2.2rem 2rem 1.8rem;
+            background: linear-gradient(160deg, rgba(46,91,186,0.07), rgba(46,91,186,0.015) 55%, transparent);
+            border: 1px solid var(--color-border, #e5e5e5); border-radius: 1.2rem;
+            box-shadow: 0 10px 30px rgba(20, 40, 90, 0.08); text-align: center;
+        }
+        #contacto .perfil-foto {
+            width: 148px; height: 148px; border-radius: 50%; object-fit: cover;
+            border: 4px solid #fff;
+            box-shadow: 0 0 0 3px #2E5BBA, 0 0 0 6px rgba(46,91,186,0.18), 0 8px 22px rgba(20, 40, 90, 0.2);
+            margin-bottom: 1.1rem;
+        }
+        #contacto .perfil-fallback {
+            width: 148px; height: 148px; border-radius: 50%; margin: 0 auto 1rem;
+            display: none; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #2E5BBA, #6a8fd8);
+            color: #fff; font-size: 3rem; font-weight: 700; letter-spacing: 1px;
+            border: 4px solid #fff; box-shadow: 0 6px 20px rgba(20, 40, 90, 0.18);
+        }
+        #contacto .perfil-nombre { margin: 0 0 0.2rem; font-size: 1.7rem; }
+        #contacto .perfil-tag {
+            margin: 0 0 0.9rem; color: #2E5BBA; font-weight: 600; font-size: 0.98rem;
+            letter-spacing: 0.02em;
+        }
+        #contacto .perfil-bio {
+            margin: 0 auto; max-width: 620px; color: var(--color-text-soft, #555);
+            line-height: 1.65; font-size: 0.98rem;
+        }
+        #contacto .contact-grid {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 0.7rem; max-width: 760px; margin: 0 auto;
+        }
+        #contacto .contact-card {
+            display: inline-flex; align-items: center; gap: 0.55rem;
+            padding: 0.55rem 1.15rem; border-radius: 999px;
+            border: 1px solid var(--color-border, #e0e0e0); background: #fff;
+            text-decoration: none; color: inherit;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+        #contacto .contact-card:hover {
+            transform: translateY(-2px); box-shadow: 0 8px 18px rgba(20, 40, 90, 0.12);
+            border-color: #2E5BBA;
+        }
+        #contacto .contact-card .icon {
+            width: 21px; height: 21px; color: #2E5BBA;
+            transition: color 0.15s ease, transform 0.15s ease;
+        }
+        #contacto .contact-card:hover .icon { transform: scale(1.18); }
+        /* Cada chip toma el color de su marca al pasar el ratón */
+        #contacto .contact-card[href*="facebook"]:hover { border-color:#1877F2; box-shadow:0 8px 18px rgba(24,119,242,0.28); }
+        #contacto .contact-card[href*="facebook"]:hover .icon,
+        #contacto .contact-card[href*="facebook"]:hover h3 { color:#1877F2; }
+        #contacto .contact-card[href*="instagram"]:hover { border-color:#E4405F; box-shadow:0 8px 18px rgba(228,64,95,0.28); }
+        #contacto .contact-card[href*="instagram"]:hover .icon,
+        #contacto .contact-card[href*="instagram"]:hover h3 { color:#E4405F; }
+        #contacto .contact-card[href*="youtube"]:hover { border-color:#FF0000; box-shadow:0 8px 18px rgba(255,0,0,0.22); }
+        #contacto .contact-card[href*="youtube"]:hover .icon,
+        #contacto .contact-card[href*="youtube"]:hover h3 { color:#FF0000; }
+        #contacto .contact-card[href*="github"]:hover { border-color:#24292e; box-shadow:0 8px 18px rgba(36,41,46,0.25); }
+        #contacto .contact-card[href*="github"]:hover .icon,
+        #contacto .contact-card[href*="github"]:hover h3 { color:#24292e; }
+        #contacto .contact-card[href*="tiktok"]:hover { border-color:#FE2C55; box-shadow:0 8px 18px rgba(254,44,85,0.26); }
+        #contacto .contact-card[href*="tiktok"]:hover .icon,
+        #contacto .contact-card[href*="tiktok"]:hover h3 { color:#FE2C55; }
+        #contacto .contact-card h3 { margin: 0; font-size: 0.95rem; font-weight: 600; }
+        #contacto .contact-card p { display: none; }
+    </style>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 StatSim Pro. Herramienta para simulación y análisis estadístico.</p>
+        </div>
+    </footer>
+
+    <!-- Toast para notificaciones -->
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Inputs ocultos para importar CSV -->
+    <input type="file" id="importPruebasInput" accept=".csv" style="display: none;">
+    <input type="file" id="importSocioInput" accept=".csv" style="display: none;">
+    <input type="file" id="importCorrelacionesInput" accept=".csv" style="display: none;">
+    <input type="file" id="importTodoInput" accept=".csv" style="display: none;">
+
+    <!-- Vendorizado: lo requiere graficas.js, debe cargarse antes -->
+
+    <!-- ============================================================
+         VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
+         Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
+         (ej: src/main.js?v=2026.11.23). Eso obliga a navegadores y CDN
+         a descargar la versión nueva al instante. Sin esto, la caché
+         puede servir archivos viejos hasta ~10 minutos o más.
+         ============================================================ -->
+    <!-- Scripts generador de datos: primero el almacén columnar (lo usa el
+         generador y también generador-worker.js, que carga ambos con estas
+         mismas versiones) -->
+    <!-- Arranque modular: src/main.js carga todo el código propio (módulos ES bajo src/). Al publicar cambios:
+         sube VERSION en src/version.js y este ?v=. -->
+    <script type="module" src="src/main.js?v=2026.11.23"></script>
+
+    <!-- Etiquetas humanas de variables (estilo SPSS) -->
+
+    <!-- Analizador estadístico principal -->
+
+    <!-- Módulo de interpretaciones estadísticas -->
+
+    <!-- Criba vectorizada de correlaciones (selección de objetivos por datos) -->
+
+    <!-- Correlaciones por dimensiones (objetivos específicos) -->
+
+    <!-- Hallazgos por variables sociodemográficas -->
+
+    <!-- Matriz de consistencia -->
+
+    <!-- Búsqueda en Scopus (Elsevier) -->
+    
+    <!-- Arsenal de proxies CORS (con sistema de salud) -->
+
+    <!-- Búsqueda directa en Google Académico (experimental) -->
+
+    <!-- Importar libreria -->
+    
+    <!-- Buscador de antecedentes (Fase A) -->
+    
+
+    <!-- Exportador del capítulo de resultados a Word (APA 7) -->
+
+    <!-- Librería de gráficos científicos (depende de d3) -->
+
+    <!-- Guía de coherencia en vivo (usa ReglasCoherencia, expuesta por src/simulador/index.js) -->
+
+    <!-- Fiabilidad y consistencia interna-->
+
+    <!-- Analiza los gráficos principales-->
+    
+    <!-- Todo el código propio vive en src/ (ES modules); src/main.js lo carga. Los terceros de assets/vendor/ se cargan a demanda. -->
+    <!-- Mantenimiento: recargar sin caché / restablecer (tarjeta de Ayuda) -->
+    
+    <!-- Tutoriales de youtube por seccion -->
+
+    <!-- Heros de sección: cada slot adopta la façade de SU sección y los
+         CTAs navegan con scroll suave. No toca src/shared/video-tutoriales.js. -->
+    <script>
+    (function(){
+        document.querySelectorAll('.ana-hero-video').forEach(function(slot){
+            var sec = slot.closest('section'); if (!sec) return;
+            function adoptar() {
+                var v = sec.querySelector('.yt-lite');
+                if (v && v.parentElement !== slot) { slot.appendChild(v); return true; }
+                return !!(v && v.parentElement === slot);
+            }
+            if (!adoptar()) {
+                var mo = new MutationObserver(function(){ if (adoptar()) mo.disconnect(); });
+                mo.observe(sec, { childList: true, subtree: true });
+                setTimeout(function(){ mo.disconnect(); }, 15000);
+            }
+        });
+        document.querySelectorAll('.ana-ctas a[data-scroll]').forEach(function(b){
+            b.addEventListener('click', function(e){
+                var t = document.getElementById(b.getAttribute('data-scroll'));
+                if (t) { e.preventDefault(); t.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            });
+        });
+        document.querySelectorAll('.ana-cta-tutorial').forEach(function(b){
+            b.addEventListener('click', function(e){
+                var sec = b.closest('section');
+                var v = sec && sec.querySelector('.yt-lite');
+                if (v) { e.preventDefault(); v.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+            });
+        });
+    })();
+    </script>
+</body>
+
+</html>

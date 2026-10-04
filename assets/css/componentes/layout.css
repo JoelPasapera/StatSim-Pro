@@ -1,0 +1,48 @@
+/* ========================================
+   CONTAINER Y LAYOUT
+   ======================================== */
+.container {
+    width: 100%;
+    padding-left: clamp(16px, 2.5%, 48px);
+    padding-right: clamp(16px, 2.5%, 48px);
+    box-sizing: border-box;
+}
+.main { min-height: calc(100vh - 200px); padding: var(--spacing-2xl) 0; }
+.section { display: none; }
+.section.active { display: block; animation: fadeIn 0.45s cubic-bezier(.22, .8, .3, 1); }
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+/* Entrada escalonada de las primeras tarjetas (solo transform/opacity). */
+.section.active > .container > .card { animation: cardIn 0.5s cubic-bezier(.22, .8, .3, 1) backwards; }
+.section.active > .container > .card:nth-of-type(1) { animation-delay: 0.04s; }
+.section.active > .container > .card:nth-of-type(2) { animation-delay: 0.1s; }
+.section.active > .container > .card:nth-of-type(3) { animation-delay: 0.16s; }
+.section.active > .container > .card:nth-of-type(4) { animation-delay: 0.22s; }
+.section.active > .container > .card:nth-of-type(5) { animation-delay: 0.28s; }
+@keyframes cardIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.995); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.section-header { text-align: center; margin-bottom: var(--spacing-2xl); }
+.section-title {
+    font-family: var(--font-display);
+    font-size: clamp(2rem, 4.5vw, 2.6rem);
+    font-weight: 300; letter-spacing: -0.03em;
+    margin-bottom: var(--spacing-sm);
+    color: var(--color-primary);
+}
+.section-title::after { /* pincelada de marca bajo el título */
+    content: '';
+    display: block;
+    width: 64px; height: 3px;
+    margin: 0.9rem auto 0;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--color-accent), rgba(76, 125, 255, 0.8));
+}
+.section-subtitle {
+    font-size: 1.06rem; color: var(--color-text-secondary); font-weight: 400;
+    max-width: 68rem; margin: 0 auto;
+}
+

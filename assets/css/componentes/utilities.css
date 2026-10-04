@@ -1,0 +1,554 @@
+/* ========================================
+   UTILIDADES · SCROLLBAR · LOGO
+   ======================================== */
+.text-center { text-align: center; }
+.mb-0 { margin-bottom: 0; }
+.mt-lg { margin-top: var(--spacing-lg); }
+.hidden { display: none !important; }
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: #2a3b52; border-radius: 5px; border: 2px solid var(--color-bg); }
+::-webkit-scrollbar-thumb:hover { background: #3a4e6d; }
+* { scrollbar-width: thin; scrollbar-color: #2a3b52 var(--color-bg); }
+
+.logo-group { display: flex; align-items: flex-end; gap: 10px; }
+.author-signature { font-size: 0.8rem; font-weight: 400; color: var(--color-text-secondary); }
+.logo { margin: 0; font-size: 1.8rem; }
+
+/* Duplicados del index (chart-grid) ya cubiertos arriba en modo papel. */
+.chart-wrapper { width: 100%; height: 320px; display: flex; justify-content: center; align-items: center; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* ========================================
+   HERO — portada del Explorador. El "wow" sin video: tipografía display,
+   red de nodos con pulso tenue (solo opacity, 2 nodos) y verbos de marca.
+   ======================================== */
+/* Portada independiente A PANTALLA COMPLETA: al entrar solo se ve ella
+   (las secciones de abajo se ocultan por CSS mientras esté activa) y se
+   retira al navegar. El video de fondo es OPCIONAL: si portada.mp4 no
+   existe, su onerror lo oculta y quedan las auroras del tema. */
+.hero-portada {
+    margin: 0 0 var(--spacing-2xl);
+    padding: 0; /* full-bleed: el hero toca los bordes del viewport */
+}
+.hero-portada .hero {
+    position: relative;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent; /* el video ES el fondo; sin tarjeta */
+    /* Se desliza bajo el header para que el nav flote SOBRE el video: */
+    margin-top: -76px;
+    padding-top: 96px;
+    min-height: 100vh;   /* fallback universal */
+    min-height: 100svh;  /* viewport completo real */
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+@media (max-width: 768px) { /* header apilado: más alto */
+    .hero-portada .hero { margin-top: -152px; padding-top: 172px; }
+}
+/* Mientras la portada está activa, el header se vuelve cristal puro
+   (flota sobre el video, sin fondo ni filo): aspecto premium. */
+body:has(.hero-portada:not(.oculto)) .header {
+    background: transparent;
+    border-bottom-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+body:has(.hero-portada:not(.oculto)) .header::after { opacity: 0; }
+.hero-portada.oculto { display: none; }
+/* Mientras la portada está activa, el resto espera su turno. */
+main > .hero-portada:not(.oculto) ~ .section { display: none !important; }
+body:has(.hero-portada:not(.oculto)) .footer { display: none; }
+/* Video de fondo (opcional): cubre el hero, tono oscuro garantizado por
+   el velo; pausado por el script al retirar la portada. */
+.hero-video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    z-index: 0;
+    opacity: 0.5;
+    filter: saturate(0.85) brightness(0.7);
+}
+.hero-velo {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        radial-gradient(62% 58% at 50% 44%, rgba(11, 15, 25, 0.12), rgba(11, 15, 25, 0.7) 80%),
+        linear-gradient(180deg, rgba(11, 15, 25, 0.62) 0%, rgba(11, 15, 25, 0.3) 34%, rgba(11, 15, 25, 0.55) 72%, var(--color-bg) 99%);
+}
+.hero-portada .hero > :not(.hero-video):not(.hero-velo):not(.hero-red) { position: relative; z-index: 2; }
+.hero-portada .hero-red { position: absolute; inset: 0; z-index: 1; } /* decorativo: JAMÁS en flujo */
+@media (prefers-reduced-motion: reduce) { .hero-video { display: none; } }
+
+/* Linterna de nodos: la red se INTENSIFICA alrededor del cursor. Es un
+   elemento fijo pequeño con la misma textura, recortado en círculo suave,
+   movido SOLO con transform (compositor GPU): cero repintados, cero costo
+   en reposo. Desactivada en táctiles y con movimiento reducido. */
+.nodo-linterna { display: none; }
+@media (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    .nodo-linterna {
+        display: block;
+        position: fixed;
+        top: 0; left: 0;
+        width: 720px; height: 720px;
+        margin: -360px 0 0 -360px;
+        z-index: 0;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.45s ease, transform 0.16s cubic-bezier(.2, .7, .3, 1);
+        background-color: transparent;
+        background-blend-mode: screen;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23c8d4ef' stroke-opacity='0.16' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480M520 340L440 470'/%3E%3C/g%3E%3Cg fill='%23e6b93f' fill-opacity='0.28'%3E%3Ccircle cx='60' cy='90' r='2.4'/%3E%3Ccircle cx='200' cy='40' r='1.8'/%3E%3Ccircle cx='340' cy='120' r='2.6'/%3E%3Ccircle cx='470' cy='70' r='1.6'/%3E%3Ccircle cx='160' cy='210' r='2'/%3E%3Ccircle cx='120' cy='260' r='2.2'/%3E%3Ccircle cx='300' cy='250' r='1.7'/%3E%3Ccircle cx='390' cy='300' r='2.5'/%3E%3Ccircle cx='520' cy='340' r='1.7'/%3E%3Ccircle cx='90' cy='430' r='2'/%3E%3Ccircle cx='260' cy='480' r='2.4'/%3E%3Ccircle cx='440' cy='470' r='1.8'/%3E%3C/g%3E%3C/svg%3E");
+        -webkit-mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.95), transparent 70%);
+        mask-image: radial-gradient(circle closest-side, rgba(0,0,0,0.95), transparent 70%);
+        will-change: transform;
+    }
+    .nodo-linterna::before { /* halo de iluminación que delata el área activa */
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at 50% 50%, rgba(230, 185, 63, 0.075), rgba(76, 125, 255, 0.045) 40%, transparent 68%);
+    }
+    body:hover .nodo-linterna { opacity: 1; }
+}
+/* Nodos que LATEN en zonas fijas de todas las secciones (vida tenue
+   permanente: 4 puntos diminutos animando solo opacity — costo ínfimo). */
+.red-viva { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.red-viva i {
+    position: absolute;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(230, 185, 63, 0.85), rgba(230, 185, 63, 0) 70%);
+    animation: nodoPulso 6s ease-in-out infinite;
+}
+.red-viva i:nth-child(1) { top: 16%; left: 11%; }
+.red-viva i:nth-child(2) { top: 34%; right: 8%; animation-delay: 1.6s; animation-duration: 7.5s; }
+.red-viva i:nth-child(3) { bottom: 22%; left: 20%; animation-delay: 3.1s; background: radial-gradient(circle, rgba(140, 170, 255, 0.8), rgba(140, 170, 255, 0) 70%); }
+.red-viva i:nth-child(4) { bottom: 12%; right: 16%; animation-delay: 4.4s; animation-duration: 8.5s; }
+@media (prefers-reduced-motion: reduce) { .red-viva { display: none; } }
+.hero-cta {
+    margin-top: 1.8rem;
+    display: inline-flex;
+}
+.hero {
+    position: relative;
+    text-align: center;
+    padding: clamp(2.5rem, 7vw, 5rem) 1rem clamp(2rem, 5vw, 3.5rem);
+    margin-bottom: var(--spacing-xl);
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-soft);
+    background:
+        radial-gradient(38rem 22rem at 50% -30%, rgba(230, 185, 63, 0.1), transparent 60%),
+        linear-gradient(180deg, rgba(24, 35, 56, 0.55), rgba(19, 28, 46, 0.25));
+    box-shadow: var(--edge-light);
+}
+.hero-red { position: absolute; inset: 0; pointer-events: none; opacity: 0.55; }
+.hero-red .pulso { animation: nodoPulso 5.5s ease-in-out infinite; }
+.hero-red .pulso2 { animation: nodoPulso 7s ease-in-out 2.2s infinite; }
+@keyframes nodoPulso { 0%, 100% { opacity: 0.25; } 50% { opacity: 0.9; } }
+.hero-eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.8rem; font-weight: 600;
+    letter-spacing: 0.42em; text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 1rem;
+}
+.hero-titulo {
+    font-family: var(--font-display);
+    font-size: clamp(2.4rem, 6.5vw, 4rem);
+    font-weight: 600; letter-spacing: -0.03em; line-height: 1.05;
+    color: var(--color-primary);
+    margin-bottom: 1.1rem;
+}
+.hero-titulo .accent {
+    background: linear-gradient(120deg, #f4d071, var(--color-accent) 55%, #b8912b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.hero-lema {
+    font-size: clamp(1.02rem, 2.2vw, 1.25rem);
+    color: var(--color-secondary);
+    max-width: 34rem; margin: 0 auto 1.6rem;
+}
+.hero-verbos {
+    display: flex; justify-content: center; flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    font-family: var(--font-display);
+    font-size: 0.95rem; font-weight: 500; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--color-text-secondary);
+}
+.hero-verbos b { color: #f3d787; font-weight: 600; }
+.hero-verbos span[aria-hidden] { color: rgba(230, 185, 63, 0.55); }
+
+/* Avisos con fondo claro inline en el Buscador (p. ej. la nota de Scopus):
+   texto tinta garantizado sobre cualquier fondo claro generado por JS. */
+#seccionAntecedentes :is(div, p, span, li)[style*="background"] { color: #2a3140; }
+#seccionAntecedentes :is(div, p, span, li)[style*="background"] :is(b, strong, a, em, span, li) { color: #131a26; }
+
+/* ============================================================
+   EL RECORRIDO — storytelling conducido por el scroll.
+   Motor: CSS scroll-driven animations (animation-timeline: view())
+   ejecutadas por el compositor GPU: cero JS por frame, cero video.
+   Respaldo: sin soporte, IntersectionObserver añade .visible y las
+   mismas piezas entran con transition (idéntica estética).
+   Se retira junto a la portada al navegar (clase .oculto).
+   ============================================================ */
+.recorrido { position: relative; }
+.recorrido.oculto { display: none; }
+.rec-cap {
+    min-height: 100vh;
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 4.5rem clamp(16px, 5%, 64px);
+    position: relative;
+    overflow: hidden;
+}
+.rec-cap::before { /* red de fondo: vive en los LATERALES (el centro queda
+    limpio gracias a la máscara) y se funde con el scroll del capítulo */
+    content: '';
+    position: absolute;
+    inset: -80px 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.9;
+    -webkit-mask-image: linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.7) 16%, rgba(0,0,0,0.1) 38%, rgba(0,0,0,0.1) 62%, rgba(0,0,0,0.55) 84%, rgba(0,0,0,0.95) 100%);
+    mask-image: linear-gradient(90deg, rgba(0,0,0,1) 0%, rgba(0,0,0,0.7) 16%, rgba(0,0,0,0.12) 38%, rgba(0,0,0,0.12) 62%, rgba(0,0,0,0.7) 84%, rgba(0,0,0,1) 100%);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.12' fill='none'%3E%3Cpath d='M60 90L200 40L340 120L470 70M200 40L160 210M340 120L390 300M60 90L120 260L160 210L300 250L390 300L520 340M120 260L90 430L260 480M300 250L260 480M390 300L440 470L260 480'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.18'%3E%3Ccircle cx='200' cy='40' r='1.8'/%3E%3Ccircle cx='340' cy='120' r='2.4'/%3E%3Ccircle cx='160' cy='210' r='1.9'/%3E%3Ccircle cx='390' cy='300' r='2.3'/%3E%3Ccircle cx='260' cy='480' r='2.2'/%3E%3C/g%3E%3C/svg%3E");
+}
+/* La geometría del fondo narra la etapa (cada capítulo, su red):
+   01 dispersa (descubrir) · 02 convergente (encontrar) ·
+   03 malla organizándose (datos) · 04 estructurada (evidencia→documento) */
+.recorrido .rec-cap:nth-of-type(2)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.14' fill='none'%3E%3Cpath d='M40 60L280 300M120 480L280 300M520 90L280 300M500 470L280 300M60 260L280 300M480 250L280 300'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.2'%3E%3Ccircle cx='40' cy='60' r='2'/%3E%3Ccircle cx='120' cy='480' r='2'/%3E%3Ccircle cx='520' cy='90' r='2'/%3E%3Ccircle cx='500' cy='470' r='2'/%3E%3Ccircle cx='60' cy='260' r='1.8'/%3E%3Ccircle cx='480' cy='250' r='1.8'/%3E%3C/g%3E%3Ccircle cx='280' cy='300' r='5' fill='%23e6b93f' fill-opacity='0.55'/%3E%3C/svg%3E");
+}
+.recorrido .rec-cap:nth-of-type(3)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.13' fill='none'%3E%3Cpath d='M80 80H480M80 200H480M80 320H480M80 440H480M80 80V440M213 80V440M347 80V440M480 80V440'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.2'%3E%3Ccircle cx='213' cy='200' r='2.2'/%3E%3Ccircle cx='347' cy='320' r='2.2'/%3E%3Ccircle cx='80' cy='440' r='2'/%3E%3Ccircle cx='480' cy='80' r='2'/%3E%3C/g%3E%3C/svg%3E");
+}
+.recorrido .rec-cap:nth-of-type(4)::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560' viewBox='0 0 560 560'%3E%3Cg stroke='%23aebbdb' stroke-opacity='0.15' fill='none'%3E%3Cpath d='M60 460L180 340L300 380L420 220L500 260M60 460H500M180 340V460M300 380V460M420 220V460'/%3E%3C/g%3E%3Cg fill='%23aebbdb' fill-opacity='0.22'%3E%3Ccircle cx='180' cy='340' r='2.2'/%3E%3Ccircle cx='300' cy='380' r='2.2'/%3E%3Ccircle cx='420' cy='220' r='2.6'/%3E%3C/g%3E%3Ccircle cx='420' cy='220' r='6' fill='none' stroke='%23e6b93f' stroke-opacity='0.55'/%3E%3C/svg%3E");
+}
+.rec-cap > * { position: relative; z-index: 1; }
+.rec-num {
+    font-family: var(--font-display);
+    font-size: 0.8rem; font-weight: 700;
+    letter-spacing: 0.4em; text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 1rem;
+}
+.rec-titulo {
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 4.5vw, 2.9rem);
+    font-weight: 550; letter-spacing: -0.02em; line-height: 1.12;
+    color: var(--color-primary);
+    margin-bottom: 1rem;
+    max-width: 22ch;
+}
+.rec-texto {
+    font-size: clamp(0.98rem, 1.9vw, 1.12rem);
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    max-width: 36rem;
+    margin-bottom: 1.5rem; /* el visual es parte de la composición, no un anexo */
+}
+.rec-final { min-height: 78vh; min-height: 78svh; }
+/* --- Piezas animables --- */
+.rec-anim { opacity: 0; transform: translateY(26px); }
+/* Motor moderno: el scroll conduce la animación (GPU, sin JS) */
+@supports (animation-timeline: view()) {
+    .rec-anim {
+        animation: recIn 1ms linear both; /* duración irrelevante: manda el scroll */
+        animation-timeline: view();
+        animation-range: entry 12% cover 38%;
+    }
+    .rec-anim.rec-d2 { animation-range: entry 18% cover 46%; }
+    .rec-anim.rec-d3 { animation-range: entry 24% cover 54%; }
+    .rec-cap::before {
+        animation: recParallax 1ms linear both;
+        animation-timeline: view();
+        animation-range: cover 0% cover 100%;
+    }
+}
+@keyframes recIn { to { opacity: 1; transform: translateY(0); } }
+/* Parallax + fundido: la red del capítulo nace, acompaña y se disuelve. */
+@keyframes recParallax {
+    from { transform: translateY(46px); opacity: 0; }
+    18% { opacity: 0.9; }
+    82% { opacity: 0.9; }
+    to { transform: translateY(-46px); opacity: 0; }
+}
+/* Respaldo universal: IntersectionObserver añade .visible */
+@supports not (animation-timeline: view()) {
+    .rec-anim { transition: opacity 0.6s cubic-bezier(.22,.8,.3,1), transform 0.6s cubic-bezier(.22,.8,.3,1); }
+    .rec-anim.rec-d2 { transition-delay: 0.12s; }
+    .rec-anim.rec-d3 { transition-delay: 0.24s; }
+    .rec-anim.visible { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+    .rec-anim { opacity: 1 !important; transform: none !important; animation: none !important; transition: none !important; }
+    .rec-cap::before { animation: none !important; }
+}
+/* --- Visuales de los capítulos (SVG/CSS puros, sin imágenes) --- */
+.rec-visual { width: min(560px, 92%); }
+.rec-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.5rem; max-width: 34rem; }
+.rec-chips span {
+    font-size: 0.82rem; font-weight: 500;
+    color: var(--color-secondary);
+    border: 1px solid var(--border-soft);
+    background: rgba(19, 28, 46, 0.6);
+    border-radius: 999px;
+    padding: 0.34rem 0.9rem;
+    box-shadow: var(--edge-light);
+}
+.rec-chips b { color: #f3d787; font-weight: 600; }
+.rec-word { /* mockup ligero de página Word APA */
+    width: min(340px, 86%);
+    background: #fbfaf7;
+    border-radius: 8px;
+    padding: 1.5rem 1.6rem;
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    text-align: left;
+    color-scheme: light;
+}
+.rec-word i {
+    display: block; height: 7px; border-radius: 4px;
+    background: #d8d4c8; margin-bottom: 8px;
+}
+.rec-word i:nth-child(1) { width: 55%; height: 10px; background: #b9b29e; margin: 0 auto 14px; }
+.rec-word i:nth-child(3) { width: 92%; }
+.rec-word i:nth-child(4) { width: 97%; }
+.rec-word i:nth-child(5) { width: 60%; margin-bottom: 14px; }
+.rec-word i:nth-child(6) { width: 84%; background: #e3caa2; }
+.rec-word i:nth-child(7) { width: 88%; }
+.rec-cta-zona { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+.rec-nota { font-size: 0.82rem; color: var(--color-text-tertiary); }
+
+/* ============================================================
+   ANALIZADOR EN TEMA COMPLETO — los módulos (Comparación de grupos,
+   SEM, Renombrar variables, resultados) generan bloques con fondos
+   claros inline: aquí se re-visten al sistema nocturno. El !important
+   es necesario y legítimo: debe ganar a style="background:#fff…".
+   ============================================================ */
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: #f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background: #e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background:#e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(255"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: #f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: #e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:#e"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color: white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="background-color:white"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="rgb(2"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="linear-gradient"][style*="#f"],
+#analizador :is(div, section, p, td, th, span, label, fieldset)[style*="linear-gradient"][style*="#e"] {
+    background: var(--surface-2) !important;
+    color: var(--color-text) !important;
+    border-color: var(--border-soft) !important;
+}
+#analizador [style*="background: #f"] :is(strong, b, h3, h4, label),
+#analizador [style*="background:#f"] :is(strong, b, h3, h4, label),
+#analizador [style*="background: #e"] :is(strong, b, h3, h4, label),
+#analizador [style*="background:#e"] :is(strong, b, h3, h4, label) { color: var(--color-primary) !important; }
+/* Textos con color oscuro inline (ilegibles en dark) → claros */
+#analizador :is(p, span, td, li, label, div)[style*="color: #1"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#1"],
+#analizador :is(p, span, td, li, label, div)[style*="color: #2"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#2"],
+#analizador :is(p, span, td, li, label, div)[style*="color: #3"],
+#analizador :is(p, span, td, li, label, div)[style*="color:#3"],
+#analizador :is(p, span, td, li, label, div)[style*="color: black"] { color: var(--color-text) !important; }
+/* Los gráficos quedan fuera de la caza (su filtro ya los gobierna). */
+#analizador :is(.chart-wrapper, .chart-container)[style],
+#analizador :is(.chart-wrapper, .chart-container) [style] { background: revert-layer; }
+
+/* ============================================================
+   VIDEO-TUTORIALES (façade de YouTube): miniatura ligera + play;
+   el iframe real solo existe tras el clic. Peso en reposo ≈ 1 img lazy.
+   ============================================================ */
+.yt-lite {
+    position: relative;
+    width: min(680px, 100%);
+    aspect-ratio: 16 / 9;
+    margin: 1.4rem auto 0;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    cursor: pointer;
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--edge-light), 0 14px 40px rgba(2, 6, 16, 0.45);
+    background: var(--surface);
+}
+.yt-lite img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    filter: brightness(0.78) saturate(0.95);
+    transition: filter var(--transition-base), transform var(--transition-slow);
+}
+.yt-lite:hover img { filter: brightness(0.92) saturate(1.05); transform: scale(1.025); }
+.yt-play {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 64px; height: 64px;
+    margin: -32px 0 0 -32px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    color: #221803;
+    background: linear-gradient(135deg, #f2cc66, var(--color-accent) 60%, #c99a2e);
+    box-shadow: 0 6px 24px rgba(230, 185, 63, 0.4);
+    transition: transform var(--transition-fast);
+}
+.yt-play svg { margin-left: 3px; }
+.yt-lite:hover .yt-play, .yt-lite:focus-visible .yt-play { transform: scale(1.1); }
+.yt-lite:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
+.yt-cinta {
+    position: absolute;
+    left: 0.9rem; bottom: 0.8rem;
+    font-family: var(--font-display);
+    font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: #f3d787;
+    background: rgba(11, 15, 25, 0.72);
+    border: 1px solid rgba(230, 185, 63, 0.28);
+    border-radius: 999px;
+    padding: 0.3rem 0.8rem;
+    backdrop-filter: blur(6px);
+}
+.yt-lite.yt-activo { cursor: default; }
+.yt-lite iframe {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    border: 0;
+}
+
+
+/* ============================================================
+   HERO DEL ANALIZADOR — dos columnas: texto (izq) + video (der).
+   El slot derecho recibe la façade .yt-lite que monta
+   video-tutoriales.js; aquí solo se adapta a su columna.
+   ============================================================ */
+.ana-hero {
+    max-width: 1240px;
+    margin: 0 auto var(--spacing-2xl);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 56px;
+    align-items: center;
+}
+.ana-eyebrow {
+    font-family: var(--font-display);
+    font-size: 0.78rem; font-weight: 600;
+    letter-spacing: 0.26em; text-transform: uppercase;
+    color: var(--color-accent);
+    margin-bottom: 0.9rem;
+}
+.ana-titulo {
+    font-family: var(--font-display);
+    font-weight: 500; letter-spacing: -0.022em; line-height: 1.06;
+    font-size: clamp(2.25rem, 4.2vw, 3.4rem);
+    color: var(--color-primary);
+    margin-bottom: 1.1rem;
+}
+.ana-titulo .oro {
+    background: linear-gradient(120deg, #f4d071, var(--color-accent) 55%, #b8912b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    display: block;
+}
+.ana-parrafo {
+    font-size: 1rem;
+    color: var(--color-text-secondary);
+    max-width: 46ch;
+    line-height: 1.65;
+}
+.ana-flujo { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 26px; }
+.af-paso {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-display);
+    font-size: 0.86rem; font-weight: 500;
+    color: var(--color-secondary); white-space: nowrap;
+}
+.af-paso i {
+    font-style: normal;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 1.5rem; height: 1.5rem; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #f0c75e, var(--color-accent));
+    color: #241a05; font-weight: 800; font-size: 0.8rem;
+}
+.af-oro { color: #f3d787; font-weight: 600; }
+.af-linea {
+    flex: 0 0 26px; height: 1px;
+    background: linear-gradient(90deg, rgba(230, 185, 63, 0.6), rgba(148, 163, 197, 0.25));
+}
+.ana-ctas { display: flex; gap: 12px; margin-top: 26px; flex-wrap: wrap; }
+.ana-hero-video .yt-lite { width: 100%; margin: 0; }
+@media (max-width: 880px) {
+    .ana-hero { grid-template-columns: 1fr; gap: 36px; text-align: center; }
+    .ana-parrafo { margin-left: auto; margin-right: auto; }
+    .ana-flujo, .ana-ctas { justify-content: center; }
+}
+
+
+/* Sección sin video-tutorial configurado: el hero colapsa a una columna
+   centrada y el botón de tutorial desaparece (cero JS: puro :has). */
+.ana-hero:has(.ana-hero-video:empty) { grid-template-columns: 1fr; text-align: center; }
+.ana-hero:has(.ana-hero-video:empty) .ana-parrafo { margin-left: auto; margin-right: auto; }
+.ana-hero:has(.ana-hero-video:empty) .ana-flujo,
+.ana-hero:has(.ana-hero-video:empty) .ana-ctas { justify-content: center; }
+.ana-hero:has(.ana-hero-video:empty) .ana-cta-tutorial { display: none; }
+
+ /* Gráficos apilados: cada uno aprovecha todo el ancho, sin recortes */
+#contenedorGraficos.chart-grid.show { display: flex; flex-direction: column; gap: 1.5rem; }
+#contenedorGraficos .chart-container { width: 100%; height: auto; max-height: none; overflow: visible; }
+#contenedorGraficos .chart-wrapper { width: 100%; height: auto; min-height: 0; }
+
+/* ---- Avance de la generación (Simulador): barra que alimenta el Web Worker ---- */
+.progreso-generacion {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin: 0.6rem 0 0.2rem;
+}
+.progreso-generacion[hidden] { display: none; }
+.progreso-generacion__barra {
+    flex: 1;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+}
+.progreso-generacion__relleno {
+    height: 100%;
+    width: 0;
+    border-radius: inherit;
+    background: var(--color-accent);
+    transition: width 0.15s linear;
+}
+.progreso-generacion__texto {
+    min-width: 14rem;
+    font-size: 0.85rem;
+    color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
+}

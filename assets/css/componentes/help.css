@@ -1,0 +1,16 @@
+/* ========================================
+   HELP
+   ======================================== */
+.help-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: var(--spacing-lg); }
+.help-card {
+    padding: var(--spacing-xl);
+    background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--edge-light);
+    transition: border-color var(--transition-base), transform var(--transition-base);
+}
+.help-card:hover { border-color: var(--color-border); transform: translateY(-2px); }
+.help-card h3 { font-size: 1.18rem; font-weight: 550; margin-bottom: var(--spacing-sm); color: var(--color-primary); }
+.help-card p { color: var(--color-text-secondary); line-height: 1.65; }
+

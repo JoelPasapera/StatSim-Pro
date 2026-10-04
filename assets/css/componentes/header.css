@@ -1,0 +1,74 @@
+/* ========================================
+   HEADER
+   ======================================== */
+.header {
+    background-color: rgba(11, 15, 25, 0.72);
+    border-bottom: 1px solid var(--border-soft);
+    padding: var(--spacing-md) 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+.header::after { /* filo dorado sutil bajo el header */
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(230, 185, 63, 0.35) 30%, rgba(76, 125, 255, 0.25) 70%, transparent);
+    pointer-events: none;
+}
+.header-content { display: flex; justify-content: space-between; align-items: center; }
+.logo {
+    font-family: var(--font-display);
+    font-size: 1.75rem; font-weight: 650; letter-spacing: -0.02em;
+    color: var(--color-primary);
+}
+.logo .accent {
+    font-weight: 300;
+    background: linear-gradient(120deg, #f4d071, var(--color-accent) 55%, #b8912b);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    position: relative;
+    display: inline-block;
+    overflow: hidden;
+}
+.logo .accent::after { /* destello que cruza el "Pro" cada 7 s (solo transform) */
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0; left: 0; width: 45%;
+    background: linear-gradient(105deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    transform: translateX(-160%) skewX(-18deg);
+    animation: logoShine 7s cubic-bezier(.4, 0, .2, 1) infinite;
+    pointer-events: none;
+}
+@keyframes logoShine {
+    0%, 78% { transform: translateX(-160%) skewX(-18deg); }
+    92%, 100% { transform: translateX(340%) skewX(-18deg); }
+}
+.nav { display: flex; gap: var(--spacing-lg); }
+.nav-link {
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: 0.9375rem; font-weight: 500; letter-spacing: 0.01em;
+    transition: color var(--transition-base);
+    position: relative;
+    padding-bottom: 2px;
+}
+.nav-link::after { /* subrayado animado por transform (GPU) */
+    content: '';
+    position: absolute;
+    bottom: -0.7rem; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, var(--color-accent), #f4d071);
+    border-radius: 2px;
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform var(--transition-base);
+}
+.nav-link:hover { color: var(--color-text); }
+.nav-link:hover::after { transform: scaleX(0.55); }
+.nav-link.active { color: var(--color-primary); }
+.nav-link.active::after { transform: scaleX(1); }
+

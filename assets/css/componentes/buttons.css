@@ -1,0 +1,56 @@
+/* ========================================
+   BUTTONS
+   ======================================== */
+.btn {
+    display: inline-flex; align-items: center; gap: var(--spacing-xs);
+    padding: 0.72rem 1.5rem;
+    font-size: 0.9375rem; font-weight: 550; font-family: var(--font-primary);
+    letter-spacing: 0.01em; text-decoration: none;
+    border: none; border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: transform var(--transition-fast), box-shadow var(--transition-base),
+                background-color var(--transition-base), border-color var(--transition-base),
+                color var(--transition-base), filter var(--transition-base);
+    white-space: nowrap;
+}
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.985); }
+.btn-primary {
+    background: linear-gradient(135deg, #f2cc66, var(--color-accent) 55%, #c99a2e);
+    color: #221803;
+    box-shadow: 0 2px 10px rgba(230, 185, 63, 0.22), var(--edge-light);
+}
+.btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    filter: brightness(1.07);
+    box-shadow: 0 6px 20px rgba(230, 185, 63, 0.3);
+}
+.btn-secondary {
+    background-color: var(--surface-2);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--edge-light);
+}
+.btn-secondary:hover:not(:disabled) { background-color: #1d2a44; border-color: rgba(148, 163, 197, 0.3); }
+.btn-outline { background-color: transparent; color: var(--color-secondary); border: 1px solid var(--color-border); }
+.btn-outline:hover:not(:disabled) {
+    background-color: rgba(230, 185, 63, 0.07);
+    border-color: var(--color-accent);
+    color: var(--color-text);
+}
+.btn-lg { padding: 1rem 2rem; font-size: 1rem; }
+.btn:disabled { opacity: 0.42; cursor: not-allowed; }
+.btn:focus-visible, .input:focus-visible, .nav-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+}
+.btn-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; padding: 0;
+    background: none; border: none;
+    color: var(--color-text-secondary); cursor: pointer;
+    transition: background-color var(--transition-base), color var(--transition-base);
+    border-radius: var(--radius-sm);
+}
+.btn-icon:hover { background-color: var(--surface-2); color: var(--color-text); }
+.btn-delete:hover { background-color: rgba(248, 113, 113, 0.12); color: var(--color-error); }
+

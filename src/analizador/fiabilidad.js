@@ -1,0 +1,784 @@
+// analizador/fiabilidad.js — fiabilidad: alfa, omega, análisis de ítems.
+// Origen: fiabilidad.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
+
+import { fiabilidadOrdinal, coeficientesOrdinales, invertirSignos, tipoDeItems } from './psicometria/ordinal.js';
+import { omegaUnifactorial, omegaObservado } from './psicometria/clasica.js';
+import { hayWorker, ejecutarTarea } from './psicometria/servicio-psicometrico.js';
+import { montarBloqueBootstrap, filasBootstrap, notaBootstrap, fraseBootstrap, CABECERA_BOOTSTRAP } from './psicometria/bootstrap-ui.js';
+import { bus, EVENTOS } from '../shared/eventos.js';
+import { AnalizadorEstadistico } from './estadistica.js';
+import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
+
+// ============================================================
+// FIABILIDAD Y CONSISTENCIA INTERNA — StatSim Pro
+// ------------------------------------------------------------
+// Módulo autónomo. Detecta automáticamente las escalas (ítems
+// agrupados por prefijo, estructura del Simulador o campos
+// manuales), calcula una batería completa de consistencia
+// interna y genera tanto la sección de la interfaz como los
+// bloques del documento Word.
+//   · Alfa de Cronbach (bruto y estandarizado) con IC 95 % (Feldt)
+//   · Omega total de McDonald (solución unifactorial, ejes
+//     principales iterados sobre la matriz de correlaciones)
+//   · Lambda 2 de Guttman
+//   · Correlación media inter-ítem y su rango
+//   · Análisis de ítems: media, DE, correlación ítem-total
+//     corregida y alfa si se elimina el elemento
+//   · Resiliencia: ítems constantes o no numéricos se excluyen
+//     con aviso; posibles ítems inversos se señalan; n efectivo
+//     por eliminación de casos incompletos (listwise)
+// ============================================================
+const Fiabilidad = {
+    _ultimo: null,
+
+    // ---------- utilidades numéricas autónomas ----------
+    _media(v) { return v.reduce((s, x) => s + x, 0) / v.length; },
+    _varianza(v) { // muestral (n-1)
+        const m = this._media(v);
+        return v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1);
+    },
+    _cov(a, b) {
+        const ma = this._media(a), mb = this._media(b);
+        let s = 0;
+        for (let i = 0; i < a.length; i++) s += (a[i] - ma) * (b[i] - mb);
+        return s / (a.length - 1);
+    },
+    _cor(a, b) {
+        const c = this._cov(a, b), va = this._varianza(a), vb = this._varianza(b);
+        return (va > 0 && vb > 0) ? c / Math.sqrt(va * vb) : 0;
+    },
+    // Beta incompleta regularizada (para la CDF de la F de Fisher)
+    _betacf(a, b, x) {
+        const MAXIT = 200, EPS = 3e-12, FPMIN = 1e-300;
+        let qab = a + b, qap = a + 1, qam = a - 1;
+        let c = 1, d = 1 - qab * x / qap;
+        if (Math.abs(d) < FPMIN) d = FPMIN;
+        d = 1 / d;
+        let h = d;
+        for (let m = 1; m <= MAXIT; m++) {
+            const m2 = 2 * m;
+            let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+            d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+            c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+            d = 1 / d; h *= d * c;
+            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+            d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
+            c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
+            d = 1 / d;
+            const del = d * c; h *= del;
+            if (Math.abs(del - 1) < EPS) break;
+        }
+        return h;
+    },
+    _gammaln(x) {
+        const cof = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+            -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+        let y = x, tmp = x + 5.5;
+        tmp -= (x + 0.5) * Math.log(tmp);
+        let ser = 1.000000000190015;
+        for (let j = 0; j < 6; j++) ser += cof[j] / ++y;
+        return -tmp + Math.log(2.5066282746310005 * ser / x);
+    },
+    _betai(a, b, x) {
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        const bt = Math.exp(this._gammaln(a + b) - this._gammaln(a) - this._gammaln(b)
+            + a * Math.log(x) + b * Math.log(1 - x));
+        if (x < (a + 1) / (a + b + 2)) return bt * this._betacf(a, b, x) / a;
+        return 1 - bt * this._betacf(b, a, 1 - x) / b;
+    },
+    _pF(f, df1, df2) { // CDF de la F
+        if (!(f > 0)) return 0;
+        return this._betai(df1 / 2, df2 / 2, df1 * f / (df1 * f + df2));
+    },
+    _qF(p, df1, df2) { // inversa por bisección
+        let lo = 1e-8, hi = 1e6;
+        for (let i = 0; i < 200; i++) {
+            const mid = (lo + hi) / 2;
+            if (this._pF(mid, df1, df2) < p) lo = mid; else hi = mid;
+        }
+        return (lo + hi) / 2;
+    },
+
+    // ---------- detección de estructura ----------
+    // Devuelve grupos { nombre, etiqueta, items:[col...], origen } a partir de:
+    //  1) los campos manuales de dimensiones (si están rellenos: prioridad),
+    //  2) la estructura del Simulador (EtiquetasVariables), si existe,
+    //  3) la heurística de prefijos: columnas numéricas no-puntaje con patrón
+    //     «prefijo + número» (PE1…PE8, F1…F36) forman una escala candidata.
+    _grupoDesdeTexto(nombre, listaTexto, numericas, usados, origen) {
+        const pedidos = (listaTexto || '').split(',').map(s => s.trim()).filter(Boolean);
+        const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
+        const noEncontrados = pedidos.filter(it => !numericas.includes(it));
+        if (items.length < 2) return null;
+        items.forEach(it => usados.add(it));
+        return {
+            nombre: (nombre || 'Dimensión').trim(), etiqueta: (nombre || 'Dimensión').trim(),
+            items, origen,
+            avisosPrevios: noEncontrados.length ? [`Ítem(s) indicado(s) pero no encontrado(s) en la base: ${noEncontrados.join(', ')}.`] : []
+        };
+    },
+
+    detectarGrupos(datos) {
+        const grupos = [];
+        const usados = new Set();
+        if (!datos || !datos.length) return grupos;
+        const columnas = Object.keys(datos[0]).filter(c => c !== 'ID');
+        const esPuntaje = c => /^\s*(total|dimensi[oó]n|general)[_\-]/i.test(c);
+        // Una columna cuenta como numérica si CUALQUIER fila aporta un valor
+        // válido (resiliencia: una primera celda vacía no debe descartar el ítem).
+        const numericas = columnas.filter(c =>
+            datos.some(f => Number.isFinite(parseFloat(f[c]))));
+
+        // 0) Configurador visual: si el usuario tiene filas definidas ahí,
+        //    esa configuración MANDA sobre toda detección automática.
+        const cfg = (typeof document !== 'undefined') ? document.getElementById('configuradorDimensiones') : null;
+        if (cfg) {
+            const filasCfg = cfg.querySelectorAll('[data-fb-fila]');
+            if (filasCfg.length) {
+                filasCfg.forEach(f => {
+                    const nom = (f.querySelector('[data-fb-nombre]') || {}).value || '';
+                    const lst = (f.querySelector('[data-fb-items]') || {}).value || '';
+                    const g = this._grupoDesdeTexto(nom, lst, numericas, usados, 'config');
+                    if (g) grupos.push(g);
+                });
+                // (2026.10.07) también con el configurador se añade la escala total de cada test de la estructura:
+                // antes se perdía en el navegador (el configurador se rellena solo y cortaba aquí la detección)
+                if (grupos.length) return grupos.concat(this._totalesPorPrueba(grupos));
+            }
+        }
+        // 1) Campos manuales «Nombre: it1, it2; Nombre2: it3, it4»
+        ['dimensionesVar1', 'dimensionesVar2'].forEach(id => {
+            const campo = (typeof document !== 'undefined') ? document.getElementById(id) : null;
+            const txt = campo && campo.value ? campo.value.trim() : '';
+            if (!txt) return;
+            txt.split(';').forEach(bloque => {
+                const [nombre, lista] = bloque.split(':');
+                if (!nombre || !lista) return;
+                const pedidos = lista.split(',').map(s => s.trim()).filter(Boolean);
+                const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
+                const noEncontrados = pedidos.filter(it => !numericas.includes(it));
+                if (items.length >= 2) {
+                    items.forEach(it => usados.add(it));
+                    grupos.push({
+                        nombre: nombre.trim(), etiqueta: nombre.trim(), items, origen: 'manual',
+                        avisosPrevios: noEncontrados.length ? [`Ítem(s) indicado(s) manualmente pero no encontrado(s) en la base: ${noEncontrados.join(', ')}.`] : []
+                    });
+                }
+            });
+        });
+
+        // 2) Estructura del Simulador
+        if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.tieneEtiquetas
+            && EtiquetasVariables.tieneEtiquetas() && Array.isArray(EtiquetasVariables._estructura)) {
+            EtiquetasVariables._estructura.forEach(prueba => {
+                // (2026.10.03) test unidimensional: su única escala (la variable general) también es un grupo de ítems
+                const escalasDelTest = (prueba.unidimensional && prueba.siglaGeneral)
+                    ? [{ sigla: prueba.siglaGeneral, etiqueta: prueba.etiquetaGeneral }]
+                    : (prueba.dimensiones || []);
+                escalasDelTest.forEach(dim => {
+                    const sigla = dim.sigla || dim.columna || '';
+                    const items = numericas.filter(c =>
+                        !usados.has(c) && !esPuntaje(c) &&
+                        new RegExp('^' + sigla + '\\d+$', 'i').test(c));
+                    if (items.length >= 2) {
+                        items.forEach(it => usados.add(it));
+                        grupos.push({
+                            nombre: sigla,
+                            etiqueta: (dim.etiqueta || sigla) + (prueba.prueba ? ` (${prueba.prueba})` : ''),
+                            items, origen: 'simulador'
+                        });
+                    }
+                });
+            });
+        }
+
+        // I1: escala TOTAL por prueba del Simulador (todas sus dimensiones)
+        grupos.push(...this._totalesPorPrueba(grupos));
+        // 3) Heurística de prefijos sobre lo restante
+        const porPrefijo = {};
+        numericas.forEach(c => {
+            if (usados.has(c) || esPuntaje(c)) return;
+            const m = c.match(/^(.+?)[_\-]?(\d+)$/);
+            if (!m || !m[1]) return;
+            const clave = m[1].replace(/[_\-]$/, '');
+            (porPrefijo[clave] = porPrefijo[clave] || []).push(c);
+        });
+        Object.keys(porPrefijo).forEach(prefijo => {
+            const items = porPrefijo[prefijo];
+            if (items.length < 2) return;
+            items.sort((a, b) => (parseInt(a.match(/(\d+)$/)[1], 10)) - (parseInt(b.match(/(\d+)$/)[1], 10)));
+            items.forEach(it => usados.add(it));
+            // El prefijo es un ALIAS: si existe una columna de puntaje asociada
+            // (Dimension_F / Total_F / General_F) y el usuario la renombró en el
+            // editor de etiquetas, el grupo de ítems hereda ese nombre real;
+            // sin renombre, conserva el alias.
+            let etiqueta = prefijo;
+            if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.etiqueta) {
+                const etDirecta = EtiquetasVariables.etiqueta(prefijo);
+                const asociada = columnas.find(c => new RegExp('^\\s*(total|dimensi[oó]n|general)[_\\-]' + prefijo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '$', 'i').test(c));
+                const etAsociada = asociada ? EtiquetasVariables.etiqueta(asociada) : null;
+                if (etDirecta && etDirecta !== prefijo) etiqueta = etDirecta;
+                else if (asociada && etAsociada && etAsociada !== asociada) etiqueta = etAsociada;
+            }
+            grupos.push({ nombre: prefijo, etiqueta, items, origen: 'prefijo' });
+        });
+        return grupos;
+    },
+
+    // ---------- cálculo por grupo ----------
+    analizarGrupo(datos, grupo, opciones = {}) {
+        const avisos = (grupo.avisosPrevios || []).slice();
+        // C5: primero se excluyen los ítems inservibles (cobertura < 60 % de
+        // casos válidos); el listwise se aplica después sobre los restantes.
+        let itemsUtiles = grupo.items.slice();
+        const bajaCobertura = [];
+        itemsUtiles = itemsUtiles.filter(it => {
+            const validos = datos.reduce((s, f) => s + (Number.isFinite(parseFloat(f[it])) ? 1 : 0), 0);
+            if (validos / datos.length < 0.6) { bajaCobertura.push(it); return false; }
+            return true;
+        });
+        if (bajaCobertura.length) avisos.push(`Ítem(s) excluido(s) por cobertura insuficiente de datos (< 60 % de casos válidos): ${bajaCobertura.join(', ')}.`);
+        if (itemsUtiles.length < 2) return { error: 'Se requieren al menos 2 ítems con cobertura suficiente.', avisos };
+        const filas = [];
+        datos.forEach(f => {
+            const vals = itemsUtiles.map(it => parseFloat(f[it]));
+            if (vals.every(Number.isFinite)) filas.push(vals);
+        });
+        const nExcluidos = datos.length - filas.length;
+        if (nExcluidos > 0) avisos.push(`${nExcluidos} caso(s) excluido(s) por datos incompletos en los ítems (n efectivo = ${filas.length}).`);
+        if (filas.length < 3) return { error: 'Se requieren al menos 3 casos completos.', avisos };
+
+        // Columnas por ítem; se excluyen los constantes (varianza nula)
+        let items = itemsUtiles.slice();
+        let cols = items.map((_, j) => filas.map(fila => fila[j]));
+        const constantes = [];
+        for (let j = items.length - 1; j >= 0; j--) {
+            if (this._varianza(cols[j]) <= 0) {
+                constantes.push(items[j]);
+                items.splice(j, 1); cols.splice(j, 1);
+            }
+        }
+        if (constantes.length) avisos.push(`Ítem(s) sin variabilidad excluido(s) del cálculo: ${constantes.join(', ')}.`);
+        const k = items.length;
+        if (k < 2) return { error: 'Se requieren al menos 2 ítems con variabilidad.', avisos };
+
+        // Covarianzas, correlaciones y total
+        const vars = cols.map(c => this._varianza(c));
+        // Puntuación total = suma de los ítems conservados
+        const total = new Array(filas.length).fill(0);
+        for (let i = 0; i < filas.length; i++) {
+            let s = 0;
+            for (let j = 0; j < k; j++) s += cols[j][i];
+            total[i] = s;
+        }
+        const varTotal = this._varianza(total);
+        if (varTotal <= 0) return { error: 'La puntuación total no presenta variabilidad.', avisos };
+
+        const R = [], C = [];
+        let sumaCov = 0, sumaCov2 = 0, sumaR = 0, rMin = 1, rMax = -1, negativos = [];
+        for (let i = 0; i < k; i++) {
+            R.push([]); C.push([]);
+            for (let j = 0; j < k; j++) {
+                const r = i === j ? 1 : this._cor(cols[i], cols[j]);
+                const cv = i === j ? vars[i] : this._cov(cols[i], cols[j]);
+                R[i].push(r); C[i].push(cv);
+                if (i < j) {
+                    sumaCov += cv; sumaCov2 += cv * cv; sumaR += r;
+                    if (r < rMin) rMin = r;
+                    if (r > rMax) rMax = r;
+                    if (r < -0.05) negativos.push(`${items[i]}–${items[j]}`);
+                }
+            }
+        }
+        const nPares = k * (k - 1) / 2;
+        const rMedia = sumaR / nPares;
+        // C2: candidatos a ítem inverso = correlación media negativa con el resto
+        const inversos = [];
+        for (let i = 0; i < k; i++) {
+            let s = 0;
+            for (let j = 0; j < k; j++) if (j !== i) s += R[i][j];
+            if (s / (k - 1) < -0.05) inversos.push(i);
+        }
+        let alfaRecod = null;
+        if (inversos.length && inversos.length < k) {
+            const colsR = cols.map((c, j) => {
+                if (!inversos.includes(j)) return c;
+                const mx = Math.max(...c), mn = Math.min(...c);
+                return c.map(x => mx + mn - x);
+            });
+            const totR = filas.map((_, i) => colsR.reduce((s, c) => s + c[i], 0));
+            const vT = this._varianza(totR);
+            if (vT > 0) alfaRecod = (k / (k - 1)) * (1 - colsR.reduce((s, c) => s + this._varianza(c), 0) / vT);
+        }
+        if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''})${inversos.length ? `; ítem(s) con correlación media negativa con el resto de la escala: ${inversos.map(i => items[i]).join(', ')}` : ''}. Este patrón constituye una ALERTA cuyo origen debe examinarse: puede obedecer a formulación en sentido inverso sin recodificar, a deficiencias de redacción, a multidimensionalidad, a errores de codificación o digitación, o a que el ítem mida un constructo distinto.${alfaRecod != null ? ` Como análisis de sensibilidad, ÚNICAMENTE si la causa fuera la formulación inversa, la recodificación elevaría el alfa a ${alfaRecod.toFixed(3)}; el alfa de la tabla refleja los datos tal como fueron capturados.` : ''}`);
+
+        // Alfa (bruto y estandarizado) y lambda 2 de Guttman
+        const sumaVarItems = vars.reduce((s, v) => s + v, 0);
+        const alfa = (k / (k - 1)) * (1 - sumaVarItems / varTotal);
+        const alfaStd = (k * rMedia) / (1 + (k - 1) * rMedia);
+        const lambda1 = 1 - sumaVarItems / varTotal;
+        const lambda2 = lambda1 + Math.sqrt((k / (k - 1)) * (2 * sumaCov2)) / varTotal;
+
+        // IC 95 % del alfa (Feldt, 1965)
+        const n = filas.length;
+        let icAlfa = null;
+        if (alfa < 0) {
+            avisos.push('El alfa resultó negativo: violación grave del supuesto de covariación positiva entre los ítems (revise posibles ítems inversos o la pertenencia de los ítems a un mismo constructo); no se reporta intervalo de confianza.');
+        }
+        if (alfa >= 0 && alfa < 1 && n > 3) {
+            const fInf = this._qF(0.975, n - 1, (n - 1) * (k - 1));
+            const fSup = this._qF(0.025, n - 1, (n - 1) * (k - 1));
+            icAlfa = { inferior: 1 - (1 - alfa) * fInf, superior: 1 - (1 - alfa) * fSup };
+        }
+
+        // Omega total de McDonald: ejes principales iterados (1 factor) sobre R
+        const om = this._omegaUnifactorial(R, k);
+        // ω en métrica de covarianzas (principal): cargas y unicidades
+        // reescaladas por las DE de los ítems — responde a la fiabilidad de la
+        // puntuación total OBSERVADA. El calculado sobre correlaciones queda
+        // como ω estandarizado (auxiliar).
+        let { omega, omegaStd } = omegaObservado(om, vars);
+        if (om && om.motivo) avisos.push(om.motivo);
+        const spearmanBrown = (k === 2) ? (2 * rMedia) / (1 + rMedia) : null;
+        const omegaH = this._omegaJerarquico(cols, items, R, grupo.particion);
+
+        // Análisis de ítems: r ítem-total corregida y alfa sin el elemento
+        const itemsInfo = items.map((it, j) => {
+            const resto = filas.map((fila, i) => total[i] - cols[j][i]);
+            const rDrop = this._cor(cols[j], resto);
+            // alfa sin el ítem
+            let a = null;
+            if (k > 2) {
+                const varsSin = vars.filter((_, q) => q !== j);
+                const totalSin = resto;
+                const vTotSin = this._varianza(totalSin);
+                a = vTotSin > 0 ? ((k - 1) / (k - 2)) * (1 - varsSin.reduce((s, v) => s + v, 0) / vTotSin) : null;
+            }
+            return {
+                item: it,
+                media: this._media(cols[j]),
+                de: Math.sqrt(vars[j]),
+                rItemTotal: rDrop,
+                alfaSinItem: a,
+                debil: rDrop < 0.30
+            };
+        });
+        if (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)) {
+            avisos.push('Agrupación heurística de dudosa entidad como escala (alfa < .50 o correlación inter-ítem media < .10): verifique que estos ítems midan un constructo común antes de reportar estos coeficientes.');
+        }
+        const debiles = itemsInfo.filter(x => x.debil).map(x => x.item);
+        if (debiles.length) avisos.push(`Ítem(s) con correlación ítem-total corregida inferior a .30: ${debiles.join(', ')}; su aporte a la escala es reducido y conviene revisarlos.`);
+
+        // (2026.10.07) ítems ordinales (hasta 7 categorías) o dicotómicos: α y ω sobre la matriz policórica o tetracórica
+        // (psicometria/ordinal.js); en ítems dicotómicos el α de Cronbach es el KR-20 (Kuder y Richardson, 1937).
+        // opciones.ordinal: true (calcular aquí), 'diferido' (lo calcula el Worker y se repinta) o false. Resultado en caché
+        // por huella de los datos: repintar o exportar no repite las policóricas.
+        let ordinalCalc = null, ordinalPendiente = false;
+        const huella = this._huella(cols), modo = opciones.ordinal === undefined ? true : opciones.ordinal;
+        if (this._ordinalCache.has(huella)) ordinalCalc = this._ordinalCache.get(huella);
+        else if (modo === 'diferido') { if (tipoDeItems(cols).tipo !== 'continuo') { ordinalPendiente = true; this._pendientesOrdinal.push({ clave: huella, cols }); } }
+        else if (modo) {
+            try { ordinalCalc = fiabilidadOrdinal(cols); this._guardarOrdinal(huella, ordinalCalc); }
+            catch (e) { avisos.push('No se pudieron calcular los coeficientes ordinales: ' + e.message); }
+        }
+        const ordinal = ordinalCalc && !ordinalCalc.error ? ordinalCalc : null;
+        if (ordinalCalc && ordinalCalc.error) avisos.push(ordinalCalc.error);
+        if (ordinal) avisos.push(...ordinal.avisos);
+        // con ítems inversos sin recodificar, como el α, el coeficiente ordinal se informa también tras recodificarlos
+        if (ordinal && inversos.length) {
+            ordinal.recodificado = coeficientesOrdinales(invertirSignos(ordinal.R, inversos));
+            const f3 = x => x.toFixed(3).replace(/^0\./, '.');
+            const rc = ordinal.recodificado;
+            avisos.push(`Tras recodificar ${inversos.length === 1 ? 'el ítem inverso' : `los ${inversos.length} ítems inversos`}, el α ordinal sería ${f3(rc.alfa)}${rc.omega != null ? ` y el ω ordinal ${f3(rc.omega)}` : ''}.`);
+        }
+        const dicotomico = !!ordinal && ordinal.tipo === 'dicotomico';
+        const resultado = {
+            grupo: grupo.nombre, etiqueta: grupo.etiqueta, origen: grupo.origen, huella, ordinalPendiente,
+            k, n, alfa, alfaRecod, alfaStd, icAlfa, omega, omegaStd, omegaH, spearmanBrown, lambda2, rMedia, rMin, rMax, ordinal, dicotomico,
+            items: itemsInfo, avisos,
+            dudosa: (grupo.origen === 'prefijo' && (alfa < 0.50 || rMedia < 0.10)),
+            coefPrincipal: omega != null ? 'ω' : 'α',
+            interpretacion: this.interpretar(omega != null ? omega : alfa) + (omega != null ? ' (ω)' : ' (α)')
+        };
+        this._colsDe.set(resultado, cols);   // columnas del grupo para el bootstrap (sin copiarlas al resultado)
+        return resultado;
+    },
+
+    // Cargas de la solución unifactorial (ejes principales iterados) o null.
+    _cargasUnifactoriales(R, k) {
+        const om = this._omegaUnifactorial(R, k);
+        return (om && om.ok && om.cargas) ? om.cargas : null;
+    },
+
+    // ω jerárquico (aproximación de Schmid-Leiman): fiabilidad atribuible al
+    // factor GENERAL de una escala total con partición conocida en dimensiones.
+    // λg(ítem) = λ(ítem→dimensión) × γ(dimensión→general); ωh = (Σλg)² / ΣΣR.
+    _omegaJerarquico(cols, items, R, particion) {
+        try {
+            if (!particion || particion.length < 2) return null;
+            const idx = {};
+            items.forEach((it, i) => { idx[it] = i; });
+            const gammasBase = [];
+            const lambdasPorItem = new Array(items.length).fill(null);
+            const puntuacionesDim = [];
+            for (const dim of particion) {
+                const pos = dim.items.map(it => idx[it]).filter(i => i !== undefined);
+                if (pos.length < 2) return null;
+                const subR = pos.map(i => pos.map(j => R[i][j]));
+                const cargas = this._cargasUnifactoriales(subR, pos.length);
+                if (!cargas) return null;
+                pos.forEach((i, q) => { lambdasPorItem[i] = cargas[q]; });
+                puntuacionesDim.push(cols[0].map((_, f) => pos.reduce((s, i) => s + cols[i][f], 0)));
+            }
+            const d = particion.length;
+            // Fiabilidad (ω estandarizado) de cada dimensión, para desatenuar
+            // las correlaciones entre sus puntuaciones suma: el Schmid-Leiman
+            // requiere correlaciones entre FACTORES, no entre compuestos
+            // contaminados por error de medida (corrección de Spearman).
+            const fiabDim = particion.map(dim => {
+                const pos = dim.items.map(it => idx[it]).filter(i => i !== undefined);
+                const subR = pos.map(i => pos.map(j => R[i][j]));
+                const cg = this._cargasUnifactoriales(subR, pos.length);
+                if (!cg) return null;
+                const sl = cg.reduce((s, l) => s + Math.max(l, 0), 0);
+                const st = cg.reduce((s, l) => s + (1 - Math.min(l * l, 0.999)), 0);
+                const o = (sl * sl) / ((sl * sl) + st);
+                return (o > 0.05 && o <= 1) ? o : null;
+            });
+            if (fiabDim.some(x => x == null)) return null;
+            const Rdim = puntuacionesDim.map((a, i) => puntuacionesDim.map((b, j) => {
+                if (i === j) return 1;
+                const rAt = this._cor(a, b);
+                return Math.max(-0.999, Math.min(0.999, rAt / Math.sqrt(fiabDim[i] * fiabDim[j])));
+            }));
+            let gammas;
+            if (d === 2) {
+                // Solución cerrada clásica con dos indicadores: cargas iguales √r₁₂
+                const r12 = Rdim[0][1];
+                if (!(r12 > 0)) return null; // sin covariación positiva no hay factor general
+                gammas = [Math.sqrt(r12), Math.sqrt(r12)];
+            } else {
+                gammas = this._cargasUnifactoriales(Rdim, d);
+                if (!gammas) return null;
+            }
+            let sumaLg = 0;
+            particion.forEach((dim, di) => {
+                dim.items.forEach(it => {
+                    const i = idx[it];
+                    if (i !== undefined && Number.isFinite(lambdasPorItem[i])) {
+                        sumaLg += lambdasPorItem[i] * gammas[di];
+                    }
+                });
+            });
+            let sumaR = 0;
+            for (let i = 0; i < items.length; i++) for (let j = 0; j < items.length; j++) sumaR += R[i][j];
+            const oh = (sumaLg * sumaLg) / sumaR;
+            return (oh > 0 && oh <= 1) ? oh : null;
+        } catch (e) { return null; }
+    },
+
+    // (2026.10.09) una sola fuente: psicometria/clasica.js (la usa también el bootstrap)
+    _omegaUnifactorial(R, k) { return omegaUnifactorial(R, k); },
+
+    interpretar(alfa) {
+        if (alfa >= 0.9) return 'excelente';
+        if (alfa >= 0.8) return 'buena';
+        if (alfa >= 0.7) return 'aceptable';
+        if (alfa >= 0.6) return 'cuestionable';
+        if (alfa >= 0.5) return 'pobre';
+        return 'inaceptable';
+    },
+
+    // ---------- análisis completo ----------
+    analizarTodo(datos, opciones = {}) {
+        this._pendientesOrdinal = [];
+        const grupos = this.detectarGrupos(datos);
+        const resultados = grupos.map(g => {
+            try { return this.analizarGrupo(datos, g, opciones); }
+            catch (e) { return { grupo: g.nombre, etiqueta: g.etiqueta, error: `Error inesperado al analizar «${g.etiqueta}»`, avisos: [e.message] }; }   // se informa, no desaparece
+        }).filter(r => !r.error || r.avisos.length);
+        const validos = resultados.filter(r => !r.error);
+        this._ultimo = { grupos: resultados, validos, fecha: new Date() };
+        return this._ultimo;
+    },
+
+    // ---------- configurador de dimensiones (auto-rellenado, editable) ----------
+    // ---------- estado de los cálculos pesados (2026.10.09) ----------
+    _ordinalCache: new Map(),       // huella de los datos del grupo → resultado ordinal
+    _pendientesOrdinal: [],         // grupos cuyo ordinal calculará el Worker
+    _colsDe: new WeakMap(),         // resultado de un grupo → sus columnas (para el bootstrap)
+    _bootstrap: null,               // { opciones, porClave: Map(huella → intervalos) }
+    // Huella FNV-1a de las columnas: identifica los datos exactos de un grupo (orden y valores)
+    _huella(cols) {
+        let h = 0x811c9dc5;
+        const mezclar = x => { h ^= x & 0xff; h = Math.imul(h, 0x01000193); h ^= (x >>> 8) & 0xff; h = Math.imul(h, 0x01000193); h ^= (x >>> 16) & 0xff; h = Math.imul(h, 0x01000193); h ^= x >>> 24; h = Math.imul(h, 0x01000193); };
+        for (const c of cols) { mezclar(0x7fffffff); for (let i = 0; i < c.length; i++) mezclar(Math.round(c[i] * 1e6) | 0); }
+        return `${cols.length}x${cols.length ? cols[0].length : 0}:${(h >>> 0).toString(16)}`;
+    },
+    _guardarOrdinal(clave, valor) {
+        if (this._ordinalCache.size >= 200) this._ordinalCache.delete(this._ordinalCache.keys().next().value);
+        this._ordinalCache.set(clave, valor);
+    },
+
+    // Escala total de cada test con 2+ dimensiones en la estructura del Simulador: se forma si cada dimensión está
+    // presente como un grupo con exactamente sus ítems (sigla + número), venga de la estructura o del configurador.
+    _totalesPorPrueba(grupos) {
+        const est = (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.estructura) ? (EtiquetasVariables.estructura() || []) : [];
+        const escapar = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const totales = [];
+        est.forEach(p => {
+            if (!p.dimensiones || p.dimensiones.length < 2 || !p.dimensiones.every(d => d.sigla)) return;
+            const dims = p.dimensiones.map(d => { const re = new RegExp('^' + escapar(d.sigla) + '\\d+$', 'i'); return grupos.find(g => !g.particion && g.items.length >= 2 && g.items.every(it => re.test(it))); });
+            if (dims.some(g => !g) || grupos.some(g => g.nombre === 'TOTAL_' + p.prueba)) return;
+            totales.push({ nombre: 'TOTAL_' + p.prueba, etiqueta: `Escala total (${p.prueba})`, items: dims.flatMap(g => g.items), origen: 'simulador',
+                particion: dims.map(g => ({ nombre: g.etiqueta, items: g.items.slice() })) });
+        });
+        return totales;
+    },
+
+    mostrarConfigurador(idContenedor, datos) {
+        const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
+        if (!cont) return;
+        cont.innerHTML = ''; // limpiar ANTES de detectar: así la detección parte de cero con la base nueva
+        const grupos = this.detectarGrupos(datos).filter(g => !g.particion);   // la escala total se deriva: no es una fila editable
+        const esc = s => String(s).replace(/"/g, '&quot;');
+        const fila = (nombre, items) => `<div data-fb-fila style="display:flex; gap:0.5rem; margin:0.35rem 0; align-items:center;">
+            <input data-fb-nombre class="input input-sm" style="flex:0 0 13rem;" value="${esc(nombre)}" aria-label="Nombre de la dimensión" placeholder="Nombre de la dimensión">
+            <input data-fb-items class="input input-sm" style="flex:1;" value="${esc(items)}" aria-label="Ítems separados por comas" placeholder="Ítems, p. ej.: F1, F2, F3">
+            <button type="button" data-fb-quitar title="Quitar" aria-label="Quitar dimensión" style="background:none; border:none; color:#9aa0a6; cursor:pointer; font-size:0.95em; padding:0 0.2rem;">✕</button>
+        </div>`;
+        cont.innerHTML = `
+            <p class="help-text" style="margin-bottom: 0.5rem;">Dimensiones detectadas automáticamente a partir de los nombres de las columnas (ítems que comparten prefijo y terminan en número). Puedes renombrarlas, ajustar sus ítems, quitarlas o añadir otras; la configuración que quede aquí es la que empleará el análisis de fiabilidad.</p>
+            <div data-fb-lista>${grupos.map(g => fila(g.etiqueta, g.items.join(', '))).join('')}</div>
+            <button type="button" id="fbAgregarDimension" class="btn btn-outline" style="margin-top: 0.4rem;">＋ Agregar dimensión</button>`;
+        const conectarQuitar = () => cont.querySelectorAll('[data-fb-quitar]').forEach(b => {
+            b.onclick = () => b.closest('[data-fb-fila]').remove();
+        });
+        conectarQuitar();
+        cont.querySelector('#fbAgregarDimension').addEventListener('click', () => {
+            cont.querySelector('[data-fb-lista]').insertAdjacentHTML('beforeend', fila('', ''));
+            conectarQuitar();
+        });
+        cont.style.display = 'block';
+    },
+
+    // ---------- explicaciones pedagógicas (registro académico) ----------
+    _explicacionResumen() {
+        return 'En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El omega total de McDonald (ω) se reporta como coeficiente principal de fiabilidad, en consonancia con las recomendaciones psicométricas actuales: se estima a partir de las cargas de un modelo factorial congenérico, que admite que cada ítem mida el constructo con distinta precisión y pondera su contribución en consecuencia, sin exigir el supuesto de tau-equivalencia que el alfa presupone. El omega jerárquico, disponible para las escalas totales con partición conocida en dimensiones, cuantifica la proporción de varianza atribuible exclusivamente al factor general (aproximación de Schmid-Leiman): valores elevados respaldan la interpretación unidimensional de la puntuación total, y la diferencia entre el ω total y el ω jerárquico expresa la varianza aportada por las dimensiones específicas. El alfa de Cronbach (α) se conserva como referencia comparativa por su tradición en la literatura; su intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango plausible del parámetro poblacional, y el α estandarizado coincide con el bruto cuando las varianzas de los ítems son homogéneas. Discrepancias acusadas entre ω y α sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa, sistemáticamente igual o superior al α. La correlación inter-ítem media, con su mínimo y máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados. La columna de interpretación aplica los criterios convencionales (≥ .70 aceptable, ≥ .80 buena, ≥ .90 excelente; George y Mallery, 2003) al coeficiente principal disponible, señalado entre paréntesis.';
+    },
+    _explicacionItems() {
+        return 'En las tablas de análisis de ítems, M y DE corresponden a la media y la desviación estándar de cada ítem, que permiten identificar elementos con distribuciones extremas o escasa variabilidad. La correlación ítem-total corregida expresa la relación entre el ítem y la suma de los ítems restantes (excluido el propio, para evitar la contaminación de la correlación por su pertenencia al total); valores iguales o superiores a .30 indican una contribución adecuada al constructo, en tanto que valores inferiores señalan ítems cuya pertinencia debe revisarse. La columna «α si se elimina» informa el valor que adoptaría el coeficiente al suprimir el ítem correspondiente: cuando dicho valor supera al α global de la escala, el ítem reduce la consistencia interna y constituye un candidato a revisión, reformulación o eliminación.';
+    },
+
+    // Interpretación específica de los hallazgos de una tabla de análisis de
+    // ítems (redacción académica generada a partir de los datos de la escala).
+    _interpretarItems(r) {
+        const f3 = x => Number.isFinite(x) ? x.toFixed(3).replace(/^(-?)0\./, '$1.') : '—';
+        const porR = [...r.items].sort((a, b) => a.rItemTotal - b.rItemTotal);
+        const peor = porR[0], mejor = porR[porR.length - 1];
+        const debiles = r.items.filter(x => x.debil);
+        let t = `En la escala ${r.etiqueta}, las correlaciones ítem-total corregidas oscilaron entre ${f3(peor.rItemTotal)} (${peor.item}) y ${f3(mejor.rItemTotal)} (${mejor.item}). `;
+        if (!debiles.length) {
+            t += `La totalidad de los ítems supera el criterio de .30, lo que indica que cada elemento contribuye de manera adecuada a la medición del constructo; el ítem ${mejor.item} presenta la asociación más estrecha con la puntuación total y constituye el indicador más representativo del conjunto. `;
+        } else {
+            t += `${debiles.length === 1 ? `El ítem ${debiles[0].item} presenta una correlación inferior al criterio de .30 (${f3(debiles[0].rItemTotal)})` : `Los ítems ${debiles.map(x => x.item).join(', ')} presentan correlaciones inferiores al criterio de .30`}, de modo que su aporte a la consistencia de la escala es reducido y su pertinencia debe examinarse; en contraste, el ítem ${mejor.item} muestra la asociación más estrecha con la puntuación total. `;
+        }
+        const conAlfa = r.items.filter(x => Number.isFinite(x.alfaSinItem));
+        if (conAlfa.length) {
+            const maxA = conAlfa.reduce((a, b) => (b.alfaSinItem > a.alfaSinItem ? b : a));
+            if (maxA.alfaSinItem > r.alfa + 0.0005) {
+                t += `La supresión del ítem ${maxA.item} elevaría el coeficiente de ${f3(r.alfa)} a ${f3(maxA.alfaSinItem)}, por lo que constituye el principal candidato a revisión, reformulación o eliminación. `;
+            } else {
+                t += `Ningún ítem incrementaría el coeficiente al ser eliminado, lo que respalda la conservación del conjunto completo. `;
+            }
+        }
+        const des = r.items.map(x => x.de).sort((a, b) => a - b);
+        const medianaDE = des[Math.floor(des.length / 2)];
+        const bajaVar = r.items.filter(x => medianaDE > 0 && x.de < 0.5 * medianaDE);
+        if (bajaVar.length) {
+            t += `${bajaVar.length === 1 ? `El ítem ${bajaVar[0].item} exhibe` : `Los ítems ${bajaVar.map(x => x.item).join(', ')} exhiben`} una variabilidad notablemente inferior a la del resto, circunstancia que limita su capacidad de discriminación entre participantes. `;
+        }
+        t += `En conjunto, el patrón observado resulta coherente con el alfa de ${f3(r.alfa)} de la escala, de interpretación ${r.interpretacion}.`;
+        return t;
+    },
+
+    // ---------- sección de la interfaz ----------
+    mostrar(idContenedor, datos) {
+        const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
+        if (!cont) return null;
+        this._datosMostrados = datos;
+        // con Worker, las policóricas se calculan en segundo plano y la tabla se repinta al terminar
+        const res = this.analizarTodo(datos, { ordinal: hayWorker() ? 'diferido' : true });
+        if (!res.validos.length) {
+            cont.style.display = 'none';
+            cont.innerHTML = '';
+            return res;
+        }
+        const fmt = x => Number.isFinite(x) ? x.toFixed(3) : '—';
+        const filasResumen = res.validos.map(r => `
+            <tr>
+                <td><strong>${r.etiqueta}</strong></td>
+                <td>${r.k}</td><td>${r.n}</td>
+                <td><strong>${r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? 'SB = ' + fmt(r.spearmanBrown) : '—')}</strong></td>
+                <td>${r.omegaH != null ? fmt(r.omegaH) : '—'}</td>
+                <td>${fmt(r.alfa)}${r.dicotomico ? ' <em>(KR-20)</em>' : ''}${r.icAlfa ? `<br><span style="font-size:0.85em;">[${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]</span>` : ''}</td>
+                <td>${fmt(r.alfaStd)}</td>
+                ${r.ordinalPendiente ? '<td class="calculando" title="Calculando en segundo plano">…</td><td class="calculando" title="Calculando en segundo plano">…</td>' : `
+                <td title="${r.ordinal ? 'Sobre correlaciones ' + r.ordinal.correlacion + 's' : 'Ítems continuos: no aplica'}">${r.ordinal ? fmt(r.ordinal.alfa) : '—'}</td>
+                <td title="${r.ordinal ? 'Un factor sobre correlaciones ' + r.ordinal.correlacion + 's' : 'Ítems continuos: no aplica'}">${r.ordinal ? fmt(r.ordinal.omega) : '—'}</td>`}
+                <td>${fmt(r.lambda2)}</td>
+                <td>${fmt(r.rMedia)}<br><span style="font-size:0.85em;">[${fmt(r.rMin)}, ${fmt(r.rMax)}]</span></td>
+                <td>${r.interpretacion}</td>
+            </tr>`).join('');
+        const bloquesItems = res.validos.map(r => `
+            <div class="result-box" style="margin-top: 0.75rem;">
+                <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Análisis de ítems: ${r.etiqueta}</h5>
+                <table class="result-table">
+                    <tr><th>Ítem</th><th>M</th><th>DE</th><th>r ítem-total corregida</th><th>α si se elimina</th></tr>
+                    ${r.items.map(it => `<tr${it.debil ? ' style="background: rgba(180, 83, 9, 0.08);"' : ''}>
+                        <td>${it.item}${it.debil ? ' ⚠️' : ''}</td>
+                        <td>${it.media.toFixed(2)}</td><td>${it.de.toFixed(2)}</td>
+                        <td>${fmt(it.rItemTotal)}</td>
+                        <td>${it.alfaSinItem != null ? fmt(it.alfaSinItem) : '—'}</td>
+                    </tr>`).join('')}
+                </table>
+                ${r.avisos.length ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">${r.avisos.join(' ')}</p>` : ''}
+                <p class="result-subtitle" style="margin-top: 0.5rem;">${this._interpretarItems(r)}</p>
+            </div>`).join('');
+        cont.innerHTML = `
+            <div class="result-section">
+                <h3 class="section-title">Fiabilidad y Consistencia Interna</h3>
+                <p class="result-subtitle">Consistencia interna de las escalas detectadas en la base de datos. El alfa de Cronbach se reporta en su forma bruta (con intervalo de confianza del 95 % según el procedimiento de Feldt) y estandarizada; el omega total de McDonald se estima a partir de una solución unifactorial y la lambda 2 de Guttman constituye una cota inferior alternativa de la fiabilidad. Según George y Mallery (2003), valores de α ≥ .70 indican una fiabilidad aceptable, ≥ .80 buena y ≥ .90 excelente.</p>
+                <div class="result-box" style="overflow-x: auto;">
+                    <table class="result-table">
+                        <tr><th>Escala</th><th>k</th><th>n</th><th>ω total</th><th>ω jerárquico</th><th>α [IC 95 %]</th><th>α estand.</th><th>α ordinal</th><th>ω ordinal</th><th>λ₂</th><th>r inter-ítem M [mín, máx]</th><th>Interpretación</th></tr>
+                        ${filasResumen}
+                    </table>
+                </div>
+                ${res.validos.some(r => r.ordinal) ? `<p class="help-text"><em>α y ω ordinales:</em> calculados sobre la matriz de correlaciones policóricas (tetracóricas con ítems 0/1), que no subestima la relación entre ítems con pocas categorías como sí lo hace Pearson (Zumbo et al., 2007; Gadermann et al., 2012). ${res.validos.some(r => r.dicotomico) ? 'Con ítems dicotómicos, el α de Cronbach es el KR-20. ' : ''}Se muestran cuando los ítems son enteros con 7 categorías o menos.</p>` : ''}
+                <div id="bootstrapFiabilidad" class="result-box bootstrap-fiabilidad"></div>
+                <div class="result-box">
+                    <p class="result-subtitle" style="margin: 0;">${this._explicacionResumen()}</p>
+                </div>
+                <div class="result-box">
+                    <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Análisis de ítems: guía de lectura</h5>
+                    <p class="result-subtitle" style="margin: 0;">${this._explicacionItems()}</p>
+                </div>
+                ${bloquesItems}
+                <div class="result-box interpretation-box interpretation-box--hipotesis">
+                    <h5 class="interpretation-title">
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
+                        Interpretación
+                    </h5>
+                    <p class="interpretation-text">${this.redactarInterpretacion(res.validos)}</p>
+                </div>
+            </div>`;
+        cont.style.display = 'block';
+        const pendientes = this._pendientesOrdinal.splice(0);
+        if (pendientes.length) {
+            ejecutarTarea('ordinal', pendientes).promesa.then(lista => {
+                lista.forEach(x => this._guardarOrdinal(x.clave, x.ordinal));
+                if (this._datosMostrados === datos) this.mostrar(idContenedor, datos);   // sin repetir: ya está en caché
+            }).catch(e => { if (!e.cancelado) console.warn('Fiabilidad ordinal en segundo plano:', e.message); });
+        }
+        const grupos = res.validos.filter(r => !r.dudosa && this._colsDe.has(r)).map(r => ({ clave: r.huella, etiqueta: r.etiqueta, cols: this._colsDe.get(r) }));
+        montarBloqueBootstrap(cont.querySelector('#bootstrapFiabilidad'), {
+            grupos, esperando: pendientes.length > 0,
+            opciones: this._bootstrap && this._bootstrap.opciones,
+            resultados: this._bootstrap && this._bootstrap.porClave,
+            alTerminar: (opciones, porClave) => {
+                this._bootstrap = { opciones, porClave };
+                if (this._datosMostrados === datos) this.mostrar(idContenedor, datos);
+                bus.emit(EVENTOS.FIABILIDAD_ACTUALIZADA, { bootstrap: true });   // p. ej., la lista de referencias
+            }
+        });
+        return res;
+    },
+
+    // Redacción formal (registro de tesis) del conjunto de escalas
+    redactarInterpretacion(validos) {
+        const fmt = x => Number.isFinite(x) ? x.toFixed(3).replace(/^0\./, '.') : '—';
+        const nombreAlfa = r => (r.dicotomico ? 'un coeficiente KR-20 (el α de Cronbach con ítems dicotómicos)' : 'un alfa de Cronbach');
+        const ordinal = r => (r.ordinal ? `; con las correlaciones ${r.ordinal.correlacion}s, propias de ítems ${r.dicotomico ? 'dicotómicos' : 'ordinales'}, el α ordinal fue ${fmt(r.ordinal.alfa)}${r.ordinal.omega != null ? ` y el ω ordinal ${fmt(r.ordinal.omega)}` : ''}` : '');
+        const partes = validos.map(r => {
+            const ic = r.icAlfa ? ` (IC 95 % [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}])` : '';
+            if (r.omega != null) {
+                const oh = r.omegaH != null ? ` y un omega jerárquico de ${fmt(r.omegaH)}, indicativo de la varianza atribuible al factor general` : '';
+                return `${r.etiqueta} obtuvo un omega total de ${fmt(r.omega)}${oh}, con ${nombreAlfa(r)} de ${fmt(r.alfa)}${ic} como referencia comparativa, lo que corresponde a una fiabilidad ${r.interpretacion}${ordinal(r)}`;
+            }
+            return `${r.etiqueta} obtuvo ${nombreAlfa(r)} de ${fmt(r.alfa)}${ic}, lo que corresponde a una fiabilidad ${r.interpretacion}${ordinal(r)}`;
+        });
+        const conAviso = validos.filter(r => r.avisos.length).length;
+        let texto = `El análisis de consistencia interna se aplicó a ${validos.length === 1 ? 'la escala detectada' : `las ${validos.length} escalas detectadas`} en la base de datos. ${partes.join('; ')}. `;
+        texto += `La convergencia entre el alfa y el omega respalda la estabilidad de las estimaciones, dado que el omega no exige el supuesto de tau-equivalencia que el alfa presupone. `;
+        if (validos.some(r => r.ordinal)) texto += `Para los ítems de respuesta ordinal o dicotómica se estimaron además el α y el ω ordinales sobre las matrices de correlaciones policóricas o tetracóricas (Olsson, 1979; Zumbo et al., 2007), que no subestiman la fiabilidad como ocurre con las correlaciones de Pearson en ítems con pocas categorías (Gadermann et al., 2012). `;
+        const fraseIC = this._bootstrap ? fraseBootstrap(validos.map(r => ({ clave: r.huella, etiqueta: r.etiqueta })), this._bootstrap.porClave, this._bootstrap.opciones) : '';
+        if (fraseIC) texto += fraseIC + ' ';
+        if (conAviso) texto += `Las observaciones señaladas en el análisis de ítems (correlaciones ítem-total reducidas o posibles ítems inversos) deben considerarse antes de interpretar las puntuaciones totales.`;
+        return texto;
+    },
+
+    // ---------- bloques para el Word ----------
+    // Devuelve { tablas: [{titulo, headers, filas, nota}], parrafos: [texto] }
+    paraWord() {
+        // C1: si los datos vigentes del analizador están disponibles, se
+        // recalcula sobre ellos; el Word nunca arrastra una base anterior.
+        try {
+            if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.obtenerDatos) {
+                const d = AnalizadorEstadistico.obtenerDatos();
+                if (d && d.length) this.analizarTodo(d);
+            }
+        } catch (e) { /* se conserva el último análisis */ }
+        const res = this._ultimo;
+        if (!res || !res.validos.length) return null;
+        const fmt = x => Number.isFinite(x) ? x.toFixed(3).replace(/^0\./, '.') : '—';
+        const tablas = [];
+        const parrafosExtra = [];
+        const reportables = res.validos.filter(r => !r.dudosa);
+        const excluidas = res.validos.filter(r => r.dudosa);
+        if (!reportables.length) return null;
+        if (excluidas.length) parrafosExtra.push(`Se excluyó del reporte ${excluidas.length === 1 ? 'una agrupación heurística' : excluidas.length + ' agrupaciones heurísticas'} de dudosa entidad como escala (${excluidas.map(r => r.etiqueta).join(', ')}), por presentar coeficientes alfa inferiores a .50 o correlaciones inter-ítem medias inferiores a .10.`);
+        tablas.push({
+            titulo: 'Fiabilidad y consistencia interna de las escalas',
+            headers: ['Escala', 'k', 'n', 'ω total', 'ω jerárquico', 'α [IC 95 %]', 'α estandarizado', 'α ordinal', 'ω ordinal', 'λ₂', 'r inter-ítem (M)'],
+            filas: reportables.map(r => [
+                r.etiqueta, r.k, r.n,
+                r.omega != null ? fmt(r.omega) : (r.spearmanBrown != null ? `SB = ${fmt(r.spearmanBrown)}` : '—'),
+                r.omegaH != null ? fmt(r.omegaH) : '—',
+                `${fmt(r.alfa)}${r.dicotomico ? ' (KR-20)' : ''}${r.icAlfa ? ` [${fmt(r.icAlfa.inferior)}, ${fmt(r.icAlfa.superior)}]` : ''}`,
+                fmt(r.alfaStd),
+                r.ordinal ? fmt(r.ordinal.alfa) : '—', r.ordinal ? fmt(r.ordinal.omega) : '—',
+                fmt(r.lambda2), fmt(r.rMedia)
+            ]),
+            nota: 'ω = omega total de McDonald en la métrica de las puntuaciones observadas (coeficiente principal; modelo congenérico unifactorial estimado por ejes principales iterados; requiere al menos 3 ítems y cargas de signo homogéneo — con 2 ítems se reporta Spearman-Brown, SB); ω jerárquico = fiabilidad atribuible al factor general (transformación de Schmid-Leiman con correlaciones entre dimensiones desatenuadas por su fiabilidad; solo para escalas totales con partición conocida); α = alfa de Cronbach (IC 95 % según Feldt; se omite si α < 0); λ₂ = lambda 2 de Guttman; k = número de ítems; n = casos completos. La interpretación aplica los criterios convencionales al coeficiente principal disponible (ω, o α en su defecto). α y ω ordinales = coeficientes sobre la matriz de correlaciones policóricas (tetracóricas con ítems 0/1; — si los ítems no son ordinales); con ítems dicotómicos, el α es el KR-20.'
+        });
+        const filasIC = this._bootstrap ? filasBootstrap(reportables.map(r => ({ clave: r.huella, etiqueta: r.etiqueta })), this._bootstrap.porClave) : [];
+        if (filasIC.length) tablas.push({ titulo: 'Intervalos de confianza de la fiabilidad por bootstrap', headers: CABECERA_BOOTSTRAP, filas: filasIC, nota: notaBootstrap(this._bootstrap.opciones) });
+        reportables.slice(0, 6).forEach(r => {
+            tablas.push({
+                titulo: `Análisis de ítems de ${r.etiqueta}`,
+                headers: ['Ítem', 'M', 'DE', 'r ítem-total corregida', 'α si se elimina el ítem'],
+                filas: r.items.map(it => [
+                    it.item, it.media.toFixed(2), it.de.toFixed(2), fmt(it.rItemTotal),
+                    it.alfaSinItem != null ? fmt(it.alfaSinItem) : '—'
+                ]),
+                nota: this._interpretarItems(r) + (r.avisos.length ? ' ' + r.avisos.join(' ') : '')
+            });
+        });
+        const parrafos = [this._explicacionResumen(), this.redactarInterpretacion(reportables), this._explicacionItems(), ...parrafosExtra];
+        // Bloques ORDENADOS para el exportador: cada explicación viaja junto a
+        // su tabla (la guía general de ítems precede a los cuadros de ítems).
+        const bloques = [];
+        bloques.push({ tipo: 'tabla', ...tablas[0] });
+        bloques.push({ tipo: 'parrafo', texto: this._explicacionResumen() });
+        bloques.push({ tipo: 'parrafo', texto: this.redactarInterpretacion(reportables) });
+        bloques.push({ tipo: 'parrafo', texto: this._explicacionItems() });
+        tablas.slice(1).forEach(tb => bloques.push({ tipo: 'tabla', ...tb }));
+        parrafosExtra.forEach(p => bloques.push({ tipo: 'parrafo', texto: p }));
+        if (reportables.length > 6) bloques.push({ tipo: 'parrafo', texto: 'Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.' });
+        if (reportables.length > 6) parrafos.push(`Por razones de extensión, las tablas de análisis de ítems se presentan para las seis primeras escalas; los coeficientes globales de la tabla de fiabilidad comprenden la totalidad de las escalas detectadas.`);
+        return { bloques, tablas, parrafos, conOrdinal: reportables.some(r => r.ordinal), conDicotomico: reportables.some(r => r.dicotomico), conBootstrap: filasIC.length > 0 };
+    }
+};
+export { Fiabilidad };

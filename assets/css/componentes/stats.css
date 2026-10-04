@@ -1,0 +1,26 @@
+/* ========================================
+   STATS GRID
+   ======================================== */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-md); margin-bottom: var(--spacing-lg);
+}
+.stat-card {
+    display: flex; flex-direction: column;
+    padding: var(--spacing-md);
+    background: linear-gradient(180deg, var(--surface-2), var(--surface));
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-soft);
+    box-shadow: var(--edge-light);
+}
+.stat-label {
+    font-size: 0.78rem; color: var(--color-text-secondary); font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: var(--spacing-xs);
+}
+.stat-value {
+    font-size: 2rem; font-weight: 300; letter-spacing: -0.02em;
+    background: linear-gradient(120deg, var(--color-primary), #c9d6f0);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+

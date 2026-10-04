@@ -1,0 +1,446 @@
+// buscador/fuentes/scopus.js — fuente Scopus.
+// Origen: scopus-directo.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
+
+import { ProxiesCORS } from '../../shared/proxies.js';
+
+// ========================================
+// BÚSQUEDA EN SCOPUS (Elsevier) — módulo dedicado.
+// Usa la Scopus Search API con ROTACIÓN de API keys propias (resiliencia ante
+// caídas/cuota). Dos obstáculos conocidos de esta API, mitigados aquí:
+//   1) NO envía cabeceras CORS → el navegador bloquea el fetch directo; se
+//      enruta por el arsenal de proxies CORS (ProxiesCORS), igual que Scholar.
+//   2) El acceso completo suele requerir red institucional suscrita; sin ella
+//      la API responde 401/403 o devuelve metadatos limitados. El módulo lo
+//      detecta y lo reporta con claridad en vez de fallar en silencio.
+// Claves hardcodeadas por decisión explícita del propietario (son suyas).
+// ========================================
+
+const ScopusDirecto = {
+
+    // API keys propias del proyecto (rotación ante cuota/caída).
+    API_KEYS: [
+        'd54be3207354b928a6e2ce355101c81f',
+        '147d71e438d2d472bea28abbe4aa9c4e',
+        '359dd3266f644bf44e1b6610d7c6664c',
+        '16ccbb33ab907de19c7064a0d479451f',
+        '1c4210c2199d31dc7d7560702729d51d',
+        '92d98589eeb9940076461f3a1857661a',
+        'ce978a4f4d8c9f38507a7720ddbb3998',
+        '81e47fc17a598deb0880e72af71709d5'
+    ],
+    _idxKey: 0,
+    _keyEstado: {}, // key → {agotada:bool, ts}
+
+    // Siguiente clave disponible (salta las marcadas como agotadas hoy).
+    _siguienteKey() {
+        const n = this.API_KEYS.length;
+        for (let i = 0; i < n; i++) {
+            const k = this.API_KEYS[(this._idxKey + i) % n];
+            const est = this._keyEstado[k];
+            if (!est || !est.agotada) { this._idxKey = (this._idxKey + i + 1) % n; return k; }
+        }
+        return this.API_KEYS[0]; // todas agotadas: reintenta la primera
+    },
+
+    _marcarAgotada(k) { this._keyEstado[k] = { agotada: true, ts: Date.now() }; },
+
+    // Palabras vacías que estorban el match en Scopus (ES + EN).
+    _VACIAS: new Set(['entre','e','y','o','u','de','del','la','el','los','las','en','con','para','por',
+        'un','una','su','sus','al','a','the','of','and','or','in','on','for','to','with','between','a','an']),
+
+    // Convierte la consulta en términos clave unidos por AND (mejor recall que
+    // una frase larga literal, que en Scopus suele dar 0 resultados).
+    _terminosClave(query) {
+        const toks = String(query).toLowerCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos
+            .replace(/[^a-z0-9ñ\s]/g, ' ').split(/\s+/)
+            .filter(t => t.length > 2 && !this._VACIAS.has(t));
+        return [...new Set(toks)];
+    },
+
+    // Construye la query Scopus (cadena TITLE-ABS-KEY + filtro de año).
+    _construirQuery(query, filtros = {}) {
+        const terminos = this._terminosClave(query);
+        const q = terminos.length ? `TITLE-ABS-KEY(${terminos.join(' ')})` : `TITLE-ABS-KEY(${query})`;
+        return filtros.desde ? `${q} AND PUBYEAR > ${parseInt(filtros.desde, 10) - 1}` : q;
+    },
+
+    construirURL(query, filtros = {}) {
+        const full = this._construirQuery(query, filtros);
+        // view=COMPLETE incluye el abstract (dc:description) y keywords, pero
+        // requiere entitlement institucional (por IP suscrita o insttoken). Si
+        // no se concede, Scopus responde con error y caemos a STANDARD.
+        const params = [
+            `query=${encodeURIComponent(full)}`,
+            `count=${filtros.count || 25}`,
+            `start=${filtros.start || 0}`,
+            'sort=relevancy',
+            `view=${filtros.view || 'STANDARD'}`
+        ].join('&');
+        return `https://api.elsevier.com/content/search/scopus?${params}`;
+    },
+
+    // URL pública de Scopus para abrir la búsqueda en el navegador (no API).
+    urlPublica(query, filtros = {}) {
+        // Para precargar la búsqueda en scopus.com hay que pasar términos SIMPLES
+        // en st1 (no la cláusula TITLE-ABS-KEY ni operadores PUBYEAR, que el cuadro
+        // de búsqueda básica no interpreta y deja vacío). Se usan los términos clave
+        // separados por espacio; Scopus busca en título/resumen/keywords por defecto.
+        const terminos = this._terminosClave(query);
+        const st1 = terminos.length ? terminos.join(' ') : query;
+        return `https://www.scopus.com/results/results.uri?src=s&sot=b&sdt=b&sl=0&st1=${encodeURIComponent(st1)}`;
+    },
+
+    normalizar(e) {
+        const autores = e['dc:creator'] ? [e['dc:creator']] : [];
+        const doi = e['prism:doi'] ? `https://doi.org/${e['prism:doi']}` : '';
+        const scopusURL = (e.link || []).find(l => l['@ref'] === 'scopus');
+        return {
+            titulo: e['dc:title'] || '(sin título)',
+            autores,
+            anio: (e['prism:coverDate'] || '').slice(0, 4) || 's. f.',
+            doi,
+            link: doi || (scopusURL ? scopusURL['@href'] : ''),
+            fuente: e['prism:publicationName'] || '',
+            volumen: e['prism:volume'] || '', numero: e['prism:issueIdentifier'] || '',
+            paginas: e['prism:pageRange'] || '',
+            citas: parseInt(e['citedby-count'] || '0', 10),
+            idioma: '',
+            resumen: e['dc:description'] || '',
+            keywords: e['authkeywords'] || '',
+            issn: e['prism:issn'] || e['prism:eIssn'] || '',
+            fuentesAPI: ['Scopus']
+        };
+    },
+
+    // Caché de métricas de revista (un ISSN se consulta una sola vez por sesión).
+    _cacheRevista: {},
+
+    // Obtiene CiteScore, SJR, SNIP y CUARTIL de una revista por su ISSN, vía
+    // Serial Title API (confirmada accesible con las claves). El cuartil se deriva
+    // del percentil de ranking por materia: ≥75→Q1, ≥50→Q2, ≥25→Q3, resto Q4.
+    // Recupera el ABSTRACT de un artículo por su DOI usando la Abstract Retrieval
+    // API de Elsevier (cubre lo que las APIs abiertas no traen: p. ej. artículos
+    // de Elsevier/ScienceDirect, como los DOI 10.1016/...). Rota las claves y
+    // marca agotadas ante 401/403/429. Devuelve el texto o '' si no hay.
+    async abstractPorDoi(doi) {
+        const limpio = String(doi || '').replace(/^https?:\/\/doi\.org\//, '').trim();
+        if (!limpio) return '';
+        const intentos = Math.min(this.API_KEYS.length, 4);
+        for (let i = 0; i < intentos; i++) {
+            const key = this._siguienteKey();
+            try {
+                const url = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(limpio)}?apiKey=${key}&httpAccept=application/json`;
+                const r = await fetch(url);
+                if (r.status === 401 || r.status === 403 || r.status === 429) { this._marcarAgotada(key); continue; }
+                if (r.status === 404) return ''; // no indexado en Scopus
+                if (!r.ok) continue;
+                const d = await r.json();
+                const resp = d && d['abstracts-retrieval-response'];
+                if (!resp) return '';
+                // dc:description puede ser string u objeto según el registro.
+                let a = resp.coredata && resp.coredata['dc:description'];
+                if (a && typeof a === 'object') {
+                    a = a['#text'] || a['$'] || (a.abstract && (a.abstract['ce:para'] || a.abstract['$'])) || '';
+                }
+                if (!a) {
+                    const abs = resp.item && resp.item.bibrecord && resp.item.bibrecord.head && resp.item.bibrecord.head.abstracts;
+                    if (typeof abs === 'string') a = abs;
+                }
+                const t = String(a || '').replace(/\s+/g, ' ').trim();
+                return t.length > 40 ? t : '';
+            } catch (e) { /* red/CORS: probar siguiente clave */ }
+        }
+        return '';
+    },
+
+    async metricasRevista(issn) {
+        if (!issn) return null;
+        const limpio = issn.replace(/[^0-9Xx]/g, '');
+        if (this._cacheRevista[limpio] !== undefined) return this._cacheRevista[limpio];
+        if (typeof ProxiesCORS === 'undefined') return null;
+        const key = this._siguienteKey();
+        const url = `https://api.elsevier.com/content/serial/title/issn/${limpio}?apiKey=${key}&view=CITESCORE`;
+        const validar = (html) => {
+            let d; try { d = JSON.parse(html); } catch (e) { return null; }
+            const entry = d['serial-metadata-response'] && d['serial-metadata-response'].entry && d['serial-metadata-response'].entry[0];
+            if (!entry || entry['error']) return null;
+            const cs = entry.citeScoreYearInfoList || {};
+            const sjr = entry.SJRList && entry.SJRList.SJR && entry.SJRList.SJR[0] && entry.SJRList.SJR[0]['$'];
+            const snip = entry.SNIPList && entry.SNIPList.SNIP && entry.SNIPList.SNIP[0] && entry.SNIPList.SNIP[0]['$'];
+            // Percentil: del año Complete más reciente con ranking por materia.
+            let percentil = null;
+            const anios = (cs.citeScoreYearInfo || []);
+            for (const a of anios) {
+                const info = a.citeScoreInformationList && a.citeScoreInformationList[0]
+                    && a.citeScoreInformationList[0].citeScoreInfo && a.citeScoreInformationList[0].citeScoreInfo[0];
+                const rank = info && info.citeScoreSubjectRank && info.citeScoreSubjectRank[0];
+                if (rank && rank.percentile) { percentil = parseInt(rank.percentile, 10); break; }
+            }
+            let cuartil = '';
+            if (percentil != null) cuartil = percentil >= 75 ? 'Q1' : percentil >= 50 ? 'Q2' : percentil >= 25 ? 'Q3' : 'Q4';
+            return [{ // devolver como "obras" para reutilizar la carrera (espera array no vacío)
+                citeScore: cs.citeScoreCurrentMetric || '',
+                sjr: sjr || '', snip: snip || '',
+                percentil, cuartil,
+                revista: entry['dc:title'] || ''
+            }];
+        };
+        try {
+            const { obras } = await ProxiesCORS.carrera(url, validar, { anchura: 4, timeout: 15000, oleadas: 2 });
+            const m = obras[0];
+            this._cacheRevista[limpio] = m;
+            return m;
+        } catch (e) {
+            this._cacheRevista[limpio] = null; // no reintentar si falla
+            return null;
+        }
+    },
+
+    // Una petición con una clave, a través de un proxy CORS.
+    // Guarda en window la última URL y respuesta para depurar desde consola.
+    _debug(url, htmlOrErr) {
+        if (typeof window !== 'undefined') {
+            window.__scopusDebug = window.__scopusDebug || [];
+            window.__scopusDebug.push({ url, respuesta: String(htmlOrErr).slice(0, 600), ts: new Date().toISOString() });
+            if (window.__scopusDebug.length > 8) window.__scopusDebug.shift();
+        }
+    },
+
+    async _intentar(url, key, proxy) {
+        const conKey = url + `&apiKey=${key}`;
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), 20000);
+        try {
+            const r = await fetch(proxy.build(conKey), { signal: ctrl.signal });
+            clearTimeout(t);
+            if (r.status === 429) return { error: 'cuota', status: 429 };
+            if (r.status === 401 || r.status === 403) return { error: 'auth', status: r.status };
+            if (!r.ok) return { error: 'http', status: r.status };
+            const html = (typeof ProxiesCORS !== 'undefined') ? await ProxiesCORS.extraer(proxy, r) : await r.text();
+            let data;
+            try { data = JSON.parse(html); } catch (e) { return { error: 'parse' }; }
+            // Scopus puede devolver error embebido (cuota/credenciales) con HTTP 200.
+            if (data['service-error'] || (data['error-response'])) return { error: 'servicio' };
+            const entradas = (data['search-results'] && data['search-results'].entry) || [];
+            if (entradas.length && entradas[0].error) return { error: 'servicio' };
+            return { obras: entradas.map(x => this.normalizar(x)) };
+        } catch (e) {
+            clearTimeout(t);
+            return { error: e.name === 'AbortError' ? 'timeout' : 'red' };
+        }
+    },
+
+    // Valida la respuesta JSON de Scopus; devuelve obras o null. Marca aparte
+    // los errores de cuota/credenciales vía un objeto de señal compartido.
+    _validarScopus(html, senal) {
+        this._debug('(respuesta)', html); // queda en window.__scopusDebug para depurar
+        let data;
+        try { data = JSON.parse(html); } catch (e) { senal.motivo = 'respuesta no-JSON: ' + String(html).slice(0, 80); return null; }
+        // Scopus señala errores de varias formas; capturamos el texto para diagnóstico.
+        const errTxt = (data['service-error'] && JSON.stringify(data['service-error']))
+            || (data['error-response'] && JSON.stringify(data['error-response']))
+            || (data.error) || '';
+        if (errTxt) {
+            const msg = String(errTxt).toLowerCase();
+            senal.motivo = String(errTxt).slice(0, 120);
+            if (/quota|rate.?limit|maximum number|too many/.test(msg)) senal.cuota = true;
+            else senal.auth = true;
+            return null;
+        }
+        const sr = data['search-results'] || {};
+        const total = sr['opensearch:totalResults'];
+        const entradas = sr.entry || [];
+        // Scopus devuelve una entrada con campo 'error' cuando no hay resultados.
+        if (entradas.length && entradas[0].error) {
+            const e = String(entradas[0].error);
+            senal.motivo = `Scopus: ${e} (total=${total})`;
+            if (/result set was empty/i.test(e)) senal.vacioReal = true; else senal.auth = true;
+            return null;
+        }
+        senal.total = total;
+        return entradas.length ? entradas.map(x => this.normalizar(x)) : null;
+    },
+
+    // Trae UNA página (offset start): DIRECTO-PRIMERO (Elsevier acepta CORS,
+    // verificado en producción) y arsenal de proxies solo de RESCATE por si
+    // algún día cierran la puerta. Máxima velocidad, misma resiliencia.
+    // Una vez sabido si COMPLETE funciona, se recuerda para no reintentarlo.
+    _viewConfirmada: null, // null=sin probar, 'COMPLETE' o 'STANDARD'
+
+    // ¿Acepta Elsevier peticiones directas del navegador en esta sesión?
+    // null = sin probar · true = confirmado · false = bloqueado (no insistir).
+    _directoOK: null,
+
+    // Petición directa (sin peaje). Si el navegador la bloquea o tarda de más,
+    // lanza {rescatable:true} y la búsqueda cae al arsenal de proxies.
+    async _pedirDirecto(url, senal) {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 9000);
+        let r;
+        try {
+            r = await fetch(url, { signal: ctrl.signal });
+        } catch (e) {
+            clearTimeout(tid);
+            const esAbort = e && (e.name === 'AbortError' || /abort/i.test(String(e.message)));
+            const sinRed = typeof navigator !== 'undefined' && navigator.onLine === false;
+            // Bloqueo CORS real ⇒ no insistir el resto de la sesión. Un timeout o
+            // un wifi caído NO condenan al directo: podría ser transitorio.
+            if (!esAbort && !sinRed) this._directoOK = false;
+            throw Object.assign(new Error(esAbort ? 'directo: timeout' : 'directo: bloqueado por el navegador'), { rescatable: true });
+        }
+        clearTimeout(tid);
+        this._directoOK = true; // hubo respuesta legible ⇒ la puerta CORS está abierta
+        // Estados que los proxies NO arreglan (son de Elsevier): se señalan y NO
+        // se gasta el arsenal en ellos.
+        if (r.status === 401 || r.status === 403) { senal.auth = true; throw Object.assign(new Error(`HTTP${r.status} de Elsevier`), { destinoDirecto: true }); }
+        if (r.status === 429) { senal.cuota = true; throw Object.assign(new Error('HTTP429 de Elsevier'), { destinoDirecto: true }); }
+        if (!r.ok) { senal.motivo = `HTTP${r.status} de Elsevier`; throw Object.assign(new Error(senal.motivo), { destinoDirecto: true }); }
+        return r.text();
+    },
+
+    async _buscarPaginaConVista(query, filtros, start, view, key) {
+        const baseURL = this.construirURL(query, { ...filtros, count: 25, start, view });
+        const senal = {};
+        const urlConKey = baseURL + `&apiKey=${key}`;
+        if (this._directoOK !== false) {
+            try {
+                const html = await this._pedirDirecto(urlConKey, senal);
+                const obras = this._validarScopus(html, senal);
+                if (obras && obras.length) return { ok: true, obras, proxy: 'directo', total: senal.total };
+                return { ok: false, senal, error: senal.motivo || 'vacío (directo)' };
+            } catch (e) {
+                if (!e.rescatable) return { ok: false, senal, error: e.message };
+                // bloqueado o timeout ⇒ el arsenal toma el relevo
+            }
+        }
+        try {
+            const { obras, proxy } = await ProxiesCORS.carrera(
+                urlConKey, html => this._validarScopus(html, senal),
+                { anchura: 4, timeout: 20000, oleadas: 2 });
+            return { ok: true, obras, proxy, total: senal.total };
+        } catch (e) {
+            // Señales también desde el error estructurado del arsenal (por si el
+            // cuerpo no llegó al validador): destino 401/403 ⇒ auth · 429 ⇒ cuota.
+            if (e && e.destino) {
+                const st = e.destinoStatus || +(String(e.message).match(/HTTP(\d+)/) || [])[1] || 0;
+                if (st === 401 || st === 403) senal.auth = true;
+                else if (st === 429) senal.cuota = true;
+            }
+            return { ok: false, senal, error: e.message };
+        }
+    },
+
+    async _buscarPagina(query, filtros, start) {
+        const diag = [];
+        for (let intento = 0; intento < this.API_KEYS.length; intento++) {
+            const key = this._siguienteKey();
+
+            // Decidir qué vista intentar: si aún no se confirmó, probar COMPLETE
+            // (trae abstract); si ya supimos que no hay acceso, ir directo a STANDARD.
+            const vista = this._viewConfirmada || 'COMPLETE';
+            let res = await this._buscarPaginaConVista(query, filtros, start, vista, key);
+
+            // Si COMPLETE falló por entitlement (auth), reintentar STANDARD con la
+            // MISMA clave y recordar que COMPLETE no está disponible.
+            if (!res.ok && res.senal.auth && vista === 'COMPLETE') {
+                this._viewConfirmada = 'STANDARD';
+                res = await this._buscarPaginaConVista(query, filtros, start, 'STANDARD', key);
+            }
+
+            if (res.ok) {
+                // Confirmar la vista que funcionó (COMPLETE si trajo abstract).
+                if (!this._viewConfirmada) {
+                    const conAbstract = res.obras.some(o => o.resumen && o.resumen.length > 40);
+                    this._viewConfirmada = (vista === 'COMPLETE' && conAbstract) ? 'COMPLETE' : vista;
+                }
+                return { obras: res.obras, key: key.slice(0, 6) + '…', proxy: res.proxy, total: res.total, view: this._viewConfirmada };
+            }
+            // Errores que no se arreglan cambiando de clave:
+            if (res.senal.cuota) { this._marcarAgotada(key); diag.push(`${key.slice(0,6)}…: cuota`); continue; }
+            if (res.senal.vacioReal) { const er = new Error('vacío'); er.vacioReal = true; throw er; }
+            if (res.senal.auth) { const er = new Error(res.senal.motivo || 'acceso restringido'); er.auth = true; throw er; }
+            diag.push(`proxies: ${res.error}`); break;
+        }
+        const er = new Error(diag.slice(0, 4).join(' · ') || 'sin respuesta'); throw er;
+    },
+
+    // Búsqueda con PAGINACIÓN: trae páginas de 25 hasta 'maxResultados'.
+    // Scopus es API legítima → paginar es seguro (no hay anti-bot como Scholar).
+    // Búsqueda con PAGINACIÓN PARALELA: la página 0 va sola (sondea claves,
+    // vista y total real); el resto sale en ventana de 5 simultáneas — con el
+    // directo a Elsevier, 1000 resultados cuestan ~el tiempo de 8 páginas, no
+    // de 40. Cada página rota su propia clave: la carga se reparte sola.
+    // 8 simultáneas: con la rotación de claves, cada clave ve ~1-2 req/s —
+    // muy por debajo del acelerador de Elsevier. 5000 resultados ≈ 200 páginas
+    // ≈ 25 tandas ≈ ~35-40 s en vez de un minuto largo.
+    VENTANA_PAGINAS: 8,
+
+    async buscar(query, filtros = {}) {
+        if (typeof ProxiesCORS === 'undefined') throw new Error('arsenal de proxies no disponible');
+        const objetivo = filtros.maxResultados || 25;
+
+        // Página 0: sonda secuencial. Su fallo se propaga (igual que siempre);
+        // su 'total' decide cuántas páginas más existen de verdad.
+        let res0;
+        try { res0 = await this._buscarPagina(query, filtros, 0); }
+        catch (e) { e.scopus = true; throw e; }
+        const totalReal = parseInt(res0.total || '0', 10);
+        const meta = totalReal ? Math.min(objetivo, totalReal) : objetivo;
+        const paginas = Math.max(1, Math.ceil(meta / 25));
+        const porPagina = [res0.obras];
+        let ultMeta = { key: res0.key, proxy: res0.proxy };
+
+        if (paginas > 1 && res0.obras.length === 25) {
+            // Ventana de trabajadores sobre las páginas 1..n-1, con UN reintento
+            // por página. Un 'vacío real' en cola no es fallo: es el final.
+            const indices = []; for (let p = 1; p < paginas; p++) indices.push(p);
+            let cursor = 0;
+            const trabajador = async () => {
+                while (cursor < indices.length) {
+                    const p = indices[cursor++];
+                    for (let intento = 0; intento < 2; intento++) {
+                        try {
+                            const r = await this._buscarPagina(query, filtros, p * 25);
+                            porPagina[p] = r.obras;
+                            ultMeta = { key: r.key, proxy: r.proxy };
+                            break;
+                        } catch (e) {
+                            if (e && e.vacioReal) { porPagina[p] = []; break; }
+                            if (intento === 1) porPagina[p] = null; // fallo persistente
+                        }
+                    }
+                }
+            };
+            await Promise.all(Array.from({ length: Math.min(this.VENTANA_PAGINAS, indices.length) }, trabajador));
+        }
+
+        // Ensamblado EN ORDEN (el ranking de relevancia manda) y contiguo: si
+        // una página murió, se corta ahí — mejor 175 resultados bien ordenados
+        // que 1000 con un agujero en medio del ranking.
+        const todas = [];
+        // Dedup por Set (O(n)): con 5000 obras, el 'some' anidado de antes
+        // hacía ~12 millones de comparaciones y congelaba el hilo al ensamblar.
+        const vistos = new Set();
+        let paginasOK = 0, hueco = false;
+        for (let p = 0; p < paginas; p++) {
+            const lote = porPagina[p];
+            if (lote == null) { hueco = true; break; }
+            paginasOK++;
+            const nuevos = lote.filter(o => {
+                const clave = (o.doi && o.doi.toLowerCase()) || String(o.titulo || '').toLowerCase();
+                if (vistos.has(clave)) return false;
+                vistos.add(clave); return true;
+            });
+            todas.push(...nuevos);
+            if (lote.length < 25) break; // fin real de resultados
+        }
+        return {
+            obras: todas.slice(0, objetivo), ...ultMeta,
+            paginas: paginasOK, view: this._viewConfirmada,
+            parcial: hueco ? `${paginasOK}/${paginas} páginas` : ''
+        };
+    }
+};
+
+export { ScopusDirecto };

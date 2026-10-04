@@ -1,0 +1,19 @@
+/* styles.css — índice de hojas en el orden de la cascada original: base (variables, reset y atmósfera) y una hoja
+   por componente o zona. Edita las hojas; este índice solo las ordena. Para añadir una hoja: crea el archivo en
+   componentes/ y añade su @import aquí en el lugar que le corresponda por especificidad. */
+@import url("base.css");
+@import url("componentes/header.css");
+@import url("componentes/layout.css");
+@import url("componentes/cards.css");
+@import url("componentes/forms.css");
+@import url("componentes/buttons.css");
+@import url("componentes/tables.css");
+@import url("componentes/tabla-desplazable.css");
+@import url("componentes/stats.css");
+@import url("componentes/results.css");
+@import url("componentes/psicometria.css");
+@import url("componentes/help.css");
+@import url("componentes/footer-toast.css");
+@import url("componentes/contacto.css");
+@import url("componentes/responsive.css");
+@import url("componentes/utilities.css");
