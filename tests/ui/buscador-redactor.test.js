@@ -19,7 +19,7 @@ before(async () => {
 });
 
 test('los módulos del Buscador y del Redactor cargan sin ciclos rotos y se exponen por el puente', () => {
-    for (const g of ['Antecedentes', 'ProxiesCORS', 'ScopusDirecto', 'PubMedDirecto', 'ScieloDirecto', 'AliciaDirecto', 'ScholarDirecto', 'ProtocoloBusqueda', 'PrismaDiagrama', 'MetaAnalisis', 'RankingRevistas']) assert.ok(buscador[g] && typeof buscador[g] === 'object', g);
+    for (const g of ['Antecedentes', 'ProxiesCORS', 'ScopusDirecto', 'ScienceDirectDirecto', 'WebOfScienceDirecto', 'PubMedDirecto', 'ScieloDirecto', 'AliciaDirecto', 'ScholarDirecto', 'ProtocoloBusqueda', 'PrismaDiagrama', 'MetaAnalisis', 'RankingRevistas']) assert.ok(buscador[g] && typeof buscador[g] === 'object', g);
     for (const g of ['RedactorTeorico', 'IAAsistente']) assert.ok(redactor[g] && typeof redactor[g] === 'object', g);
     assert.equal(globalThis.StatSim.api.buscador.Antecedentes, buscador.Antecedentes); assert.equal(typeof globalThis.Antecedentes, 'undefined', 'sin global');
 });

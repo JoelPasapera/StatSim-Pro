@@ -5,7 +5,9 @@ import { AliciaDirecto } from '../fuentes/alicia.js';
 import { PubMedDirecto } from '../fuentes/pubmed.js';
 import { ScholarDirecto } from '../fuentes/scholar.js';
 import { ScieloDirecto } from '../fuentes/scielo.js';
+import { ScienceDirectDirecto } from '../fuentes/sciencedirect.js';
 import { ScopusDirecto } from '../fuentes/scopus.js';
+import { WebOfScienceDirecto } from '../fuentes/wos.js';
 import { PrismaDiagrama } from '../prisma.js';
 import { ProtocoloBusqueda } from '../protocolo.js';
 import { EVENTOS, bus } from '../../shared/eventos.js';
@@ -110,8 +112,12 @@ export const metodosAntecedentesBusqueda = {
         if (btn) btn.disabled = true;
         const _t0 = performance.now();
 
-        // Preparar los artículos con su índice real en this._obras.
-        const articulos = this._obras.map((o, idx) => ({
+        // (2026.12.30) La lista que se evalúa, fijada al empezar: si mientras tanto llega una búsqueda nueva (el botón de
+        // buscar sigue activo), las notas siguen yendo a ESTAS obras y no, por su posición, a las nuevas, que nunca se
+        // evaluaron (hasta la 2026.12.29, así: «Trabajo nuevo 4 → 3» con el motivo de otra obra).
+        const obras = this._obras;
+        // Preparar los artículos con su índice real en esa lista.
+        const articulos = obras.map((o, idx) => ({
             idx,
             titulo: o.titulo || '',
             resumen: o.resumen || o.abstract || ''
@@ -165,18 +171,18 @@ export const metodosAntecedentesBusqueda = {
                     const evals = await IAAsistente.evaluarLoteRelevancia(criterios, lote, canal);
                     // Volcar cada evaluación a su obra por idx.
                     for (const ev of evals) {
-                        if (this._obras[ev.idx]) {
-                            this._obras[ev.idx]._relevancia = ev.puntua;       // 0-5 (0 = no evaluado)
-                            this._obras[ev.idx]._relevanciaMotivo = ev.motivo;  // justificación
+                        if (obras[ev.idx]) {
+                            obras[ev.idx]._relevancia = ev.puntua;       // 0-5 (0 = no evaluado)
+                            obras[ev.idx]._relevanciaMotivo = ev.motivo;  // justificación
                         }
                     }
                 } catch (e) {
                     conError++;
                     // Marcar el lote como no evaluado (puntua 0) para no perderlos.
                     for (const a of lote) {
-                        if (this._obras[a.idx] && this._obras[a.idx]._relevancia == null) {
-                            this._obras[a.idx]._relevancia = 0;
-                            this._obras[a.idx]._relevanciaMotivo = 'No evaluado (error en el lote)';
+                        if (obras[a.idx] && obras[a.idx]._relevancia == null) {
+                            obras[a.idx]._relevancia = 0;
+                            obras[a.idx]._relevanciaMotivo = 'No evaluado (error en el lote)';
                         }
                     }
                 }
@@ -185,6 +191,15 @@ export const metodosAntecedentesBusqueda = {
             }
         };
         await Promise.all(Array.from({ length: canales }, (_, c) => trabajador(c)));
+
+        // (2026.12.30) Una búsqueda nueva reemplazó los resultados durante la evaluación: las notas quedaron en la lista
+        // anterior; la nueva no se reordena ni se filtra, y el PRISMA no cuenta como cribadas obras que no se evaluaron.
+        if (this._obras !== obras) {
+            if (estado) estado.textContent = '⚠️ Llegó una búsqueda nueva mientras se evaluaba la anterior: esa evaluación ya no se aplica. '
+                + 'Pulsa «Analizar relevancia» otra vez para evaluar los resultados actuales.';
+            if (btn) { btn.disabled = false; btn.textContent = textoBtn; }
+            return;
+        }
 
         // Reordenar this._obras por relevancia DESC (los no evaluados, al final).
         this._obras.sort((a, b) => (b._relevancia || 0) - (a._relevancia || 0));
@@ -274,8 +289,8 @@ export const metodosAntecedentesBusqueda = {
         if (btn) { btn.disabled = true; }
         const _t0 = performance.now(); // cronómetro de la búsqueda intensiva
 
-        // Acumulador con deduplicación incremental por DOI/título.
-        const vistos = new Set();
+        // Acumulador con deduplicación incremental por DOI/título (la obra repetida suma sus bases a la que se queda).
+        const vistos = new Map();
         const acumuladas = [];
         const infosTodas = [];
         let conError = 0;
@@ -307,15 +322,9 @@ export const metodosAntecedentesBusqueda = {
                     this._protocoloNota = '';
                     infosTodas.push(`«${q}» [${nombre}]: ${infos}`);
                     // Deduplicar contra lo ya acumulado.
-                    const antesDup = acumuladas.length;
-                    for (const o of obras) {
-                        const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
-                        if (vistos.has(k)) continue;
-                        vistos.add(k);
-                        acumuladas.push(o);
-                    }
+                    const nuevas = this._incorporarObras(vistos, acumuladas, obras);
                     if (typeof PrismaDiagrama !== 'undefined') {
-                        PrismaDiagrama.registrar('duplicados', { n: obras.length - (acumuladas.length - antesDup) });
+                        PrismaDiagrama.registrar('duplicados', { n: obras.length - nuevas, consulta: ['intensiva', consultaOrig, q, cod, JSON.stringify(f)].join('\u241f') });
                     }
                 } catch (e) {
                     conError++;
@@ -390,24 +399,35 @@ export const metodosAntecedentesBusqueda = {
         const qOriginal = document.getElementById('antQuery').value.trim();
         if (!qOriginal) { estado.textContent = 'Escribe términos de búsqueda.'; return; }
         const f = { desde: document.getElementById('antDesde').value };
-        const usarScopus = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked && typeof ScopusDirecto !== 'undefined';
-        const usarScholar = document.getElementById('antUsarScholar') && document.getElementById('antUsarScholar').checked && typeof ScholarDirecto !== 'undefined';
-        const usarAbiertas = document.getElementById('antUsarAbiertas') && document.getElementById('antUsarAbiertas').checked;
-        const usarPubmed = document.getElementById('antUsarPubmed') && document.getElementById('antUsarPubmed').checked && typeof PubMedDirecto !== 'undefined';
-        const usarScielo = document.getElementById('antUsarScielo') && document.getElementById('antUsarScielo').checked && typeof ScieloDirecto !== 'undefined';
-        const usarAlicia = document.getElementById('antUsarAlicia') && document.getElementById('antUsarAlicia').checked && typeof AliciaDirecto !== 'undefined';
+        const marcada = id => { const el = document.getElementById(id); return !!(el && el.checked); };
+        const usarScopus = marcada('antUsarScopus') && typeof ScopusDirecto !== 'undefined';
+        const usarSciencedirect = marcada('antUsarSciencedirect') && typeof ScienceDirectDirecto !== 'undefined';
+        const usarWos = marcada('antUsarWos') && typeof WebOfScienceDirecto !== 'undefined';
+        const usarScholar = marcada('antUsarScholar') && typeof ScholarDirecto !== 'undefined';
+        const usarAbiertas = marcada('antUsarAbiertas');
+        const usarPubmed = marcada('antUsarPubmed') && typeof PubMedDirecto !== 'undefined';
+        const usarScielo = marcada('antUsarScielo') && typeof ScieloDirecto !== 'undefined';
+        const usarAlicia = marcada('antUsarAlicia') && typeof AliciaDirecto !== 'undefined';
+        // (2026.12.26) La OMS y la ONU también son fuentes: con solo ellas marcadas, la búsqueda se negaba («Marca al
+        // menos una fuente»). Cuentan si su casilla está marcada y su cantidad es mayor que 0 (como en _buscarUnaConsulta).
+        const usarOMS = marcada('antUsarOMS') && this._nInput('antNumOMS', 15) > 0;
+        const usarONU = marcada('antUsarONU') && this._nInput('antNumONU', 10) > 0;
 
-        if (!usarScopus && !usarScholar && !usarAbiertas && !usarPubmed && !usarScielo && !usarAlicia) {
+        if (!usarScopus && !usarSciencedirect && !usarWos && !usarScholar && !usarAbiertas && !usarPubmed && !usarScielo && !usarAlicia && !usarOMS && !usarONU) {
             estado.textContent = 'Marca al menos una fuente de búsqueda.';
             return;
         }
 
         const fuentes = [];
         if (usarScopus) fuentes.push('Scopus');
+        if (usarSciencedirect) fuentes.push('ScienceDirect');
+        if (usarWos) fuentes.push('Web of Science');
         if (usarPubmed) fuentes.push('PubMed');
         if (usarScielo) fuentes.push('SciELO');
         if (usarAlicia) fuentes.push('ALICIA');
         if (usarScholar) fuentes.push('Google Académico');
+        if (usarOMS) fuentes.push('OMS');
+        if (usarONU) fuentes.push('ONU');
         if (usarAbiertas) fuentes.push('fuentes complementarias');
 
         // MULTI-IDIOMA: una pasada por idioma marcado. «Español» usa el texto
@@ -415,7 +435,7 @@ export const metodosAntecedentesBusqueda = {
         // ficha del protocolo con su nota de idioma.
         const idiomas = this._idiomasSeleccionados();
         const etiquetaIdiomas = idiomas.map(([, n]) => n).join(' + ');
-        const vistos = new Set();
+        const vistos = new Map();   // DOI o título → la obra que se queda (la repetida le suma sus bases)
         const acumuladas = [];
         const infosTodas = [];
         let brutosTotal = 0;
@@ -433,16 +453,12 @@ export const metodosAntecedentesBusqueda = {
                 this._protocoloNota = '';
                 infosTodas.push(idiomas.length > 1 ? `[${nombre}] ${infos}` : String(infos));
                 brutosTotal += obras.length;
-                for (const o of obras) {
-                    const k = (o.doi && o.doi.toLowerCase()) || this._norm(o.titulo);
-                    if (vistos.has(k)) continue;
-                    vistos.add(k);
-                    acumuladas.push(o);
-                }
+                this._incorporarObras(vistos, acumuladas, obras);
             }
             this._obras = acumuladas;
             if (typeof PrismaDiagrama !== 'undefined') {
-                PrismaDiagrama.registrar('duplicados', { n: brutosTotal - this._obras.length });
+                // (2026.12.30) por búsqueda: repetirla reemplaza sus duplicados en lugar de sumarlos otra vez
+                PrismaDiagrama.registrar('duplicados', { n: brutosTotal - this._obras.length, consulta: ['individual', qOriginal, fuentes.join(','), idiomas.map(([cod]) => cod).join(','), JSON.stringify(f)].join('\u241f') });
             }
             this._pagina = 0;
             this._resetRelevancia();
@@ -480,9 +496,11 @@ export const metodosAntecedentesBusqueda = {
         return promesa.then(r => {
             const fallo = r && typeof r.info === 'string' && /falló|fallaron/.test(r.info);
             if (r && Array.isArray(r.obras) && !fallo) {
-                ProtocoloBusqueda.actualizarResultados(fuente, q, r.obras.length);
+                ProtocoloBusqueda.actualizarResultados(fuente, q, r.obras.length, filtros);
                 if (typeof PrismaDiagrama !== 'undefined') {
-                    PrismaDiagrama.registrar('identificados', { fuente, n: r.obras.length });
+                    // (2026.12.30) Con la clave de la consulta: repetir la misma búsqueda ya no suma otra vez sus registros
+                    // (la ficha del protocolo contaba 10 y el diagrama, 20)
+                    PrismaDiagrama.registrar('identificados', { fuente, n: r.obras.length, consulta: ProtocoloBusqueda.claveConsulta(fuente, q, filtros) });
                 }
             }
             return r;
@@ -501,6 +519,8 @@ export const metodosAntecedentesBusqueda = {
             return el && el.checked;
         };
         const usarScopus = (opciones.usarScopus ?? leer('antUsarScopus')) && typeof ScopusDirecto !== 'undefined';
+        const usarSciencedirect = (opciones.usarSciencedirect ?? leer('antUsarSciencedirect')) && typeof ScienceDirectDirecto !== 'undefined';
+        const usarWos = (opciones.usarWos ?? leer('antUsarWos')) && typeof WebOfScienceDirecto !== 'undefined';
         const usarScholar = (opciones.usarScholar ?? leer('antUsarScholar')) && typeof ScholarDirecto !== 'undefined';
         const usarAbiertas = (opciones.usarAbiertas ?? leer('antUsarAbiertas'));
         const usarPubmed = (opciones.usarPubmed ?? leer('antUsarPubmed')) && typeof PubMedDirecto !== 'undefined';
@@ -522,6 +542,49 @@ export const metodosAntecedentesBusqueda = {
                     const vista = r.view === 'COMPLETE' ? ', con resúmenes ✓' : '';
                     return { obras: r.obras, info: `Scopus (clave ${r.key}, ${r.obras.length} result.${vista})` };
                 }).catch(e => ({ obras: [], info: `Scopus falló (${e.message})` }))));
+        }
+        if (usarSciencedirect) {
+            // (2026.12.27) ScienceDirect: el texto completo de las revistas y los libros de Elsevier, con las claves del sitio.
+            // Si esta sesión ya dejó todas las claves en pausa (cuota o rechazo), no se consulta ni entra en el protocolo.
+            if (!ScienceDirectDirecto.disponible()) {
+                tareas.push(Promise.resolve({ obras: [], info: `ScienceDirect no se consultó (${ScienceDirectDirecto.motivoNoDisponible()})` }));
+            } else {
+                const maxSd = lim(parseInt((document.getElementById('antCantidadSciencedirect') || {}).value || '50', 10), 10, 6000);
+                // En el protocolo, la consulta literal que se envía (la que se pega tal cual en sciencedirect.com).
+                tareas.push(this._protocolo('ScienceDirect', ScienceDirectDirecto.ecuacion(q) || q, f,
+                    ScienceDirectDirecto.buscar(q, { ...f, maxResultados: maxSd }).then(r => ({
+                        obras: r.obras,
+                        info: `ScienceDirect (${r.obras.length} result.`
+                            + (r.total > r.obras.length ? ` de ${r.total}` : '')
+                            + (r.omitidos ? `, ${r.omitidos} término(s) fuera de la consulta: no caben en sus 250 caracteres` : '')
+                            + (r.parcial ? `, parcial: ${r.parcial}` : '')
+                            + (r.descartados ? `, ${r.descartados} registro(s) ilegible(s) descartado(s)` : '')
+                            + (r.via === 'proxy' ? ', vía proxy' : '') + ')'
+                    })).catch(e => ({ obras: [], info: `ScienceDirect falló (${e.message})` }))));
+            }
+        }
+        if (usarWos) {
+            // (2026.12.26) Web of Science: sin clave (ni relevo) o con la cuota del día ya agotada no se consulta, y no
+            // entra en el protocolo (allí solo van las búsquedas que se lanzaron).
+            if (!WebOfScienceDirecto.configurada()) {
+                tareas.push(Promise.resolve({ obras: [], info: 'Web of Science no se consultó (falta la clave: «🔑 Conexión con Web of Science»)' }));
+            } else if (WebOfScienceDirecto.cuotaAgotada()) {
+                tareas.push(Promise.resolve({ obras: [], info: `Web of Science no se consultó (${WebOfScienceDirecto.mensajeCuota()})` }));
+            } else {
+                const maxWos = lim(parseInt((document.getElementById('antCantidadWos') || {}).value || '50', 10), 10, 1000);
+                // En el protocolo, la ecuación literal que se envía (la que se pega tal cual en la búsqueda avanzada de
+                // Web of Science): replicar la búsqueda exige la cadena exacta de cada base.
+                const repintar = () => { if (this._pintarEstadoWos) this._pintarEstadoWos(); };   // el panel dice si la cuota se agotó
+                tareas.push(this._protocolo('Web of Science', WebOfScienceDirecto.ecuacion(q, f) || q, f,
+                    WebOfScienceDirecto.buscar(q, { ...f, maxResultados: maxWos }).then(r => (repintar(), {
+                        obras: r.obras,
+                        info: `Web of Science (${r.obras.length} result.`
+                            + (r.parcial ? `, parcial: ${r.parcial}` : '')
+                            + (r.descartados ? `, ${r.descartados} registro(s) ilegible(s) descartado(s)` : '')
+                            + (r.obras.length && !r.conCitas ? ', sin recuento de citas: ¿plan de prueba?' : '')
+                            + (r.via === 'relevo' ? ', vía relevo' : '') + ')'
+                    })).catch(e => (repintar(), { obras: [], info: `Web of Science falló (${e.message})` }))));
+            }
         }
         if (usarPubmed) {
             const maxPubmed = lim(parseInt((document.getElementById('antCantidadPubmed') || {}).value || '100', 10), 10, 1000);

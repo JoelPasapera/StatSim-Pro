@@ -276,7 +276,7 @@ export function crearEntorno(html) {
         location: document.location, history: { replaceState() {}, pushState() {} },
         localStorage: { _m: new Map(), getItem(k) { return this._m.has(k) ? this._m.get(k) : null; }, setItem(k, v) { this._m.set(k, String(v)); }, removeItem(k) { this._m.delete(k); }, clear() { this._m.clear(); }, get length() { return this._m.size; } },
         requestAnimationFrame: f => { f(); return 1; }, innerWidth: 1200, innerHeight: 800, devicePixelRatio: 1, cancelAnimationFrame() {}, getComputedStyle: () => ({}), scrollTo() {}, alert() {}, confirm: () => true, prompt: () => '',
-        Blob: class { constructor(partes, o = {}) { this.partes = partes; this.type = o.type || ''; this.size = partes.reduce((s, p) => s + String(p).length, 0); } text() { return Promise.resolve(this.partes.map(String).join('')); } },
+        Blob: class { constructor(partes, o = {}) { this.partes = partes; this.type = o.type || ''; this.size = partes.reduce((s, p) => s + String(p).length, 0); } text() { return Promise.resolve(this.partes.map(String).join('')); } arrayBuffer() { const b = this.partes.map(p => (p instanceof Uint8Array ? p : new TextEncoder().encode(String(p)))); const u = new Uint8Array(b.reduce((s, x) => s + x.length, 0)); let o = 0; b.forEach(x => { u.set(x, o); o += x.length; }); return Promise.resolve(u.buffer); } },
         FileReader: class { readAsText(f) { setTimeout(() => this.onload && this.onload({ target: { result: f && f._texto !== undefined ? f._texto : '' } }), 0); } },
         Worker: undefined,
         matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),

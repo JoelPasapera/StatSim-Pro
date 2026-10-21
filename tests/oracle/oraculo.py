@@ -93,7 +93,8 @@ def alfa(items):
     k = X.shape[1]
     return k / (k - 1) * (1 - X.var(axis=0, ddof=1).sum() / X.sum(axis=1).var(ddof=1))
 
-def paf_un_factor(R, iteraciones=30):
+def paf_un_factor(R, iteraciones=200000):   # (2026.12.13) hasta la convergencia: antes, 30 iteraciones con parada
+    # por cambio < 1e−6, la misma parada prematura que el informe, así que no podía detectar su sesgo (hasta 0,02)
     k = R.shape[0]
     h2 = np.array([max(abs(R[i, j]) for j in range(k) if j != i) for i in range(k)])
     cargas = None
@@ -107,7 +108,7 @@ def paf_un_factor(R, iteraciones=30):
         cambio = np.abs(nuevas ** 2 - h2).max()
         h2 = np.minimum(nuevas ** 2, 0.999)
         cargas = nuevas
-        if cambio < 1e-6:
+        if cambio < 1e-12:
             break
     return cargas
 
@@ -283,6 +284,7 @@ def comparar_base(id_):
                 p = pruebas[v.split(':')[0]]
                 items = recodificar(p, p, cols, n)
                 X = np.column_stack(items); mn = p['minimo']
+                X = X[np.isfinite(X).all(axis=1)]   # (2026.12.03) los casos completos de la escala, como el informe (los mismos del KR-20)
                 pobs = np.nanmean(X, axis=0) - mn
                 registrar(f, float(pobs.mean()), nota=f'mín–máx oráculo {pobs.min():.2f}–{pobs.max():.2f}')
             elif t == 'disc':
@@ -387,14 +389,17 @@ def comparar_base(id_):
                 mask = np.isfinite(x1) & np.isfinite(x2)
                 if m.group(3):
                     mask &= (col(m.group(3)) == float(m.group(4)))
-                registrar(f, float((x2[mask].mean() - x1[mask].mean()) / sd(x1)), tol=0.012, nota='DE de T1 en toda la muestra')
+                # (2026.12.03) con la convención del informe: la DE de T1 de las parejas completas (T1 y T2) de toda la muestra; con
+                # perdidos difiere de la de todos los T1 (antes: 0,34 frente a 0,32 en R12)
+                completas = np.isfinite(x1) & np.isfinite(x2)
+                registrar(f, float((x2[mask].mean() - x1[mask].mean()) / sd(x1[completas])), tol=0.012, nota='DE de T1 de las parejas completas')
             elif t == 'interacción':
                 m = re.match(r'(.*): T1 → T(\d) tiempo × (.*) \(', v)
                 base = pruebas[m.group(1)]; onda = next(p for p in esq['pruebas'] if p['base'] == m.group(1) and p['onda'] == int(m.group(2)))
                 x1, x2, g = col(base['nombre']), col(onda['nombre']), col(m.group(3))
                 mask = np.isfinite(x1) & np.isfinite(x2)
                 c1 = (x2[mask & (g == 1)].mean() - x1[mask & (g == 1)].mean()); c0 = (x2[mask & (g == 0)].mean() - x1[mask & (g == 0)].mean())
-                registrar(f, float((c1 - c0) / sd(x1)), tol=0.012)
+                registrar(f, float((c1 - c0) / sd(x1[mask])), tol=0.012)   # (2026.12.03) la DE de T1 de las parejas completas, como el informe
             elif t == 'r inf':
                 m = re.match(r'(.*): concordancia autoinforme ↔ (.*)$', v)
                 base = pruebas[m.group(1)]; inf_ = next(p for p in esq['pruebas'] if p['base'] == m.group(1) and p['informante'] == m.group(2))

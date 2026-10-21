@@ -71,7 +71,7 @@ test('revisión 2026.10.17: WLSMV con 40 ítems (780 correlaciones) en tiempo ra
 
 test('revisión 2026.10.18: tabla 2 × 2 con celda vacía — corrección de lavaan con márgenes intactos, solo en WLSMV, y aviso si no informa', async () => {
     const { policorica, umbralesDe } = await import('../../src/analizador/psicometria/policorica.js');
-    const { cdfNormalBivariada } = await import('../../src/analizador/psicometria/numerico.js');
+    const { cdfNormalBivariada } = await import('../../src/core/stats/numerico.js');
     const x = [], y = [];
     for (let i = 0; i < 300; i++) { const a = i < 90 ? 0 : 1; x.push(a); y.push(a === 0 ? 0 : (i % 3 === 0 ? 0 : 1)); }
     assert.equal(policorica(x, y).rho, 0.9999, 'sin la opción (fiabilidad) sigue en el límite');

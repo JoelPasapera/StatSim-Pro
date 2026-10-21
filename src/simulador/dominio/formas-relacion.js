@@ -1,3 +1,9 @@
+import { cdfNormal } from '../../core/stats/numerico.js';
+import { rangosPromedio as rangos } from '../../core/stats/orden.js';
+import { correlacion, spearman as spearmanNucleo } from '../../core/stats/correlacion.js';
+import { media as mediaNucleo, desviacion, estandarizar } from '../../core/stats/descriptivos.js';
+import { mulberry32 } from '../../core/random/mulberry32.js';
+import { generadorNormales } from '../../core/random/normal.js';
 // simulador/dominio/formas-relacion.js — tipos de relación entre dos variables: dimensión A («forma de la tendencia»)
 // del «Atlas de relaciones entre variables en psicología». E[Y | X] = f(u), con u = X reescalada a [0, 1] sobre una
 // ventana centrada en la mediana de X que abarca de su percentil 1 al 99 (fuera de ella, u se recorta): un caso extremo
@@ -101,21 +107,8 @@ export function etaMaximaSinRecorte(id, tx, zLo, zHi, Phi, tope = 0.01, nube = n
     for (let k = 0; k < 40; k++) { const mid = (lo + hi) / 2; if (recorteEsperado(id, mid, tx, zLo, zHi, Phi, nube) <= tope) lo = mid; else hi = mid; }
     return lo;
 }
-// ρ de Spearman con rangos medios para los empates (índices en un Uint32Array: sin un arreglo por elemento)
-function rangos(v) {
-    const n = v.length, o = new Uint32Array(n);
-    for (let i = 0; i < n; i++) o[i] = i;
-    o.sort((p, q) => v[p] - v[q]);
-    const r = new Float64Array(n);
-    for (let i = 0; i < n;) { let j = i; while (j + 1 < n && v[o[j + 1]] === v[o[i]]) j++; const m = (i + j) / 2 + 1; for (let k = i; k <= j; k++) r[o[k]] = m; i = j + 1; }
-    return r;
-}
-export function pearsonVec(a, b) {
-    const n = a.length; let ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += a[i]; mb += b[i]; } ma /= n; mb /= n;
-    let ab = 0, aa = 0, bb = 0; for (let i = 0; i < n; i++) { const da = a[i] - ma, db = b[i] - mb; ab += da * db; aa += da * da; bb += db * db; }
-    return aa > 0 && bb > 0 ? ab / Math.sqrt(aa * bb) : NaN;
-}
-export const spearman = (a, b) => pearsonVec(rangos(a), rangos(b));
+export const pearsonVec = correlacion;   // (2026.12.12) del núcleo único: NaN si alguna serie es constante, como antes
+export const spearman = spearmanNucleo;   // (2026.12.12) del núcleo único: Pearson sobre los rangos promedio, como antes
 
 // ρ de Spearman ESPERADA bajo la forma y la fuerza pedidas, condicionada a la muestra (revisión 2026.10.26): con los
 // mismos valores de X y su curva f(X), se simulan residuos como los construye el motor (en modo exacto, ortogonales a X
@@ -124,7 +117,7 @@ export const spearman = (a, b) => pearsonVec(rangos(a), rangos(b));
 // La ρ no tiene una identidad exacta como la de r; esta es su distribución de referencia. Semilla fija: reproducible.
 export const MAXIMO_RHO_ESPERADA = 20000;
 // (dimensión B) con una nube, «residuo» = { g: g(X) de cada caso, acotada }: el residuo simulado es g·φ(e), como en el motor
-const phiNormal = z => { const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2), e = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-(z * z) / 2); return z >= 0 ? 0.5 * (1 + e) : 0.5 * (1 - e); };   // Abramowitz y Stegun 7.1.26
+const phiNormal = cdfNormal;   // del núcleo único (antes, la aproximación 7.1.26 de Abramowitz y Stegun)
 export function rhoEsperadaForma(x, fx, y, eta, { exacto = true, reps = null, semilla = 20261026, residuo = null } = {}) {
     // por encima de 20 000 casos, submuestra determinista (paso fijo): la media de ρ apenas depende de n y la tolerancia
     // la fija su mínimo (0.02); así el informe no bloquea la página con bases de hasta 1 000 000 de casos
@@ -133,15 +126,12 @@ export function rhoEsperadaForma(x, fx, y, eta, { exacto = true, reps = null, se
         return rhoEsperadaForma(sel.map(i => x[i]), sel.map(i => fx[i]), sel.map(i => y[i]), eta, { exacto, reps, semilla, residuo: residuo ? { g: sel.map(i => residuo.g[i]), acotada: residuo.acotada } : null });
     }
     const n = x.length;
-    const est = v => { let m = 0; for (let i = 0; i < n; i++) m += v[i]; m /= n; let s = 0; for (let i = 0; i < n; i++) s += (v[i] - m) ** 2; s = Math.sqrt(s / n) || 1; return Float64Array.from(v, t => (t - m) / s); };
-    const zx = est(x), zf = est(fx), rx = rangos(x), ordenY = Float64Array.from(y).sort();
+    const zx = estandarizar(x).z, zf = estandarizar(fx).z, rx = rangos(x), ordenY = Float64Array.from(y).sort();
     // base ortonormal de [x̃, z̃_f] (Gram–Schmidt) para ortogonalizar el residuo como el modo exacto
     const q1 = zx, p = zf.reduce((s, v, i) => s + v * q1[i], 0) / n, q2raw = Float64Array.from(zf, (v, i) => v - p * q1[i]);
     const nq2 = Math.sqrt(q2raw.reduce((s, v) => s + v * v, 0) / n), q2 = nq2 > 1e-9 ? Float64Array.from(q2raw, v => v / nq2) : null;
-    let a = semilla >>> 0;
-    const u01 = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };   // mulberry32
-    let guardado = null;   // Box–Muller: se aprovechan los dos valores de cada par
-    const normal = () => { if (guardado !== null) { const g = guardado; guardado = null; return g; } let u = 0; while (u === 0) u = u01(); const m = Math.sqrt(-2 * Math.log(u)), t = 2 * Math.PI * u01(); guardado = m * Math.sin(t); return m * Math.cos(t); };
+    // (2026.12.25) el generador mulberry32 y las normales por pares (Box-Muller) del núcleo único (core/random/)
+    const u01 = mulberry32(semilla), normal = generadorNormales(u01);
     const R = reps || (n <= 1000 ? 300 : n <= 5000 ? 100 : 40), valores = new Float64Array(R), ys = new Float64Array(n), idx = new Uint32Array(n);
     const eps = new Float64Array(n);
     // rango medio (con empates) de cada POSICIÓN del marginal ordenado de Y: los rangos de la Y simulada salen sin reordenar
@@ -160,9 +150,7 @@ export function rhoEsperadaForma(x, fx, y, eta, { exacto = true, reps = null, se
         for (let k = 0; k < n; k++) ry[idx[k]] = rangoPos[k];   // al marginal observado de Y (sus rangos, con empates)
         valores[r] = pearsonVec(rx, ry);
     }
-    let media = 0; for (const v of valores) media += v; media /= R;
-    let de = 0; for (const v of valores) de += (v - media) ** 2; de = Math.sqrt(de / (R - 1));
-    return { media, de, reps: R };
+    return { media: mediaNucleo(valores), de: desviacion(valores), reps: R };   // (2026.12.25) del núcleo único
 }
 
 // κ con X normal (nota previa de la interfaz, que lo dice): la misma curva teórica, con X = Z

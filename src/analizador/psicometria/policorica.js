@@ -2,7 +2,7 @@
 // verosimilitud en dos pasos (Olsson, 1979): umbrales fijados por las proporciones marginales y ρ que maximiza
 //   L(ρ) = Σᵢⱼ nᵢⱼ · ln πᵢⱼ(ρ),  πᵢⱼ = Φ₂(aᵢ₊₁, bⱼ₊₁) − Φ₂(aᵢ, bⱼ₊₁) − Φ₂(aᵢ₊₁, bⱼ) + Φ₂(aᵢ, bⱼ)
 // con Φ₂ la normal bivariante (numerico.js). Las categorías sin casos no generan umbral.
-import { cuantilNormal, cdfNormal, cdfNormalBivariada, densidadNormalBivariada, maximizarBrent, raizBrent } from './numerico.js';
+import { cuantilNormal, cdfNormal, cdfNormalBivariada, densidadNormalBivariada, maximizarBrent, raizBrent } from '../../core/stats/numerico.js';
 
 export const RHO_MAXIMO = 0.9999;
 

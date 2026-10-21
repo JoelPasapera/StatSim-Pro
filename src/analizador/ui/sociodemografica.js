@@ -9,16 +9,15 @@ import { fmtPApp } from './analisis.js';
 import { obtenerColumnasCategoricas } from './carga.js';
 import { descargarArchivo } from '../../shared/descargas.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { cuantilOrdenado } from '../../core/stats/orden.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
+import { textoP } from '../../shared/formato-numero.js';
 
 // ========================================
 // TABLA SOCIODEMOGRÁFICA Y NIVELES (bajo/medio/alto)
 // ========================================
 // Cuantil con interpolación lineal (tipo 7 de R) sobre valores YA ordenados.
-function cuantilLineal(ordenados, p) {
-    const h = (ordenados.length - 1) * p;
-    const lo = Math.floor(h), hi = Math.ceil(h);
-    return ordenados[lo] + (h - lo) * (ordenados[hi] - ordenados[lo]);
-}
+function cuantilLineal(ordenados, p) { return cuantilOrdenado(ordenados, p); }   // tipo 7, del núcleo único
 
 // Niveles por TERCILES EMPÍRICOS de la muestra (P33.3 y P66.7): bajo/medio/alto
 // con frecuencia y porcentaje. Devuelve null si hay menos de 3 valores válidos.
@@ -49,7 +48,7 @@ function mostrarTablaSociodemografica() {
     categoricas.forEach(col => {
         const conteo = new Map();
         datos.forEach(d => {
-            const k = String(d[col] ?? '').trim();
+            const k = esPerdido(d[col]) ? '' : String(d[col]).trim();   // (2026.12.18) un NaN (perdido del Simulador) no es una categoría
             if (k) conteo.set(k, (conteo.get(k) || 0) + 1);
         });
         const total = [...conteo.values()].reduce((a, b) => a + b, 0);
@@ -83,7 +82,7 @@ function mostrarNiveles(var1, var2, et1, et2) {
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
     if (datos.length === 0) { container.style.display = 'none'; return; }
     const bloque = (col, etiqueta) => {
-        const r = calcularNivelesDeValores(datos.map(d => +d[col]));
+        const r = calcularNivelesDeValores(datos.map(d => aNumero(d[col])));   // (2026.12.18) antes +valor: la celda vacía contaba como 0
         if (!r) return '';
         return `
             <div class="result-box" style="margin-top: 0.75rem;">
@@ -147,6 +146,7 @@ function mostrarDescriptivas(var1, var2, resultado) {
 // Formatea un coeficiente al estilo APA: sin cero a la izquierda y 2 decimales.
 function formatearRApa(r) {
     if (typeof r !== 'number' || isNaN(r)) return '—';
+    if (!Number.isFinite(r)) return r > 0 ? '∞' : '−∞';   // (2026.12.22) el d de dos grupos constantes y distintos
     const signo = r < 0 ? '-' : '';
     return signo + Math.abs(r).toFixed(2).replace(/^0/, '');
 }
@@ -154,18 +154,19 @@ function formatearRApa(r) {
 // Formatea el p-valor al estilo APA (p < .001 para valores muy pequeños).
 function formatearPApa(p) {
     if (typeof p !== 'number' || isNaN(p)) return 'p = —';
-    if (p < 0.001) return 'p < .001';
-    return 'p = ' + p.toFixed(3).replace(/^0/, '');
+    return textoP(p, { alfa: AnalizadorEstadistico.alfaEstudio() });
 }
 
 // Construye la frase de resultados en formato APA 7.
 function construirLineaAPA(var1, var2, resultado) {
     const simbolo = resultado.tipoCorrelacion === 'Pearson' ? 'r' : 'rₛ';
     const ic = resultado.intervaloConfianza;
+    // (revisión 2026.12.30) con su nivel: el 90 % con una prueba unilateral (decía «IC 95%» sobre el intervalo del 90 %)
     const icTexto = ic
-        ? `, IC 95% [${formatearRApa(ic.inferior)}, ${formatearRApa(ic.superior)}]`
+        ? `, IC ${Math.round(100 * (ic.nivel || 0.95))}% [${formatearRApa(ic.inferior)}, ${formatearRApa(ic.superior)}]`
         : '';
-    const significativa = resultado.pValor < 0.05;
+    const alfa = Number.isFinite(resultado.alfa) ? resultado.alfa : AnalizadorEstadistico.alfaEstudio();
+    const significativa = resultado.pValor < alfa;
     const relacion = significativa
         ? `una correlación ${resultado.interpretacion.direccion} estadísticamente significativa`
         : `una correlación ${resultado.interpretacion.direccion} no significativa`;
@@ -272,22 +273,22 @@ function mostrarReferencias(var1, var2, resultado) {
         <div class="references-container">
             <h4 class="result-title">Referencias bibliográficas</h4>
             <div class="reference-card">
-                <p class="reference-text">1. Hernández-Sampieri, R., & Mendoza, C. (2023). Metodología de la investigación: las rutas cuantitativa, cualitativa y mixta. <a href="https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf" target="_blank">https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf</a></p>
+                <p class="reference-text">1. Hernández-Sampieri, R., & Mendoza, C. (2023). Metodología de la investigación: las rutas cuantitativa, cualitativa y mixta. <a href="https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf" target="_blank" rel="noopener noreferrer">https://apiperiodico.jalisco.gob.mx/api/sites/periodicooficial.jalisco.gob.mx/files/metodologia_de_la_investigacion_-_roberto_hernandez_sampieri.pdf</a></p>
             </div>
             <div class="reference-card">
-                <p class="reference-text">2. Hernández, D., Fernández, C., & Baptista, M. D. P. (2010). Metodologia de la investigacion 5ta Edicion Sampieri. <a href="https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf" target="_blank">https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf</a></p>
+                <p class="reference-text">2. Hernández, D., Fernández, C., & Baptista, M. D. P. (2010). Metodologia de la investigacion 5ta Edicion Sampieri. <a href="https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf" target="_blank" rel="noopener noreferrer">https://www.academia.edu/download/46694261/Metodologia_de_la_investigacion_5ta_Edicion_Sampieri___Dulce_Hernandez_-_Academia.edu.pdf</a></p>
             </div>
             <div class="reference-card">
-                <p class="reference-text">3. Taherdoost, H. (2022). What are different research approaches? Comprehensive review of qualitative, quantitative, and mixed method research, their applications, types, and limitations. Journal of Management Science & Engineering Research, 5(1), 53-63. <a href="https://hal.science/hal-03741840/document" target="_blank">https://hal.science/hal-03741840/document</a></p>
+                <p class="reference-text">3. Taherdoost, H. (2022). What are different research approaches? Comprehensive review of qualitative, quantitative, and mixed method research, their applications, types, and limitations. Journal of Management Science & Engineering Research, 5(1), 53-63. <a href="https://hal.science/hal-03741840/document" target="_blank" rel="noopener noreferrer">https://hal.science/hal-03741840/document</a></p>
             </div>
             <div class="reference-card">
                 <p class="reference-text">4. Cohen, J. (1988). Statistical power analysis for the behavioral sciences (2.ª ed.). Lawrence Erlbaum Associates.</p>
             </div>
             <div class="reference-card">
-                <p class="reference-text">5. Arias, J. L. (2021). Diseño y metodología de la investigación. Enfoques Consulting EIRL. <a href="https://repositorio.concytec.gob.pe/handle/20.500.12390/2260" target="_blank">https://repositorio.concytec.gob.pe/handle/20.500.12390/2260</a></p>
+                <p class="reference-text">5. Arias, J. L. (2021). Diseño y metodología de la investigación. Enfoques Consulting EIRL. <a href="https://repositorio.concytec.gob.pe/handle/20.500.12390/2260" target="_blank" rel="noopener noreferrer">https://repositorio.concytec.gob.pe/handle/20.500.12390/2260</a></p>
             </div>
             <div class="reference-card">
-                <p class="reference-text">6. Cvetković-Vega, A., Maguiña, J. L., Soto, A., Lama-Valdivia, J., & Correa, L. E. (2021). Estudios transversales. Revista de la Facultad de Medicina Humana, 21(1), 164-170. <a href="https://doi.org/10.25176/RFMH.v21i1.3069" target="_blank">https://doi.org/10.25176/RFMH.v21i1.3069</a></p>
+                <p class="reference-text">6. Cvetković-Vega, A., Maguiña, J. L., Soto, A., Lama-Valdivia, J., & Correa, L. E. (2021). Estudios transversales. Revista de la Facultad de Medicina Humana, 21(1), 164-170. <a href="https://doi.org/10.25176/RFMH.v21i1.3069" target="_blank" rel="noopener noreferrer">https://doi.org/10.25176/RFMH.v21i1.3069</a></p>
             </div>
         </div>
     `;

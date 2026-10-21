@@ -5,7 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { analizarInvarianza, especificar, evaluar, estadisticosPorGrupo, NIVELES } from '../../src/analizador/psicometria/invarianza.js';
-import { cdfChi2NoCentral } from '../../src/analizador/psicometria/numerico.js';
+import { cdfChi2NoCentral } from '../../src/core/stats/numerico.js';
 
 const fx = JSON.parse(fs.readFileSync(new URL('../oracle/invarianza_fixture.json', import.meta.url), 'utf8'));
 const cerca = (a, b, tol, que) => assert.ok(Math.abs(a - b) <= tol, `${que}: ${a} vs ${b}`);

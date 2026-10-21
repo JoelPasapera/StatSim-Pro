@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import { GeneradorDatos, BaseColumnar } from '../../src/simulador/dominio/generador.js';
+import { aJsonFiel, deJsonFiel } from '../../src/core/data/json-fiel.js';
+import { comprobarGeneracionGuardada, generacionParaGuardar } from '../../src/simulador/dominio/generacion-guardada.js';
 globalThis.GeneradorDatos = GeneradorDatos; globalThis.BaseColumnar = BaseColumnar;
 
 const escala = (nombre, corto, prueba, k, media, de, alfa, extra = {}) => ({ nombre, nombreCorto: corto, prueba, tipo: 'dimension', numItems: k, media, desviacion: de, alfa, minimo: 1, maximo: 5, distribucion: 'normal', invertidos: 0, ...extra });
@@ -31,6 +33,12 @@ const ESCENARIOS = {
     S12_mediacion_paralela_curvilinea_estilos: base(1200, { modelos: [{ tipo: 'mediacion', x: 'Percepción', m: 'Comprensión', y: 'Estrés', c1: 0.4, c2: -0.3, c3: -0.1 }, { tipo: 'mediacion', x: 'Percepción', m: 'Regulación', y: 'Estrés', c1: 0.3, c2: -0.2, c3: -0.1 }, { tipo: 'curvilinea', x: 'Edad', m: 'Edad', y: 'Percepción', c1: 0.2, c2: -0.2, c3: 0 }], realismo: { pctPerdidos: 0, pctDescuidados: 0, pctDigitacion: 0, pctAquiescencia: 10, pctExtrema: 5, intensidadEstilos: 'leve', itemsControl: 1, tiempoMinutos: 0 } }),
     S14_niveles_grupos_cambio_imperfecciones: base(600, { medidasRepetidas: [{ variable: 'Percepción', ondas: 3, estabilidad: 0.6, cambio: 0.3, agrupacion: '', cambioGrupo: null, modelo: 'intercepto', dePendientes: 0, rInterceptoPendiente: 0 }, { variable: 'Regulación', ondas: 3, estabilidad: 0.5, cambio: -0.2, agrupacion: '', cambioGrupo: null, modelo: 'intercepto', dePendientes: 0, rInterceptoPendiente: 0 }], niveles: [{ x: 'Percepción', y: 'Regulación', rEntre: 0.5, rDentro: -0.2 }], correlaciones: [{ a: 'Percepción', b: 'Edad', r: 0.3 }], diferenciasGrupo: [{ tipo: 'd', cuantitativa: 'Percepción', agrupacion: 'Sexo', d: 0.4 }], realismo: { pctPerdidos: 5, mecanismoPerdidos: 'MCAR', referenciaMAR: '', sentidoMAR: 'altos', pctDescuidados: 5, tipoDescuidado: 'aleatorio', pctDigitacion: 0 } }),
     S15_panel_reciproco_grupos_cambio_imperfecciones: base(600, { medidasRepetidas: [{ variable: 'Percepción', ondas: 3, estabilidad: 0.6, cambio: 0.3, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }, { variable: 'Regulación', ondas: 3, estabilidad: 0.5, cambio: -0.2, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }], paneles: [{ tipo: 'reciproca', x: 'Percepción', y: 'Regulación', r: 0.3, cXY: 0.2, cYX: 0.1 }], correlaciones: [{ a: 'Percepción', b: 'Edad', r: 0.3 }], diferenciasGrupo: [{ tipo: 'd', cuantitativa: 'Percepción', agrupacion: 'Sexo', d: 0.4 }], realismo: { pctPerdidos: 5, mecanismoPerdidos: 'MCAR', referenciaMAR: '', sentidoMAR: 'altos', pctDescuidados: 5, tipoDescuidado: 'aleatorio', pctDigitacion: 0 } }),
+    // (RI-CLPM, 2026.12.07) panel recíproco con interceptos aleatorios (rasgos estables relacionados) en 3 ondas, con imperfecciones y
+    // sin correlaciones de X e Y con otras variables (en esta versión, con interceptos, no se admiten)
+    S18_riclpm_imperfecciones: base(700, { correlaciones: [], medidasRepetidas: [{ variable: 'Percepción', ondas: 3, estabilidad: 0.6, cambio: 0.1, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }, { variable: 'Estrés', ondas: 3, estabilidad: 0.55, cambio: 0, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }], paneles: [{ tipo: 'reciproca', x: 'Percepción', y: 'Estrés', r: 0.1, cXY: 0.15, cYX: 0, iccX: 0.4, iccY: 0.4, rRI: 0.5 }], realismo: { pctPerdidos: 3, mecanismoPerdidos: 'MCAR', pctDescuidados: 2, tipoDescuidado: 'aleatorio' } }),
+    // (Atlas, Simpson) la inversión entre los grupos de Sexo, con otra diferencia por grupo en una tercera escala, un punto de corte
+    // e imperfecciones (verificadas sobre la base limpia)
+    S17_simpson_cortes_imperfecciones: base(500, { modelos: [{ tipo: 'simpson', x: 'Percepción', m: 'Sexo', y: 'Estrés', c1: 0.35, c2: 1.4, c3: -1.4 }], diferenciasGrupo: [{ tipo: 'd', cuantitativa: 'Regulación', agrupacion: 'Sexo', d: 0.5 }], cortes: [{ variable: 'Estrés', etiquetas: ['Bajo', 'Alto'], cortes: [50], porPercentil: true }], realismo: { pctPerdidos: 4, mecanismoPerdidos: 'MCAR', pctDescuidados: 3, tipoDescuidado: 'aleatorio' } }),
     S16_histeresis_grupos_imperfecciones: base(600, { medidasRepetidas: [{ variable: 'Percepción', ondas: 4, estabilidad: 0.6, cambio: 0.2, agrupacion: '', cambioGrupo: null, modelo: 'ar1', dePendientes: 0, rInterceptoPendiente: 0 }], histeresis: [{ x: 'Percepción', nombre: 'Crisis', etiquetas: ['No', 'Sí'], pEntrada: 80, pSalida: 40, ruido: 5 }], diferenciasGrupo: [{ tipo: 'd', cuantitativa: 'Percepción', agrupacion: 'Sexo', d: 0.4 }], realismo: { pctPerdidos: 5, mecanismoPerdidos: 'MCAR', referenciaMAR: '', sentidoMAR: 'altos', pctDescuidados: 5, tipoDescuidado: 'aleatorio', pctDigitacion: 0 } }),
     S13_dicotomica_total: (() => { const c = base(1500, { cortes: [{ variable: 'Aptitud', etiquetas: ['Reprueba', 'Aprueba'], cortes: [7], porPercentil: false }], concordancias: [{ tipo: 'informante', variable: 'Aptitud', etiqueta: 'forma B', r: 0.7, sesgo: 0 }, { tipo: 'jueces', variable: 'Aptitud', jueces: 2, kappa: 0.8, icc: null }], desenlaces: [{ nombre: 'Beca', tipo: 'binario', prevalencia: 0.2, media: null, niveles: null, etiquetas: ['No', 'Sí'], predictores: [{ variable: 'Aptitud', efecto: 2.5 }] }] }); c.pruebas.push(dicot('Aptitud', 'AP', 'Examen', 12, 7, 0.8, { dificultades: [0.9, 0.85, 0.8, 0.7, 0.65, 0.6, 0.55, 0.5, 0.45, 0.4, 0.35, 0.25] })); return c; })()
 };
@@ -91,6 +99,15 @@ Object.entries(ESCENARIOS).forEach(([id, cfg]) => {
         // Worker: serialización ida y vuelta conserva etiquetas y formato
         const s = b.serializar(); const b3 = BaseColumnar.desdeSerializado(s);
         if (JSON.stringify(b3.fila(0)) !== JSON.stringify(b.fila(0))) registrar(id, 'serialización: la fila 0 cambia tras deserializar');
+        // (2026.12.31, revisión) lo que guarda un proyecto de esta generación se acepta al abrirlo, y da las mismas etiquetas
+        try {
+            const guardada = deJsonFiel(aJsonFiel(generacionParaGuardar(g, inf)));
+            const abierta = comprobarGeneracionGuardada(guardada, new GeneradorDatos(), b.columnas.length);
+            const otra = new GeneradorDatos();
+            otra.configuracion = abierta.configuracion;
+            if (JSON.stringify(otra.obtenerEtiquetas()) !== JSON.stringify(et)) registrar(id, 'proyecto: las etiquetas cambian al abrir la generación guardada');
+            if (JSON.stringify(otra.obtenerEstructuraEscalas()) !== JSON.stringify(g.obtenerEstructuraEscalas())) registrar(id, 'proyecto: la estructura cambia al abrir la generación guardada');
+        } catch (e) { registrar(id, 'proyecto: la generación guardada se rechaza al abrirla: ' + e.message); }
         console.log(`✓ ${id}: n ${b.n}, ${b.columnas.length} columnas, ${inf.length} filas del informe${noOk.length ? ` (${noOk.length} no ok${sinImperf ? '' : ', con imperfecciones'})` : ''}, ${val.advertencias.length} avisos`);
     } catch (e) {
         registrar(id, 'EXCEPCIÓN: ' + e.message + ' | ' + (e.stack || '').split('\n')[1]);

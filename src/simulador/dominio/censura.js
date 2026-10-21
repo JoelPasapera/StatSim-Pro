@@ -1,3 +1,4 @@
+import { cdfNormal, densidadNormal, cuantilNormal, biseccion } from '../../core/stats/numerico.js';
 // simulador/dominio/censura.js — techo y suelo de una escala (Atlas de relaciones, dimensión B2; sin DOM).
 // Un techo es el recorte del instrumento: una latente normal que sobrepasa el máximo de la escala se corta ahí. La latente
 // se infla (media μ*, DE σ*) para que, TRAS el recorte, la media y la DE observadas sean las pedidas:
@@ -6,16 +7,9 @@
 // La proporción en el límite no es un parámetro libre: la fijan la media, la DE y el límite (1 − Φ(c)). El suelo es el
 // espejo. Las correlaciones con una variable censurada se hacen exactas con la serie de Hermite (fórmula de Mehler):
 //   Cov(g(Z₁), h(Z₂)) = Σ_k E[g⁽ᵏ⁾]·E[h⁽ᵏ⁾]·ρᵏ/k!,  con E[g'] = Φ(c) y E[g⁽ᵏ⁾] = −φ(c)·Heₖ₋₂(c) (k ≥ 2) para g = mín(z, c)
-const RAIZ_2PI = Math.sqrt(2 * Math.PI);
-const phi = z => Math.exp(-0.5 * z * z) / RAIZ_2PI;
-// erfc con error RELATIVO < 1,2·10⁻⁷ también en las colas (Press et al., «erfcc»): la aproximación de Abramowitz y
-// Stegun tiene error absoluto y falla justo en las colas que aquí importan
-function erfc(x) {
-    const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
-    const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 + t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 + t * (-0.82215223 + t * 0.17087277)))))))));
-    return x >= 0 ? r : 2 - r;
-}
-export const Phi = z => 0.5 * erfc(-z / Math.SQRT2);
+const phi = densidadNormal;   // (2026.12.25) del núcleo único; antes, una copia
+// (2026.12.09) del núcleo único: con error relativo ≈ 1e−15 también en las colas (la erfc propia de antes, ≈ 1e−7)
+export const Phi = cdfNormal;
 const C_MIN = -3.5, C_MAX = 6;   // proporciones en el límite entre ≈ 10⁻⁹ y 99,98 %
 
 // momentos de mín(Z, c) a través de (c − Z)₊ (sin cancelaciones en las colas)
@@ -28,8 +22,7 @@ function cDesdeDistancia(d) {
     let lo = C_MIN, hi = C_MAX;
     if (distanciaTecho(hi) <= d) return C_MAX;
     if (distanciaTecho(lo) >= d) return C_MIN;
-    for (let k = 0; k < 100; k++) { const mid = (lo + hi) / 2; if (distanciaTecho(mid) < d) lo = mid; else hi = mid; }
-    return (lo + hi) / 2;
+    return biseccion(distanciaTecho, d, lo, hi, 100);   // (2026.12.25) la bisección del núcleo único
 }
 
 // parámetros de una escala con techo o suelo (totales en [minTotal, maxTotal]); null si no es posible
@@ -47,10 +40,9 @@ export function parametrosCensura(lado, M, DE, minTotal, maxTotal) {
 }
 // DE que da una proporción p en el límite con esa media (para sugerirla en la validación)
 export function deParaProporcion(p, lado, M, minTotal, maxTotal) {
-    const c = -inversaPhi(p), d = distanciaTecho(c);
+    const c = -cuantilNormal(p), d = distanciaTecho(c);   // (2026.12.25) la inversa de Φ del núcleo; antes, por bisección
     return (lado === 'suelo' ? M - minTotal : maxTotal - M) / d;
 }
-function inversaPhi(p) { let lo = -9, hi = 9; for (let k = 0; k < 100; k++) { const mid = (lo + hi) / 2; if (Phi(mid) < p) lo = mid; else hi = mid; } return (lo + hi) / 2; }
 // forma estandarizada (media 0, DE 1) del total censurado: la escala la aplica siempre al final (formaTotal); sin
 // propiedad «sigma», que reservaría la rama de la beta-binomial
 export function formaCensurada(par) {
@@ -107,7 +99,5 @@ export function rHermite(fa, fb, rho) {
 export function rhoHermite(fa, fb, r, tope = 0.99) {
     if (r > rHermite(fa, fb, tope)) return Infinity;
     if (r < rHermite(fa, fb, -tope)) return -Infinity;
-    let lo = -tope, hi = tope;
-    for (let k = 0; k < 60; k++) { const mid = (lo + hi) / 2; if (rHermite(fa, fb, mid) < r) lo = mid; else hi = mid; }
-    return (lo + hi) / 2;
+    return biseccion(rho => rHermite(fa, fb, rho), r, -tope, tope, 60);
 }

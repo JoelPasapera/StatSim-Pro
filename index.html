@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>StatSim Pro — Tu tesis de psicología: de la idea al Word APA</title>
-    <meta name="description" content="Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 9 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.">
+    <meta name="description" content="Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 10 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.">
     <link rel="canonical" href="https://joelpasapera.github.io/StatSim-Pro/">
     <meta name="robots" content="index, follow">
     <meta name="author" content="Joel Pasapera">
@@ -29,7 +29,7 @@
     <meta name="google-site-verification" content="czErNJ37oiVznnZ1ae98qZXNAZpxFX5SZTqxoKIMdHA" />
     <!-- Datos estructurados: lo que Google lee para entender tu app -->
     <script type="application/ld+json">
-    {"@context":"https://schema.org","@type":"WebApplication","name":"StatSim Pro","alternateName":"StatSimPro","url":"https://joelpasapera.github.io/StatSim-Pro/","description":"Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 9 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"es","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"Joel Pasapera","url":"https://github.com/JoelPasapera"},"featureList":"Explorador de problemáticas latentes, Buscador de antecedentes (Scopus, PubMed, SciELO, OpenAlex, Crossref, ALICIA, OMS, ONU, Google Académico), Simulador de bases de datos, Analizador estadístico (correlación, regresión, ANOVA, SEM), Exportación Word APA 7, Diagrama PRISMA, Meta-análisis"}
+    {"@context":"https://schema.org","@type":"WebApplication","name":"StatSim Pro","alternateName":"StatSimPro","url":"https://joelpasapera.github.io/StatSim-Pro/","description":"Laboratorio completo para tesis e investigación en psicología: explora problemáticas latentes, busca antecedentes en 10 bases académicas, genera y analiza datos, y exporta capítulos en Word APA 7. Gratis y 100 % en tu navegador.","applicationCategory":"EducationalApplication","operatingSystem":"Web","inLanguage":"es","isAccessibleForFree":true,"offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Person","name":"Joel Pasapera","url":"https://github.com/JoelPasapera"},"featureList":"Explorador de problemáticas latentes, Buscador de antecedentes (Scopus, Web of Science, PubMed, SciELO, OpenAlex, Crossref, ALICIA, OMS, ONU, Google Académico), Simulador de bases de datos, Analizador estadístico (correlación, regresión, ANOVA, SEM), Exportación Word APA 7, Diagrama PRISMA, Meta-análisis"}
     </script>
     <!-- Tipografías -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,7 +37,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#0b0f19">
     <!-- Styles -->
-    <link rel="stylesheet" href="assets/css/styles.css?v=13">
+    <link rel="stylesheet" href="assets/css/styles.css?v=15">
     <style>
         .chart-grid {
             display: grid;
@@ -178,7 +178,7 @@
                     <h3 class="rec-titulo rec-anim rec-d2">Todos tus antecedentes, un solo lugar</h3>
                     <p class="rec-texto rec-anim rec-d2">Búsqueda simultánea con variantes generadas por IA, criba con criterios de inclusión y relevancia, y una matriz con referencias APA lista para el marco teórico.</p>
                     <div class="rec-chips rec-anim rec-d3">
-                        <span><b>Google Académico</b></span><span><b>Scopus</b></span><span><b>PubMed</b></span><span><b>SciELO</b></span><span><b>ALICIA</b></span><span><b>OpenAlex</b></span><span><b>Crossref</b></span><span><b>OMS · IRIS</b></span><span><b>ONU</b></span>
+                        <span><b>Google Académico</b></span><span><b>Scopus</b></span><span><b>Web of Science</b></span><span><b>PubMed</b></span><span><b>SciELO</b></span><span><b>ALICIA</b></span><span><b>OpenAlex</b></span><span><b>Crossref</b></span><span><b>OMS · IRIS</b></span><span><b>ONU</b></span>
                     </div>
                 </section>
                 <section class="rec-cap">
@@ -945,11 +945,11 @@
                                 <tr>
                                     <th>Modelo</th>
                                     <th>X (predictora)</th>
-                                    <th>Mediador M / Moderador W / Tercera variable Z</th>
+                                    <th>Mediador M / Moderador W / Tercera variable Z / Grupos</th>
                                     <th>Y (criterio)</th>
-                                    <th title="Mediación: a (X→M). Moderación: β₁ (X). Terceras variables: r(Z,X)">Coef. 1</th>
-                                    <th title="Mediación: b (M→Y, controlando X). Moderación: β₂ (W). Terceras variables: r(Z,Y)">Coef. 2</th>
-                                    <th title="Mediación: c′ (X→Y directo, controlando M). Moderación: β₃ (interacción X×W). Terceras variables: la relación verdadera de X con Y (la parcial; en el colisionador, la de orden cero)">Coef. 3</th>
+                                    <th title="Mediación: a (X→M). Moderación: β₁ (X). Terceras variables: r(Z,X). Simpson: r dentro de los grupos">Coef. 1</th>
+                                    <th title="Mediación: b (M→Y, controlando X). Moderación: β₂ (W). Terceras variables: r(Z,Y). Simpson: d de X entre los grupos">Coef. 2</th>
+                                    <th title="Mediación: c′ (X→Y directo, controlando M). Moderación: β₃ (interacción X×W). Terceras variables: la relación verdadera de X con Y (la parcial; en el colisionador, la de orden cero). Simpson: d de Y entre los grupos">Coef. 3</th>
                                     <th>Acciones</th>
                                 </tr>
                             </thead>
@@ -966,7 +966,12 @@ verdadera de X con Y): en la <strong>confusión</strong>, Z causa X e Y y la rel
 es espuria); en la <strong>supresión</strong>, Z se relaciona con X y no con Y, y controlarla aumenta la relación; en el
 <strong>colisionador</strong>, X e Y causan Z, la verdadera es la de orden cero y controlar Z crea una relación que no existe (si además
 se selecciona la muestra por Z, con la selección por rango, aparece la paradoja de Berkson). El informe verifica las tres
-correlaciones y la parcial. Las correlaciones que implican los coeficientes sustituyen a las de la tabla III para esas parejas;
+correlaciones y la parcial. <strong>Paradoja de Simpson</strong> (los grupos en la columna central: una variable binaria o categórica de los
+sociodemográficos): se pide la r de X con Y dentro de los grupos y la d de Cohen de X y de Y entre ellos (con más de dos
+grupos, por unidad de código: la diferencia entre grupos consecutivos, como en la tabla de diferencias); si las dos d van en un
+sentido que contradice la r de dentro y son grandes, la relación se invierte al juntar los grupos (por ejemplo, +0,40 dentro
+y −0,10 en toda la base, con d de 1,5 y −1,5). El informe verifica la r dentro de cada grupo, la combinada, la de toda la base
+y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de la tabla III para esas parejas;
                         el informe «pedido vs. obtenido» muestra cada coeficiente recuperado por regresión sobre la base generada.
                     </p>
                 </div>
@@ -1065,6 +1070,9 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                                         <th title="Correlación de X e Y medidas en la misma onda (la misma en todas)">r misma onda</th>
                                         <th title="β tipificado de X en una onda sobre Y en la siguiente, controlando la Y anterior">Efecto X → Y</th>
                                         <th title="β tipificado de Y en una onda sobre X en la siguiente, controlando la X anterior (solo en la recíproca)">Efecto Y → X</th>
+                                        <th title="(RI-CLPM) Parte de la varianza de X que es nivel estable de la persona; vacía, 0: el panel clásico">ICC X</th>
+                                        <th title="(RI-CLPM) Parte de la varianza de Y que es nivel estable de la persona; vacía, 0: el panel clásico">ICC Y</th>
+                                        <th title="(RI-CLPM) Correlación entre los niveles estables de X e Y (los rasgos)">r interceptos</th>
                                         <th>Acciones</th>
                                     </tr>
                                 </thead>
@@ -1079,7 +1087,13 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                             autorregresión. Con efectos cruzados, la r entre ondas lejanas ya no es la estabilidad elevada a la distancia, y las
                             variables que no se repiten se propagan por la misma dinámica. El informe estima los efectos cruzados y los
                             autorregresivos por regresión y dice qué muestran los datos. El panel cruzado supone que no hay diferencias
-                            estables entre personas (sin interceptos aleatorios).
+                            estables entre personas. Con las ICC y la r entre interceptos se convierte en el <strong>RI-CLPM</strong> (Hamaker,
+                            Kuiper y Grasman, 2015): cada persona tiene además un nivel estable (su rasgo) en X y en Y, y la r en la misma onda y
+                            los efectos cruzados de la fila pasan a ser los de DENTRO de la persona (la estabilidad de la tabla VI sigue siendo la
+                            observada). Si los rasgos se relacionan, el panel clásico ve efectos cruzados que dentro de la persona no existen: el
+                            informe muestra lo que estimaría el panel clásico con los datos, la r entre la primera y la última onda (que no decae
+                            hacia 0, sino hacia la ICC) y la diferencia con el efecto de dentro. En esta versión, con interceptos, X e Y no se
+                            relacionan con otras variables.
                         </p>
                     </div>
                     <div class="bloque-histeresis" style="margin-top: 1rem;">
@@ -1307,6 +1321,22 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                         </svg>
                         ⬇ CSV (internacional)
                     </button>
+                    <button id="btnDescargarSAV" class="btn btn-outline" disabled title="Archivo de SPSS (.sav) con las etiquetas de variable y de valor, el nivel de medida de cada columna y las fechas como fechas: se abre directamente en SPSS, PSPP, JASP o jamovi">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path
+                                d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        ⬇ SPSS (.sav)
+                    </button>
+                    <button id="btnDescargarXLSX" class="btn btn-outline" disabled title="Libro de Excel (.xlsx) con tres hojas: la base (las categorías con su etiqueta y las fechas como fechas), su diccionario (etiquetas, niveles de medida y códigos) y el informe de la generación. Abre en Excel, LibreOffice, Google Sheets y Numbers, y el Analizador lo lee con sus etiquetas">
+                        <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
+                            <path
+                                d="M3 13L3 14C3 15.6569 4.34315 17 6 17L14 17C15.6569 17 17 15.6569 17 14L17 13M10 3L10 13M10 13L7 10M10 13L13 10"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        ⬇ Excel (.xlsx)
+                    </button>
                 </div>
 
                 <!-- Avance de la generación (la base se genera en un Web Worker) -->
@@ -1314,6 +1344,10 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                     <div class="progreso-generacion__barra"><div class="progreso-generacion__relleno"></div></div>
                     <span class="progreso-generacion__texto">Preparando… 0 %</span>
                 </div>
+
+                <!-- (2026.12.30) Los errores y avisos de la validación de la última generación, todos y a la vista: el aviso
+                     emergente solo mostraba el primero, y el de «base generada» lo tapaba enseguida -->
+                <div id="avisosGeneracion" class="card" style="display: none; border-left: 4px solid #d4a72c;" role="status" aria-live="polite"></div>
 
                 <!-- Diagnóstico de correlaciones incompatibles (solo aparece si hubo ajuste) -->
                 <div id="diagnosticoCorrelaciones" class="card" style="display: none; border-left: 4px solid #d4a72c;"></div>
@@ -1401,17 +1435,23 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                                 Usar Datos Generados
                             </button>
                             <span class="divider-text">o</span>
-                            <label for="fileInput" class="btn btn-primary">
+                            <label for="fileInput" class="btn btn-primary" title="Un CSV (separado por comas o por punto y coma), un libro de Excel (.xlsx: sus fechas como fechas y, si es del Simulador, sus etiquetas) o una base de SPSS (.sav o .zsav: también las etiquetas de variable y de valor y los perdidos)">
                                 <svg aria-hidden="true" focusable="false" width="20" height="20" viewBox="0 0 20 20" fill="none">
                                     <path
                                         d="M10 13V3M10 3L7 6M10 3L13 6M3 13V14C3 15.6569 4.34315 17 6 17H14C15.6569 17 17 15.6569 17 14V13"
                                         stroke="currentColor" stroke-width="2" stroke-linecap="round"
                                         stroke-linejoin="round" />
                                 </svg>
-                                Subir Archivo CSV
+                                Subir CSV, Excel (.xlsx) o SPSS (.sav)
                             </label>
-                            <input type="file" id="fileInput" accept=".csv" style="display: none;">
+                            <!-- (2026.12.29) oculta a la vista pero no al teclado: con display: none no se podía elegir un archivo sin ratón -->
+                            <input type="file" id="fileInput" class="archivo-oculto" accept=".csv,.tsv,.txt,.sav,.zsav,.xlsx,.xlsm,.xls,.ods,text/csv,text/tab-separated-values,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
                         </div>
+                    </div>
+                    <!-- (2026.12.31) El libro de Excel cargado tiene varias hojas con datos: cuál se analiza -->
+                    <div id="selectorHojaXlsx" class="form-group" style="display: none; margin-top: 0.75rem;">
+                        <label for="hojaXlsx">Hoja del libro</label>
+                        <select id="hojaXlsx" class="input"></select>
                     </div>
                 </div>
 
@@ -1483,12 +1523,12 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                 <div id="afeContainer" class="card"></div>
 
                 <!-- Concordancia entre evaluadores (κ y CCI): la monta src/analizador/psicometria/concordancia-ui.js -->
-                <div id="concordanciaContainer" class="card"></div>
-
-                <!-- Invarianza de medición (AFC multigrupo): la monta src/analizador/psicometria/invarianza-ui.js -->
-                <div id="invarianzaContainer" class="card"></div>
-
-                <!-- Diagnóstico de la forma de una relación: lo monta src/analizador/relaciones/diagnostico-forma-ui.js -->
+                <div id="concordanciaContainer" class="card"></div>
+
+                <!-- Invarianza de medición (AFC multigrupo): la monta src/analizador/psicometria/invarianza-ui.js -->
+                <div id="invarianzaContainer" class="card"></div>
+
+                <!-- Diagnóstico de la forma de una relación: lo monta src/analizador/relaciones/diagnostico-forma-ui.js -->
                 <div id="diagnosticoFormaContainer" class="card"></div>
 
                 <div id="seleccionContainer" class="card">
@@ -1668,9 +1708,9 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                     <div class="ana-hero-texto">
                         <p class="ana-eyebrow">Para tesis de psicología</p>
                         <h2 class="ana-titulo">Buscador<span class="oro">de Antecedentes</span></h2>
-                        <p class="ana-parrafo">Escribe tu tema y busca a la vez en 9 bases académicas — de Google Académico a Scopus y la OMS. Criba los resultados con tus criterios de inclusión y relevancia, y llévate una matriz con referencias APA lista para alimentar tu marco teórico.</p>
+                        <p class="ana-parrafo">Escribe tu tema y busca a la vez en 10 bases académicas — de Google Académico a Scopus, Web of Science y la OMS. Criba los resultados con tus criterios de inclusión y relevancia, y llévate una matriz con referencias APA lista para alimentar tu marco teórico.</p>
                         <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
-                            <span class="af-paso"><i>1</i> Busca en 9 bases</span>
+                            <span class="af-paso"><i>1</i> Busca en 10 bases</span>
                             <span class="af-linea" aria-hidden="true"></span>
                             <span class="af-paso"><i>2</i> Criba y puntúa</span>
                             <span class="af-linea" aria-hidden="true"></span>
@@ -1702,7 +1742,7 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                     </div>
                     <div class="help-card">
                         <h3>🔎 Buscador de antecedentes</h3>
-                        <p>Busca a la vez en Google Académico, Scopus, PubMed, SciELO, ALICIA, OpenAlex, Crossref y los repositorios oficiales de la OMS y la ONU. La búsqueda intensiva expande tu consulta con variantes generadas por IA; luego cribas con criterios de inclusión/exclusión y relevancia (1–5) y obtienes una matriz con referencias APA y enlaces.</p>
+                        <p>Busca a la vez en Google Académico, Scopus, Web of Science (con una clave de su API), PubMed, SciELO, ALICIA, OpenAlex, Crossref y los repositorios oficiales de la OMS y la ONU. ScienceDirect (en el texto completo de los artículos de Elsevier) está lista, pero viene desmarcada: Elsevier todavía no habilita su API para las claves del sitio. La búsqueda intensiva expande tu consulta con variantes generadas por IA; luego cribas con criterios de inclusión/exclusión y relevancia (1–5) y obtienes una matriz con referencias APA y enlaces.</p>
                     </div>
                     <div class="help-card">
                         <h3>✍️ Redactor del marco teórico</h3>
@@ -1726,15 +1766,29 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
                     </div>
                     <div class="help-card">
                         <h3>🔒 Privacidad y funcionamiento</h3>
-                        <p>Todo corre en tu navegador: tus datos no se suben a ningún servidor propio. Solo salen las consultas a las bases académicas y, si usas las funciones de IA (variantes, criba, redactor), a la API de Groq con tus claves.</p>
+                        <p>Todo corre en tu navegador: tus datos no se suben a ningún servidor propio. Solo salen las consultas a las bases académicas y, si usas las funciones de IA (variantes, criba, redactor), a la API de Groq con tus claves. La clave de Web of Science, si la pegas, se guarda solo en tu navegador y viaja únicamente a Clarivate (o al relevo propio del sitio).</p>
+                    </div>
+                    <!-- (2026.12.31) Todo el trabajo en un archivo: proyecto/ui.js -->
+                    <div class="help-card" id="proyecto">
+                        <h3>💾 Proyecto completo</h3>
+                        <p><strong>Guardar proyecto</strong> descarga un solo archivo (.statsim) con todo tu trabajo: la configuración del
+                        Simulador y su base generada (la misma, sin volver a generarla), los datos cargados en el Analizador con sus etiquetas,
+                        la tabla de la V de Aiken, la última redacción del Redactor y el protocolo de búsqueda con su flujo PRISMA.
+                        <strong>Abrir proyecto</strong> lo devuelve todo a su sitio, en este u otro navegador (te pide confirmarlo antes de
+                        reemplazar lo que tengas). No guarda tu clave de Web of Science.</p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
+                            <button id="btnGuardarProyecto" type="button" class="btn btn-primary">Guardar proyecto</button>
+                            <label for="archivoProyecto" class="btn btn-outline">Abrir proyecto</label>
+                            <input type="file" id="archivoProyecto" class="archivo-oculto" accept=".statsim,.zip,application/zip">
+                        </div>
                     </div>
                     <div class="help-card" id="mantenimiento">
                         <h3>🧹 Si la página no se actualiza</h3>
                         <p>El navegador guarda copias de los archivos del sitio y, tras una actualización, puede mezclar una página nueva con
                         un módulo viejo (la web «se queda» o faltan cosas), incluso después de Ctrl+F5. <strong>Recargar sin caché</strong> vuelve a
                         descargar todos los archivos del sitio y recarga; no borra nada tuyo. <strong>Restablecer y recargar</strong> además borra el
-                        almacenamiento local (estado de los proxies del Buscador y flujo PRISMA de la sesión). En ambos casos, si tienes una configuración
-                        a medias en el Simulador, exporta antes el archivo maestro.</p>
+                        almacenamiento local: la última redacción del Redactor, la tabla de la V de Aiken, la clave de Web of Science, el ranking de revistas descargado, el estado de los proxies del Buscador y el protocolo y el flujo PRISMA de la sesión (la confirmación dice cuáles hay). En ambos casos, si tienes trabajo
+                        a medias, guárdalo antes con <strong>Guardar proyecto</strong>.</p>
                         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
                             <button id="btnRecargarSinCache" type="button" class="btn btn-secondary" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(false) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Recargar sin caché</button>
                             <button id="btnRestablecerSitio" type="button" class="btn btn-outline" onclick="window.StatSimMantenimiento ? StatSimMantenimiento.recargarSinCache(true) : alert('El módulo mantenimiento.js no se ha cargado: comprueba que está subido al repositorio junto con este index.html y vuelve a intentarlo tras Ctrl+F5.')">Restablecer y recargar</button>
@@ -1765,31 +1819,31 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
 
                 <div class="contact-grid">
 
-                    <a href="https://www.facebook.com/joel.pasaperapinto.1" target="_blank" class="contact-card">
+                    <a href="https://www.facebook.com/joel.pasaperapinto.1" target="_blank" rel="noopener noreferrer" class="contact-card">
                         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                         <h3>Facebook</h3>
                         <p>Sígueme para novedades y artículos.</p>
                     </a>
 
-                    <a href="https://www.instagram.com/joel.pasapera/" target="_blank" class="contact-card">
+                    <a href="https://www.instagram.com/joel.pasapera/" target="_blank" rel="noopener noreferrer" class="contact-card">
                         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/></svg>
                         <h3>Instagram</h3>
                         <p>Contenido diario y un vistazo a mi vida profesional.</p>
                     </a>
 
-                    <a href="https://www.youtube.com/@JoelPasapera" target="_blank" class="contact-card">
+                    <a href="https://www.youtube.com/@JoelPasapera" target="_blank" rel="noopener noreferrer" class="contact-card">
                         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
                         <h3>YouTube</h3>
                         <p>Tutoriales de programación y análisis de datos en video.</p>
                     </a>
 
-                    <a href="https://github.com/JoelPasapera" target="_blank" class="contact-card">
+                    <a href="https://github.com/JoelPasapera" target="_blank" rel="noopener noreferrer" class="contact-card">
                         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
                         <h3>GitHub</h3>
                         <p>Revisa mis proyectos y contribuciones de código abierto.</p>
                     </a>
 
-                    <a href="https://www.tiktok.com/@joelpasapera101" target="_blank" class="contact-card">
+                    <a href="https://www.tiktok.com/@joelpasapera101" target="_blank" rel="noopener noreferrer" class="contact-card">
                         <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="currentColor" class="icon"><path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.15 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/></svg>
                         <h3>TikTok</h3>
                         <p>Tips rápidos de tecnología y ciencia de datos.</p>
@@ -1828,7 +1882,7 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
             letter-spacing: 0.02em;
         }
         #contacto .perfil-bio {
-            margin: 0 auto; max-width: 620px; color: var(--color-text-soft, #555);
+            margin: 0 auto; max-width: 620px; color: var(--color-text-soft, #8b93a7);
             line-height: 1.65; font-size: 0.98rem;
         }
         #contacto .contact-grid {
@@ -1892,7 +1946,7 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: src/main.js?v=2026.11.23). Eso obliga a navegadores y CDN
+         (ej: src/main.js?v=2026.12.31). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1901,7 +1955,7 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
          mismas versiones) -->
     <!-- Arranque modular: src/main.js carga todo el código propio (módulos ES bajo src/). Al publicar cambios:
          sube VERSION en src/version.js y este ?v=. -->
-    <script type="module" src="src/main.js?v=2026.11.23"></script>
+    <script type="module" src="src/main.js?v=2026.12.31"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
 
@@ -1926,7 +1980,7 @@ correlaciones y la parcial. Las correlaciones que implican los coeficientes sust
     <!-- Importar libreria -->
     
     <!-- Buscador de antecedentes (Fase A) -->
-    
+    
 
     <!-- Exportador del capítulo de resultados a Word (APA 7) -->
 

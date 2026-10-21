@@ -4,9 +4,12 @@ import { analizarValidezContenido, CRITERIOS_V0, NIVELES_CONFIANZA } from './aik
 import { parsearMatriz } from './aiken-entrada.js';
 import { redactarParrafo, referencias, filasCriterio, CABECERA_CRITERIO, notaCriterio, documentoWord, csvResultados, f2, ROTULO_DECISION } from './aiken-redaccion.js';
 import { EJEMPLO_AIKEN } from './aiken-ejemplo.js';
-import { mostrarToast } from '../../shared/toast.js';
+import { mostrarToast, mostrarToastConAvisos } from '../../shared/toast.js';
+import { leerArchivoComoTexto } from '../../shared/archivos.js';
 import { descargarArchivo, descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
+import { inscribirEnProyecto } from '../../shared/proyecto.js';
+import { leerJsonAcotado } from '../../core/data/json-acotado.js';
 
 const CLAVE_GUARDADO = 'statsim.aiken.v1';
 const CRITERIOS_INICIALES = ['Pertinencia', 'Relevancia', 'Claridad'];
@@ -132,11 +135,10 @@ function agregarCriterio(nombre = '', texto = '') {
     bloque.querySelector('[data-accion="cargar-csv"]').addEventListener('click', () => archivo.click());   // botón enfocable con teclado
     archivo.addEventListener('change', () => {
         const f = archivo.files && archivo.files[0];
-        if (!f || typeof FileReader === 'undefined') return;
-        const lector = new FileReader();
-        lector.onload = () => { area.value = String(lector.result || '').replace(/^\ufeff/, ''); actualizarLectura(bloque); guardar(); mostrarToast(`«${f.name}» cargado`, 'success'); };
-        lector.onerror = () => mostrarToast('No se pudo leer el archivo', 'error');
-        lector.readAsText(f, 'utf-8');
+        if (!f) return;
+        // (2026.12.29) con la codificación del archivo (shared/archivos.js): un CSV de Excel en español perdía las tildes
+        leerArchivoComoTexto(f).then(({ texto, aviso }) => { area.value = texto; actualizarLectura(bloque); guardar(); mostrarToastConAvisos(`«${f.name}» cargado`, aviso); },
+            () => mostrarToast('No se pudo leer el archivo', 'error'));
         archivo.value = '';
     });
     actualizarLectura(bloque);
@@ -263,3 +265,44 @@ export function montarValidezContenido() {
 }
 
 export function resultadoActual() { return ultimoResultado; }
+
+// (2026.12.31) La tabla de la V de Aiken en el archivo de proyecto (shared/proyecto.js): la escala, la confianza, el valor
+// de referencia y las valoraciones de cada criterio. Si la tarjeta aún no se montó, se guarda y se restaura en el
+// almacenamiento del navegador, de donde la toma al montarse. (Revisión) Al abrirlo, solo con la forma que guarda la
+// tarjeta: la confianza y el criterio, de los que ofrecen sus listas; los criterios, pocos y con textos de un largo
+// razonable (un proyecto puede ser de otra persona).
+const MAXIMO_CRITERIOS = 50, MAXIMO_NOMBRE = 200, MAXIMO_TEXTO = 2000000;
+/** Lo más que trae «aiken.json»: la configuración y los criterios, con holgura. @type {import('../../core/data/json-acotado.js').TopesJson} */
+const TOPES_JSON_AIKEN = { profundidad: 6, contenedores: 4 * MAXIMO_CRITERIOS + 100, elementos: 100000 };
+const estadoValido = e => !!e && [e.minimo, e.maximo, e.confianza, e.v0].every(Number.isFinite) && Array.isArray(e.criterios)
+    && e.criterios.every(c => c && typeof c.nombre === 'string' && typeof c.texto === 'string');
+const estadoDeProyectoValido = e => estadoValido(e) && NIVELES_CONFIANZA.includes(e.confianza) && CRITERIOS_V0.some(c => c.valor === e.v0)
+    && Math.abs(e.minimo) <= 1e6 && Math.abs(e.maximo) <= 1e6 && e.criterios.length <= MAXIMO_CRITERIOS
+    && e.criterios.every(c => c.nombre.length <= MAXIMO_NOMBRE && c.texto.length <= MAXIMO_TEXTO);
+inscribirEnProyecto({
+    seccion: 'aiken', titulo: 'la V de Aiken', orden: 30,
+    capturar() {
+        const montada = contenedor && contenedor.dataset.montado === '1';
+        const estado = montada ? { ...leerConfiguracion(), criterios: leerCriterios() } : restaurar();
+        if (!estadoValido(estado) || !estado.criterios.some(c => c.texto.trim())) return null;
+        return { archivos: { 'aiken.json': JSON.stringify(estado) }, resumen: `la tabla de la V de Aiken (${estado.criterios.length} criterio(s))` };
+    },
+    restaurar(archivos) {
+        const bytes = archivos.get('aiken.json');
+        if (!bytes) throw new Error('falta la tabla («aiken.json»)');
+        // (2026.12.31, cuarta revisión) medida antes de leerla (core/data/json-acotado.js)
+        let estado = leerJsonAcotado(new TextDecoder().decode(bytes), TOPES_JSON_AIKEN, { forma: 'la tabla guardada no tiene la forma esperada', invalido: 'la tabla guardada no es JSON válido' });
+        if (!estadoDeProyectoValido(estado)) throw new Error('la tabla guardada no tiene la forma esperada');
+        // solo sus campos
+        estado = { minimo: estado.minimo, maximo: estado.maximo, confianza: estado.confianza, v0: estado.v0, criterios: estado.criterios.map(c => ({ nombre: c.nombre, texto: c.texto })) };
+        try { localStorage.setItem(CLAVE_GUARDADO, JSON.stringify(estado)); } catch (e) { /* sin almacenamiento */ }
+        if (contenedor && contenedor.dataset.montado === '1') {
+            aplicarEstado(estado);
+            ultimoResultado = null;
+            const resultados = contenedor.querySelector('#aikenResultados');
+            if (resultados) resultados.hidden = true;
+            mostrarMensajes([], []);
+        }
+        return `la tabla de la V de Aiken (${estado.criterios.length} criterio(s))`;
+    }
+});

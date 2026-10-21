@@ -1,6 +1,8 @@
 // buscador/antecedentes/metadatos.js — Antecedentes: detección de país, indexación, cuartil, muestra y objetivo; formato APA.
 // Origen: buscador/antecedentes.js (Fase 6: partición por responsabilidad, sin cambios de comportamiento).
 
+import { escaparHTML } from '../../shared/html.js';
+
 export const metodosAntecedentesMetadatos = {
 
     // ---------- Extracción heurística de campos (de abstract/metadatos) ----------
@@ -24,6 +26,7 @@ export const metodosAntecedentesMetadatos = {
     _detectarIndexacion(o) {
         const ix = [];
         if ((o.fuentesAPI || []).includes('Scopus')) ix.push('Scopus');
+        if ((o.fuentesAPI || []).includes('Web of Science')) ix.push('Web of Science');   // (2026.12.26)
         const f = (o.fuente || '').toLowerCase();
         if (/scielo/.test((o.link || '') + f)) ix.push('SciELO');
         if (/redalyc/.test((o.link || '') + f)) ix.push('Redalyc');
@@ -38,8 +41,8 @@ export const metodosAntecedentesMetadatos = {
         const m = o._metricas;
         const colores = { Q1: ['#E1F5EE', '#085041'], Q2: ['#EAF3DE', '#27500A'], Q3: ['#FAEEDA', '#633806'], Q4: ['#FCEBEB', '#791F1F'] };
         const [bg, fg] = colores[m.cuartil] || ['#F1EFE8', '#444441'];
-        const cs = m.citeScore ? `<div style="font-size:0.75rem; color:#666; margin-top:3px;">CiteScore ${m.citeScore}</div>` : '';
-        return `<span style="display:inline-block; background:${bg}; color:${fg}; font-size:0.78rem; font-weight:600; padding:2px 8px; border-radius:6px;">${m.cuartil}</span>${cs}`;
+        const cs = m.citeScore ? `<div style="font-size:0.75rem; color:var(--color-text-soft, #8b93a7); margin-top:3px;">CiteScore ${escaparHTML(m.citeScore)}</div>` : '';
+        return `<span style="display:inline-block; background:${bg}; color:${fg}; font-size:0.78rem; font-weight:600; padding:2px 8px; border-radius:6px;">${escaparHTML(m.cuartil)}</span>${cs}`;
     },
 
 

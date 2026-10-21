@@ -1,7 +1,7 @@
 // simulador/ui/diferencias.js — tarjeta IV (diferencias por grupo, interacción, anidamiento).
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
-import { parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { obtenerVariablesCorrelacionables } from './correlaciones.js';
 
@@ -56,8 +56,8 @@ function agregarFilaDiferencia() {
     const tbody = document.getElementById('bodyDiferencias');
     const fila = document.createElement('tr');
     fila.className = 'fila-diferencia';
-    const opcionesCuant = cuantitativas.map(n => `<option value="${n}">${n}</option>`).join('');
-    const opcionesGrupo = agrupaciones.map(n => `<option value="${n}">${n}</option>`).join('');
+    const opcionesCuant = cuantitativas.map(n => `<option value="${escapeAttr(n)}">${escapeAttr(n)}</option>`).join('');   // (2026.12.29, revisión) escapados: un nombre de un CSV de configuración ajeno no abre etiquetas
+    const opcionesGrupo = agrupaciones.map(n => `<option value="${escapeAttr(n)}">${escapeAttr(n)}</option>`).join('');
     fila.innerHTML = `
         <td><select class="input input-sm" aria-label="Tipo de efecto"><option value="d">Diferencia (d)</option><option value="interaccion">Interacción A × B</option><option value="icc">Anidamiento (CCI)</option></select></td>
         <td><select class="input input-sm" aria-label="Variable cuantitativa"><option value="">Variable...</option>${opcionesCuant}</select></td>
@@ -78,7 +78,7 @@ function agregarFilaDiferencia() {
 // CSV de la tabla IV (diferencias por grupo): antes no viajaba en el archivo maestro
 function csvDeDiferencias() {
     let csv = 'Cuantitativa,Agrupacion,d,Tipo,Agrupacion2\n';
-    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyDiferencias .fila-diferencia').forEach(fila => {
         const v = et => { const el = fila.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
         csv += `${esc(v('Variable cuantitativa'))},${esc(v('Variable de agrupación'))},${v('d de Cohen')},${v('Tipo de efecto') || 'd'},${esc(v('Segunda agrupación'))}\n`;
@@ -93,7 +93,9 @@ function aplicarCSVDiferencias(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const [cuant, agrup, d, tipo, agrup2] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const [cuant, agrup, d, tipo, agrup2] = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!cuant || !agrup) { omitidas++; continue; }
         const antes = tbody ? tbody.children.length : 0;
         agregarFilaDiferencia();

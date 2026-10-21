@@ -8,6 +8,7 @@ import { parametrosCensura, formaCensurada } from './censura.js';
 import { TAMANO_MUESTRAL_MAXIMO, ESTILOS_RESPUESTA, PERFILES_HETEROGENEIDAD } from './constantes.js';
 import { esTerceraVariable, TIPOS_TERCERA } from './terceras.js';
 import { correlacionEntreOndas, propagarExogena } from './paneles.js';
+import { compensarRecorte } from './recorte.js';
 
 export const metodosConfiguracion = {
     // ========================================
@@ -114,7 +115,7 @@ export const metodosConfiguracion = {
             const selects = fila.querySelectorAll('select');
             const inputs = fila.querySelectorAll('input');
             if (selects.length < 4 || inputs.length < 3) return;
-            const tipo = ['moderacion', 'curvilinea'].includes(selects[0].value) || esTerceraVariable(selects[0].value) ? selects[0].value : 'mediacion';
+            const tipo = ['moderacion', 'curvilinea', 'simpson'].includes(selects[0].value) || esTerceraVariable(selects[0].value) ? selects[0].value : 'mediacion';
             const x = selects[1].value, y = selects[3].value;
             // (C6) curvilínea: solo X e Y; β₁ (lineal) y β₂ (cuadrática)
             const m = tipo === 'curvilinea' ? x : selects[2].value;
@@ -225,7 +226,11 @@ export const metodosConfiguracion = {
         const cortesTxt = partes[1].split(',').map(s => s.trim()).filter(Boolean);
         if (etiquetas.length < 2 || etiquetas.length > 10) throw new Error(`Puntos de corte de «${variable}»: entre 2 y 10 categorías`);
         if (cortesTxt.length !== etiquetas.length - 1) throw new Error(`Puntos de corte de «${variable}»: ${etiquetas.length} categorías necesitan ${etiquetas.length - 1} cortes (hay ${cortesTxt.length})`);
-        const porPercentil = cortesTxt.every(c => /^p\s*[0-9]/i.test(c));
+        const conP = cortesTxt.filter(c => /^p\s*[0-9]/i.test(c)).length;
+        // (2026.12.30) todos por percentil («@ P25, P75») o todos fijos («@ 20, 30»): «@ P25, 30» se tomaba en silencio como
+        // cortes fijos 25 y 30
+        if (conP && conP !== cortesTxt.length) throw new Error(`Puntos de corte de «${variable}»: o todos los cortes son percentiles («@ P25, P75») o todos son puntajes («@ 20, 30»), no una mezcla`);
+        const porPercentil = conP > 0;
         const cortes = cortesTxt.map(c => parseFloat(c.replace(/^p\s*/i, '').replace(',', '.')));
         if (cortes.some(c => !isFinite(c))) throw new Error(`Puntos de corte de «${variable}»: cortes no numéricos`);
         for (let i = 1; i < cortes.length; i++) if (!(cortes[i] > cortes[i - 1])) throw new Error(`Puntos de corte de «${variable}»: los cortes deben ir en orden creciente`);
@@ -278,7 +283,9 @@ export const metodosConfiguracion = {
             const tipo = campo('Tipo de relación en el tiempo').value === 'reciproca' ? 'reciproca' : 'rezagada';
             const r = parseFloat(campo('r en la misma onda').value), cXY = parseFloat(campo('Efecto X → Y').value), cYXv = parseFloat(campo('Efecto Y → X').value);
             if (isNaN(r) || isNaN(cXY) || (tipo === 'reciproca' && isNaN(cYXv))) throw new Error(`Relación en el tiempo ${x || '?'} ↔ ${y || '?'}: faltan la r en la misma onda o los efectos cruzados`);
-            salida.push({ tipo, x, y, r, cXY, cYX: tipo === 'reciproca' ? cYXv : 0 });
+            // (RI-CLPM, 2026.12.07) interceptos aleatorios opcionales: vacíos, 0 (el panel de siempre)
+            const opcional = et => { const el = campo(et); const v = el ? parseFloat(el.value) : NaN; return isNaN(v) ? 0 : v; };
+            salida.push({ tipo, x, y, r, cXY, cYX: tipo === 'reciproca' ? cYXv : 0, iccX: opcional('ICC de X'), iccY: opcional('ICC de Y'), rRI: opcional('r entre interceptos') });
         });
         return salida;
     },
@@ -459,7 +466,10 @@ export const metodosConfiguracion = {
                 }
 
                 pruebas.push({
-                    invertidos: Math.min(invertidos, Math.max(0, numItems - 1)),   // últimos ítems de la escala, puntuados al revés
+                    // últimos ítems de la escala, puntuados al revés. (2026.12.30) Todos, si se piden todos (una escala redactada
+                    // entera en sentido contrario al constructo): hasta la 2026.12.29 se dejaba EN SILENCIO el primero directo; la
+                    // validación avisa si se piden más invertidos que ítems
+                    invertidos: Math.max(0, invertidos),
                     prueba: prueba || null,             // agrupa escalas bajo el mismo test
                     tipo: tipo,                         // 'dimension' | 'general'
                     nombre: nombre,
@@ -510,10 +520,19 @@ export const metodosConfiguracion = {
                 } else { minimo = 1; maximo = opciones.niveles.length; if (!isFinite(promedio)) promedio = 0; }
             }
             if (distribucion === 'categorica' && !opciones.niveles && !isFinite(promedio)) promedio = 0;
+            // (revisión 2026.12.30) en una uniforme la media es el centro del rango: el promedio no hace falta (sin él, la
+            // fila se descartaba en silencio)
+            if (distribucion === 'uniforme' && !isFinite(promedio) && isFinite(minimo) && isFinite(maximo)) promedio = (minimo + maximo) / 2;
 
             // Distribuciones que no requieren DE (uniforme, conteo, binaria,
             // categórica): basta con la categoría y el promedio/rango.
             const requiereDE = distribucion === 'normal' || distribucion === 'asimetrica';
+            // (revisión 2026.12.30) una fila con nombre y sin el promedio (o sin la DE que su distribución necesita) es un
+            // error, no una variable que desaparece de la base sin aviso
+            if (categoria && isNaN(promedio)) {
+                throw new Error(`Categoría "${categoria}": falta el ${distribucion === 'binaria' ? 'promedio (la proporción de unos, o las categorías con sus porcentajes en las opciones)' : distribucion === 'uniforme' ? 'mínimo y el máximo' : 'promedio'}`);
+            }
+            if (categoria && requiereDE && isNaN(desviacion)) throw new Error(`Categoría "${categoria}": falta la desviación estándar`);
 
             if (categoria && !isNaN(promedio) && (!requiereDE || !isNaN(desviacion))) {
                 if (requiereDE && desviacion <= 0) {
@@ -783,6 +802,29 @@ export const metodosConfiguracion = {
         return s ? s.categoria : null;
     },
 
+    // (2026.12.30) El rango y los decimales de una variable del estudio: una escala con mínimo y máximo por ítem, de
+    // k·mín a k·máx y entera; un puntaje general, la suma de los rangos de sus escalas; una sociodemográfica, su mínimo, su
+    // máximo y sus decimales; sin límites, toda la recta con dos decimales. Lo usan los jueces de puntuación (CCI), que
+    // antes daban puntuaciones imposibles (negativas, o con decimales en un total entero).
+    _formatoDeVariable(nombre) {
+        const cfg = this.configuracion;
+        const libre = { minimo: -Infinity, maximo: Infinity, decimales: 2 };
+        const deEscala = p => (p.minimo !== null && p.minimo !== undefined && p.maximo !== null && p.maximo !== undefined
+            ? { minimo: p.numItems * p.minimo, maximo: p.numItems * p.maximo, decimales: 0 } : libre);
+        const p = (cfg.pruebas || []).find(x => x.nombre === nombre);
+        if (p) return deEscala(p);
+        const g = (cfg.gruposPruebas || []).find(x => x.escalas.length >= 2 && this.nombreGeneral(x) === nombre);
+        if (g) {
+            const partes = g.escalas.map(deEscala);
+            return partes.every(x => Number.isFinite(x.minimo)) ? { minimo: partes.reduce((t, x) => t + x.minimo, 0), maximo: partes.reduce((t, x) => t + x.maximo, 0), decimales: 0 } : libre;
+        }
+        const so = (cfg.sociodemograficos || []).find(x => x.categoria === nombre);
+        if (!so) return libre;
+        const num = v => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+        const d = num(so.decimales);
+        return { minimo: num(so.minimo) ?? -Infinity, maximo: num(so.maximo) ?? Infinity, decimales: d === null ? 2 : Math.max(0, Math.min(6, Math.round(d))) };
+    },
+
     _siglaDeVariable(nombre) {
         const cfg = this.configuracion;
         const p = (cfg.pruebas || []).find(x => x.nombre === nombre);
@@ -853,6 +895,31 @@ export const metodosConfiguracion = {
 
     // Varianza del código de una variable de agrupación: binaria p(1 − p);
     // categórica equiprobable con K niveles (K² − 1)/12. null si no agrupa.
+    // (Atlas, Simpson) cada fila de Simpson equivale a dos diferencias por grupo (d de X y d de Y entre los dos grupos de G). Se
+    // materializan en la lista de diferencias, marcadas con origen 'simpson', para que todo lo que la lee (motor, ondas, validación,
+    // informe) las vea; es idempotente (se rehacen en cada llamada) y no pisa una diferencia del usuario sobre la misma pareja
+    // (variable, G): esa coincidencia es un conflicto que avisa la validación
+    // Una fila de Simpson válida: G binaria, X e Y cuantitativas y distintas, la r y las d en rango. Solo las válidas se materializan
+    // e implican su r: una inválida da solo sus propios errores (antes, también los de sus diferencias, en cascada)
+    _simpsonValido(md, cfg = this.configuracion) {
+        const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === md.m);
+        const cuantitativa = v => (cfg.pruebas || []).some(p => p.nombre === v) || (cfg.sociodemograficos || []).some(s => s.categoria === v && !this._esSocioDiscreto(s));
+        const num = c => typeof c === 'number' && isFinite(c);
+        return !!(agrup && (agrup.distribucion === 'binaria' || agrup.distribucion === 'categorica') && this._varianzaCodigo(agrup) > 0 && md.x && md.y && md.x !== md.y && cuantitativa(md.x) && cuantitativa(md.y) && num(md.c1) && Math.abs(md.c1) <= 0.95 && num(md.c2) && Math.abs(md.c2) <= 3 && num(md.c3) && Math.abs(md.c3) <= 3);
+    },
+
+    _materializarSimpson(cfg = this.configuracion) {
+        const propias = (cfg.diferenciasGrupo || []).filter(d => d.origen !== 'simpson'), implicadas = [];
+        (cfg.modelos || []).filter(md => md.tipo === 'simpson' && this._simpsonValido(md, cfg)).forEach(md => {
+            [[md.x, md.c2], [md.y, md.c3]].forEach(([v, d]) => {
+                if (!v || !md.m || !(typeof d === 'number' && isFinite(d)) || d === 0) return;
+                if (propias.some(p => p.cuantitativa === v && p.agrupacion === md.m && (!p.tipo || p.tipo === 'd'))) return;
+                implicadas.push({ tipo: 'd', cuantitativa: v, agrupacion: md.m, d, origen: 'simpson' });
+            });
+        });
+        cfg.diferenciasGrupo = propias.concat(implicadas);
+    },
+
     _varianzaCodigo(agrup) {
         if (!agrup) return null;
         if (agrup.distribucion === 'binaria' || agrup.distribucion === 'categorica') {
@@ -890,9 +957,12 @@ export const metodosConfiguracion = {
     // esos ítems antes de sumar o de calcular fiabilidad, como en una base real.
     _esInvertido(p, idx1) { return (p.invertidos || 0) > 0 && idx1 > p.numItems - (p.invertidos || 0); },
 
+    // (2026.12.30) Con Number.isFinite: isFinite(null) es true (null → 0), así que en una escala continua (sin mínimo ni
+    // máximo) el centro era 0 y el ítem invertido se guardaba en negativo (−516 de media en unos tiempos de reacción de 500)
+    // en lugar de alrededor del doble de su media por ítem.
     _reflejar(p, v) {
         if (!(typeof v === 'number' && isFinite(v))) return v;
-        const centro2 = (isFinite(p.minimo) && isFinite(p.maximo)) ? (p.minimo + p.maximo) : 2 * (p.media / p.numItems);
+        const centro2 = (Number.isFinite(p.minimo) && Number.isFinite(p.maximo)) ? (p.minimo + p.maximo) : 2 * (p.media / p.numItems);
         return Math.round((centro2 - v) * 100) / 100;
     },
 
@@ -964,6 +1034,22 @@ export const metodosConfiguracion = {
     // cada onda tiene su propia latente (con su media desplazada, su propia proporción en el límite)
     _ajustarCensuradas(cfg) {
         (cfg.pruebas || []).forEach(p => { const par = this._censuraDe(p); if (par) { p.censura = par; p.formaTotal = formaCensurada(par); } });
+    },
+
+    // (2026.12.04) Forma asimétrica: su cola larga se recorta contra el rango y la DE quedaba por debajo de la pedida, en los dos modos
+    // (ver recorte.js). Se instala como forma propia del total la compensada, a + b·T(z): como con el techo, sus latentes siguen siendo
+    // normales (una escala con formaTotal no recibe la forma en sus latentes) y la forma se aplica una sola vez, al final. Va después
+    // de expandir las ondas (cada una con su media); si no converge (la DE no cabe en el rango), la escala se queda como estaba
+    _ajustarAsimetricas(cfg) {
+        (cfg.pruebas || []).forEach(p => {
+            if (p.distribucion !== 'asimetrica' || p.formaTotal || this._esDicotomica(p) || !(p.numItems > 0) || p.minimo === null || p.maximo === null) return;
+            const T = (/** @type {number} */ z) => this.transformarFormaZ(z, 'asimetrica');
+            const c = compensarRecorte({ media: p.media, de: p.desviacion, minimo: p.numItems * p.minimo, maximo: p.numItems * p.maximo, forma: T });
+            if (!c) return;
+            const forma = (/** @type {number} */ z) => c.a + c.b * T(z);
+            forma.compensada = c;
+            p.formaTotal = forma;
+        });
     },
 
     // Cuantil estandarizado de una beta-binomial(k, α, β) con media m·k y varianza v

@@ -3,7 +3,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { resetRobusta, ajustarHolm, paresDelAnalisis, cribarFormas } from '../../src/analizador/relaciones/cribado-forma.js';
+import { resetRobusta, paresDelAnalisis, cribarFormas } from '../../src/analizador/relaciones/cribado-forma.js';
+import { ajustarHolm } from '../../src/core/stats/multiples.js';   // (2026.12.17) el Holm del núcleo único, el que usa el cribado
 
 const fx = JSON.parse(fs.readFileSync(new URL('../oracle/cribado_fixture.json', import.meta.url), 'utf8'));
 const cerca = (a, b, tol, q) => assert.ok(Math.abs(a - b) <= tol * Math.max(1, Math.abs(b)), `${q}: ${a} vs ${b}`);
@@ -29,6 +30,9 @@ test('cada par se evalúa en la dirección en que aparece PRIMERO (la matriz del
     const r = cribarFormas(filas, pares), d1 = [...r.resultados.values()].find(q => [q.a, q.b].includes('D1') && [q.a, q.b].includes('G2'));
     assert.deepEqual([d1.a, d1.b], ['D1', 'G2'], '…pero se conserva la de la criba');
     assert.equal(r.m, 6);
+    // (2026.12.17) los p ajustados del cribado son los de Holm del núcleo sobre los pares evaluables
+    const ev = [...r.resultados.values()].filter(q => q.evaluable), aj = ajustarHolm(ev.map(q => q.p));
+    ev.forEach((q, k) => assert.equal(q.pAjustada, aj[k], `par ${q.a}–${q.b}`));
 });
 
 test('revisión 2026.11.03: el cargador de CSV lee la coma decimal (antes, «3,5» se guardaba como 3 en todo el Analizador)', async () => {
@@ -47,4 +51,16 @@ test('revisión 2026.11.03: el mismo par recibe la misma p en cualquier familia,
     assert.equal(pDe([{ a: 'X', b: 'V0' }, { a: 'X', b: 'V1' }]), pDe([{ a: 'X', b: 'V1' }, { a: 'X', b: 'V2' }, { a: 'X', b: 'V0' }]));
     const t0 = performance.now(); cribarFormas(filas, Array.from({ length: 20 }, (_, j) => ({ a: 'X', b: 'V' + j })));
     assert.ok(performance.now() - t0 < 4000, `${((performance.now() - t0) / 1000).toFixed(2)} s con n = 5 000 y 20 pares (antes, 7 s)`);
+});
+
+test('(2026.12.17) el cribado ajusta por Holm, el del núcleo, y no por Bonferroni', () => {
+    let a = 1 >>> 0; const u = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const nr = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    // tres curvas de intensidad decreciente y una recta: p distintos, para que Holm y Bonferroni den ajustados distintos
+    const filas = Array.from({ length: 150 }, () => { const x = nr(); return { X: x, A: 0.30 * x * x + nr(), B: 0.22 * x * x + nr(), C: 0.18 * x * x + nr(), D: x + nr() }; });
+    const r = cribarFormas(filas, ['A', 'B', 'C', 'D'].map(b => ({ a: 'X', b })));
+    const ev = [...r.resultados.values()].filter(q => q.evaluable), aj = ajustarHolm(ev.map(q => q.p));
+    assert.equal(ev.length, 4);
+    ev.forEach((q, k) => assert.equal(q.pAjustada, aj[k], `par ${q.a}–${q.b}`));
+    assert.ok(ev.some(q => q.pAjustada < Math.min(1, q.p * ev.length)), 'con estos datos Holm y Bonferroni difieren');
 });

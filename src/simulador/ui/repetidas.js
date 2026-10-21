@@ -1,7 +1,7 @@
 // simulador/ui/repetidas.js — tarjeta VI (medidas repetidas).
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
-import { parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { obtenerVariablesBinarias } from './diferencias.js';
 
@@ -22,8 +22,8 @@ function agregarFilaRepetida(datos = null) {
     if (!tbody) return null;
     const fila = document.createElement('tr');
     fila.className = 'fila-repetida';
-    const opciones = escalas.map(n => `<option value="${n}">${n}</option>`).join('');
-    const binarias = obtenerVariablesBinarias().map(n => `<option value="${n}">${n}</option>`).join('');
+    const opciones = escalas.map(n => `<option value="${escapeAttr(n)}">${escapeAttr(n)}</option>`).join('');   // (2026.12.29, revisión) escapados: un nombre de un CSV de configuración ajeno no abre etiquetas
+    const binarias = obtenerVariablesBinarias().map(n => `<option value="${escapeAttr(n)}">${escapeAttr(n)}</option>`).join('');
     fila.innerHTML = `
         <td><select class="input input-sm" aria-label="Escala repetida"><option value="">Escala...</option>${opciones}</select></td>
         <td><input type="number" class="input input-sm" min="2" max="4" step="1" value="2" aria-label="Número de ondas"></td>
@@ -70,7 +70,7 @@ function actualizarFilaRepetida(fila) {
 // (B7) CSV de la tabla VI (medidas repetidas)
 function csvDeRepetidas() {
     let csv = 'Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente\n';
-    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyRepetidas .fila-repetida').forEach(fila => {
         const v = etiqueta => { const el = fila.querySelector(`[aria-label="${etiqueta}"]`); return el ? el.value : ''; };
         csv += `${esc(v('Escala repetida'))},${v('Número de ondas')},${v('Estabilidad test-retest')},${v('d de cambio')},${esc(v('Agrupación del cambio'))},${v('d de cambio del grupo 1')},${v('Modelo longitudinal') || 'ar1'},${v('DE de las pendientes')},${v('Correlación intercepto-pendiente')}\n`;
@@ -85,7 +85,9 @@ function aplicarCSVRepetidas(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const [variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo, modelo, dePendientes, rInterceptoPendiente] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const [variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo, modelo, dePendientes, rInterceptoPendiente] = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!variable) { omitidas++; continue; }
         const fila = agregarFilaRepetida({ variable, ondas, estabilidad, cambio, agrupacion, cambioGrupo, modelo, dePendientes, rInterceptoPendiente });
         if (!fila) { omitidas++; continue; }

@@ -2,14 +2,17 @@
 // Origen: buscador/antecedentes.js (Fase 6: partición por responsabilidad, sin cambios de comportamiento).
 
 import { asegurarExcelJS } from './base.js';
+import { descargarBlob } from '../../shared/descargas.js';
+import { sinFormula } from '../../shared/csv.js';
+import { htmlConCursivas, textoPlano } from '../../shared/html.js';
 
 export const metodosAntecedentesExportacion = {
 
     // Copia las referencias al portapapeles CON FORMATO (cursivas reales).
     async _copiarReferencias(refs) {
         const estado = document.getElementById('antEstado');
-        const html = refs.map(r => `<p style="margin:0 0 10pt 36pt; text-indent:-36pt;">${r}</p>`).join('');
-        const plano = refs.map(r => r.replace(/<\/?i>/g, '')).join('\n\n');
+        const html = refs.map(r => `<p style="margin:0 0 10pt 36pt; text-indent:-36pt;">${htmlConCursivas(r)}</p>`).join('');   // (2026.12.26) escapadas
+        const plano = refs.map(r => textoPlano(r.replace(/<\/?i>/g, ''))).join('\n\n');
         try {
             if (navigator.clipboard && window.ClipboardItem) {
                 await navigator.clipboard.write([new ClipboardItem({
@@ -71,11 +74,7 @@ export const metodosAntecedentesExportacion = {
             const wb = this._construirLibroXLSX(cols, filas);
             const buffer = await wb.xlsx.writeBuffer();
             const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'matriz_revision_bibliografica.xlsx';
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+            descargarBlob(blob, 'matriz_revision_bibliografica.xlsx');   // (2026.12.29) el enlace, en el documento (Firefox)
         } catch (e) {
             alert('No se pudo generar el Excel: ' + e.message);
         }
@@ -87,7 +86,8 @@ export const metodosAntecedentesExportacion = {
     // sep=',' → estándar internacional (Google Sheets, Excel en inglés).
     _exportarCSV(cols, filas, SEP = ';') {
         const esc = v => {
-            const s = String(v == null ? '' : v).replace(/\s+/g, ' ').trim();
+            // (2026.12.30) sin fórmulas: un título que llega como «=HYPERLINK(…)» se escribe como texto
+            const s = sinFormula(String(v == null ? '' : v).replace(/\s+/g, ' ').trim());
             // Se entrecomilla si el campo contiene el separador, comillas o saltos.
             return new RegExp('["\\n' + (SEP === ';' ? ';' : ',') + ']').test(s) ? `"${s.replace(/"/g, '""')}"` : s;
         };
@@ -97,11 +97,8 @@ export const metodosAntecedentesExportacion = {
         lineas.push(cols.map(esc).join(SEP));
         filas.forEach(f => lineas.push(f.planas.map(esc).join(SEP)));
         const blob = new Blob(['\ufeff' + lineas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = SEP === ';' ? 'matriz_revision_es.csv' : 'matriz_revision_intl.csv';
-        a.click();
-        URL.revokeObjectURL(a.href);
+        // (2026.12.29) con descargarBlob: la URL se revocaba en el mismo instante del clic y el enlace no estaba en el documento
+        descargarBlob(blob, SEP === ';' ? 'matriz_revision_es.csv' : 'matriz_revision_intl.csv');
         const estado = document.getElementById('antEstado');
         if (estado) estado.textContent = `Matriz exportada (${filas.length} artículos) en CSV.`;
     },

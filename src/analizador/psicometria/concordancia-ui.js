@@ -7,6 +7,7 @@ import { tablaKappa, tablaCCI, redactarParrafo, referenciasConcordancia, documen
 import { mostrarToast } from '../../shared/toast.js';
 import { descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -26,7 +27,7 @@ export function detectarEvaluadores(filas) {
 // Análisis completo de unas columnas de evaluadores (casos completos). tipo: 'auto' | 'categorica' | 'continua'
 export function analizarConcordancia(filas, columnas, tipo = 'auto', { B = 1000, semilla = 2026 } = {}) {
     // Valores tal cual: números o etiquetas de texto (las categorías del Simulador llegan con su etiqueta: «Bajo»…)
-    const valor = v => { if (v === null || v === undefined || v === '') return null; if (typeof v === 'number') return Number.isFinite(v) ? v : null; const s = String(v).trim(), x = Number(s.replace(',', '.')); return s === '' ? null : Number.isFinite(x) ? x : s; };
+    const valor = v => { if (esPerdido(v)) return null; if (typeof v === 'number') return Number.isFinite(v) ? v : null; const s = String(v).trim(), x = aNumero(s); return Number.isFinite(x) ? x : s; };   // (2026.12.18) los perdidos y la conversión del núcleo
     const completas = filas.map(f => columnas.map(c => valor(f[c]))).filter(v => v.every(x => x !== null));
     if (completas.length < 3) return { error: 'Hacen falta al menos 3 sujetos con todas las evaluaciones.' };
     const cols = columnas.map((_, j) => completas.map(f => f[j])), k = cols.length, n = completas.length;

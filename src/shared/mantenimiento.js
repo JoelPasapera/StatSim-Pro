@@ -15,7 +15,8 @@
 //      de baja (hoy el sitio no los usa; queda por si acaso);
 //   3. opcionalmente (restablecer) se borran localStorage, sessionStorage e
 //      IndexedDB (aquí solo guardan el estado de salud de los proxies del
-//      Buscador y el flujo PRISMA de la sesión: nada que el usuario haya creado);
+//      Buscador, el flujo PRISMA de la sesión y, desde la 2026.12.26, la clave
+//      de Web of Science si el usuario la guardó: habrá que volver a pegarla);
 //   4. se recarga la página.
 // Lo que NO se pierde: los archivos que el usuario haya descargado. Lo que SÍ:
 // la configuración que tenga a medias en el Simulador (vive en la página).
@@ -91,12 +92,42 @@ async function borrarAlmacenamiento(log) {
     }
 }
 
+// (2026.12.30) Lo que el restablecimiento borraría, según lo que de verdad hay guardado en este navegador: la confirmación
+// lo nombra. Hasta la 2026.12.29 no decía que se pierden la última redacción del Redactor ni la tabla de la V de Aiken.
+const GUARDADOS_LOCALES = Object.freeze([
+    ['statsim_redactor_ultimo', 'la última redacción del Redactor (la que ofrece «Recuperar última redacción»)'],
+    ['statsim.aiken.v1', 'la tabla de valoraciones de la V de Aiken'],
+    ['statsim_wos_clave', 'tu clave de Web of Science'],
+    ['statsim_ranking_psyc_v5', 'el ranking de revistas descargado (se volverá a descargar)'],
+    ['statsim_proxy_health', 'el estado de los proxies del Buscador']
+]);
+const GUARDADOS_DE_SESION = Object.freeze([
+    ['statsim_protocolo_busqueda_v1', 'el protocolo de búsqueda de esta sesión'],
+    ['statsim_prisma_flujo_v1', 'el flujo PRISMA de esta sesión']
+]);
+
+/** Las descripciones de lo guardado que hay ahora (las claves conocidas). @returns {string[]} */
+function guardadosPresentes() {
+    const presentes = [];
+    const mirar = (almacen, lista) => { try { for (const [clave, texto] of lista) if (almacen.getItem(clave) !== null) presentes.push(texto); } catch (e) { /* almacenamiento no accesible */ } };
+    if (typeof localStorage !== 'undefined') mirar(localStorage, GUARDADOS_LOCALES);
+    if (typeof sessionStorage !== 'undefined') mirar(sessionStorage, GUARDADOS_DE_SESION);
+    return presentes;
+}
+
+/** El texto de la confirmación del restablecimiento. @returns {string} */
+function textoConfirmacion() {
+    const lista = guardadosPresentes();
+    const que = lista.length ? `Se borrará lo que el sitio guarda en este navegador: ${lista.join('; ')}.` : 'Se borrará el almacenamiento local del sitio (ahora no guarda nada tuyo).';
+    return `${que} La página se recargará, y lo que tengas a medias (la configuración y la base del Simulador, los datos del Analizador) se perderá si no lo guardaste con «Guardar proyecto». ¿Continuar?`;
+}
+
 // Recarga SIN caché. `restablecer` añade el borrado del almacenamiento local.
 async function recargarSinCache(restablecer) {
     if (ESTADO.enCurso) return;
     const log = document.getElementById('mantenimientoLog');
     const botones = document.querySelectorAll('#btnRecargarSinCache, #btnRestablecerSitio');
-    if (restablecer && !window.confirm('Se borrará el almacenamiento local del sitio (estado de los proxies del Buscador y flujo PRISMA de la sesión) y se recargará la página. La configuración que tengas a medias en el Simulador se perderá si no la has exportado. ¿Continuar?')) return;
+    if (restablecer && !window.confirm(textoConfirmacion())) return;
     ESTADO.enCurso = true;
     botones.forEach(b => { b.disabled = true; });
     if (log) { log.textContent = ''; log.hidden = false; }
@@ -143,4 +174,4 @@ window.addEventListener('load', pintarVersiones);
 //   StatSimMantenimiento.autotest()  →  carga generador-autotest.js y lo ejecuta en la consola
 const autotest = () => (window.StatSim && StatSim.autotest ? StatSim.autotest() : Promise.reject(new Error('StatSim no está cargado')));
 
-export { recargarSinCache, autotest };
+export { recargarSinCache, autotest, textoConfirmacion };

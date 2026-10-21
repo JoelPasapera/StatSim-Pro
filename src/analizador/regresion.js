@@ -1,10 +1,20 @@
 // analizador/regresion.js — regresión múltiple y sus diagnósticos.
 // Origen: regresion-multiple.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
-import { ComparacionGrupos } from './comparacion-grupos.js';
 import { AnalizadorEstadistico } from './estadistica.js';
 import { obtenerColumnasNumericas } from './ui/carga.js';
 import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
+import { escaparHTML } from '../shared/html.js';
+import { pTBilateral, colaSuperiorF, cuantilT } from '../core/stats/numerico.js';
+import { media, desviacion, centrar } from '../core/stats/descriptivos.js';
+import { rangosPromedio } from '../core/stats/orden.js';
+import { correlacion, spearman, pCorrelacion } from '../core/stats/correlacion.js';
+import { pruebaNormalidad } from '../core/stats/normalidad.js';
+import { aNumero, esPerdido } from '../core/data/celdas.js';
+import { ajustarMco, regresionMco } from '../core/stats/mco.js';
+import { determinante } from '../core/linalg/gauss.js';
+import { ajustarMlg } from '../core/stats/mlg.js';
+import { formatoP, pConSigno } from '../shared/formato-numero.js';
 
 // ========================================
 // ANÁLISIS MULTIVARIADO — StatSim Pro
@@ -14,7 +24,7 @@ import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
 //     F del modelo, VIF por predictor y normalidad de los residuos.
 // (3) "De la correlación al control estadístico": efecto crudo vs ajustado del
 //     predictor focal, con lectura causal honesta (datos transversales).
-// Reutiliza las distribuciones verificadas de ComparacionGrupos (_pT, _pF).
+// Las distribuciones, del núcleo único (core/stats/numerico.js; antes las pedía a ComparacionGrupos, en un ciclo de importaciones).
 // ========================================
 
 const RegresionMultiple = {
@@ -23,68 +33,26 @@ const RegresionMultiple = {
     _ultimaMatriz: null,
 
     // ---------- Utilidades numéricas ----------
-    _media(v) { return v.reduce((s, x) => s + x, 0) / v.length; },
-    _de(v) { const m = this._media(v); return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1)); },
-    _pT(t, df) { return (typeof ComparacionGrupos !== 'undefined') ? ComparacionGrupos._pT(Math.abs(t), df) : NaN; },
-    _pF(F, d1, d2) { return (typeof ComparacionGrupos !== 'undefined') ? ComparacionGrupos._pF(F, d1, d2) : NaN; },
-    // Cuantil t (para IC 95%): búsqueda binaria sobre la CDF bilateral.
-    _tCrit(df, alfa = 0.05) {
-        let lo = 0, hi = 100;
-        for (let i = 0; i < 80; i++) {
-            const mid = (lo + hi) / 2;
-            if (this._pT(mid, df) > alfa) lo = mid; else hi = mid;
-        }
-        return (lo + hi) / 2;
-    },
+    // (2026.12.21) Una dependiente constante: la regresión no tiene nada que explicar (antes daba una F negativa y valores p
+    // salidos del redondeo; el núcleo devuelve null y aquí se dice por qué).
+    _SIN_VARIACION: 'La variable dependiente no varía (todos sus valores son iguales): no hay nada que explicar.',
+    _esConstante(v) { for (let i = 1; i < v.length; i++) if (v[i] !== v[0]) return false; return true; },
+    _media(v) { return media(v); },
+    _de(v) { return desviacion(v); },
+    _pT(t, df) { return pTBilateral(t, df); },   // p BILATERAL
+    _pF(F, d1, d2) { return F > 0 ? colaSuperiorF(F, d1, d2) : 1; },   // cola SUPERIOR (el valor p)
+    // t crítica bilateral (para el IC del {1 − alfa}), del núcleo único (core/stats/numerico.js); antes, una búsqueda topada en t = 100 que fallaba
+    // con 1 o 2 gl y alfa pequeño (con 1 gl y alfa = 0,001 daba 100 en lugar de 636,6).
+    _tCrit(df, alfa = 0.05) { return cuantilT(1 - alfa / 2, df); },
 
-    // Inversa de matriz simétrica definida positiva por Gauss-Jordan con
-    // pivoteo parcial. Devuelve null si la matriz es singular (colinealidad).
-    _inversa(M) {
-        const n = M.length;
-        const A = M.map((f, i) => [...f, ...Array.from({ length: n }, (_, j) => i === j ? 1 : 0)]);
-        for (let c = 0; c < n; c++) {
-            let piv = c;
-            for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
-            if (Math.abs(A[piv][c]) < 1e-12) return null;
-            [A[c], A[piv]] = [A[piv], A[c]];
-            const d = A[c][c];
-            for (let j = 0; j < 2 * n; j++) A[c][j] /= d;
-            for (let r = 0; r < n; r++) {
-                if (r === c) continue;
-                const f = A[r][c];
-                for (let j = 0; j < 2 * n; j++) A[r][j] -= f * A[c][j];
-            }
-        }
-        return A.map(f => f.slice(n));
-    },
+    // (2026.12.22) Ya no hay inversas de matrices aquí: los mínimos cuadrados resuelven por la QR del núcleo
+    // (core/stats/mco.js) y la logística y Poisson por IRLS sobre esa misma QR (core/stats/mlg.js).
 
     // ---------- Correlación por par (criterio coherente con la app) ----------
-    _pearson(x, y) {
-        const n = x.length, mx = this._media(x), my = this._media(y);
-        let sxy = 0, sxx = 0, syy = 0;
-        for (let i = 0; i < n; i++) { sxy += (x[i] - mx) * (y[i] - my); sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; }
-        return sxy / Math.sqrt(sxx * syy);
-    },
-    _rangos(v) {
-        const idx = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]);
-        const r = new Array(v.length);
-        let i = 0;
-        while (i < idx.length) {
-            let j = i;
-            while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
-            const prom = (i + j) / 2 + 1;
-            for (let k = i; k <= j; k++) r[idx[k][1]] = prom;
-            i = j + 1;
-        }
-        return r;
-    },
-    _spearman(x, y) { return this._pearson(this._rangos(x), this._rangos(y)); },
-    _esNormal(v) {
-        const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
-        if (!A) return true;
-        const r = v.length < 50 ? A.shapiroWilk(v) : A.kolmogorovSmirnov(v);
-        return r.pValor > 0.05;
-    },
+    _pearson(x, y) { return correlacion(x, y); },
+    _rangos(v) { return rangosPromedio(v); },
+    _spearman(x, y) { return spearman(x, y); },   // del núcleo único
+    _esNormal(v) { return pruebaNormalidad(v).normal; },   // (2026.12.16) la prueba y la regla del núcleo único
 
     // ---------- (1) Matriz de correlaciones multi-variable ----------
     matrizCorrelaciones(cols, etiquetas) {
@@ -92,7 +60,7 @@ const RegresionMultiple = {
         const datos = A ? (A.obtenerDatos() || []) : [];
         if (datos.length < 4 || cols.length < 2) return { error: 'Se necesitan al menos 2 variables y 4 casos.' };
         // Casos completos en TODAS las columnas (listwise), como SPSS.
-        const filas = datos.map(d => cols.map(c => +d[c])).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => cols.map(c => aNumero(d[c]))).filter(f => f.every(Number.isFinite));
         const n = filas.length;
         if (n < 4) return { error: 'Muy pocos casos completos en las variables elegidas.' };
         const series = cols.map((_, j) => filas.map(f => f[j]));
@@ -101,8 +69,7 @@ const RegresionMultiple = {
         for (let i = 0; i < cols.length; i++) for (let j = i + 1; j < cols.length; j++) {
             const usarP = normal[i] && normal[j];
             const r = usarP ? this._pearson(series[i], series[j]) : this._spearman(series[i], series[j]);
-            const t = r * Math.sqrt((n - 2) / Math.max(1e-12, 1 - r * r));
-            pares.push({ i, j, metodo: usarP ? 'Pearson' : 'Spearman', r, pValor: this._pT(t, n - 2) });
+            pares.push({ i, j, metodo: usarP ? 'Pearson' : 'Spearman', r, pValor: pCorrelacion(r, n) });   // (2026.12.17) la prueba del núcleo
         }
         const holm = (A && A.ajustarPValoresHolm) ? A.ajustarPValoresHolm(pares.map(p => p.pValor)) : pares.map(p => p.pValor);
         pares.forEach((p, k) => { p.pHolm = holm[k]; p.sig = p.pHolm < 0.05; });
@@ -119,74 +86,24 @@ const RegresionMultiple = {
         if (!colY || !colsX || !colsX.length) return { error: 'Elige la variable dependiente y al menos un predictor.' };
         if (colsX.includes(colY)) return { error: 'La variable dependiente no puede ser también predictor.' };
         // Casos completos (listwise).
-        const filas = datos.map(d => [ +d[colY], ...colsX.map(c => +d[c]) ]).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => [ aNumero(d[colY]), ...colsX.map(c => aNumero(d[c])) ]).filter(f => f.every(Number.isFinite));
         const n = filas.length, k = colsX.length;
         if (n < k + 3) return { error: `Casos insuficientes: se requieren al menos ${k + 3} completos (hay ${n}).` };
 
+        // (2026.12.21) Mínimos cuadrados del núcleo único (core/stats/mco.js, por la QR de X): coeficientes con su error típico,
+        // t, p e IC 95 %, β estandarizados, R², R² ajustado, F y el VIF de cada predictor (por la identidad con (X'X)⁻¹, sin
+        // las k regresiones auxiliares). Hasta la 2026.12.20, X'X invertida por Gauss-Jordan con un pivote mínimo absoluto.
         const y = filas.map(f => f[0]);
-        const X = filas.map(f => [1, ...f.slice(1)]); // columna de 1s (intercepto)
-        const p = k + 1;
+        if (this._esConstante(y)) return { error: this._SIN_VARIACION };
+        const M = regresionMco(y, colsX.map((_, j) => filas.map(f => f[j + 1])));
+        if (!M) return { error: 'Predictores perfectamente colineales: el modelo no puede estimarse. Retira alguno.' };
+        const coefs = this._coeficientesMco(M, j => (etsX && etsX[j]) || colsX[j]);
+        const R2 = M.r2, R2aj = M.r2aj, F = M.F, glR = k, glE = M.gl, pF = M.pF, sigma2 = M.sigma2;
+        const vifs = Array.from(M.vif), resid = Array.from(M.residuos);
 
-        // X'X y X'y
-        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
-        const Xty = new Array(p).fill(0);
-        for (let i = 0; i < n; i++) for (let a = 0; a < p; a++) {
-            Xty[a] += X[i][a] * y[i];
-            for (let b = a; b < p; b++) XtX[a][b] += X[i][a] * X[i][b];
-        }
-        for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) XtX[a][b] = XtX[b][a];
-
-        const inv = this._inversa(XtX);
-        if (!inv) return { error: 'Predictores perfectamente colineales: el modelo no puede estimarse. Retira alguno.' };
-        const B = inv.map(f => f.reduce((s, v, j) => s + v * Xty[j], 0));
-
-        // Ajuste, residuos y sumas de cuadrados.
-        const yHat = X.map(f => f.reduce((s, v, j) => s + v * B[j], 0));
-        const resid = y.map((v, i) => v - yHat[i]);
-        const my = this._media(y);
-        const SSE = resid.reduce((s, e) => s + e * e, 0);
-        const SST = y.reduce((s, v) => s + (v - my) ** 2, 0);
-        const SSR = SST - SSE;
-        const glR = k, glE = n - p;
-        const R2 = SST > 0 ? SSR / SST : 0;
-        const R2aj = 1 - (1 - R2) * (n - 1) / glE;
-        const F = (SSR / glR) / (SSE / glE);
-        const pF = this._pF(F, glR, glE);
-        const sigma2 = SSE / glE;
-
-        // Coeficientes: SE, t, p, IC 95%, β estandarizados.
-        const tCrit = this._tCrit(glE);
-        const deY = this._de(y);
-        const coefs = B.map((b, j) => {
-            const se = Math.sqrt(sigma2 * inv[j][j]);
-            const t = b / se;
-            const nombre = j === 0 ? '(Constante)' : ((etsX && etsX[j - 1]) || colsX[j - 1]);
-            const deX = j === 0 ? null : this._de(filas.map(f => f[j]));
-            return {
-                nombre, b, se, t, pValor: this._pT(t, glE),
-                beta: j === 0 ? null : b * deX / deY,
-                ic: [b - tCrit * se, b + tCrit * se]
-            };
-        });
-
-        // VIF por predictor: 1/(1−R²_j) regresando X_j sobre el resto.
-        let vifs = colsX.map(() => 1);
-        if (k >= 2) {
-            vifs = colsX.map((_, j) => {
-                const sub = this.regresionInterna(
-                    filas.map(f => f[j + 1]),
-                    filas.map(f => colsX.map((__, m) => f[m + 1]).filter((__, m) => m !== j))
-                );
-                return sub ? 1 / Math.max(1e-9, 1 - sub.R2) : Infinity;
-            });
-        }
-
-        // Normalidad de los residuos (supuesto clave del modelo).
-        let normResid = { prueba: '—', pValor: NaN, normal: true };
-        if (A) {
-            const r = resid.length < 50 ? A.shapiroWilk(resid) : A.kolmogorovSmirnov(resid);
-            normResid = { prueba: resid.length < 50 ? 'Shapiro-Wilk' : 'K-S (Lilliefors)', pValor: r.pValor, normal: r.pValor > 0.05 };
-        }
+        // Normalidad de los residuos (supuesto clave del modelo), con la prueba y la regla del núcleo único.
+        const rNorm = pruebaNormalidad(resid);
+        const normResid = { prueba: rNorm.abreviatura, pValor: rNorm.pValor, normal: rNorm.normal };
 
         const R = {
             n, k, etY: etY || colY, colY, colsX, etsX: etsX || colsX,
@@ -197,35 +114,19 @@ const RegresionMultiple = {
         return R;
     },
 
-    // OLS mínimo interno (para VIF): devuelve solo R².
-    regresionInterna(y, Xsolo) {
-        const n = y.length, k = Xsolo[0].length, p = k + 1;
-        const X = Xsolo.map(f => [1, ...f]);
-        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
-        const Xty = new Array(p).fill(0);
-        for (let i = 0; i < n; i++) for (let a = 0; a < p; a++) {
-            Xty[a] += X[i][a] * y[i];
-            for (let b = a; b < p; b++) XtX[a][b] += X[i][a] * X[i][b];
-        }
-        for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) XtX[a][b] = XtX[b][a];
-        const inv = this._inversa(XtX);
-        if (!inv) return null;
-        const B = inv.map(f => f.reduce((s, v, j) => s + v * Xty[j], 0));
-        const my = this._media(y);
-        let SSE = 0, SST = 0;
-        for (let i = 0; i < n; i++) {
-            const yh = X[i].reduce((s, v, j) => s + v * B[j], 0);
-            SSE += (y[i] - yh) ** 2; SST += (y[i] - my) ** 2;
-        }
-        return { R2: SST > 0 ? 1 - SSE / SST : 0 };
+    // Los coeficientes de un ajuste del núcleo (regresionMco) en el formato de las tablas: nombre, b, EE, t, p, β e IC 95 %.
+    _coeficientesMco(M, nombreDe) {
+        return Array.from(M.beta, (b, j) => ({
+            nombre: j === 0 ? '(Constante)' : nombreDe(j - 1), b, se: M.ee[j], t: M.t[j], pValor: M.pValores[j],
+            beta: j === 0 ? null : M.betaEstandarizado[j - 1], ic: M.ic[j]
+        }));
     },
 
     // ---------- (3) Efecto crudo vs ajustado (lectura causal honesta) ----------
     crudoVsAjustado(R) {
         if (!R || R.error || !R.colsX.length) return null;
         const focal = R.colsX[0], etFocal = R.etsX[0];
-        const crudo = this.regresionInterna
-            ? this.regresion(R.colY, [focal], R.etY, [etFocal]) : null;
+        const crudo = this.regresion(R.colY, [focal], R.etY, [etFocal]);   // (2026.12.21) sin la comprobación de regresionInterna, que se retiró (el VIF sale del ajuste)
         // regresion() sobreescribe _ultimaRegresion: restaurar el modelo completo.
         this._ultimaRegresion = R;
         if (!crudo || crudo.error) return null;
@@ -245,32 +146,21 @@ const RegresionMultiple = {
     // gana la más simple). Y BINARIA: regresión logística (Newton-Raphson).
     _aicGauss(SSE, n, k) { return n * Math.log(Math.max(SSE, 1e-300) / n) + 2 * (k + 1); },
 
-    _olsXY(y, Xcols) { // OLS mínimo: devuelve {B, yHat, SSE, R2}
-        const n = y.length, p = Xcols.length + 1;
-        const X = y.map((_, i) => [1, ...Xcols.map(c => c[i])]);
-        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
-        const Xty = new Array(p).fill(0);
-        for (let i = 0; i < n; i++) for (let a = 0; a < p; a++) {
-            Xty[a] += X[i][a] * y[i];
-            for (let b = a; b < p; b++) XtX[a][b] += X[i][a] * X[i][b];
-        }
-        for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) XtX[a][b] = XtX[b][a];
-        const inv = this._inversa(XtX);
-        if (!inv) return null;
-        const B = inv.map(f => f.reduce((s, v, j) => s + v * Xty[j], 0));
-        const yHat = X.map(f => f.reduce((s, v, j) => s + v * B[j], 0));
+    _olsXY(y, Xcols) { // OLS mínimo del núcleo único (core/stats/mco.js): devuelve {B, yHat, SSE, R2}; null si es colineal
+        const f = ajustarMco(y, Xcols);
+        if (!f) return null;
         const my = this._media(y);
-        let SSE = 0, SST = 0;
-        y.forEach((v, i) => { SSE += (v - yHat[i]) ** 2; SST += (v - my) ** 2; });
-        return { B, yHat, SSE, R2: SST > 0 ? 1 - SSE / SST : 0 };
+        let SST = 0; for (let i = 0; i < y.length; i++) SST += (y[i] - my) ** 2;
+        return { B: Array.from(f.beta), yHat: Array.from(f.ajustados), SSE: f.sce, R2: SST > 0 ? 1 - f.sce / SST : 0 };
     },
 
     mejorModelo(colX, colY, etX, etY) {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
-        const filas = datos.map(d => [+d[colX], +d[colY]]).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => [aNumero(d[colX]), aNumero(d[colY])]).filter(f => f.every(Number.isFinite));
         const n = filas.length;
         if (n < 10) return { error: 'Se requieren al menos 10 casos completos.' };
+        if (this._esConstante(filas.map(f => f[1]))) return { error: this._SIN_VARIACION };
         const x = filas.map(f => f[0]), y = filas.map(f => f[1]);
 
         // ¿Y binaria? → logística.
@@ -290,11 +180,21 @@ const RegresionMultiple = {
             const r = this._olsXY(y, Xcols);
             if (r) cands.push({ nombre, ec: ec(r.B), R2: r.R2, k, AIC: this._aicGauss(r.SSE, n, k), B: r.B });
         };
+        // (2026.12.21) Los polinomios se ajustan sobre x CENTRADA y sus coeficientes se pasan a x para la ecuación: las
+        // potencias de una x lejos del cero (un año, una puntuación de 100 a 200) son casi colineales, y con la cúbica de un
+        // año X es singular en doble precisión (antes, X'X invertida daba allí un ajuste erróneo sin avisar). El R², la SCE y
+        // el AIC no dependen del centrado; la curva se evalúa centrada (Bc, centro).
+        const mx = this._media(x), xc = x.map(v => v - mx);
+        const addPolinomio = (nombre, grado, ec) => {
+            const r = this._olsXY(y, Array.from({ length: grado }, (_, g) => xc.map(v => v ** (g + 1))));
+            if (!r) return;
+            const B = this._polinomioCrudo(r.B, mx);
+            cands.push({ nombre, ec: ec(B), R2: r.R2, k: grado, AIC: this._aicGauss(r.SSE, n, grado), B, Bc: r.B, centro: mx });
+        };
         const f3 = v => this._fx(v, 3);
-        addOLS('Lineal', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x`, [x], 1);
-        addOLS('Cuadrática', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x²`, [x, x.map(v => v * v)], 2);
-        addOLS('Cúbica', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x² + ${f3(B[3])}·x³`,
-            [x, x.map(v => v * v), x.map(v => v * v * v)], 3);
+        addPolinomio('Lineal', 1, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x`);
+        addPolinomio('Cuadrática', 2, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x²`);
+        addPolinomio('Cúbica', 3, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x² + ${f3(B[3])}·x³`);
         if (Math.min(...x) > 0) {
             addOLS('Logarítmica', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·ln(x)`, [x.map(Math.log)], 1);
         }
@@ -315,9 +215,13 @@ const RegresionMultiple = {
         cands.sort((a, b) => a.AIC - b.AIC);
         const mejorAIC = cands[0].AIC;
         cands.forEach(c => { c.dAIC = c.AIC - mejorAIC; });
-        // Parsimonia: entre los prácticamente empatados (ΔAIC < 2), el más simple.
+        // Parsimonia: entre los prácticamente empatados (ΔAIC < 2), la recta si está entre ellos y, si no, el más simple.
+        // (2026.12.30) Antes solo desempataba el número de parámetros, y la logarítmica y la exponencial tienen los de la
+        // recta: con datos lineales, una de ellas ganaba por azar en la mitad de las bases (101 de 200 en la auditoría, 75
+        // con la recta a ΔAIC < 2) y el texto concluía que la relación «presenta curvatura». Ahora una forma curva solo gana
+        // si la recta queda a ΔAIC ≥ 2.
         const empatados = cands.filter(c => c.dAIC < 2);
-        empatados.sort((a, b) => a.k - b.k || a.AIC - b.AIC);
+        empatados.sort((a, b) => (b.nombre === 'Lineal') - (a.nombre === 'Lineal') || a.k - b.k || a.AIC - b.AIC);
         const ganador = empatados[0];
         const R = { tipoY: 'continua', etX: etX || colX, etY: etY || colY, n, candidatos: cands, ganador,
                     parsimonia: ganador !== cands[0] };
@@ -325,63 +229,21 @@ const RegresionMultiple = {
         return R;
     },
 
-    // Regresión logística simple por Newton-Raphson (IRLS).
+    // Regresión logística simple, del núcleo único (core/stats/mlg.js: IRLS sobre la QR ponderada, el algoritmo de glm de
+    // R). (2026.12.22) Antes, Newton con la inversa 2 × 2 en forma cerrada, que si no convergía en 60 iteraciones devolvía
+    // la última sin avisar.
     _logistica(x, y01) {
-        let b0 = 0, b1 = 0;
-        const n = x.length;
-        for (let it = 0; it < 60; it++) {
-            let g0 = 0, g1 = 0, h00 = 0, h01 = 0, h11 = 0;
-            for (let i = 0; i < n; i++) {
-                const eta = b0 + b1 * x[i];
-                const p = 1 / (1 + Math.exp(-eta));
-                const w = p * (1 - p);
-                g0 += y01[i] - p; g1 += (y01[i] - p) * x[i];
-                h00 += w; h01 += w * x[i]; h11 += w * x[i] * x[i];
-            }
-            const det = h00 * h11 - h01 * h01;
-            if (Math.abs(det) < 1e-12) return { error: 'La logística no converge (¿separación perfecta?).' };
-            const d0 = (h11 * g0 - h01 * g1) / det;
-            const d1 = (h00 * g1 - h01 * g0) / det;
-            b0 += d0; b1 += d1;
-            if (Math.abs(d0) < 1e-10 && Math.abs(d1) < 1e-10) break;
-        }
-        // SE de b1 desde la inversa de la información; devianza y McFadden.
-        let h00 = 0, h01 = 0, h11 = 0, ll = 0, ll0 = 0;
-        const pBase = y01.reduce((s, v) => s + v, 0) / n;
-        for (let i = 0; i < n; i++) {
-            const p = 1 / (1 + Math.exp(-(b0 + b1 * x[i])));
-            const w = p * (1 - p);
-            h00 += w; h01 += w * x[i]; h11 += w * x[i] * x[i];
-            ll += y01[i] ? Math.log(Math.max(p, 1e-300)) : Math.log(Math.max(1 - p, 1e-300));
-            ll0 += y01[i] ? Math.log(pBase) : Math.log(1 - pBase);
-        }
-        const det = h00 * h11 - h01 * h01;
-        const seB1 = Math.sqrt(h00 / det);
-        const z = b1 / seB1;
-        const p2 = 2 * (1 - ((typeof ComparacionGrupos !== 'undefined') ? ComparacionGrupos._phi(Math.abs(z)) : 0.5));
-        return { b0, b1, se: seB1, z, pValor: p2, OR: Math.exp(b1),
-                 mcFadden: 1 - ll / ll0, AIC: -2 * ll + 4,
+        const M = ajustarMlg(y01, [x], { familia: 'logistica' });
+        if ('error' in M) return { error: M.error };
+        const b0 = M.beta[0], b1 = M.beta[1];
+        return { b0, b1, se: M.ee[1], z: M.z[1], pValor: M.pValores[1], OR: Math.exp(b1),
+                 mcFadden: M.mcFadden, AIC: M.aic, avisos: M.avisos,
                  ec: `logit(p) = ${this._fx(b0, 3)} + ${this._fx(b1, 3)}·x` };
     },
 
     // ================= ANCOVA Y MANOVA =================
-    // Determinante por eliminación gaussiana con pivoteo (para Wilks' Λ).
-    _det(M) {
-        const n = M.length, A = M.map(f => [...f]);
-        let det = 1;
-        for (let c = 0; c < n; c++) {
-            let piv = c;
-            for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
-            if (Math.abs(A[piv][c]) < 1e-300) return 0;
-            if (piv !== c) { [A[c], A[piv]] = [A[piv], A[c]]; det = -det; }
-            det *= A[c][c];
-            for (let r = c + 1; r < n; r++) {
-                const f = A[r][c] / A[c][c];
-                for (let j = c; j < n; j++) A[r][j] -= f * A[c][j];
-            }
-        }
-        return det;
-    },
+    // Determinante por eliminación gaussiana con pivoteo (para Wilks' Λ); (2026.12.25) del núcleo único (core/linalg/gauss.js).
+    _det(M) { return determinante(M); },
 
     // ---------- ANCOVA: factor (grupos) + covariable, vía modelo lineal ----------
     // Pregunta que responde: ¿difieren los grupos en Y una vez IGUALADOS
@@ -389,8 +251,8 @@ const RegresionMultiple = {
     ancova(colGrupo, colY, colCov, ets = {}) {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
-        const filas = datos.map(d => ({ g: d[colGrupo], y: +d[colY], c: +d[colCov] }))
-            .filter(f => f.g != null && String(f.g).trim() !== '' && Number.isFinite(f.y) && Number.isFinite(f.c));
+        const filas = datos.map(d => ({ g: d[colGrupo], y: aNumero(d[colY]), c: aNumero(d[colCov]) }))
+            .filter(f => !esPerdido(f.g) && Number.isFinite(f.y) && Number.isFinite(f.c));   // (2026.12.18) un grupo NaN no es un grupo
         const niveles = [...new Set(filas.map(f => String(f.g)))].sort();
         const k = niveles.length, n = filas.length;
         if (k < 2) return { error: 'La variable de agrupación necesita al menos 2 grupos.' };
@@ -398,6 +260,7 @@ const RegresionMultiple = {
         if (n < k + 4) return { error: 'Casos insuficientes para el ANCOVA.' };
 
         const y = filas.map(f => f.y);
+        if (this._esConstante(y)) return { error: this._SIN_VARIACION };
         const cov = filas.map(f => f.c);
         const mCov = this._media(cov);
         // Dummies (referencia: primer nivel) y columnas de los tres modelos.
@@ -439,9 +302,17 @@ const RegresionMultiple = {
 
         // Eta² parcial del factor.
         const eta2p = (M_cov.SSE - M_full.SSE) / M_cov.SSE;
+        // (2026.12.30) La diferencia SIN ajustar (el ANOVA de un factor: el modelo con solo los grupos) y la de la covariable
+        // entre los grupos: con el factor ajustado no significativo, el texto atribuía a la covariable una diferencia cruda
+        // que podía no ser significativa (bastaba que las medias crudas difirieran en más de 0,01).
+        const anova = (/** @type {number[]} */ v) => {
+            const M = this._olsFull(v, dummies, niveles.slice(1));
+            return M.error ? null : { F: M.F, gl: [M.glR, M.glE], pValor: M.pF };
+        };
         const R = { etGrupo: ets.grupo || colGrupo, etY: ets.y || colY, etCov: ets.cov || colCov,
                     n, k, niveles, Ffactor, gl: [q, M_full.glE], pFactor, eta2p,
                     Fcov, pCov, pendientes, mediasAjustadas, mCov,
+                    cruda: anova(y), covEntreGrupos: anova(cov),
                     significativo: pFactor < 0.05 };
         this._ultimaAncova = R;
         return R;
@@ -455,8 +326,8 @@ const RegresionMultiple = {
         const datos = A ? (A.obtenerDatos() || []) : [];
         const p = colsY.length;
         if (p < 1) return { error: 'Elige al menos una variable dependiente.' };
-        const filas = datos.map(d => ({ g: d[colGrupo], ys: colsY.map(c => +d[c]) }))
-            .filter(f => f.g != null && String(f.g).trim() !== '' && f.ys.every(Number.isFinite));
+        const filas = datos.map(d => ({ g: d[colGrupo], ys: colsY.map(c => aNumero(d[c])) }))
+            .filter(f => !esPerdido(f.g) && f.ys.every(Number.isFinite));
         const niveles = [...new Set(filas.map(f => String(f.g)))].sort();
         const k = niveles.length, n = filas.length;
         if (k < 2) return { error: 'Se necesitan al menos 2 grupos.' };
@@ -506,6 +377,27 @@ const RegresionMultiple = {
         return R;
     },
 
+    // (2026.12.30) El ANCOVA sin efecto del factor ajustado, en la vista y en el Word: si sin ajustar los grupos SÍ diferían,
+    // esa diferencia era atribuible, al menos en parte, a la covariable; si tampoco diferían, no había nada que explicar.
+    // Hasta la 2026.12.29 se atribuía a la covariable cualquier diferencia de medias crudas mayor que 0,01.
+    _textoAncovaSinEfecto(R) {
+        const C = R.cruda, D = R.covEntreGrupos;
+        const ajustado = `F(${R.gl[0]}, ${R.gl[1]}) = ${this._fx(R.Ffactor, 2)}, p ${this._pTxt(R.pFactor)}`;
+        if (!C) return `Una vez igualados en ${R.etCov}, los grupos no difieren significativamente en ${R.etY} (${ajustado}).`;
+        const crudo = `F(${C.gl[0]}, ${C.gl[1]}) = ${this._fx(C.F, 2)}, p ${this._pTxt(C.pValor)}`;
+        if (C.pValor < 0.05) {
+            const inicio = `Sin ajustar, los grupos difieren en ${R.etY} (${crudo}), pero una vez igualados en ${R.etCov} ya no difieren significativamente (${ajustado})`;
+            // (revisión 2026.12.30) si los grupos no difieren en la covariable, no se puede afirmar que partían con niveles
+            // distintos de ella (la frase lo afirmaba y, entre paréntesis, decía lo contrario)
+            if (D && !(D.pValor < 0.05)) {
+                return `${inicio}. Como los grupos no difieren significativamente en ${R.etCov} (p ${this._pTxt(D.pValor)}), la diferencia cruda no puede atribuirse con seguridad a la covariable: la pequeña diferencia de ${R.etCov} entre los grupos basta para restarle la significación, así que conviene interpretar este resultado con cautela.`;
+            }
+            const enCov = D ? ` (los grupos sí difieren en ${R.etCov}: p ${this._pTxt(D.pValor)})` : '';
+            return `${inicio}: la diferencia cruda era atribuible, al menos en parte, a que los grupos partían con distintos niveles de ${R.etCov}${enCov}.`;
+        }
+        return `Los grupos no difieren significativamente en ${R.etY} ni sin ajustar (${crudo}) ni una vez igualados en ${R.etCov} (${ajustado}): no había una diferencia de partida que la covariable explicara.`;
+    },
+
     _htmlAncova(R) {
         let h = `<h4 style="margin:0.8rem 0 0.2rem;">⚖️➕ ANCOVA: comparar igualando estadísticamente en ${R.etCov}</h4>
         <p class="help-text" style="margin:0 0 0.4rem;font-size:0.9em;">Pregunta que responde: <b>¿difieren los grupos en ${R.etY} una vez igualados en ${R.etCov}?</b> El ANCOVA descuenta primero el efecto de la covariable y compara lo que queda — es como preguntar qué pasaría si todos los grupos tuvieran el mismo nivel de ${R.etCov} (fijado en su media global, ${this._fx(R.mCov, 2)}).</p>`;
@@ -515,12 +407,12 @@ const RegresionMultiple = {
             + this._tr([`${R.etGrupo} (ajustado)`, this._fx(R.Ffactor, 2), `(${R.gl[0]}, ${R.gl[1]})`, this._fp(R.pFactor), this._fx(R.eta2p, 3)])
             + this._tr([`${R.etCov} (covariable)`, this._fx(R.Fcov, 2), `(1, ${R.gl[1]})`, this._fp(R.pCov), '—']));
         h += `<p style="margin:0.3rem 0 0;">${R.significativo
-            ? `Aun igualados en ${R.etCov}, los grupos difieren en ${R.etY} (p ${this._fp(R.pFactor)}): la diferencia <b>no</b> se explica por la covariable.`
-            : `Una vez igualados en ${R.etCov}, los grupos ya no difieren significativamente en ${R.etY} (p ${this._fp(R.pFactor)}): la diferencia cruda ${Math.abs(R.mediasAjustadas[0].mediaCruda - R.mediasAjustadas[R.mediasAjustadas.length-1].mediaCruda) > 0.01 ? 'era atribuible, al menos en parte, a que los grupos partían con distintos niveles de la covariable' : 'tampoco existía de partida'}.`} Compara las columnas de medias: la <i>cruda</i> es lo observado; la <i>ajustada</i>, lo esperable con todos al mismo nivel de ${R.etCov}.</p>`;
+            ? `Aun igualados en ${R.etCov}, los grupos difieren en ${R.etY} (p ${this._pTxt(R.pFactor)}): la diferencia <b>no</b> se explica por la covariable.`
+            : this._textoAncovaSinEfecto(R)} Compara las columnas de medias: la <i>cruda</i> es lo observado; la <i>ajustada</i>, lo esperable con todos al mismo nivel de ${R.etCov}.</p>`;
         if (R.pendientes) {
             h += R.pendientes.paralelas
-                ? `<p class="help-text" style="font-size:0.85em;margin-top:0.3rem;">Supuesto de pendientes paralelas: satisfecho (F(${R.pendientes.gl[0]}, ${R.pendientes.gl[1]}) = ${this._fx(R.pendientes.F, 2)}, p ${this._fp(R.pendientes.pValor)}). ¿Por qué importa? El ajuste solo tiene sentido si la relación entre ${R.etCov} y ${R.etY} es la misma en todos los grupos; si cada grupo tuviera su propia pendiente, no existiría UNA respuesta ajustada válida para todos los niveles de la covariable.</p>`
-                : `<p style="margin:0.4rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ <b>Supuesto de pendientes paralelas violado</b> (p ${this._fp(R.pendientes.pValor)}): la relación entre ${R.etCov} y ${R.etY} difiere entre grupos, así que las medias ajustadas deben tomarse con cautela — la diferencia entre grupos <i>depende</i> del nivel de la covariable (una interacción, no un efecto uniforme). Interpreta la moderación en lugar del ANCOVA clásico.</p>`;
+                ? `<p class="help-text" style="font-size:0.85em;margin-top:0.3rem;">Supuesto de pendientes paralelas: satisfecho (F(${R.pendientes.gl[0]}, ${R.pendientes.gl[1]}) = ${this._fx(R.pendientes.F, 2)}, p ${this._pTxt(R.pendientes.pValor)}). ¿Por qué importa? El ajuste solo tiene sentido si la relación entre ${R.etCov} y ${R.etY} es la misma en todos los grupos; si cada grupo tuviera su propia pendiente, no existiría UNA respuesta ajustada válida para todos los niveles de la covariable.</p>`
+                : `<p style="margin:0.4rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ <b>Supuesto de pendientes paralelas violado</b> (p ${this._pTxt(R.pendientes.pValor)}): la relación entre ${R.etCov} y ${R.etY} difiere entre grupos, así que las medias ajustadas deben tomarse con cautela — la diferencia entre grupos <i>depende</i> del nivel de la covariable (una interacción, no un efecto uniforme). Interpreta la moderación en lugar del ANCOVA clásico.</p>`;
         }
         return h;
     },
@@ -533,13 +425,15 @@ const RegresionMultiple = {
         h += this._tab(this._tr(['Grupo', 'n', ...M.etsY.map(e => `M(${e})`)], true)
             + M.porGrupo.map(g => this._tr([g.grupo, g.n, ...g.medias.map(m => this._fx(m, 2))])).join(''));
         h += `<p style="margin:0.3rem 0 0;">La <b>Λ de Wilks</b> se lee al revés que un R²: es la proporción de variabilidad <i>no explicada</i> por los grupos (menor = grupos más separados). ${M.significativo
-            ? `Aquí Λ = ${this._fx(M.lambda, 3)} con p ${this._fp(M.pValor)}: los grupos difieren en el <b>perfil conjunto</b> de ${M.etsY.join(', ')}. El paso siguiente del protocolo es examinar cada variable por separado (los ANOVAs de seguimiento de arriba) para localizar dónde vive la diferencia.`
-            : `Aquí p ${this._fp(M.pValor)}: no hay evidencia de que los grupos difieran en el perfil conjunto — y este resultado global protege contra falsos hallazgos que ${M.p} pruebas sueltas podrían producir por azar.`}</p>`;
+            ? `Aquí Λ = ${this._fx(M.lambda, 3)} con p ${this._pTxt(M.pValor)}: los grupos difieren en el <b>perfil conjunto</b> de ${M.etsY.join(', ')}. El paso siguiente del protocolo es examinar cada variable por separado (los ANOVAs de seguimiento de arriba) para localizar dónde vive la diferencia.`
+            : `Aquí p ${this._pTxt(M.pValor)}: no hay evidencia de que los grupos difieran en el perfil conjunto — y este resultado global protege contra falsos hallazgos que ${M.p} pruebas sueltas podrían producir por azar.`}</p>`;
         return h;
     },
 
     // ---------- Formato ----------
-    _fp(p) { return !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'); },
+    _fp(p) { return formatoP(p); },
+    // «= .023» o «< .001», para escribir «p = .023» y «p < .001» (2026.12.30: hasta entonces, «p .023», sin el signo).
+    _pTxt(p) { return pConSigno(p); },
     _fx(x, d = 3) { return Number.isFinite(x) ? x.toFixed(d) : '—'; },
 
     // ---------- UI ----------
@@ -551,10 +445,11 @@ const RegresionMultiple = {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
         const nums = (typeof obtenerColumnasNumericas === 'function' && datos.length) ? obtenerColumnasNumericas(datos) : [];
-        const et = c => (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(c) : c;
+        // (2026.12.29) nombres y etiquetas escapados: llegan de un CSV o de un .sav ajeno
+        const et = c => escaparHTML((typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(c) : c);
         const dep = document.getElementById('rmDep');
-        if (dep) dep.innerHTML = nums.map(c => `<option value="${c}">${et(c)}</option>`).join('');
-        const caja = c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${c}" style="margin-right:0.4rem;">${et(c)}</label>`;
+        if (dep) dep.innerHTML = nums.map(c => `<option value="${escaparHTML(c)}">${et(c)}</option>`).join('');
+        const caja = c => `<label style="display:block;margin:0.15rem 0;cursor:pointer;"><input type="checkbox" value="${escaparHTML(c)}" style="margin-right:0.4rem;">${et(c)}</label>`;
         ['rmMatVars', 'rmPred'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = nums.length ? nums.map(caja).join('') : '<span class="help-text">Sin variables numéricas.</span>';
@@ -589,7 +484,7 @@ const RegresionMultiple = {
         html += `<p class="help-text" style="font-size:0.85em;">n = ${M.n} (casos completos). * p Holm &lt; .05. Método por par: Pearson si ambas variables son normales; Spearman en caso contrario. Diagonal = 1; se muestra el triángulo inferior (la matriz es simétrica).</p>`;
         const sig = M.pares.filter(p => p.sig);
         html += `<p style="margin:0.3rem 0 0;">${sig.length
-            ? `Correlaciones significativas tras Holm: ${sig.map(p => `${M.cols[p.i]}–${M.cols[p.j]} (${p.metodo[0] === 'P' ? 'r' : 'ρ'} = ${this._fx(p.r, 2)}, p ${this._fp(p.pHolm)})`).join('; ')}.`
+            ? `Correlaciones significativas tras Holm: ${sig.map(p => `${M.cols[p.i]}–${M.cols[p.j]} (${p.metodo[0] === 'P' ? 'r' : 'ρ'} = ${this._fx(p.r, 2)}, p ${this._pTxt(p.pHolm)})`).join('; ')}.`
             : 'Ningún par mantiene la significancia tras la corrección de Holm.'}</p>`;
         if (out) out.innerHTML = html;
     },
@@ -614,7 +509,7 @@ const RegresionMultiple = {
                     this._fx(c.t, 2), this._fp(c.pValor), `[${this._fx(c.ic[0], 2)}, ${this._fx(c.ic[1], 2)}]`,
                     j === 0 ? '—' : this._fx(R.vifs[j - 1], 2)])).join(''));
 
-        html += `<p class="help-text" style="font-size:0.85em;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._fp(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'supuesto en duda: interpreta con cautela'}. VIF &gt; 5 sugiere colinealidad problemática entre predictores.</p>`;
+        html += `<p class="help-text" style="font-size:0.85em;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._pTxt(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'supuesto en duda: interpreta con cautela'}. VIF &gt; 5 sugiere colinealidad problemática entre predictores.</p>`;
 
         const cva = this.crudoVsAjustado(R);
         if (cva && R.k >= 2) {
@@ -627,9 +522,20 @@ const RegresionMultiple = {
         if (out) out.innerHTML = html;
     },
 
+    // Coeficientes en x de un polinomio dado en (x − m): bᵣ = Σⱼ≥ᵣ cⱼ·C(j, r)·(−m)^(j−r).
+    _polinomioCrudo(c, m) {
+        const binomial = (a, b) => { let r = 1; for (let i = 1; i <= b; i++) r = r * (a - b + i) / i; return r; };
+        return c.map((_, r) => { let s = 0; for (let j = r; j < c.length; j++) s += c[j] * binomial(j, r) * (-m) ** (j - r); return s; });
+    },
+
     // Evalúa el modelo ganador en un valor x (para dibujar la curva).
     _evalModelo(c, xv) {
         const B = c.B;
+        if (c.Bc && /^(Lineal|Cuadrática|Cúbica)$/.test(c.nombre)) {   // (2026.12.21) los polinomios, en su forma centrada
+            const u = xv - c.centro; let s = 0;
+            for (let j = c.Bc.length - 1; j >= 0; j--) s = s * u + c.Bc[j];   // Horner
+            return s;
+        }
         switch (c.nombre) {
             case 'Lineal': return B[0] + B[1] * xv;
             case 'Cuadrática': return B[0] + B[1] * xv + B[2] * xv * xv;
@@ -706,7 +612,7 @@ const RegresionMultiple = {
         const MM = this.mejorModelo(colX, colY, etX, etY);
         // Datos para el gráfico (mismos casos completos del concurso).
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
-        const filas = (A ? A.obtenerDatos() : []).map(d => [+d[colX], +d[colY]]).filter(f => f.every(Number.isFinite));
+        const filas = (A ? A.obtenerDatos() : []).map(d => [aNumero(d[colX]), aNumero(d[colY])]).filter(f => f.every(Number.isFinite));
         const x = filas.map(f => f[0]), y = filas.map(f => f[1]);
         let img = null;
         if (!MM.error) { try { img = this.graficoModelo(x, y, MM, etX || colX, etY || colY); } catch (e) { img = null; } }
@@ -730,6 +636,9 @@ const RegresionMultiple = {
                 </h5>
                 <div class="interpretation-text">` + this._pedagogiaBivariada(R, etX || colX) + `</div></div>`;
         if (!MM.error) html += `<div class="result-box">` + this._htmlMejorModelo(MM) + `</div>`;
+        // (2026.12.22) sin modelo (una separación en la logística, pocos casos): el motivo, en lugar de omitir la sección
+        else html += `<div class="result-box"><h4 style="margin:0.6rem 0 0.2rem;">🔍 ¿Qué modelo explica mejor esta relación?</h4>`
+            + `<p style="margin:0.5rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ ${MM.error}</p></div>`;
         if (img) html += `<div class="result-box" style="display: flex; justify-content: center;"><img src="${img.url}" style="max-width:100%;border-radius:0.4rem;" alt="Modelo ajustado"></div>`;
         html += `</div>`;
         return { html };
@@ -738,131 +647,37 @@ const RegresionMultiple = {
     // ================= MOTOR MULTIVARIADO AVANZADO =================
     // OLS completo sobre matrices ya construidas (permite términos derivados:
     // interacción centrada, cuadrático). Devuelve coeficientes con SE/t/p/IC.
+    // (2026.12.21) del núcleo único (core/stats/mco.js, por la QR de X); antes, X'X invertida por Gauss-Jordan. Incluye el
+    // VIF de cada término (por la identidad con (X'X)⁻¹).
     _olsFull(y, Xcols, nombres) {
-        const n = y.length, k = Xcols.length, p = k + 1;
-        const X = y.map((_, i) => [1, ...Xcols.map(c => c[i])]);
-        const XtX = Array.from({ length: p }, () => new Array(p).fill(0));
-        const Xty = new Array(p).fill(0);
-        for (let i = 0; i < n; i++) for (let a = 0; a < p; a++) {
-            Xty[a] += X[i][a] * y[i];
-            for (let b = a; b < p; b++) XtX[a][b] += X[i][a] * X[i][b];
-        }
-        for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) XtX[a][b] = XtX[b][a];
-        const inv = this._inversa(XtX);
-        if (!inv) return { error: 'Predictores perfectamente colineales.' };
-        const B = inv.map(f => f.reduce((s, v, j) => s + v * Xty[j], 0));
-        const yHat = X.map(f => f.reduce((s, v, j) => s + v * B[j], 0));
-        const resid = y.map((v, i) => v - yHat[i]);
-        const my = this._media(y);
-        const SSE = resid.reduce((s, e) => s + e * e, 0);
-        const SST = y.reduce((s, v) => s + (v - my) ** 2, 0);
-        const glE = n - p, R2 = SST > 0 ? 1 - SSE / SST : 0;
-        const F = k > 0 ? ((SST - SSE) / k) / (SSE / glE) : NaN;
-        const sigma2 = SSE / glE, tC = this._tCrit(glE), deY = this._de(y);
-        const coefs = B.map((b, j) => {
-            const se = Math.sqrt(sigma2 * inv[j][j]);
-            const deX = j === 0 ? null : this._de(Xcols[j - 1]);
-            return { nombre: j === 0 ? '(Constante)' : nombres[j - 1], b, se, t: b / se,
-                     pValor: this._pT(b / se, glE), beta: j === 0 ? null : b * deX / deY,
-                     ic: [b - tC * se, b + tC * se] };
-        });
-        return { familia: 'ols', n, k, coefs, R2, R2aj: 1 - (1 - R2) * (n - 1) / glE,
-                 F, glR: k, glE, pF: this._pF(F, k, glE), SSE, resid, yHat,
-                 errorTipico: Math.sqrt(sigma2) };
+        if (this._esConstante(y)) return { error: this._SIN_VARIACION };
+        const M = regresionMco(y, Xcols);
+        if (!M) return { error: 'Predictores perfectamente colineales.' };
+        return { familia: 'ols', n: M.n, k: M.k, coefs: this._coeficientesMco(M, j => nombres[j]), R2: M.r2, R2aj: M.r2aj,
+                 F: M.F, glR: M.k, glE: M.gl, pF: M.pF, SSE: M.sce, resid: Array.from(M.residuos), yHat: Array.from(M.ajustados),
+                 errorTipico: M.errorTipico, vif: Array.from(M.vif) };
     },
 
-    // Logística multivariada (Newton-Raphson con la inversa de la información).
+    // Logística multivariada, del núcleo único (core/stats/mlg.js; 2026.12.22: antes, Newton con la información invertida
+    // por Gauss-Jordan). OR = e^b, con el IC de Wald exponenciado.
     _logisticaK(y01, Xcols, nombres) {
-        const n = y01.length, k = Xcols.length, p = k + 1;
-        const X = y01.map((_, i) => [1, ...Xcols.map(c => c[i])]);
-        let B = new Array(p).fill(0);
-        for (let it = 0; it < 80; it++) {
-            const grad = new Array(p).fill(0);
-            const info = Array.from({ length: p }, () => new Array(p).fill(0));
-            for (let i = 0; i < n; i++) {
-                const eta = X[i].reduce((s, v, j) => s + v * B[j], 0);
-                const mu = 1 / (1 + Math.exp(-eta)), w = mu * (1 - mu);
-                for (let a = 0; a < p; a++) {
-                    grad[a] += (y01[i] - mu) * X[i][a];
-                    for (let b = a; b < p; b++) info[a][b] += w * X[i][a] * X[i][b];
-                }
-            }
-            for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) info[a][b] = info[b][a];
-            const inv = this._inversa(info);
-            if (!inv) return { error: 'La logística no converge (¿separación perfecta?).' };
-            let maxd = 0;
-            for (let a = 0; a < p; a++) {
-                const d = inv[a].reduce((s, v, j) => s + v * grad[j], 0);
-                B[a] += d; maxd = Math.max(maxd, Math.abs(d));
-            }
-            if (maxd < 1e-10) {
-                // Convergió: SE desde la inversa final, devianza y McFadden.
-                let ll = 0, ll0 = 0;
-                const pb = y01.reduce((s, v) => s + v, 0) / n;
-                for (let i = 0; i < n; i++) {
-                    const mu = 1 / (1 + Math.exp(-X[i].reduce((s, v, j) => s + v * B[j], 0)));
-                    ll += y01[i] ? Math.log(Math.max(mu, 1e-300)) : Math.log(Math.max(1 - mu, 1e-300));
-                    ll0 += y01[i] ? Math.log(pb) : Math.log(1 - pb);
-                }
-                const zc = 1.959964;
-                const coefs = B.map((b, j) => {
-                    const se = Math.sqrt(inv[j][j]);
-                    const z = b / se;
-                    const p2 = 2 * (1 - ComparacionGrupos._phi(Math.abs(z)));
-                    return { nombre: j === 0 ? '(Constante)' : nombres[j - 1], b, se, z, pValor: p2,
-                             OR: Math.exp(b), ic: [Math.exp(b - zc * se), Math.exp(b + zc * se)] };
-                });
-                return { familia: 'logistica', n, k, coefs, mcFadden: 1 - ll / ll0,
-                         AIC: -2 * ll + 2 * p, converge: true };
-            }
-        }
-        return { error: 'La logística no convergió en 80 iteraciones.' };
+        const M = ajustarMlg(y01, Xcols, { familia: 'logistica' });
+        if ('error' in M) return { error: M.error };
+        const coefs = Array.from(M.beta, (b, j) => ({ nombre: j === 0 ? '(Constante)' : nombres[j - 1], b, se: M.ee[j], z: M.z[j], pValor: M.pValores[j],
+            OR: Math.exp(b), ic: [Math.exp(M.ic[j][0]), Math.exp(M.ic[j][1])] }));
+        return { familia: 'logistica', n: M.n, k: M.k, coefs, mcFadden: M.mcFadden, AIC: M.aic, converge: true,
+                 devianza: M.devianza, devianzaNula: M.devianzaNula, avisosAjuste: M.avisos };
     },
 
-    // Poisson multivariada (IRLS, link log) + test de sobredispersión.
+    // Poisson multivariada, del núcleo único (core/stats/mlg.js; 2026.12.22: antes, Newton con la información invertida por
+    // Gauss-Jordan) + la dispersión de Pearson (χ²/gl) para la sobredispersión. IRR = e^b, con el IC de Wald exponenciado.
     _poissonK(y, Xcols, nombres) {
-        const n = y.length, k = Xcols.length, p = k + 1;
-        if (!y.every(v => Number.isInteger(v) && v >= 0))
-            return { error: 'Poisson requiere una variable dependiente de conteo (enteros ≥ 0).' };
-        const X = y.map((_, i) => [1, ...Xcols.map(c => c[i])]);
-        let B = new Array(p).fill(0);
-        B[0] = Math.log(Math.max(this._media(y), 0.1));
-        for (let it = 0; it < 100; it++) {
-            const grad = new Array(p).fill(0);
-            const info = Array.from({ length: p }, () => new Array(p).fill(0));
-            for (let i = 0; i < n; i++) {
-                const mu = Math.exp(Math.min(30, X[i].reduce((s, v, j) => s + v * B[j], 0)));
-                for (let a = 0; a < p; a++) {
-                    grad[a] += (y[i] - mu) * X[i][a];
-                    for (let b = a; b < p; b++) info[a][b] += mu * X[i][a] * X[i][b];
-                }
-            }
-            for (let a = 0; a < p; a++) for (let b = 0; b < a; b++) info[a][b] = info[b][a];
-            const inv = this._inversa(info);
-            if (!inv) return { error: 'Poisson no converge (información singular).' };
-            let maxd = 0;
-            for (let a = 0; a < p; a++) {
-                const d = inv[a].reduce((s, v, j) => s + v * grad[j], 0);
-                B[a] += d; maxd = Math.max(maxd, Math.abs(d));
-            }
-            if (maxd < 1e-9) {
-                let chi2 = 0;
-                const mus = X.map(f => Math.exp(f.reduce((s, v, j) => s + v * B[j], 0)));
-                mus.forEach((mu, i) => { chi2 += (y[i] - mu) ** 2 / Math.max(mu, 1e-9); });
-                const dispersion = chi2 / (n - p);
-                const zc = 1.959964;
-                const coefs = B.map((b, j) => {
-                    const se = Math.sqrt(inv[j][j]);
-                    const z = b / se;
-                    return { nombre: j === 0 ? '(Constante)' : nombres[j - 1], b, se, z,
-                             pValor: 2 * (1 - ComparacionGrupos._phi(Math.abs(z))),
-                             IRR: Math.exp(b), ic: [Math.exp(b - zc * se), Math.exp(b + zc * se)] };
-                });
-                return { familia: 'poisson', n, k, coefs, dispersion,
-                         sobredispersion: dispersion > 1.5, converge: true };
-            }
-        }
-        return { error: 'Poisson no convergió.' };
+        const M = ajustarMlg(y, Xcols, { familia: 'poisson' });
+        if ('error' in M) return { error: M.error };
+        const coefs = Array.from(M.beta, (b, j) => ({ nombre: j === 0 ? '(Constante)' : nombres[j - 1], b, se: M.ee[j], z: M.z[j], pValor: M.pValores[j],
+            IRR: Math.exp(b), ic: [Math.exp(M.ic[j][0]), Math.exp(M.ic[j][1])] }));
+        return { familia: 'poisson', n: M.n, k: M.k, coefs, dispersion: M.dispersion, sobredispersion: M.dispersion > 1.5, converge: true,
+                 AIC: M.aic, devianza: M.devianza, devianzaNula: M.devianzaNula, avisosAjuste: M.avisos };
     },
 
     // Análisis multivariado COMPLETO con opciones psicológicas:
@@ -873,7 +688,7 @@ const RegresionMultiple = {
         const datos = A ? (A.obtenerDatos() || []) : [];
         if (!colY || !colsX || !colsX.length) return { error: 'Elige la dependiente y al menos un predictor.' };
         if (colsX.includes(colY)) return { error: 'La dependiente no puede ser también predictor.' };
-        const filas = datos.map(d => [+d[colY], ...colsX.map(c => +d[c])]).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => [aNumero(d[colY]), ...colsX.map(c => aNumero(d[c]))]).filter(f => f.every(Number.isFinite));
         const n = filas.length, k0 = colsX.length;
         if (n < k0 + 5) return { error: `Casos insuficientes (${n}) para ${k0} predictores.` };
         const y = filas.map(f => f[0]);
@@ -886,7 +701,7 @@ const RegresionMultiple = {
             const lo = Math.min(...unicos);
             const R = this._logisticaK(y.map(v => v === lo ? 0 : 1), colsX.map((_, j) => filas.map(f => f[j + 1])), ets);
             if (R.error) return R;
-            R.etY = etY || colY; R.etsX = ets; R.avisos = avisos;
+            R.etY = etY || colY; R.etsX = ets; R.avisos = [...avisos, ...(R.avisosAjuste || [])];   // (2026.12.22) con los del ajuste (separación casi completa)
             R.notaFamilia = 'La variable dependiente es binaria: se ajustó una regresión logística múltiple (los coeficientes se interpretan como razones de probabilidades, OR).';
             this._ultimaMultiple = R;
             return R;
@@ -897,7 +712,7 @@ const RegresionMultiple = {
         if (opciones.poisson) {
             const R = this._poissonK(y, colsX.map((_, j) => filas.map(f => f[j + 1])), ets);
             if (R.error) return R;
-            R.etY = etY || colY; R.etsX = ets; R.avisos = avisos;
+            R.etY = etY || colY; R.etsX = ets; R.avisos = [...avisos, ...(R.avisosAjuste || [])];
             R.notaFamilia = 'Modelo de Poisson (declarado por el investigador como conteo de eventos): los coeficientes exponenciados (IRR) indican por cuánto se multiplica la tasa esperada por cada unidad del predictor.';
             if (R.sobredispersion) R.avisos.push(`Sobredispersión detectada (χ²/gl = ${this._fx(R.dispersion, 2)} > 1.5): la varianza excede a la media, patrón típico de conductas agrupadas. El modelo recomendado es la regresión binomial negativa (R: MASS::glm.nb; SPSS: GENLIN), pues Poisson subestima los errores estándar en este escenario.`);
             this._ultimaMultiple = R;
@@ -906,8 +721,7 @@ const RegresionMultiple = {
 
         // --- OLS con términos psicológicos: centrado, interacción, cuadrático ---
         const Xbase = colsX.map((_, j) => filas.map(f => f[j + 1]));
-        const centrar = v => { const m = this._media(v); return v.map(x => x - m); };
-        const Xc = Xbase.map(centrar); // centrado para interacción/cuadrático (reduce colinealidad)
+        const Xc = Xbase.map(v => Array.from(centrar(v))); // centrado para interacción/cuadrático (reduce colinealidad); (2026.12.25) del núcleo único
         const cols = [...Xbase], nombres = [...ets];
         let idxInter = -1, idxCuad = -1;
         if (opciones.interaccion && k0 >= 2) {
@@ -925,11 +739,8 @@ const RegresionMultiple = {
         R.etY = etY || colY; R.etsX = ets; R.idxInter = idxInter; R.idxCuad = idxCuad;
         R.notaFamilia = null;
 
-        // VIF por término
-        R.vifs = cols.length >= 2 ? cols.map((_, j) => {
-            const sub = this._olsFull(cols[j], cols.filter((__, m) => m !== j), []);
-            return sub.error ? Infinity : 1 / Math.max(1e-9, 1 - sub.R2);
-        }) : cols.map(() => 1);
+        // VIF por término (del ajuste del núcleo: la identidad con (X'X)⁻¹ en lugar de una regresión auxiliar por término)
+        R.vifs = R.vif;
 
         // --- Regresión JERÁRQUICA por bloques (k0 ≥ 2): Bloque 1 = controles
         // (predictores 2..k), Bloque 2 = + focal (y sus términos derivados). ---
@@ -955,11 +766,9 @@ const RegresionMultiple = {
         if (extremos / n > 0.02) {
             avisos.push(`Se detectaron ${extremos} residuos estandarizados con |z| > 3 (${(100 * extremos / n).toFixed(1)} % de los casos): con atípicos severos, la regresión robusta (estimadores M; R: MASS::rlm) protege las estimaciones mejor que los mínimos cuadrados clásicos.`);
         }
-        // Normalidad de residuos
-        if (A) {
-            const rn = R.resid.length < 50 ? A.shapiroWilk(R.resid) : A.kolmogorovSmirnov(R.resid);
-            R.normResid = { prueba: R.resid.length < 50 ? 'Shapiro-Wilk' : 'K-S (Lilliefors)', pValor: rn.pValor, normal: rn.pValor > 0.05 };
-        }
+        // Normalidad de residuos (prueba y regla del núcleo único)
+        const normRes = pruebaNormalidad(R.resid);
+        R.normResid = { prueba: normRes.abreviatura, pValor: normRes.pValor, normal: normRes.normal };
         R.avisos = avisos;
         this._ultimaMultiple = R;
         return R;
@@ -970,8 +779,8 @@ const RegresionMultiple = {
         const c1 = R.coefs[1], c0 = R.coefs[0];
         const sig = c1.pValor < 0.05;
         return `<p style="margin:0.5rem 0 0;">Cómo leer este modelo, pieza por pieza. La <b>pendiente</b> (B = ${this._fx(c1.b)}) es el corazón de la regresión: indica que, por cada punto adicional en ${etX}, ${R.etY} ${c1.b >= 0 ? 'aumenta' : 'disminuye'} en promedio ${this._fx(Math.abs(c1.b), 2)} puntos. Su <b>error estándar</b> (${this._fx(c1.se)}) mide la incertidumbre de esa estimación, y el <b>intervalo de confianza al 95 %</b> [${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}] delimita el rango plausible de la pendiente en la población: ${c1.ic[0] > 0 || c1.ic[1] < 0 ? 'como no incluye el cero, el efecto es estadísticamente distinguible de la ausencia de relación' : 'como incluye el cero, no puede descartarse la ausencia de efecto'}. La <b>constante</b> (${this._fx(c0.b)}) es el valor esperado de ${R.etY} cuando ${etX} vale cero (a veces un punto solo teórico).</p>
-        <p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> cuantifica la capacidad explicativa: el ${(100 * R.R2).toFixed(1)} % de las diferencias entre participantes en ${R.etY} queda explicado por ${etX}; el ${(100 * (1 - R.R2)).toFixed(1)} % restante obedece a otros factores no incluidos (otras variables, medición, azar). El <b>error típico</b> (${this._fx(R.errorTipico, 2)}) expresa cuánto se desvían, en promedio, las predicciones de los valores reales — la precisión práctica del modelo. Finalmente, la prueba <b>F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}</b> (p ${this._fp(R.pF)}) evalúa el modelo en conjunto: ${sig ? 'el modelo predice significativamente mejor que usar la simple media de ' + R.etY : 'el modelo no mejora significativamente a la simple media de ' + R.etY}.</p>
-        <p style="margin:0.4rem 0 0;"><b>¿Por qué una correlación significativa puede convivir con un R² pequeño?</b> Porque la p y el R² responden preguntas distintas: la p pregunta <i>«¿existe el efecto?»</i> y el R² pregunta <i>«¿cuánto importa?»</i>. La significancia depende del tamaño muestral — el error estándar se encoge en proporción a √n, de modo que con muestras grandes hasta efectos diminutos se vuelven detectables —, mientras que el R² mide magnitud y no mejora por tener más casos. Además, r y R² se relacionan <i>cuadráticamente</i>: una correlación de .30, considerada moderada, explica apenas el 9 % de la variabilidad (.30² = .09)${R.R2 < 0.25 && R.pF < 0.05 ? ` — exactamente el fenómeno de estos datos: el efecto es real (p ${this._fp(R.pF)}) y a la vez modesto en magnitud (R² = ${this._fx(R.R2)})` : ''}. Un resultado puede ser estadísticamente innegable y prácticamente humilde; reportar ambos números evita confundir certeza con importancia.</p>`;
+        <p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> cuantifica la capacidad explicativa: el ${(100 * R.R2).toFixed(1)} % de las diferencias entre participantes en ${R.etY} queda explicado por ${etX}; el ${(100 * (1 - R.R2)).toFixed(1)} % restante obedece a otros factores no incluidos (otras variables, medición, azar). El <b>error típico</b> (${this._fx(R.errorTipico, 2)}) expresa cuánto se desvían, en promedio, las predicciones de los valores reales — la precisión práctica del modelo. Finalmente, la prueba <b>F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}</b> (p ${this._pTxt(R.pF)}) evalúa el modelo en conjunto: ${sig ? 'el modelo predice significativamente mejor que usar la simple media de ' + R.etY : 'el modelo no mejora significativamente a la simple media de ' + R.etY}.</p>
+        <p style="margin:0.4rem 0 0;"><b>¿Por qué una correlación significativa puede convivir con un R² pequeño?</b> Porque la p y el R² responden preguntas distintas: la p pregunta <i>«¿existe el efecto?»</i> y el R² pregunta <i>«¿cuánto importa?»</i>. La significancia depende del tamaño muestral — el error estándar se encoge en proporción a √n, de modo que con muestras grandes hasta efectos diminutos se vuelven detectables —, mientras que el R² mide magnitud y no mejora por tener más casos. Además, r y R² se relacionan <i>cuadráticamente</i>: una correlación de .30, considerada moderada, explica apenas el 9 % de la variabilidad (.30² = .09)${R.R2 < 0.25 && R.pF < 0.05 ? ` — exactamente el fenómeno de estos datos: el efecto es real (p ${this._pTxt(R.pF)}) y a la vez modesto en magnitud (R² = ${this._fx(R.R2)})` : ''}. Un resultado puede ser estadísticamente innegable y prácticamente humilde; reportar ambos números evita confundir certeza con importancia.</p>`;
     },
 
     // Lectura pedagógica del modelo múltiple (B vs β, R² ajustado, VIF, síntesis).
@@ -983,7 +792,7 @@ const RegresionMultiple = {
         h += `<p style="margin:0.4rem 0 0;"><b>¿Y los residuos?</b> Son la parte de ${R.etY} que el modelo no logra explicar — la distancia entre lo observado y lo predicho — y funcionan como la radiografía del modelo: si se distribuyen de forma aproximadamente normal y sin patrones, el modelo capturó la estructura y dejó solo ruido; ese supuesto importa porque las pruebas t y F que validan los coeficientes se derivan matemáticamente asumiendo residuos normales — con residuos patológicos, los p-valores pierden su garantía.</p>`;
         h += `<p style="margin:0.4rem 0 0;">El <b>R² = ${this._fx(R.R2)}</b> indica que el conjunto de predictores explica el ${(100 * R.R2).toFixed(1)} % de la variabilidad de ${R.etY}; el <b>R² ajustado = ${this._fx(R.R2aj)}</b> corrige ese valor penalizando cada predictor añadido, porque el R² bruto sube mecánicamente con cualquier variable extra aunque no aporte — por eso el ajustado es el honesto para comparar modelos de distinto tamaño. El <b>VIF</b> vigila la colinealidad: cuando dos predictores comparten mucha información, sus errores estándar se inflan y los aportes individuales se vuelven borrosos (su mecánica: el VIF de cada predictor equivale a 1/(1−R²) de regresarlo sobre los demás, de modo que mide cuánta información suya ya está contenida en el resto; cuando dos predictores comparten mucha información, el modelo no puede decidir a quién atribuir el efecto común, la incertidumbre de ambos coeficientes crece y efectos reales pueden aparecer como no significativos. Valores &gt; 5 encienden la alerta${Number.isFinite(Math.max(...(R.vifs || [1]))) && Math.max(...R.vifs) > 5 ? ' — como ocurre aquí' : '; aquí están en zona segura'}).</p>`;
         h += `<p style="margin:0.4rem 0 0;"><b>Síntesis:</b> ${sig.length
-            ? `contribuyen de forma independiente ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._fp(c.pValor)})`).join('; ')}${sig.length > 1 ? ` — siendo ${sig[0].nombre} el de mayor peso relativo` : ''}. Los predictores no significativos no aportan poder explicativo propio una vez considerados los demás (lo que no niega que se relacionen con ${R.etY} de forma cruda).`
+            ? `contribuyen de forma independiente ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._pTxt(c.pValor)})`).join('; ')}${sig.length > 1 ? ` — siendo ${sig[0].nombre} el de mayor peso relativo` : ''}. Los predictores no significativos no aportan poder explicativo propio una vez considerados los demás (lo que no niega que se relacionen con ${R.etY} de forma cruda).`
             : `ningún predictor alcanza significancia individual una vez controlados los demás: el modelo${R.significativo === false || R.pF >= 0.05 ? ' tampoco es significativo en conjunto' : ' puede ser significativo en conjunto por efectos repartidos, pero sin un responsable claro'}.`}</p>`;
         return h;
     },
@@ -996,6 +805,10 @@ const RegresionMultiple = {
                 + this._tab(this._tr(['Modelo', 'Ecuación', 'OR (e^b)', 'z', 'p', 'Pseudo-R² (McFadden)'], true)
                 + this._tr([g.nombre, g.ec, this._fx(g.OR, 3), this._fx(g.z, 2), this._fp(g.pValor), this._fx(g.mcFadden, 3)]))
                 + `<p style="margin:0.2rem 0 0;">Lectura: por cada unidad adicional de ${MM.etX}, la <i>razón de probabilidades</i> de ${MM.etY} se multiplica por ${this._fx(g.OR, 2)} (${g.OR > 1 ? 'aumenta' : 'disminuye'} la probabilidad del evento)${g.pValor < 0.05 ? ', efecto estadísticamente significativo' : ', sin alcanzar significancia'}.</p>`;
+            // (2026.12.22) los avisos del ajuste (separación casi completa), como en la regresión avanzada
+            (g.avisos || []).forEach(a => {
+                h += `<p style="margin:0.5rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ ${a}</p>`;
+            });
             return h;
         }
         h += this._tab(this._tr(['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'], true)
@@ -1020,7 +833,7 @@ const RegresionMultiple = {
           + `<p class="help-text" style="font-size:0.85em;">n = ${M.n} casos completos. * p Holm &lt; .05. Triángulo inferior (matriz simétrica).</p>`;
         const sig = M.pares.filter(p => p.sig);
         html += `<p style="margin:0.3rem 0 0;">${sig.length
-            ? `Pares significativos tras Holm: ${sig.map(p => `${(M.etiquetas || M.cols)[p.i]}–${(M.etiquetas || M.cols)[p.j]} (${p.metodo[0] === 'P' ? 'r' : 'ρ'} = ${this._fx(p.r, 2)}, p ${this._fp(p.pHolm)})`).join('; ')}.`
+            ? `Pares significativos tras Holm: ${sig.map(p => `${(M.etiquetas || M.cols)[p.i]}–${(M.etiquetas || M.cols)[p.j]} (${p.metodo[0] === 'P' ? 'r' : 'ρ'} = ${this._fx(p.r, 2)}, p ${this._pTxt(p.pHolm)})`).join('; ')}.`
             : 'Ningún par mantiene la significancia tras la corrección de Holm.'}</p></div>`;
         return { html };
     },
@@ -1051,21 +864,21 @@ const RegresionMultiple = {
                     + this._tr([`2 (+ ${J.focal})`, this._fx(J.R2b2), this._fx(J.dR2), this._fx(J.Fcambio, 2), `(${J.gl[0]}, ${J.gl[1]})`, this._fp(J.pCambio)]))
                   + `<p style="margin:0.2rem 0 0;">${J.pCambio < 0.05
                         ? `${J.focal} añade un ${(100 * J.dR2).toFixed(1)} % de varianza explicada por encima de los controles (cambio significativo): su aporte no se reduce a lo que ya explicaban ${J.controles.join(' y ')}.`
-                        : `Una vez considerados los controles, ${J.focal} no añade varianza explicativa significativa (ΔR² = ${this._fx(J.dR2)}, p ${this._fp(J.pCambio)}).`}</p>`;
+                        : `Una vez considerados los controles, ${J.focal} no añade varianza explicativa significativa (ΔR² = ${this._fx(J.dR2)}, p ${this._pTxt(J.pCambio)}).`}</p>`;
             }
             if (R.idxInter >= 0) {
                 const c = R.coefs[R.idxInter + 1];
                 h += `<p style="margin:0.4rem 0 0;"><b>Moderación:</b> el término de interacción ${c.nombre} resultó ${c.pValor < 0.05
-                    ? `significativo (B = ${this._fx(c.b)}, p ${this._fp(c.pValor)}): el efecto de ${R.etsX[0]} sobre ${R.etY} <i>cambia según el nivel</i> de ${R.etsX[1]}.`
-                    : `no significativo (p ${this._fp(c.pValor)}): no hay evidencia de que ${R.etsX[1]} modere el efecto de ${R.etsX[0]}.`}</p>`;
+                    ? `significativo (B = ${this._fx(c.b)}, p ${this._pTxt(c.pValor)}): el efecto de ${R.etsX[0]} sobre ${R.etY} <i>cambia según el nivel</i> de ${R.etsX[1]}.`
+                    : `no significativo (p ${this._pTxt(c.pValor)}): no hay evidencia de que ${R.etsX[1]} modere el efecto de ${R.etsX[0]}.`}</p>`;
             }
             if (R.idxCuad >= 0) {
                 const c = R.coefs[R.idxCuad + 1];
                 h += `<p style="margin:0.3rem 0 0;"><b>Efecto curvilíneo:</b> ${c.pValor < 0.05
-                    ? `el término cuadrático es significativo (B = ${this._fx(c.b)}, p ${this._fp(c.pValor)}): la relación tiene forma de curva (${c.b < 0 ? 'U invertida — típico patrón de nivel óptimo' : 'U'}), no de recta.`
+                    ? `el término cuadrático es significativo (B = ${this._fx(c.b)}, p ${this._pTxt(c.pValor)}): la relación tiene forma de curva (${c.b < 0 ? 'U invertida — típico patrón de nivel óptimo' : 'U'}), no de recta.`
                     : `el término cuadrático no alcanza significancia: no hay evidencia de curvatura.`}</p>`;
             }
-            if (R.normResid) h += `<p class="help-text" style="font-size:0.85em;margin-top:0.4rem;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._fp(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'en duda: interpreta con cautela'}.</p>`;
+            if (R.normResid) h += `<p class="help-text" style="font-size:0.85em;margin-top:0.4rem;">Normalidad de los residuos (${R.normResid.prueba}): p ${this._pTxt(R.normResid.pValor)} → ${R.normResid.normal ? 'supuesto satisfecho' : 'en duda: interpreta con cautela'}.</p>`;
         } else if (R.familia === 'logistica') {
             h += `<h4 style="margin:0.4rem 0 0.2rem;">Coeficientes (regresión logística múltiple)</h4>`
                 + this._tab(this._tr(['Término', 'B', 'EE', 'z', 'p', 'OR', 'IC 95% (OR)'], true)
@@ -1077,7 +890,7 @@ const RegresionMultiple = {
                 + this._tab(this._tr(['Término', 'B', 'EE', 'z', 'p', 'IRR', 'IC 95% (IRR)'], true)
                     + R.coefs.map(c => this._tr([c.nombre, this._fx(c.b), this._fx(c.se), this._fx(c.z, 2),
                         this._fp(c.pValor), this._fx(c.IRR, 3), `[${this._fx(c.ic[0], 2)}, ${this._fx(c.ic[1], 2)}]`])).join(''))
-                + `<p class="help-text" style="font-size:0.85em;">Dispersión (χ²/gl) = ${this._fx(R.dispersion, 2)}${R.sobredispersion ? ' — <b>sobredispersión</b>' : ' (adecuada)'}. Cada IRR indica por cuánto se multiplica la tasa esperada de eventos por unidad del predictor.</p>`;
+                + `<p class="help-text" style="font-size:0.85em;">Dispersión (χ²/gl) = ${this._fx(R.dispersion, 2)}${R.sobredispersion ? ' — <b>sobredispersión</b>' : ' (adecuada)'}; AIC = ${this._fx(R.AIC, 1)}. Cada IRR indica por cuánto se multiplica la tasa esperada de eventos por unidad del predictor.</p>`;
         }
         (R.avisos || []).forEach(a => {
             h += `<p style="margin:0.5rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ ${a}</p>`;
@@ -1091,20 +904,31 @@ const RegresionMultiple = {
         const g = MM.ganador;
         const orden = [...MM.candidatos].sort((a, b) => a.AIC - b.AIC);
         const rival = orden.find(c => c !== g) || orden[1];
-        const zona = d => d < 2 ? 'apoyo prácticamente equivalente' : d <= 7 ? 'considerablemente menos apoyo empírico' : 'apoyo esencialmente nulo';
+        // (revisión 2026.12.30) con las bandas de Burnham y Anderson que cita el texto, y las intermedias: antes, todo ΔAIC entre
+        // 2 y 7 era «considerablemente menos apoyo», también el 3.0 de una recta que, dos frases después, «conserva parte del apoyo»
+        const zona = d => d < 2 ? 'apoyo prácticamente equivalente' : d < 4 ? 'algo menos de apoyo, aunque todavía apreciable'
+            : d <= 7 ? 'considerablemente menos apoyo empírico' : d <= 10 ? 'muy poco apoyo empírico' : 'apoyo esencialmente nulo';
         let h = `<p style="margin:0.4rem 0 0;"><b>El problema de fondo: el sobreajuste.</b> Toda muestra contiene dos ingredientes mezclados: la <i>señal</i> (la relación real que también existirá en otras muestras) y el <i>ruido</i> (las fluctuaciones aleatorias propias de estos participantes concretos). Un modelo sobreajustado es el que, en su afán de ceñirse a los datos, aprende también el ruido — como un estudiante que memoriza las respuestas del examen de práctica en lugar de entender la materia: brilla en esa prueba y fracasa en la siguiente. Por eso un modelo puede explicar casi perfectamente <i>esta</i> muestra y desplomarse en otra: la parte del ajuste que perseguía ruido no se replica, porque el ruido nuevo es distinto.</p>
         <p style="margin:0.4rem 0 0;"><b>¿Por qué el modelo cúbico casi siempre gana en R²?</b> Por construcción matemática, no por mérito: el cúbico contiene al cuadrático y al lineal como casos particulares (basta fijar en cero sus términos extra), así que su ajuste nunca puede ser peor — cada parámetro adicional es un grado de libertad más para doblarse hacia los puntos, y la suma de errores solo puede bajar o quedar igual. De ahí que <b>elegir por mayor R² sería un criterio trampa</b>: coronaría siempre al modelo más complejo, garantizando el sobreajuste que queremos evitar.</p>
-        <p style="margin:0.4rem 0 0;"><b>La solución del AIC.</b> El criterio de información de Akaike trata cada parámetro como una <i>licencia para perseguir ruido</i> y le cobra un precio: premia la verosimilitud del ajuste pero descuenta 2 puntos por parámetro, de modo que un término extra solo compensa si mejora el ajuste más de lo que cuesta. <b>Menor AIC = mejor compromiso</b> entre fidelidad a los datos y capacidad de generalizar. Las diferencias (ΔAIC) se leen con las convenciones de Burnham y Anderson: Δ &lt; 2, modelos prácticamente equivalentes; Δ entre 4 y 7, el rival pierde apoyo considerable; Δ &gt; 10, el rival queda sin apoyo empírico.</p>`;
+        <p style="margin:0.4rem 0 0;"><b>La solución del AIC.</b> El criterio de información de Akaike trata cada parámetro como una <i>licencia para perseguir ruido</i> y le cobra un precio: premia la verosimilitud del ajuste pero descuenta 2 puntos por parámetro, de modo que un término extra solo compensa si mejora el ajuste más de lo que cuesta. <b>Menor AIC = mejor compromiso</b> entre fidelidad a los datos y capacidad de generalizar. Las diferencias (ΔAIC) se leen con las convenciones de Burnham y Anderson: Δ &lt; 2, modelos prácticamente equivalentes; entre 2 y 4, el rival conserva parte del apoyo; entre 4 y 7, pierde apoyo considerable; Δ &gt; 10, queda sin apoyo empírico.</p>`;
         if (rival) {
             const d = rival.AIC - g.AIC;
             h += `<p style="margin:0.4rem 0 0;">En estos datos, <b>${g.nombre}</b> ${MM.parsimonia
-                ? `empata en la práctica con alternativas más complejas (Δ &lt; 2) y se impone por <b>parsimonia</b>: cuando la evidencia no distingue entre un modelo simple y uno complejo, la ciencia elige el simple, porque cada parámetro extra que no gana apoyo real solo añade riesgo de sobreajuste`
+                ? `empata en la práctica con otras formas (Δ &lt; 2) y se impone por <b>parsimonia</b>: cuando la evidencia no distingue entre una forma simple y otra más compleja o curva, la ciencia elige la simple, porque cada parámetro o curvatura que no gana apoyo real solo añade riesgo de sobreajuste`
                 : `presenta el menor AIC; su rival más cercano (${rival.nombre}) queda a ΔAIC = ${this._fx(d, 1)}, es decir, con ${zona(d)}`}. En términos de ajuste, el ganador explica el ${(100 * g.R2).toFixed(1)} % de la variabilidad de ${MM.etY} (R² = ${this._fx(g.R2, 3)})${Math.abs(g.R2 - rival.R2) < 0.01 ? `, prácticamente lo mismo que ${rival.nombre} (R² = ${this._fx(rival.R2, 3)}) — otra señal de que la complejidad extra no compra ajuste real` : ` frente al ${(100 * rival.R2).toFixed(1)} % de ${rival.nombre}`}.</p>`;
         }
         h += `<p style="margin:0.4rem 0 0;"><b>Implicación práctica:</b> ${g.nombre === 'Lineal'
             ? `la relación entre ${MM.etX} y ${MM.etY} se describe adecuadamente con una recta, lo que valida el uso del coeficiente de correlación lineal como resumen fiel de la asociación.`
-            : `la relación entre ${MM.etX} y ${MM.etY} presenta curvatura (forma ${g.nombre.toLowerCase()}): el coeficiente de correlación lineal subestima la intensidad real del vínculo, y las conclusiones deben apoyarse en esta forma funcional.`}</p>`;
+            : this._implicacionCurva(MM)}</p>`;
         return h;
+    },
+
+    // (2026.12.30) La implicación de una forma curva, según lo lejos que quede la recta: a ΔAIC entre 2 y 4 conserva parte
+    // del apoyo (Burnham y Anderson), así que son indicios por confirmar; desde 4, curvatura.
+    _implicacionCurva(MM) {
+        const g = MM.ganador, l = MM.candidatos.find(c => c.nombre === 'Lineal');
+        if (l && l.dAIC < 4) return `la relación entre ${MM.etX} y ${MM.etY} muestra indicios de curvatura (forma ${g.nombre.toLowerCase()}), aunque la recta, a ΔAIC = ${this._fx(l.dAIC, 1)}, conserva parte del apoyo: conviene confirmarla (por ejemplo, con el diagnóstico de la forma de la relación) antes de apoyar en ella las conclusiones; mientras tanto, el coeficiente de correlación lineal sigue siendo un resumen razonable.`;
+        return `la relación entre ${MM.etX} y ${MM.etY} presenta curvatura (forma ${g.nombre.toLowerCase()})${l ? `, y la recta queda a ΔAIC = ${this._fx(l.dAIC, 1)} de ella` : ''}: el coeficiente de correlación lineal subestima la intensidad real del vínculo, y las conclusiones deben apoyarse en esta forma funcional.`;
     },
 
     // Interpretación en lenguaje llano (compartida con el Word).
@@ -1113,9 +937,9 @@ const RegresionMultiple = {
         const sig = preds.filter(c => c.pValor < 0.05);
         let s = `El modelo de regresión múltiple explica el ${(100 * R.R2).toFixed(1)}\u2009% de la variabilidad de ${R.etY} `
             + `(R² = ${this._fx(R.R2)}, R² ajustado = ${this._fx(R.R2aj)}) y resulta ${R.significativo ? '' : 'no '}significativo en conjunto, `
-            + `F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}, p ${this._fp(R.pF)}. `;
+            + `F(${R.glR}, ${R.glE}) = ${this._fx(R.F, 2)}, p ${this._pTxt(R.pF)}. `;
         s += sig.length
-            ? `Contribuyen de forma independiente: ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._fp(c.pValor)})`).join('; ')} — cada β expresa cuántas desviaciones estándar cambia ${R.etY} por cada desviación estándar del predictor, manteniendo constantes los demás. `
+            ? `Contribuyen de forma independiente: ${sig.map(c => `${c.nombre} (β = ${this._fx(c.beta, 2)}, p ${this._pTxt(c.pValor)})`).join('; ')} — cada β expresa cuántas desviaciones estándar cambia ${R.etY} por cada desviación estándar del predictor, manteniendo constantes los demás. `
             : `Ningún predictor alcanza significancia individual una vez controlados los demás. `;
         const maxVif = Math.max(...R.vifs);
         if (Number.isFinite(maxVif) && maxVif > 5) s += `Atención: hay colinealidad apreciable (VIF máximo = ${this._fx(maxVif, 1)}), lo que infla los errores estándar y dificulta separar los aportes individuales. `;

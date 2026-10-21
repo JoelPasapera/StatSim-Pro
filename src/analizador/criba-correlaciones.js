@@ -1,3 +1,7 @@
+import { varianza } from '../core/stats/descriptivos.js';
+import { correlacion, paresCompletos } from '../core/stats/correlacion.js';
+import { columnaNumerica } from '../core/data/celdas.js';
+import { rangosPromedio } from '../core/stats/orden.js';
 // analizador/criba-correlaciones.js — criba de correlaciones.
 // Origen: criba-correlaciones.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
@@ -36,80 +40,53 @@ const CribaCorrelaciones = {
     // Devuelve { evaluados (orden |r| desc), seleccionados (≤ MAX), umbral, maximo }.
     cribar(datos, pares, analizador) {
         const n = (datos || []).length;
-        const cacheCol = new Map();    // col -> Float64Array | null (no-finitos)
+        const cacheCol = new Map();    // col -> { v: Float64Array alineada (NaN si falta), finitos, completa } | null
         const cacheNorm = new Map();   // col -> boolean
-        const cacheRangos = new Map(); // col -> Float64Array (rango medio en empates)
+        const cacheRangos = new Map(); // col -> Float64Array (rango medio en empates), solo de columnas completas
 
-        // Columna como memoria contigua; null si tiene valores no numéricos.
+        // Columna como memoria contigua, con la conversión de todo el Analizador (core/data/celdas.js); null si tiene
+        // menos de 3 valores. (2026.12.18) Antes, con +valor: una columna con un solo perdido (NaN) quedaba fuera de la
+        // criba entera, y la celda vacía de un CSV contaba como 0.
         const columna = (col) => {
             if (cacheCol.has(col)) return cacheCol.get(col);
-            const v = new Float64Array(n);
-            let ok = n >= 3;
-            for (let i = 0; i < n && ok; i++) {
-                const x = +datos[i][col];
-                if (Number.isFinite(x)) v[i] = x; else ok = false;
-            }
-            const res = ok ? v : null;
+            const v = columnaNumerica(datos || [], col), finitos = v.filter(Number.isFinite);
+            const res = finitos.length >= 3 ? { v, finitos, completa: finitos.length === n } : null;
             cacheCol.set(col, res);
             return res;
         };
 
-        // Normalidad evaluada UNA sola vez por columna.
+        // Normalidad evaluada UNA sola vez por columna, con todos sus valores.
         const esNormal = (col) => {
             if (cacheNorm.has(col)) return cacheNorm.get(col);
-            const v = columna(col);
+            const c = columna(col);
             let r = false;
-            if (v) {
-                try { r = !!analizador.evaluarNormalidad(Array.from(v)).normal; }
+            if (c) {
+                try { r = !!analizador.evaluarNormalidad(Array.from(c.finitos)).normal; }
                 catch (e) { r = false; }
             }
             cacheNorm.set(col, r);
             return r;
         };
 
-        // Rangos (para Spearman = Pearson sobre rangos, con rango medio en empates).
-        const rangos = (col) => {
-            if (cacheRangos.has(col)) return cacheRangos.get(col);
-            const v = columna(col);
-            const idx = new Uint32Array(n);
-            for (let i = 0; i < n; i++) idx[i] = i;
-            // Orden de índices por valor (TypedArray: sin objetos intermedios)
-            Array.prototype.sort.call(idx, (a, b) => v[a] - v[b]);
-            const rg = new Float64Array(n);
-            let i = 0;
-            while (i < n) {
-                let j = i;
-                while (j + 1 < n && v[idx[j + 1]] === v[idx[i]]) j++;
-                const rangoMedio = (i + j) / 2 + 1;
-                for (let k = i; k <= j; k++) rg[idx[k]] = rangoMedio;
-                i = j + 1;
-            }
-            cacheRangos.set(col, rg);
-            return rg;
-        };
+        // Rangos (para Spearman = Pearson sobre rangos, con rango medio en empates), en caché para las columnas completas.
+        const rangos = (col) => { if (cacheRangos.has(col)) return cacheRangos.get(col); const rg = rangosPromedio(columna(col).v); cacheRangos.set(col, rg); return rg; };
 
         // Pearson en UNA pasada fusionada (5 acumuladores, cero arreglos extra).
-        const pearson = (x, y) => {
-            let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
-            for (let i = 0; i < n; i++) {
-                const a = x[i], b = y[i];
-                sx += a; sy += b; sxx += a * a; syy += b * b; sxy += a * b;
-            }
-            const num = n * sxy - sx * sy;
-            const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
-            return den === 0 ? 0 : num / den;
-        };
+        const pearson = (/** @type {ArrayLike<number>} */ x, /** @type {ArrayLike<number>} */ y) => { const r = correlacion(x, y); if (!Number.isNaN(r)) return r; return varianza(x) === 0 || varianza(y) === 0 ? 0 : NaN; };   // (2026.12.12) en dos pasadas; 0 si alguna es constante, NaN si hay datos inválidos
 
         // Evaluar todos los pares candidatos
+        // (2026.12.18) cada par, con los casos que tienen las DOS variables (eliminación por pares, como el análisis
+        // completo de cada objetivo); sin perdidos, las columnas enteras y sus rangos en caché, como antes
         const evaluados = (pares || []).map(par => {
-            const x = columna(par.columnaX), y = columna(par.columnaY);
-            if (!x || !y) {
+            const cx = columna(par.columnaX), cy = columna(par.columnaY);
+            const completas = !!(cx && cy && cx.completa && cy.completa), pp = cx && cy && !completas ? paresCompletos(cx.v, cy.v) : null;
+            if (!cx || !cy || (pp && pp.x.length < 3)) {
                 return Object.assign({}, par, { valido: false, coeficiente: NaN, metodo: null, superaUmbral: false });
             }
             const usarPearson = esNormal(par.columnaX) && esNormal(par.columnaY);
-            const coef = usarPearson
-                ? pearson(x, y)
-                : pearson(rangos(par.columnaX), rangos(par.columnaY));
+            const coef = completas
+                ? (usarPearson ? pearson(cx.v, cy.v) : pearson(rangos(par.columnaX), rangos(par.columnaY)))
+                : (usarPearson ? pearson(pp.x, pp.y) : pearson(rangosPromedio(pp.x), rangosPromedio(pp.y)));
             return Object.assign({}, par, {
                 valido: true,
                 metodo: usarPearson ? 'Pearson' : 'Spearman',

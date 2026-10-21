@@ -10,4 +10,4 @@ export { analizarInvarianza } from './invarianza.js';
 export { kappaCohen, kappaFleiss, cci } from './concordancia.js';
 export { validezConstructo } from './validez.js';
 export { analizarAFE, kmo, bartlett, analisisParalelo, rotar } from './afe.js';
-export { cuantilNormal, zBilateral } from './numerico.js';
+export { cuantilNormal, zBilateral } from '../../core/stats/numerico.js';

@@ -9,6 +9,7 @@ import { calibrarInfluencia } from '../../src/analizador/relaciones/mcd.js';
 import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
 import { parrafoNube } from '../../src/analizador/relaciones/nube-redaccion.js';
 import { diagnosticarForma } from '../../src/analizador/relaciones/diagnostico-forma.js';
+import { soloCompleta } from '../solo-completa.js';
 
 let a = 29 >>> 0; const u = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
@@ -20,11 +21,13 @@ function simulador(rMay, rCon, k, n, semilla) {
     const b = g.generarBaseDatos(); return [Float64Array.from(b.columna('Dimension_ES').datos), Float64Array.from(b.columna('Dimension_AP').datos)];
 }
 
-test('falsas alarmas controladas también con marginales asimétricas (antes, 30–35 % con n = 30)', () => {
-    for (const [nombre, tr] of [['asimétrica', z => 12 + 6 * Math.exp(0.6 * z)], ['normal', z => 30 + 6 * z]]) {
-        let alarmas = 0; const R = 80;
+test('falsas alarmas controladas también con marginales asimétricas (antes, 30–35 % con n = 30; desde la 2026.11.25, ≈ 6 %)', { skip: soloCompleta }, () => {
+    // con la semilla de esta prueba: 9,0 % (asimétrica) y 4,5 % (normal) en 200 réplicas; el mecanismo de la mejora (la
+    // tipificación con los límites del boxplot ajustado) lo protege una prueba unitaria determinista (tests/unit/asimetria.test.js)
+    for (const [nombre, tr, limite] of [['asimétrica', z => 12 + 6 * Math.exp(0.6 * z), 0.1], ['normal', z => 30 + 6 * z, 0.07]]) {
+        let alarmas = 0; const R = 200;
         for (let i = 0; i < R; i++) { const [x, y] = muestra(30, 0.3, tr); if (influenciaLineal(x, y).sensible) alarmas++; }
-        assert.ok(alarmas / R <= 0.1, `${nombre}: ${alarmas} de ${R}`);
+        assert.ok(alarmas / R <= limite, `${nombre}: ${alarmas} de ${R}`);
     }
 });
 

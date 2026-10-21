@@ -6,6 +6,8 @@ import { estado, CLAVES } from '../../shared/estado.js';
 import { descargarArchivo } from '../../shared/descargas.js';
 import { desplazarHacia, renderizarTablaDatos } from '../../shared/tabla-datos.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { campoCSV } from '../../shared/csv.js';
+import { escaparHTML } from '../../shared/html.js';
 
 // window.datosGenerados: vista por OBJETOS de la base para el código que la
 // espera así (gráficos, respaldos). Se materializa solo si alguien la lee:
@@ -67,6 +69,7 @@ function mostrarDiagnosticoCorrelaciones() {
 }
 
 // ---- Informe pedido vs obtenido ----
+/** @type {any[]} */
 let ultimoInforme = [];
 
 function mostrarInformePedidoObtenido(datos, filasPrecalculadas = null) {
@@ -84,9 +87,11 @@ function mostrarInformePedidoObtenido(datos, filasPrecalculadas = null) {
     if (btn && !btn._listo) {
         btn._listo = true;
         btn.addEventListener('click', () => {
-            const esc2 = v => (String(v).includes(',') ? `"${v}"` : String(v));
+            // (2026.12.30) todos los campos con comillas si hace falta: «Pedido» y «Obtenido» llevan comas («cortes en 20.00,
+            // 36.00») y la fila salía con un campo de más
+            const esc2 = campoCSV;
             const csv = 'Parametro,Variable,Pedido,Obtenido,Estado,ConImperfecciones\n'
-                + ultimoInforme.map(f => `${esc2(f.tipo)},${esc2(f.variable)},${f.pedido},${f.obtenido},${f.ok === null ? 'informativa' : f.ok ? 'coincide' : 'se desvia'},${f.conImperfecciones !== undefined ? esc2(f.conImperfecciones) : ''}`).join('\n') + '\n';
+                + ultimoInforme.map(f => `${esc2(f.tipo)},${esc2(f.variable)},${esc2(f.pedido)},${esc2(f.obtenido)},${f.ok === null ? 'informativa' : f.ok ? 'coincide' : 'se desvia'},${f.conImperfecciones !== undefined ? esc2(f.conImperfecciones) : ''}`).join('\n') + '\n';
             descargarArchivo(csv, 'informe_pedido_vs_obtenido.csv', 'text/csv');
         });
     }
@@ -99,7 +104,7 @@ function mostrarPreview(datos) {
     document.getElementById('statParticipantes').textContent = datos.length;
     document.getElementById('statVariables').textContent = (typeof datos.nombres === 'function') ? datos.nombres().length : Object.keys(datos[0]).length;
     // (B7) las ondas T2… son clones: se cuentan las pruebas configuradas, no las columnas de onda
-    document.getElementById('statPruebas').textContent = config.pruebas.filter(p => !p.sufijo).length;
+    document.getElementById('statPruebas').textContent = (config.pruebas || []).filter(p => !p.sufijo).length;
     // Crear tabla preview (solo primeras 10 filas)
     renderizarTablaDatos(
         document.getElementById('previewHead'),
@@ -117,13 +122,55 @@ function habilitarDescargaCSV() {
     btn.disabled = false;
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
     if (btnIntl) btnIntl.disabled = false;
+    const btnSav = document.getElementById('btnDescargarSAV');
+    if (btnSav) btnSav.disabled = false;
+    const btnXlsx = document.getElementById('btnDescargarXLSX');
+    if (btnXlsx) btnXlsx.disabled = false;
 }
 
 function descargarCSVInternacional() {
     try {
         generadorDatos.descargarCSV('base_datos_simulada.csv', ',');
+        mostrarToast('CSV descargado exitosamente', 'success');
     } catch (error) {
-        mostrarNotificacion('Error al descargar: ' + error.message, 'error');
+        // (2026.12.29) antes llamaba a mostrarNotificacion, que no existe: el error se convertía en otro (ReferenceError)
+        mostrarToast('Error al descargar: ' + error.message, 'error');
+    }
+}
+
+// (2026.12.29) La base como archivo de SPSS (.sav), con etiquetas de variable y de valor, niveles de medida y fechas.
+function descargarSAV() {
+    try {
+        const avisos = generadorDatos.descargarSav('base_datos_simulada.sav');
+        if (avisos.length) mostrarToast(`Archivo de SPSS descargado. Ajustes: ${avisos.join(' · ')}`, 'warning', 9000);
+        else mostrarToast('Archivo de SPSS (.sav) descargado: ábrelo directamente en SPSS, PSPP, JASP o jamovi', 'success', 5000);
+    } catch (error) {
+        mostrarToast('Error al crear el archivo de SPSS: ' + error.message, 'error');
+    }
+}
+
+// (2026.12.31) La base como libro de Excel (.xlsx): la hoja «Datos» (como el CSV, con las fechas como fechas), su
+// «Diccionario» (etiquetas, niveles de medida y códigos) y el «Informe» de la generación (simulador/dominio/exportacion-xlsx.js).
+// Se escribe por trozos y se comprime con el compresor del navegador: con una base grande tarda unos segundos, y el botón
+// queda desactivado mientras tanto (dos clics seguidos no escriben dos libros).
+let escribiendoXlsx = false;
+async function descargarXLSX() {
+    if (escribiendoXlsx) return;
+    escribiendoXlsx = true;
+    const btn = document.getElementById('btnDescargarXLSX');
+    const estabaDesactivado = btn ? btn.disabled : false;
+    if (btn) btn.disabled = true;
+    const base = generadorDatos.datosGenerados;
+    if (base && base.n * base.columnas.length > 500000) mostrarToast('Preparando el libro de Excel…', 'info', 4000);
+    try {
+        const avisos = await generadorDatos.descargarXlsx('base_datos_simulada.xlsx', { informe: ultimoInforme });
+        if (avisos.length) mostrarToast(`Libro de Excel descargado. Ajustes: ${avisos.join(' · ')}`, 'warning', 9000);
+        else mostrarToast('Libro de Excel (.xlsx) descargado: la base, su diccionario y el informe de la generación, cada uno en su hoja', 'success', 5000);
+    } catch (error) {
+        mostrarToast('Error al crear el libro de Excel: ' + error.message, 'error');
+    } finally {
+        escribiendoXlsx = false;
+        if (btn) btn.disabled = estabaDesactivado;
     }
 }
 
@@ -141,4 +188,49 @@ function habilitarUsarGenerados() {
     btn.disabled = false;
 }
 
-export { publicarDatosGenerados, mostrarDiagnosticoCorrelaciones, ultimoInforme, mostrarInformePedidoObtenido, mostrarPreview, habilitarDescargaCSV, descargarCSVInternacional, descargarCSV, habilitarUsarGenerados };
+/**
+ * (2026.12.31, revisión) Sin base generada, como antes de generar: al abrir un proyecto que no la trae, la base anterior deja
+ * de estar a la vista, de descargarse y de poder pasarse al Analizador (antes quedaba, aunque ya no correspondiera a la
+ * configuración abierta).
+ */
+function ocultarResultadoGeneracion() {
+    generadorDatos.datosGenerados = null;
+    generadorDatos.diagnosticoCorrelaciones = null;
+    generadorDatos.resumenImperfecciones = null;
+    generadorDatos.diferenciasLimitadas = [];
+    ultimoInforme = [];
+    estado.borrar(CLAVES.BASE_SIMULADOR);
+    try { window.datosGenerados = null; } catch (e) { /* sin la vista por objetos */ }
+    for (const id of ['previewContainer', 'informePedidoObtenido', 'diagnosticoCorrelaciones']) {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    }
+    for (const id of ['btnDescargarCSV', 'btnDescargarCSVIntl', 'btnDescargarSAV', 'btnDescargarXLSX', 'btnUsarGenerados']) {
+        const b = /** @type {HTMLButtonElement | null} */ (document.getElementById(id));
+        if (b) b.disabled = true;
+    }
+}
+
+/**
+ * (2026.12.30) Los errores y los avisos de la validación, todos, en la tarjeta que hay bajo «Generar» (y nada si no hay).
+ * Hasta la 2026.12.29 solo el primero salía en un aviso emergente, que el de «base generada» tapaba al momento: los demás
+ * (el recorte de una sociodemográfica, una escala con un solo límite, una uniforme que no usa su promedio…) solo llegaban a
+ * la consola.
+ * @param {string[]} errores
+ * @param {string[]} advertencias
+ */
+function mostrarAvisosDeValidacion(errores, advertencias) {
+    const cont = document.getElementById('avisosGeneracion');
+    if (!cont) return;
+    const lista = errores.length ? errores : advertencias;
+    if (!lista.length) { cont.style.display = 'none'; cont.innerHTML = ''; return; }
+    const titulo = errores.length
+        ? `❌ La configuración tiene ${errores.length === 1 ? 'un error' : `${errores.length} errores`}: corrígelo${errores.length === 1 ? '' : 's'} para generar`
+        : `⚠️ ${advertencias.length === 1 ? 'Un aviso' : `${advertencias.length} avisos`} de la configuración`;
+    cont.style.borderLeftColor = errores.length ? '#c0392b' : '#d4a72c';
+    cont.innerHTML = `<h3 class="card-title">${titulo}</h3><ul class="help-text">${lista.map(a => `<li>${escaparHTML(a)}</li>`).join('')}</ul>`
+        + (errores.length ? '' : '<p class="help-text" style="margin:0.4rem 0 0;">La base se genera igual: son límites del modelo que conviene conocer antes de usarla.</p>');
+    cont.style.display = '';
+}
+
+export { mostrarAvisosDeValidacion, publicarDatosGenerados, mostrarDiagnosticoCorrelaciones, ultimoInforme, mostrarInformePedidoObtenido, mostrarPreview, habilitarDescargaCSV, descargarCSVInternacional, descargarCSV, descargarSAV, descargarXLSX, habilitarUsarGenerados, ocultarResultadoGeneracion };

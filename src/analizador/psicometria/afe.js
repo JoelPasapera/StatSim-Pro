@@ -8,8 +8,10 @@
 //     y promax (κ = 4; Hendrickson y White, 1964), con normalización de Kaiser.
 import { eigenSimetrica, inversaDefinidaPositiva, suavizarCorrelacion, traspuesta, identidad, multiplicar, inversaGeneral, factorPolar, logDeterminante } from './algebra.js';
 import { ejesPrincipales } from './factorial.js';
-import { pChiCuadrado } from './numerico.js';
+import { pChiCuadrado } from '../../core/stats/numerico.js';
 import { crearAleatorio } from './aleatorio.js';
+import { barajar } from '../../core/random/permutacion.js';
+import { media } from '../../core/stats/descriptivos.js';
 import { cuantilLineal } from './bootstrap.js';
 import { matrizCorrelaciones } from './clasica.js';
 import { matrizPolicorica, tipoDeItems } from './ordinal.js';
@@ -60,11 +62,11 @@ export function analisisParalelo(cols, tipo, { B = 200, semilla = 2026, percenti
     const rng = crearAleatorio(semilla), n = cols[0].length, p = cols.length;
     const perm = cols.map(c => Float64Array.from(c)), valores = Array.from({ length: p }, () => []);
     for (let b = 0; b < B; b++) {
-        for (const v of perm) for (let i = n - 1; i > 0; i--) { const r = rng.entero(i + 1), t = v[i]; v[i] = v[r]; v[r] = t; }
+        for (const v of perm) barajar(v, rng.siguiente);   // (2026.12.25) el barajado del núcleo único: rng.entero(i + 1) es ⌊siguiente()·(i + 1)⌋
         eigenSimetrica(matrizRapida(perm, tipo)).valores.forEach((v, k) => valores[k].push(v));
         if (alProgreso && ((b + 1) % 5 === 0 || b === B - 1)) alProgreso(b + 1, B);
     }
-    return valores.map(vs => { const o = Float64Array.from(vs).sort(); return { media: vs.reduce((s, x) => s + x, 0) / vs.length, percentil: cuantilLineal(o, percentil) }; });
+    return valores.map(vs => { const o = Float64Array.from(vs).sort(); return { media: media(vs), percentil: cuantilLineal(o, percentil) }; });
 }
 // Se retienen los factores cuyo autovalor observado supera el de referencia, en orden, hasta el primero que no lo hace
 export function factoresSugeridos(observados, referencia) {

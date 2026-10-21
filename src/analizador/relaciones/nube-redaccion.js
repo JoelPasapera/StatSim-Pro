@@ -1,10 +1,11 @@
 // analizador/relaciones/nube-redaccion.js — APA 7 del diagnóstico de la nube (sin DOM): tabla, nota, párrafo y
 // referencias. Advierte expresamente cuando la esquina vacía se debe solo a la correlación (bordes paralelos), para que
 // el análisis de condición necesaria no se interprete como necesidad sin serlo.
+import { formatoP, textoP } from '../../shared/formato-numero.js';
 const f2 = x => (Number.isFinite(x) ? (Math.abs(x) < 0.005 ? 0 : x).toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const fx = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '—');
-const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
-const pAPA = p => (!Number.isFinite(p) ? '' : p < 0.001 ? 'p < .001' : `p = ${p.toFixed(3).replace(/^0\./, '.')}`);
+const fp = p => formatoP(p);
+const pAPA = p => textoP(p);
 const esCota = c => Number.isFinite(c.p) && c.p <= 1 / (c.B + 1) + 1e-12;
 const fpPerm = c => (esCota(c) ? `≤ ${c.p.toFixed(3).replace(/^0\./, '.')}` : fp(c.p));
 const pPermAPA = c => (esCota(c) ? `p ≤ ${c.p.toFixed(3).replace(/^0\./, '.')}` : pAPA(c.p));

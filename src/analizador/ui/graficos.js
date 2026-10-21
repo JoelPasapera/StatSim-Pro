@@ -6,7 +6,10 @@ import { AnalizadorEstadistico } from '../estadistica.js';
 import { ScientificCharts } from '../graficas.js';
 import { obtenerColumnasNumericas } from './carga.js';
 import { obtenerEtiqueta, obtenerEtiquetaOpcion } from '../../shared/etiquetas.js';
+import { escaparHTML } from '../../shared/html.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { matrizPorPares } from '../correlaciones-por-pares.js';
+import { aNumero, esColumnaNumerica } from '../../core/data/celdas.js';
 
 // ========================================
 // CONFIGURACIÓN DE GRÁFICOS CIENTÍFICOS
@@ -81,8 +84,11 @@ function inicializarGraficos() {
             chartCorr.createCorrelationMatrix(datosParaGraficos.correlaciones, datosParaGraficos.labels, {
                 title: '',
                 subtitle: datosParaGraficos.metodoCorrelacion,
-                seriesPorVariable: datosParaGraficos.cajas,
-                normalesPorVariable: datosParaGraficos.normales
+                normalesPorVariable: datosParaGraficos.normales,
+                // (2026.12.17) el tooltip calcula p e IC con el coeficiente exacto (no el redondeado de la celda) y los
+                // pares completos de cada celda (antes, el mínimo de las longitudes de las dos columnas)
+                coeficientesExactos: datosParaGraficos.correlacionesExactas,
+                nPorPar: datosParaGraficos.nPares
             });
         }
         // Crear diagrama de caja
@@ -115,12 +121,10 @@ const MAX_COLUMNAS_GRAFICOS = 8;
 // numéricas. Excluye el identificador (ID) y limita la cantidad por legibilidad.
 function seleccionarColumnasGraficos(datos) {
     if (!datos || datos.length === 0) return [];
-    const primera = datos[0];
-    const numericas = Object.keys(primera).filter(key => {
-        if (key === 'ID') return false;
-        return typeof primera[key] === 'number' || !isNaN(parseFloat(primera[key]));
-    });
-    if (Array.isArray(window.__varsGraficos) && window.__varsGraficos.length >= 2) {
+    // (2026.12.18) el tipo por el primer valor NO perdido (antes, por la primera fila: un perdido en el primer participante
+    // sacaba la columna de los gráficos)
+    const numericas = Object.keys(datos[0]).filter(key => key !== 'ID' && esColumnaNumerica(datos, key));
+    if (typeof window !== 'undefined' && Array.isArray(window.__varsGraficos) && window.__varsGraficos.length >= 2) {   // (2026.12.18) sin DOM, también en Node
         const elegidas = window.__varsGraficos.filter(c => numericas.includes(c));
         if (elegidas.length >= 2) return elegidas.slice(0, MAX_COLUMNAS_GRAFICOS);
     }
@@ -129,77 +133,8 @@ function seleccionarColumnasGraficos(datos) {
     return base.slice(0, MAX_COLUMNAS_GRAFICOS);
 }
 
-// Coeficiente de correlación de Pearson; devuelve 0 si alguna variable es
-// constante (varianza nula) o no hay pares suficientes.
-function correlacionPearsonSimple(a, b) {
-    const n = Math.min(a.length, b.length);
-    if (n < 2) return 0;
-    let sumaX = 0, sumaY = 0;
-    for (let i = 0; i < n; i++) {
-        sumaX += a[i];
-        sumaY += b[i];
-    }
-    const mediaX = sumaX / n;
-    const mediaY = sumaY / n;
-    let numerador = 0, varX = 0, varY = 0;
-    for (let i = 0; i < n; i++) {
-        const dx = a[i] - mediaX;
-        const dy = b[i] - mediaY;
-        numerador += dx * dy;
-        varX += dx * dx;
-        varY += dy * dy;
-    }
-    if (varX === 0 || varY === 0) return 0;
-    return numerador / Math.sqrt(varX * varY);
-}
-
-// Correlación de Spearman simple: Pearson sobre los RANGOS (con empates promediados).
-function correlacionSpearmanSimple(a, b) {
-    const n = Math.min(a.length, b.length);
-    if (n < 2) return 0;
-    const rangos = (v) => {
-        const idx = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]);
-        const r = new Array(v.length);
-        let i = 0;
-        while (i < idx.length) {
-            let j = i;
-            while (j + 1 < idx.length && idx[j + 1][0] === idx[i][0]) j++;
-            const rangoProm = (i + j) / 2 + 1; // promedio de posiciones (1-based) para empates
-            for (let k = i; k <= j; k++) r[idx[k][1]] = rangoProm;
-            i = j + 1;
-        }
-        return r;
-    };
-    return correlacionPearsonSimple(rangos(a.slice(0, n)), rangos(b.slice(0, n)));
-}
-
-// Normalidad aproximada (asimetría y curtosis dentro de límites razonables).
-// Mismo espíritu que la evaluación del analizador: sirve para elegir el
-// coeficiente coherente (Pearson si ambas normales; Spearman si no).
-function esAproxNormalSimple(v) {
-    const n = v.length;
-    if (n < 3) return true;
-    const media = v.reduce((s, x) => s + x, 0) / n;
-    const m2 = v.reduce((s, x) => s + (x - media) ** 2, 0) / n;
-    if (m2 === 0) return true;
-    const m3 = v.reduce((s, x) => s + (x - media) ** 3, 0) / n;
-    const m4 = v.reduce((s, x) => s + (x - media) ** 4, 0) / n;
-    const asimetria = m3 / Math.pow(m2, 1.5);
-    const curtosis = m4 / (m2 * m2) - 3;
-    // Criterio ALINEADO con el análisis: si el analizador está disponible se usa
-    // la MISMA prueba formal (Shapiro-Wilk / K-S Lilliefors) que decide el
-    // coeficiente en los resultados; el atajo de momentos queda como respaldo.
-    if (typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.shapiroWilk) {
-        try {
-            const r = v.length < 50
-                ? AnalizadorEstadistico.shapiroWilk(v)
-                : AnalizadorEstadistico.kolmogorovSmirnov(v);
-            if (r && Number.isFinite(r.pValor)) return r.pValor > 0.05;
-        } catch (e) { /* respaldo por momentos */ }
-    }
-    // Umbrales habituales de tolerancia (|asimetría| < 2 y |curtosis| < 7).
-    return Math.abs(asimetria) < 2 && Math.abs(curtosis) < 7;
-}
+// (2026.12.17) correlacionPearsonSimple, correlacionSpearmanSimple y esAproxNormalSimple viven en
+// correlaciones-por-pares.js, sin DOM, junto con la matriz por pares que comparten este mapa y el Word.
 
 // Prepara los datos para los gráficos a partir de la base cargada/generada.
 // Devuelve null si no hay columnas numéricas que graficar.
@@ -212,8 +147,8 @@ function prepararDatosParaGraficos(datos) {
     const idsPorColumna = [];
     columnas.forEach(col => {
         const pares = datos
-            .map(f => [parseFloat(f[col]), f.ID != null ? f.ID : ''])
-            .filter(p => isFinite(p[0]));
+            .map(f => [aNumero(f[col]), f.ID != null ? f.ID : ''])   // (2026.12.18) la conversión del núcleo
+            .filter(p => Number.isFinite(p[0]));
         valoresPorColumna.push(pares.map(p => p[0]));
         idsPorColumna.push(pares.map(p => p[1]));
     });
@@ -221,20 +156,14 @@ function prepararDatosParaGraficos(datos) {
     const distribucion = valoresPorColumna[0];
     // Matriz de correlaciones COHERENTE con el análisis: para cada par usa
     // Pearson si AMBAS columnas son aproximadamente normales, y Spearman si no
-    // (la misma regla con la que el analizador elige la prueba).
-    const normalPorColumna = valoresPorColumna.map(v => esAproxNormalSimple(v));
+    // (la misma regla con la que el analizador elige la prueba), con los casos
+    // que tienen las DOS variables (2026.12.17: antes se emparejaban por posición
+    // las columnas filtradas por separado, y un perdido desalineaba los pares).
+    const M = matrizPorPares(datos, columnas);
+    const normalPorColumna = M.normales;
     const metodosUsados = new Set();
-    const correlaciones = columnas.map((_, i) =>
-        columnas.map((__, j) => {
-            if (i === j) return 1;
-            const usarPearson = normalPorColumna[i] && normalPorColumna[j];
-            metodosUsados.add(usarPearson ? 'Pearson' : 'Spearman');
-            const r = usarPearson
-                ? correlacionPearsonSimple(valoresPorColumna[i], valoresPorColumna[j])
-                : correlacionSpearmanSimple(valoresPorColumna[i], valoresPorColumna[j]);
-            return Math.round(r * 100) / 100;
-        })
-    );
+    columnas.forEach((_, i) => columnas.forEach((__, j) => { if (i !== j) metodosUsados.add(M.pearson[i][j] ? 'Pearson' : 'Spearman'); }));
+    const correlaciones = M.r.map(fila => fila.map(r => Math.round(r * 100) / 100));
     const labels = columnas.map(c => obtenerEtiqueta(c));
     const metodoCorrelacion = metodosUsados.size === 1
         ? (metodosUsados.has('Pearson') ? 'Coeficiente: r de Pearson' : 'Coeficiente: ρ de Spearman')
@@ -243,6 +172,8 @@ function prepararDatosParaGraficos(datos) {
         metodoCorrelacion,
         distribucion,
         correlaciones,
+        correlacionesExactas: M.r,
+        nPares: M.n,
         cajas: valoresPorColumna,
         labels,
         normales: normalPorColumna,
@@ -273,8 +204,8 @@ function renderizarSelectorGraficos(datos) {
         + '<div style="display:flex; flex-wrap:wrap; gap:0.4rem 1.1rem;">'
         + numericas.map(c => `
             <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer; font-size:0.92rem;">
-                <input type="checkbox" value="${c}" ${activas.has(c) ? 'checked' : ''}>
-                ${obtenerEtiquetaOpcion(c)}
+                <input type="checkbox" value="${escaparHTML(c)}" ${activas.has(c) ? 'checked' : ''}>
+                ${escaparHTML(obtenerEtiquetaOpcion(c))}
             </label>`).join('')
         + '</div>'
         + `<p class="help-text" style="margin:0.5rem 0 0;">Mínimo 2, máximo ${MAX_COLUMNAS_GRAFICOS} variables. Los gráficos se actualizan al instante.</p>`;
@@ -372,4 +303,4 @@ function agregarAyudasGraficos() {
     });
 }
 
-export { inicializarGraficos, MAX_COLUMNAS_GRAFICOS, seleccionarColumnasGraficos, correlacionPearsonSimple, correlacionSpearmanSimple, esAproxNormalSimple, prepararDatosParaGraficos, renderizarSelectorGraficos, insertarDescripcionesGraficos, agregarAyudasGraficos };
+export { inicializarGraficos, MAX_COLUMNAS_GRAFICOS, seleccionarColumnasGraficos, prepararDatosParaGraficos, renderizarSelectorGraficos, insertarDescripcionesGraficos, agregarAyudasGraficos };

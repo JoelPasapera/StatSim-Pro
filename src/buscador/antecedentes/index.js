@@ -10,6 +10,7 @@ import { metodosAntecedentesBusqueda } from './busqueda.js';
 import { metodosAntecedentesResultados } from './resultados.js';
 import { metodosAntecedentesMetadatos } from './metadatos.js';
 import { metodosAntecedentesSeleccion } from './seleccion.js';
+import { metodosAntecedentesWos } from './conexion-wos.js';
 
 const Antecedentes = {
 
@@ -91,7 +92,7 @@ const Antecedentes = {
 };
 
 // Composición explícita: cada módulo aporta una responsabilidad.
-Object.assign(Antecedentes, metodosAntecedentesConsultas, metodosAntecedentesFuentesAbiertas, metodosAntecedentesMetadatos, metodosAntecedentesInterfaz, metodosAntecedentesSeleccion, metodosAntecedentesExportacion, metodosAntecedentesBusqueda, metodosAntecedentesResultados);
+Object.assign(Antecedentes, metodosAntecedentesConsultas, metodosAntecedentesFuentesAbiertas, metodosAntecedentesMetadatos, metodosAntecedentesInterfaz, metodosAntecedentesSeleccion, metodosAntecedentesExportacion, metodosAntecedentesBusqueda, metodosAntecedentesResultados, metodosAntecedentesWos);
 
 if (typeof window !== 'undefined') {
     if (document.readyState === 'loading') {

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnosticarForma } from '../../src/analizador/relaciones/diagnostico-forma.js';
 import { parrafoNube } from '../../src/analizador/relaciones/nube-redaccion.js';
+import { soloCompleta } from '../solo-completa.js';
 
 let a = 3131 >>> 0;
 const u01 = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -53,7 +54,7 @@ test('revisión 2026.11.01: con Y de pocas categorías (ítem Likert) no se eval
     assert.ok(parrafoNube(nb, 'X', 'Ítem', d.categoria).includes('no se evaluaron los bordes de la nube'));
 });
 
-test('revisión 2026.11.01: sin atípicos, «la r depende de pocos casos» ya no salta por azar en muestras pequeñas (antes, 31 % con n = 30)', async () => {
+test('revisión 2026.11.01: sin atípicos, «la r depende de pocos casos» ya no salta por azar en muestras pequeñas (antes, 31 % con n = 30)', { skip: soloCompleta }, async () => {
     const { influenciaLineal } = await import('../../src/analizador/relaciones/nube.js');
     let sensibles = 0; const R = 200;
     for (let k = 0; k < R; k++) { const x = new Float64Array(30), y = new Float64Array(30); for (let i = 0; i < 30; i++) { x[i] = nrm(); y[i] = 0.4 * x[i] + nrm(); } if (influenciaLineal(x, y).sensible) sensibles++; }

@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { cdfNormal, cdfNormalBivariada, raizBrent } from '../../src/analizador/psicometria/numerico.js';
+import { cdfNormal, cdfNormalBivariada, raizBrent } from '../../src/core/stats/numerico.js';
 import { eigenSimetrica, suavizarCorrelacion, inversaDefinidaPositiva } from '../../src/analizador/psicometria/algebra.js';
 import { omegaUnFactor } from '../../src/analizador/psicometria/factorial.js';
 import { policorica } from '../../src/analizador/psicometria/policorica.js';

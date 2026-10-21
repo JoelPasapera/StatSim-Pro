@@ -2,15 +2,50 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { BaseColumnar } from '../../core/data/base-columnar.js';
+import { descargarBlob } from '../../shared/descargas.js';
+import { campoCSV } from '../../shared/csv.js';
 import { aplicarForma, formaPorId, nombreEnFrase, spearman, rhoEsperadaForma, pearsonVec, curvaTeorica, uVentana } from './formas-relacion.js';
 import { esNubeCompuesta, nubePorId, gNube, razonDispersionEsperada, razonDispersionObservada, bordesPorTramos, razonBordesTriangulo } from './nubes-relacion.js';
 import { alfaTrasSeleccion, corregirThorndike, tamanoPoblacion } from './seleccion.js';
 import { betaControlado, esTerceraVariable, estructuraTercera, fenomenoTercera, parcialDe, TIPOS_TERCERA } from './terceras.js';
 import { esperadoNiveles, fenomenoNiveles } from './niveles.js';
-import { correlacionEntreOndas, fenomenoPanel, regresionRezagada } from './paneles.js';
+import { correlacionEntreOndas, fenomenoPanel, regresionRezagada, clpmIngenuo, fenomenoRIclpm } from './paneles.js';
 import { resumenHisteresis } from './histeresis.js';
+import { fenomenoSimpson, rTotalSimpson } from './simpson.js';
+import { Z_TOLERANCIA, eeMedia, eeDE, eeCorrelacion, eeFiabilidad, curtosisPoblacional } from './tolerancias.js';
+import { media as mediaNucleo, desviacion, desviacionPoblacional, varianza, centrar, estandarizar } from '../../core/stats/descriptivos.js';
+import { correlacion } from '../../core/stats/correlacion.js';
+import { medianaOrdenada } from '../../core/stats/orden.js';
+
+/**
+ * (2026.12.22) Por qué un modelo lineal generalizado no tiene estimación (el mensaje de core/stats/mlg.js), en pocas
+ * palabras, para la fila «no estimable» del informe.
+ * @param {string} e
+ * @returns {string}
+ */
+export const motivoGlm = e => /^Separación/.test(e) ? 'separación en la muestra: el predictor separa los valores del desenlace'
+    : /no convergió/.test(e) ? 'el ajuste no converge' : /casi colineales/.test(e) ? 'predictores casi colineales'
+    : /colineales/.test(e) ? 'predictores colineales' : /casi singular/.test(e) ? 'ajustados numéricamente en el borde'
+    : /no varía/.test(e) ? 'el desenlace no varía' : /insuficientes/.test(e) ? 'casos insuficientes' : 'sin estimación';
+
+/**
+ * Si la falta de estimación es informativa, una propiedad de la muestra y no un fallo del generador: la separación (un
+ * artefacto de una muestra pequeña con un efecto grande) y, desde la 2026.12.23, los ajustados en el borde y un desenlace sin
+ * variación (su prevalencia ya se compara en su fila). Con otra causa (el ajuste no converge, predictores colineales), un
+ * desvío.
+ * @param {string} e
+ * @returns {boolean}
+ */
+export const glmInformativo = e => /^Separación|casi singular|no varía/.test(e);
 
 export const metodosInforme = {
+    // (revisión 2026.12.30) ¿Se generó la base en modo exacto? El modo pedido, salvo que no hubiera casos para hacerlo exacto
+    // (flujo.js, exactitudPorMuestreo: con n ≤ número de variables continuas, por muestreo); entonces el informe la juzga
+    // con las tolerancias del muestreo, en todas sus secciones (antes, solo la media y la DE).
+    _modoExacto() {
+        return !!this.configuracion && this.configuracion.correlacionesExactas !== false && this.exactitudPorMuestreo !== true;
+    },
+
     informePedidoObtenido(datos) {
         const filas = [];
         if (!datos || !datos.length) return filas;
@@ -38,19 +73,39 @@ export const metodosInforme = {
         const notaAtip = nombre => (kAtip(nombre) ? ` (la mayoría, sin los ${kAtip(nombre)} casos atípicos)` : '');
         const colMayoria = (clave, k) => { if (!k || !base.tiene(clave)) return col(clave); const d = base.columna(clave).datos, out = []; for (let i = 0; i < d.length - k; i++) if (isFinite(d[i])) out.push(d[i]); return out; };
         // 1) Media y DE de cada escala
+        const noExacto = !this._modoExacto();   // (revisión 2026.12.30) también si la base salió por muestreo
+        // (2026.12.04) curtosis de la población del total de cada escala (su forma real, con el recorte y el redondeo), en caché
+        // (2026.12.04) fiabilidad en modo no exacto con muestras pequeñas: su distribución es asimétrica (acotada por arriba, cola hacia
+        // abajo) y una tolerancia simétrica falla. Bonett (2002): ln(1 − α̂) es aproximadamente normal, con varianza 2k/((k − 1)(n − 2))
+        // (la de ln F en el intervalo de Feldt), multiplicada aquí por el factor de la curtosis de la población y el 1,2 medido
+        const dentroBonett = (obs, objetivo, k, nCasos, kappa) => {
+            if (!(obs < 1) || !(objetivo < 1) || !(k >= 2) || !(nCasos > 3)) return false;
+            const ee = Math.sqrt((2 * k) / ((k - 1) * (nCasos - 2))) * 1.2 * Math.sqrt(Math.max(1, (kappa - 1) / 2));
+            return Math.abs(Math.log(1 - obs) - Math.log(1 - objetivo)) <= Z_TOLERANCIA * ee;
+        };
+        const kPob = new Map(), curtosisDe = p => {
+            if (!kPob.has(p)) kPob.set(p, p.minimo === null || p.maximo === null ? 3 : curtosisPoblacional(z => this.transformarFormaZ(z, p.formaTotal || p.distribucion || 'normal'), p.media, p.desviacion, p.numItems * p.minimo, p.numItems * p.maximo));
+            return kPob.get(p);
+        };
         (cfg.pruebas || []).forEach(p => {
             const v = colMayoria(this.columnaDeEscala(p), kAtip(p.nombre));
             if (v.length < 3) return;
-            const m = v.reduce((a, b) => a + b, 0) / v.length;
-            const de = Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1));
+            const m = mediaNucleo(v), de = desviacion(v);   // (2026.12.25) del núcleo único
             const eS = sel ? sel.porNombre.get(p.nombre) : null;
             if (eS) {
                 filas.push({ tipo: 'Media', variable: `${p.nombre} (tras la selección; población ${num(p.media)})`, pedido: `≈ ${num(eS.media)}`, obtenido: num(m), ok: Math.abs(m - eS.media) <= (3 * eS.de) / Math.sqrt(v.length) + 0.01 * p.desviacion });
                 // error típico del propio modelo (la cola seleccionada no es normal)
                 filas.push({ tipo: 'DE', variable: `${p.nombre} (tras la selección; población ${num(p.desviacion)})`, pedido: `≈ ${num(eS.de)}`, obtenido: num(de), ok: Math.abs(de - eS.de) <= 3 * sel.eeDE(p.nombre, v.length) + 0.01 * p.desviacion });
             } else {
-                filas.push({ tipo: 'Media', variable: p.nombre + notaAtip(p.nombre), pedido: num(p.media), obtenido: num(m), ok: Math.abs(m - p.media) <= Math.max(0.5, 0.1 * p.desviacion) });
-                filas.push({ tipo: 'DE', variable: p.nombre + notaAtip(p.nombre), pedido: num(p.desviacion), obtenido: num(de), ok: Math.abs(de - p.desviacion) <= Math.max(0.3, 0.15 * p.desviacion) });
+                // (modo no exacto) la media y la DE varían por muestreo: 3 errores típicos de cada una, sin bajar del piso del modo exacto
+                // (antes, solo ese piso, que no depende de n: con DE = 10 y n = 200, ±1 eran 1,4 errores típicos y 14 % de ✗ falsas)
+                // (2026.12.04) con muestras pequeñas: la media, con la DE de la población (la pedida); la DE, con la curtosis de la población
+                // como suelo de la muestral, y también en modo exacto si la forma tiene cola pesada (el punto fijo no fija la DE de una
+                // transformación no lineal: con n = 40 la muestra casi nunca contiene la cola)
+                const kP = curtosisDe(p), eeDEp = Math.max(eeDE(v), p.desviacion * Math.sqrt((Math.max(1.8, kP) - 1) / (4 * v.length)));
+                const tolMedia = Math.max(0.5, 0.1 * p.desviacion, noExacto ? Z_TOLERANCIA * eeMedia(Math.max(de, p.desviacion), v.length) : 0), tolDE = Math.max(0.3, 0.15 * p.desviacion, noExacto || kP > 3.5 ? Z_TOLERANCIA * eeDEp : 0);
+                filas.push({ tipo: 'Media', variable: p.nombre + notaAtip(p.nombre), pedido: num(p.media), obtenido: num(m), ok: Math.abs(m - p.media) <= tolMedia });
+                filas.push({ tipo: 'DE', variable: p.nombre + notaAtip(p.nombre), pedido: num(p.desviacion), obtenido: num(de), ok: Math.abs(de - p.desviacion) <= tolDE });
             }
             // (Atlas, dimensión B2) techo o suelo: casos en el límite, frente a la proporción que implican M, DE y el límite (con
             // el redondeo del total a entero); tolerancia binomial de 3 errores típicos más 1 punto
@@ -79,16 +134,21 @@ export const metodosInforme = {
             if (this.perfilesItems && this.perfilesItems.get(p) && this.perfilesItems.get(p).estructura) return;
             // (C5) en dicotómicas el α es el KR-20; además, dificultades y discriminación
             if (this._esDicotomica(p)) {
-                filas.push({ tipo: 'KR-20', variable: `${p.nombre} (ítems dicotómicos)`, pedido: num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - p.alfa) <= 0.04 });
+                // (deuda técnica de la B3) con la selección por rango, lo esperado en la muestra seleccionada (Monte Carlo con el propio
+                // generador); el KR-20 ya no lo fija el generador en la muestra, así que su tolerancia lleva el error de muestreo (Feldt)
+                const ds = this._dicotomicaTrasSeleccion(p), krEsp = ds ? ds.kr20 : p.alfa, nC = completos.length;
+                const tolKR = ds ? Math.max(0.04, 3 * (1 - krEsp) * Math.sqrt(2 * p.numItems / ((p.numItems - 1) * Math.max(3, nC - 2)))) + 0.01 : (!this._modoExacto() ? Math.max(0.04, Z_TOLERANCIA * 1.2 * eeFiabilidad(p.alfa, p.numItems, nC)) : 0.04);   // (modo no exacto) Feldt, con el exceso medido de los ítems heterogéneos (hasta 1,16)
+                filas.push({ tipo: 'KR-20', variable: `${p.nombre} (ítems dicotómicos)`, pedido: ds ? `≈ ${num(krEsp)}` : num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - krEsp) <= tolKR || (!ds && !this._modoExacto() && dentroBonett(obs, krEsp, p.numItems, nC, curtosisDe(p))) });
                 const st = this._estadisticosDicotomica(cols.map(c => c.map(v => v - p.minimo)));
-                const pedidas = p.dificultadesEfectivas || [];
-                const mediaP = st.p.reduce((s, v) => s + v, 0) / st.p.length;
-                const mediaPed = pedidas.length ? pedidas.reduce((s, v) => s + v, 0) / pedidas.length : (p.media - p.numItems * p.minimo) / p.numItems;
+                const pedidas = ds ? ds.dificultades : (p.dificultadesEfectivas || []);
+                const mediaP = mediaNucleo(st.p);
+                const mediaPed = pedidas.length ? mediaNucleo(pedidas) : (p.media - p.numItems * p.minimo) / p.numItems;
                 const maxDesv = pedidas.length ? Math.max(...st.p.map((v, i) => Math.abs(v - pedidas[i]))) : 0;
                 const tolP = 0.04 + 2 / Math.sqrt(Math.max(4, n));
-                filas.push({ tipo: 'p', variable: `${p.nombre}: dificultad de los ítems (proporción de unos; media, mín–máx${pedidas.length ? ', desviación máxima respecto a las pedidas' : ''})`, pedido: `${num(mediaPed, 2)} (${num(Math.min(...(pedidas.length ? pedidas : [mediaPed])), 2)}–${num(Math.max(...(pedidas.length ? pedidas : [mediaPed])), 2)})`, obtenido: `${num(mediaP, 2)} (${num(Math.min(...st.p), 2)}–${num(Math.max(...st.p), 2)})${pedidas.length ? ` · máx. desv. ${num(maxDesv, 2)}` : ''}`, ok: Math.abs(mediaP - mediaPed) <= 0.02 + 1 / Math.sqrt(n) && maxDesv <= tolP });
+                filas.push({ tipo: 'p', variable: `${p.nombre}: dificultad de los ítems (proporción de unos; media, mín–máx${pedidas.length ? (ds ? ', desviación máxima respecto a las esperadas tras la selección' : ', desviación máxima respecto a las pedidas') : ''})`, pedido: `${num(mediaPed, 2)} (${num(Math.min(...(pedidas.length ? pedidas : [mediaPed])), 2)}–${num(Math.max(...(pedidas.length ? pedidas : [mediaPed])), 2)})`, obtenido: `${num(mediaP, 2)} (${num(Math.min(...st.p), 2)}–${num(Math.max(...st.p), 2)})${pedidas.length ? ` · máx. desv. ${num(maxDesv, 2)}` : ''}`, ok: Math.abs(mediaP - mediaPed) <= 0.02 + 1 / Math.sqrt(n) && maxDesv <= tolP });
                 const discV = st.disc.filter(v => isFinite(v));
-                if (discV.length) { const md = discV.reduce((s, v) => s + v, 0) / discV.length; filas.push({ tipo: 'disc', variable: `${p.nombre}: discriminación (r ítem–resto media; mín)`, pedido: '≥ 0.20', obtenido: `${num(md, 2)} (mín ${num(Math.min(...discV), 2)})`, ok: md >= 0.2 }); }
+                // con la selección por rango, la discriminación baja por diseño: se compara con la esperada (el mismo Monte Carlo)
+                if (discV.length) { const md = mediaNucleo(discV), dEsp = ds && Number.isFinite(ds.discriminacion) ? ds.discriminacion : null; filas.push({ tipo: 'disc', variable: `${p.nombre}: discriminación (r ítem–resto media; mín)`, pedido: dEsp !== null ? `≈ ${num(dEsp, 2)}` : '≥ 0.20', obtenido: `${num(md, 2)} (mín ${num(Math.min(...discV), 2)})`, ok: dEsp !== null ? Math.abs(md - dEsp) <= 3 * (1 - dEsp * dEsp) / Math.sqrt(Math.max(4, nC)) + 0.02 : md >= 0.2 }); }
                 return;
             }
             // (dimensión B3) con selección, la fiabilidad baja con la varianza: 1 − (1 − α)·σ²_pob/σ²_sel (Gulliksen), que supone
@@ -98,9 +158,9 @@ export const metodosInforme = {
             const eA = sel ? sel.porNombre.get(p.nombre) : null, alfaObjetivo = eA ? alfaTrasSeleccion(p.alfa, eA.razonVarianzas) : p.alfa, directa = eA && p.nombre === sel.variable;
             // (revisión 2026.11.10) tolerancia según n: el error típico asintótico de α es (1 − α)·√(2k/((k − 1)·n)); con n = 60 y
             // k = 10, ≈ .029, y la tolerancia fija de ±.04 daba falsas alarmas (con n ≥ ~300 queda igual: max(.04, 3 EE))
-            const eeAlfa = (1 - p.alfa) * Math.sqrt((2 * p.numItems) / ((p.numItems - 1) * completos.length)), tolAlfa = Math.max(eA ? 0.05 : 0.04, 3 * eeAlfa);
+            const eeAlfa = (1 - p.alfa) * Math.sqrt((2 * p.numItems) / ((p.numItems - 1) * completos.length)), tolAlfa = Math.max(eA ? 0.05 : 0.04, 3 * eeAlfa * (!this._modoExacto() ? 1.2 * Math.sqrt(Math.max(1, (curtosisDe(p) - 1) / 2)) : 1));   // (2026.12.04) la de un cociente de varianzas crece con (κ − 1)/2
             if (directa) filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: `${p.nombre} (seleccionada directamente; población ${num(p.alfa)}): la selección por su puntaje observado recorta también sus errores, así que la fórmula clásica no aplica; baja con la varianza`, pedido: '—', obtenido: num(obs, 3), ok: null });
-            else filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: eA ? `${p.nombre} (tras la selección; población ${num(p.alfa)})` : p.nombre + notaAtip(p.nombre), pedido: eA ? `≈ ${num(alfaObjetivo, 3)}` : num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - alfaObjetivo) <= tolAlfa });   // ±0.04 ≈ 2 EE de α con n≈300
+            else filas.push({ tipo: indice === 'omega' ? 'ω' : 'α', variable: eA ? `${p.nombre} (tras la selección; población ${num(p.alfa)})` : p.nombre + notaAtip(p.nombre), pedido: eA ? `≈ ${num(alfaObjetivo, 3)}` : num(p.alfa), obtenido: num(obs, 3), ok: Math.abs(obs - alfaObjetivo) <= tolAlfa || (!eA && !this._modoExacto() && dentroBonett(obs, alfaObjetivo, p.numItems, completos.length, curtosisDe(p))) });   // ±0.04 ≈ 2 EE de α con n≈300
         });
         // 3) Correlaciones objetivo (incluidas las de generales derivados; las
         //    parejas que fija un modelo estructural se informan en 5 y las de
@@ -124,7 +184,9 @@ export const metodosInforme = {
                 const eeR = sel.eeR(a, b, u.length), tolR = 3 * Math.sqrt(eeR * eeR + (1 - rSel * rSel) ** 2 / sel.k) + 0.005;   // error típico del propio modelo
                 filas.push({ tipo: 'r', variable: `${a} ↔ ${b} (tras la selección; población ${num(r)})`, pedido: `≈ ${num(rSel)}`, obtenido: num(obs, 3), ok: Math.abs(obs - rSel) <= tolR });
             } else if (sel) filas.push({ tipo: 'r', variable: `${a} ↔ ${b} (tras la selección; población ${num(r)}; informativa: un puntaje general se deriva de sus dimensiones y no tiene valor esperado propio)`, pedido: '—', obtenido: num(obs, 3), ok: null });
-            else filas.push({ tipo: 'r', variable: `${a} ↔ ${b}`, pedido: num(r), obtenido: num(obs, 3), ok: Math.abs(obs - r) <= 0.03 });
+            // (modo no exacto) 3 errores típicos de la r con los momentos de la muestra (antes, ±0,03 fijo: la mitad de ✗ falsas)
+            // (2026.12.04) como mínimo, el error típico de la normal: con muestras pequeñas, los momentos de una cola pesada salen cortos
+            else filas.push({ tipo: 'r', variable: `${a} ↔ ${b}`, pedido: num(r), obtenido: num(obs, 3), ok: Math.abs(obs - r) <= (!this._modoExacto() ? Math.max(0.03, Z_TOLERANCIA * Math.max(eeCorrelacion(u, w), (1 - r * r) / Math.sqrt(Math.max(1, u.length - 3)))) : 0.03) });
         });
         if (sel) this._informeSeleccion(base, filas, num, sel, columnaDe);
         // 4) Diferencias por grupo (d de Cohen): cambio de la media por unidad de
@@ -132,7 +194,7 @@ export const metodosInforme = {
         //    exacto no fluctúa; si no, la tolerancia es 2 EE de la d.
         // La d solo es exacta si los drivers se ortogonalizaron a los grupos
         // (modo exacto y n suficiente); si no, fluctúa como en una muestra real.
-        const exactas = cfg.correlacionesExactas !== false && this.driversOrtogonalizados === true;
+        const exactas = this._modoExacto() && this.driversOrtogonalizados === true;
         (cfg.diferenciasGrupo || []).forEach(difPedida => {
             if (difPedida.tipo && difPedida.tipo !== 'd') return;   // (C4) interacción y CCI van en su sección
             // (B7) en una onda T2… con cambio diferencial, la d efectiva se recompone
@@ -155,13 +217,13 @@ export const metodosInforme = {
             }
             let ssIntra = 0, gl = 0;
             porGrupo.forEach(vals => {
-                const mg = vals.reduce((a, b) => a + b, 0) / vals.length;
+                const mg = mediaNucleo(vals);
                 vals.forEach(v => { ssIntra += (v - mg) ** 2; });
                 gl += vals.length - 1;
             });
             const deIntra = Math.sqrt(ssIntra / Math.max(1, gl));
             const codigos = pares.map(q => q[0]), valores = pares.map(q => q[1]);
-            const mc = codigos.reduce((a, b) => a + b, 0) / codigos.length, mv = valores.reduce((a, b) => a + b, 0) / valores.length;
+            const mc = mediaNucleo(codigos), mv = mediaNucleo(valores);
             let sxy = 0, sxx = 0;
             for (let i = 0; i < codigos.length; i++) { sxy += (codigos[i] - mc) * (valores[i] - mv); sxx += (codigos[i] - mc) ** 2; }
             if (!(sxx > 0) || !(deIntra > 0)) return;
@@ -182,7 +244,7 @@ export const metodosInforme = {
             // confundidas con las otras agrupaciones): tolerancia muestral.
             let minGrupo = Infinity;
             porGrupo.forEach(vals => { if (vals.length < minGrupo) minGrupo = vals.length; });
-            const tolerancia = (exactas && minGrupo >= 5) ? Math.max(0.06, 2 * eeRedondeo) + sesgoRedondeo : Math.max(0.06, 2 * ee);
+            const tolerancia = (exactas && minGrupo >= 5) ? Math.max(0.06, 2 * eeRedondeo) + sesgoRedondeo : Math.max(0.06, Z_TOLERANCIA * ee);
             const limitada = (this.diferenciasLimitadas || []).some(l => l.variable === dif.cuantitativa && l.agrupacion === dif.agrupacion);
             const etiqueta = `${dif.cuantitativa} por ${dif.agrupacion}` + (limitada ? ' (no alcanzable con las d de sus dimensiones)' : '');
             filas.push({ tipo: 'd', variable: etiqueta, pedido: num(dif.d), obtenido: num(obs), ok: !limitada && Math.abs(obs - dif.d) <= tolerancia });
@@ -192,6 +254,7 @@ export const metodosInforme = {
         //    muestra; el producto X·W se forma con los valores estandarizados).
         this._informeModelos(base, filas, columnaDe, num);
         this._informeTerceras(base, filas, columnaDe, num);
+        this._informeSimpson(base, filas, columnaDe, num);
         // 6) (B7) Medidas repetidas: estabilidad y cambio (global o por grupo)
         this._informeRepetidas(base, filas, num);
         this._informeNiveles(base, filas, num);
@@ -216,11 +279,40 @@ export const metodosInforme = {
 
     // (Atlas, fase C) terceras variables: las tres correlaciones y la parcial se verifican; el β de X controlando Z y el
     // veredicto del fenómeno son informativos. Las etiquetas identifican y no miden: las cifras van en lo obtenido.
+    // (Atlas, Simpson) la r dentro de cada grupo y la combinada dentro de los grupos (con X e Y centradas en la media de su grupo), la
+    // de toda la base y qué muestran; las d de los grupos las verifican sus filas de diferencias. Las etiquetas identifican y no miden.
+    _informeSimpson(base, filas, columnaDe, num) {
+        const cfg = this.configuracion, modelos = (cfg.modelos || []).filter(md => md.tipo === 'simpson');
+        if (!modelos.length) return;
+        const n = base.n, exactas = this._modoExacto();
+        const r = correlacion;   // (2026.12.25) la r del núcleo único; antes, una copia
+        modelos.forEach(md => {
+            const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === md.m), niveles = agrup ? this._nivelesDe(agrup) : null;
+            const cx = columnaDe(md.x), cy = columnaDe(md.y);
+            if (!niveles || niveles.length < 2 || !cx || !cy || !base.tiene(cx) || !base.tiene(cy) || !base.tiene(md.m)) return;   // (2026.12.05) dos o más grupos
+            const X = base.columna(cx).datos, Y = base.columna(cy).datos, G = base.columna(md.m).datos, grupos = niveles.map(nv => ({ nv, x: [], y: [] }));
+            for (let i = 0; i < n; i++) { if (!Number.isFinite(X[i]) || !Number.isFinite(Y[i])) continue; const gr = grupos.find(g => g.nv.codigo === G[i]); if (gr) { gr.x.push(X[i]); gr.y.push(Y[i]); } }
+            // (2026.12.05) una fila por grupo con al menos 5 casos; la combinada y la total, con todos
+            if (grupos.filter(g => g.x.length >= 2).length < 2) return;
+            const rDentro = r(grupos.flatMap(g => Array.from(centrar(g.x))), grupos.flatMap(g => Array.from(centrar(g.y)))), rTotal = r(grupos.flatMap(g => g.x), grupos.flatMap(g => g.y));
+            const esperadoTotal = rTotalSimpson({ rDentro: md.c1, dX: md.c2, dY: md.c3, varianzaCodigo: this._varianzaCodigo(agrup) }), m = grupos.reduce((s, g) => s + g.x.length, 0);
+            // tolerancias: en modo exacto la combinada y la total se fijan (0.03 cubre el redondeo de los totales); la de cada grupo y,
+            // en el no exacto, todas, con 3 errores típicos de muestreo de la r (revisión de Simpson: con 2 y 2.5, unas 5 bases de
+            // cada 60 daban una ✗ falsa en modo no exacto)
+            const ee = (rho, k) => (1 - rho * rho) / Math.sqrt(Math.max(1, k - 3)), et = `Simpson ${md.x} ↔ ${md.y} (grupos de ${md.m})`;
+            const tolDentro = exactas ? 0.03 : Math.max(0.03, 3 * ee(md.c1, m)), tolTotal = exactas ? 0.03 : Math.max(0.03, 3 * ee(esperadoTotal, m));
+            grupos.filter(g => g.x.length >= 5).forEach(g => filas.push({ tipo: 'r', variable: `${et}: dentro del grupo «${g.nv.etiqueta || g.nv.codigo}»`, pedido: num(md.c1), obtenido: num(r(g.x, g.y), 3), ok: Math.abs(r(g.x, g.y) - md.c1) <= Math.max(0.05, 3 * ee(md.c1, g.x.length)) }));
+            filas.push({ tipo: 'r', variable: `${et}: dentro de los grupos (combinada)`, pedido: num(md.c1), obtenido: num(rDentro, 3), ok: Math.abs(rDentro - md.c1) <= tolDentro });
+            filas.push({ tipo: 'r', variable: `${et}: en toda la base, sin separar los grupos`, pedido: num(esperadoTotal), obtenido: num(rTotal, 3), ok: Math.abs(rTotal - esperadoTotal) <= tolTotal });
+            filas.push({ tipo: 'fenómeno', variable: `${et}: qué muestran los datos`, pedido: '—', obtenido: fenomenoSimpson(rDentro, rTotal).texto, ok: null });
+        });
+    },
+
     _informeTerceras(base, filas, columnaDe, num) {
-        const cfg = this.configuracion, n = base.n, exactas = cfg.correlacionesExactas !== false;
-        const tol = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(Math.max(4, n)));
+        const cfg = this.configuracion, n = base.n, exactas = this._modoExacto();
+        const tol = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(Math.max(4, n - 1)));
         const columna = nombre => { const c = columnaDe(nombre); return c && base.tiene(c) ? base.columna(c).datos : null; };
-        const r = (u, v) => { let su = 0, sv = 0, k = 0; for (let i = 0; i < u.length; i++) { su += u[i]; sv += v[i]; k++; } const mu = su / k, mv = sv / k; let suv = 0, suu = 0, svv = 0; for (let i = 0; i < u.length; i++) { const du = u[i] - mu, dv = v[i] - mv; suv += du * dv; suu += du * du; svv += dv * dv; } return suv / Math.sqrt(suu * svv); };
+        const r = correlacion;   // (2026.12.25) la r del núcleo único; antes, otra copia
         // con selección por rango, lo pedido es lo esperado en la muestra seleccionada (Pearson–Lawley sobre la matriz completa, que
         // incluye estas correlaciones) y la tolerancia, la del propio modelo de la selección (tres errores típicos)
         const sel = this._esperadoTrasSeleccion();
@@ -251,8 +343,8 @@ export const metodosInforme = {
         const cfg = this.configuracion, modelos = cfg.modelos || [];
         if (!modelos.length) return;
         const n = base.n;
-        const exactas = cfg.correlacionesExactas !== false;
-        const tol = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(Math.max(4, n)));
+        const exactas = this._modoExacto();
+        const tol = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(Math.max(4, n - 1)));
         const columna = nombre => { const c = columnaDe(nombre); return c && base.tiene(c) ? base.columna(c).datos : null; };
         const par = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
         // Mediación: por par (X,Y), regresión de Y sobre X y TODOS sus mediadores
@@ -289,10 +381,8 @@ export const metodosInforme = {
             const completos = [];
             for (let i = 0; i < n; i++) if (isFinite(cx[i]) && isFinite(cy[i])) completos.push(i);
             if (completos.length < 10) return;
-            const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / arr.length) || 1; return arr.map(v => (v - mu) / sd); };
-            const zx = est(completos.map(i => cx[i])), y = completos.map(i => cy[i]);
-            const q = zx.map(v => v * v); const mq = q.reduce((s, v) => s + v, 0) / q.length;
-            const betas = this._betasEstandarizadas(y, [zx, q.map(v => v - mq)], false);
+            const zx = Array.from(estandarizar(completos.map(i => cx[i])).z), y = completos.map(i => cy[i]);   // (2026.12.25) del núcleo único
+            const betas = this._betasEstandarizadas(y, [zx, centrar(zx.map(v => v * v))], false);
             if (!betas) return;
             const conGrupos = !!(this.diferenciasEfectivas && (this.diferenciasEfectivas.get(md.y) || []).length);
             const tolM = conGrupos ? Math.max(tol, 2 / Math.sqrt(Math.max(4, completos.length))) : tol;
@@ -357,7 +447,7 @@ export const metodosInforme = {
             const completos = [];
             for (let i = 0; i < n; i++) if (isFinite(cx[i]) && isFinite(cw[i]) && isFinite(cy[i])) completos.push(i);
             if (completos.length < 10) return;
-            const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / arr.length) || 1; return arr.map(v => (v - mu) / sd); };
+            const est = arr => Array.from(estandarizar(arr).z);   // (2026.12.25) del núcleo único
             const zx = est(completos.map(i => cx[i])), zw = est(completos.map(i => cw[i])), y = completos.map(i => cy[i]);
             const betas = this._betasEstandarizadas(y, [zx, zw, zx.map((v, i) => v * zw[i])], false);
             if (!betas) return;
@@ -407,7 +497,7 @@ export const metodosInforme = {
     _informePaneles(base, filas, num) {
         const cfg = this.configuracion;
         if (!(cfg.paneles || []).length) return;
-        const n = base.n, exactas = cfg.correlacionesExactas !== false, media = a => a.reduce((s, v) => s + v, 0) / a.length;
+        const n = base.n, exactas = this._modoExacto(), media = mediaNucleo;   // (2026.12.25) del núcleo único
         const ondasDe = nombre => { const p = (cfg.pruebas || []).find(x => x.nombre === nombre && !x.sufijo); return p ? [p].concat((cfg.pruebas || []).filter(x => x.base === p && x.onda).sort((a, b) => a.onda - b.onda)).map(x => base.columna(this.columnaDeEscala(x))) : null; };
         (cfg.paneles || []).forEach(pn => {
             const d = this._datosPanel(pn), cx = d && ondasDe(pn.x), cy = d && ondasDe(pn.y);
@@ -422,8 +512,27 @@ export const metodosInforme = {
                 const regY = regresionRezagada(this._corr(Y[t], Y[t + 1]), this._corr(X[t], Y[t + 1]), rMisma), regX = regresionRezagada(this._corr(X[t], X[t + 1]), this._corr(Y[t], X[t + 1]), rMisma);
                 bXY.push(regY.cruzado); dY.push(regY.propio); bYX.push(regX.cruzado); aX.push(regX.propio); misma.push(this._corr(X[t + 1], Y[t + 1]));
             }
-            const cYX = pn.tipo === 'rezagada' ? 0 : pn.cYX, tolB = exactas ? 0.03 : Math.max(0.03, 2.5 / Math.sqrt(m * (K - 1) * Math.max(0.05, 1 - pn.r * pn.r))), tolR = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(m * K));
+            const cYX = pn.tipo === 'rezagada' ? 0 : pn.cYX, tolB = exactas ? 0.03 : Math.max(0.03, 2.5 / Math.sqrt(m * (K - 1) * Math.max(0.05, 1 - pn.r * pn.r))), tolR = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(Math.max(4, m)));   // la media de K r correlacionadas (las mismas personas): ≈ la de una
             const et = `Relación en el tiempo ${pn.x} ↔ ${pn.y}`;
+            if (d.est.B) {
+                // (RI-CLPM, 2026.12.07) los β de la regresión con los datos observados son los del panel CLÁSICO: se comparan con los que
+                // este estimaría en la población (clpmIngenuo), no con los de dentro de la persona, que la regresión no recupera; la r en la
+                // misma onda es la observada; y la firma de los interceptos, la r entre la primera y la última onda, que no decae hacia 0
+                // sino hacia la ICC
+                const cl = clpmIngenuo(d.est), M0 = correlacionEntreOndas(d.est, 1, 1), MK = correlacionEntreOndas(d.est, K, 1), clasico = ' como lo estima el panel clásico, sin separar los rasgos estables';
+                // (revisión de la 2026.12.08) el error típico de esos β depende de la r OBSERVADA entre los dos predictores, la de los datos
+                // de la regresión (antes, la de dentro de la persona, menor con rasgos relacionados: tolerancia algo estrecha)
+                const rObs = M0[0][1], tolBc = exactas ? 0.03 : Math.max(0.03, 2.5 / Math.sqrt(m * (K - 1) * Math.max(0.05, 1 - rObs * rObs)));
+                filas.push({ tipo: 'β cruzado', variable: `${et}: X de una onda → Y de la siguiente,${clasico}`, pedido: `≈ ${num(cl.cXY)}`, obtenido: num(media(bXY), 3), ok: Math.abs(media(bXY) - cl.cXY) <= tolBc });
+                filas.push({ tipo: 'β cruzado', variable: `${et}: Y de una onda → X de la siguiente,${clasico}`, pedido: `≈ ${num(cl.cYX)}`, obtenido: num(media(bYX), 3), ok: Math.abs(media(bYX) - cl.cYX) <= tolBc });
+                filas.push({ tipo: 'β autorreg.', variable: `${et}: X de una onda → X de la siguiente,${clasico}`, pedido: `≈ ${num(cl.a)}`, obtenido: num(media(aX), 3), ok: Math.abs(media(aX) - cl.a) <= tolBc });
+                filas.push({ tipo: 'β autorreg.', variable: `${et}: Y de una onda → Y de la siguiente,${clasico}`, pedido: `≈ ${num(cl.d)}`, obtenido: num(media(dY), 3), ok: Math.abs(media(dY) - cl.d) <= tolBc });
+                filas.push({ tipo: 'r', variable: `${et}: en la misma onda (media de las ${K}; la observada: la de dentro de la persona más la de los rasgos estables)`, pedido: num(M0[0][1]), obtenido: num(media(misma), 3), ok: Math.abs(media(misma) - M0[0][1]) <= tolR });
+                filas.push({ tipo: 'r', variable: `${et}: ${pn.x} en la primera y la última onda (con interceptos no decae hacia 0, sino hacia su ICC)`, pedido: num(MK[0][0]), obtenido: num(this._corr(X[0], X[K - 1]), 3), ok: Math.abs(this._corr(X[0], X[K - 1]) - MK[0][0]) <= tolR });
+                filas.push({ tipo: 'r', variable: `${et}: ${pn.y} en la primera y la última onda (con interceptos no decae hacia 0, sino hacia su ICC)`, pedido: num(MK[1][1]), obtenido: num(this._corr(Y[0], Y[K - 1]), 3), ok: Math.abs(this._corr(Y[0], Y[K - 1]) - MK[1][1]) <= tolR });
+                filas.push({ tipo: 'fenómeno', variable: `${et}: qué separa el modelo con interceptos aleatorios`, pedido: '—', obtenido: fenomenoRIclpm(pn.cXY, media(bXY), pn.rRI || 0, pn.tipo === 'reciproca' ? { dentro: cYX, clasico: media(bYX) } : null), ok: null });
+                return;
+            }
             filas.push({ tipo: 'β cruzado', variable: `${et}: X de una onda → Y de la siguiente (controlando la Y anterior)`, pedido: num(pn.cXY), obtenido: num(media(bXY), 3), ok: Math.abs(media(bXY) - pn.cXY) <= tolB });
             filas.push({ tipo: 'β cruzado', variable: `${et}: Y de una onda → X de la siguiente (controlando la X anterior)`, pedido: num(cYX), obtenido: num(media(bYX), 3), ok: Math.abs(media(bYX) - cYX) <= tolB });
             filas.push({ tipo: 'β autorreg.', variable: `${et}: X de una onda → X de la siguiente (de su estabilidad)`, pedido: num(d.est.a), obtenido: num(media(aX), 3), ok: Math.abs(media(aX) - d.est.a) <= tolB });
@@ -436,7 +545,7 @@ export const metodosInforme = {
     _informeNiveles(base, filas, num) {
         const cfg = this.configuracion;
         if (!(cfg.niveles || []).length) return;
-        const n = base.n, exactas = cfg.correlacionesExactas !== false, media = a => a.reduce((s, v) => s + v, 0) / a.length;
+        const n = base.n, exactas = this._modoExacto(), media = mediaNucleo;   // (2026.12.25) del núcleo único
         const ondasDe = nombre => { const p = (cfg.pruebas || []).find(x => x.nombre === nombre && !x.sufijo); return p ? [p].concat((cfg.pruebas || []).filter(x => x.base === p && x.onda).sort((a, b) => a.onda - b.onda)).map(x => base.columna(this.columnaDeEscala(x))) : null; };
         (cfg.niveles || []).forEach(nv => {
             const d = this._datosNivel(nv), cx = d && ondasDe(nv.x), cy = d && ondasDe(nv.y);
@@ -456,7 +565,7 @@ export const metodosInforme = {
             const rEntre = media(estX) > 0 && media(estY) > 0 ? media(cruz) / Math.sqrt(media(estX) * media(estY)) : NaN;
             const rDentro = sxy / Math.sqrt(sxx * syy), rMedias = this._corr(mx, my), rMisma = this._corr(X[0], Y[0]);
             const e = esperadoNiveles(K, { iccX: d.iccX, iccY: d.iccY, rEntre: nv.rEntre, rDentro: nv.rDentro });
-            const tolM = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(m)), tolW = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(m * (K - 1))), tolB = exactas ? 0.03 : Math.max(0.05, 3 / Math.sqrt(m));
+            const tolM = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(m)), tolW = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(m * (K - 1))), tolB = exactas ? 0.03 : Math.max(0.05, 3 / Math.sqrt(m));
             const et = `Relación entre niveles ${nv.x} ↔ ${nv.y}`;
             filas.push({ tipo: 'r entre', variable: `${et}: entre personas (sus niveles propios)`, pedido: num(nv.rEntre), obtenido: num(rEntre, 3), ok: Math.abs(rEntre - nv.rEntre) <= tolB });
             filas.push({ tipo: 'r dentro', variable: `${et}: dentro de la persona (centrada en la persona y en la onda)`, pedido: num(nv.rDentro), obtenido: num(rDentro, 3), ok: Math.abs(rDentro - nv.rDentro) <= tolW });
@@ -469,8 +578,8 @@ export const metodosInforme = {
     _informeRepetidas(base, filas, num) {
         const cfg = this.configuracion, lista = cfg.medidasRepetidas || [];
         if (!lista.length) return;
-        const n = base.n, exactas = cfg.correlacionesExactas !== false;
-        const tolR = exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(Math.max(4, n)));
+        const n = base.n, exactas = this._modoExacto();
+        const tolR = exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA / Math.sqrt(Math.max(4, n - 1)));
         const tolD = exactas ? 0.06 : Math.max(0.06, 2 / Math.sqrt(Math.max(4, n)));
         const vistas = new Set();
         lista.forEach(mr => {
@@ -486,7 +595,7 @@ export const metodosInforme = {
             const agrup = mr.agrupacion ? (cfg.sociodemograficos || []).find(s => s.categoria === mr.agrupacion && s.distribucion === 'binaria') : null;
             const codigos = agrup && base.tiene(agrup.categoria) ? base.columna(agrup.categoria).datos : null;
             const stab = Math.max(-0.99, Math.min(0.99, mr.estabilidad));
-            const desv = arr => { const m = arr.reduce((s, v) => s + v, 0) / arr.length; return Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / Math.max(1, arr.length - 1)); };
+            const desv = desviacion;   // (2026.12.25) la DE muestral del núcleo único (con un solo caso, NaN; aquí se usa como desv(x) || 1)
             // En modo exacto solo queda el ruido del redondeo de los dos totales
             // (Likert: enteros; continua: 2 decimales): varianza 2·unidad²/12.
             const unidad = (p.minimo !== null && p.maximo !== null) ? 1 : 0.01;
@@ -512,11 +621,11 @@ export const metodosInforme = {
                 if (!codigos) {
                     const dObs = (y.reduce((s, v) => s + v, 0) - x.reduce((s, v) => s + v, 0)) / x.length / sd1;
                     const dPed = (mr.cambio || 0) * frac;
-                    filas.push({ tipo: 'd cambio', variable: `${etiqueta} cambio (media T${cl.onda} − media T1, en DE de T1)`, pedido: num(dPed), obtenido: num(dObs), ok: Math.abs(dObs - dPed) <= Math.max(tolD, exactas ? 2 * eeRedondeo(x.length, sd1) : tolD) });
+                    filas.push({ tipo: 'd cambio', variable: `${etiqueta} cambio (media T${cl.onda} − media T1, en DE de T1)`, pedido: num(dPed), obtenido: num(dObs), ok: Math.abs(dObs - dPed) <= (exactas ? Math.max(tolD, exactas ? 2 * eeRedondeo(x.length, sd1) : tolD) : Math.max(0.06, Z_TOLERANCIA * Math.sqrt((2 * Math.max(0, 1 - rPed) + (dPed * dPed) / 2) / Math.max(4, x.length)))) });
                 } else {
                     const porGrupo = [0, 1].map(codigo => { const dx = [], dy = []; for (let i = 0; i < x.length; i++) if (g[i] === codigo) { dx.push(x[i]); dy.push(y[i]); } return { n: dx.length, cambio: dx.length ? (dy.reduce((s, v) => s + v, 0) - dx.reduce((s, v) => s + v, 0)) / dx.length / sd1 : NaN }; });
                     const c0 = (mr.cambio || 0) * frac, c1 = (isFinite(mr.cambioGrupo) && mr.cambioGrupo !== null ? mr.cambioGrupo : (mr.cambio || 0)) * frac;
-                    const tolG = k => Math.max(tolD, exactas ? 2 * eeRedondeo(porGrupo[k].n, sd1) : 2 / Math.sqrt(Math.max(4, porGrupo[k].n)));
+                    const tolG = k => Math.max(tolD, exactas ? 2 * eeRedondeo(porGrupo[k].n, sd1) : Z_TOLERANCIA * Math.sqrt((2 * Math.max(0, 1 - rPed) + 0.5) / Math.max(4, porGrupo[k].n)));
                     if (porGrupo[0].n >= 5) filas.push({ tipo: 'd cambio', variable: `${etiqueta} cambio en ${mr.agrupacion} = 0`, pedido: num(c0), obtenido: num(porGrupo[0].cambio), ok: Math.abs(porGrupo[0].cambio - c0) <= tolG(0) });
                     if (porGrupo[1].n >= 5) filas.push({ tipo: 'd cambio', variable: `${etiqueta} cambio en ${mr.agrupacion} = 1`, pedido: num(c1), obtenido: num(porGrupo[1].cambio), ok: Math.abs(porGrupo[1].cambio - c1) <= tolG(1) });
                     if (porGrupo[0].n >= 5 && porGrupo[1].n >= 5) {
@@ -533,12 +642,12 @@ export const metodosInforme = {
     _informeAtipicos(filas, num, at, x, y, n, a, b) {
         const k = at.casos, mayoria = [[], []], todos = [[], []];
         for (let i = 0; i < n; i++) if (isFinite(x[i]) && isFinite(y[i])) { todos[0].push(x[i]); todos[1].push(y[i]); if (i < n - k) { mayoria[0].push(x[i]); mayoria[1].push(y[i]); } }
-        const rMay = this._corr(mayoria[0], mayoria[1]), rTodos = this._corr(todos[0], todos[1]), exacto = this.configuracion.correlacionesExactas !== false;
+        const rMay = this._corr(mayoria[0], mayoria[1]), rTodos = this._corr(todos[0], todos[1]), exacto = this._modoExacto();
         const tolMay = exacto ? 0.03 : 3 * (1 - at.rMayoria * at.rMayoria) / Math.sqrt(mayoria[0].length);
         filas.push({ tipo: 'r', variable: `${a} ↔ ${b} (la mayoría, sin los ${k} casos atípicos)`, pedido: num(at.rMayoria), obtenido: num(rMay, 3), ok: Math.abs(rMay - at.rMayoria) <= tolMay });
         filas.push({ tipo: 'r con atípicos', variable: `${a} ↔ ${b}: r de la base completa, con los ${k} casos atípicos (filas ${n - k + 1}–${n})`, pedido: num(at.rCon), obtenido: num(rTodos, 3), ok: Math.abs(rTodos - at.rCon) <= 0.015 });
         filas.push({ tipo: 'ρ', variable: `${a} ↔ ${b}: ρ de Spearman con los atípicos (por rangos, menos sensible a ellos)`, pedido: '—', obtenido: num(spearman(todos[0], todos[1]), 3), ok: null });
-        const media = v => v.reduce((s, t) => s + t, 0) / v.length, de = v => { const m = media(v); return Math.sqrt(v.reduce((s, t) => s + (t - m) ** 2, 0) / v.length); };
+        const media = mediaNucleo, de = desviacionPoblacional;   // (2026.12.12) del núcleo; la DE poblacional (n), como antes
         const [mx, my, dx, dy] = [media(mayoria[0]), media(mayoria[1]), de(mayoria[0]), de(mayoria[1])];
         const dist = []; for (let i = n - k; i < n; i++) if (isFinite(x[i]) && isFinite(y[i])) dist.push(Math.sqrt((((x[i] - mx) / dx) ** 2 + ((y[i] - my) / dy) ** 2) / 2));
         filas.push({ tipo: 'atípicos', variable: `${a} ↔ ${b}: distancia media de los ${k} casos atípicos a la mayoría (en DE, en X y en Y)`, pedido: '—', obtenido: `${num(media(dist), 1)} DE`, ok: null });
@@ -564,7 +673,7 @@ export const metodosInforme = {
     _informeSeleccion(base, filas, num, sel, columnaDe) {
         const cfg = this.configuracion, X = sel.variable, eX = sel.porNombre.get(X), valores = c => { const d = base.columna(c).datos, out = []; for (let i = 0; i < d.length; i++) if (isFinite(d[i])) out.push(d[i]); return out; };
         const cx = columnaDe(X); if (!eX || !cx || !base.tiene(cx)) return;
-        const vx = valores(cx), n = vx.length, mx = vx.reduce((s, v) => s + v, 0) / n, deObs = Math.sqrt(vx.reduce((s, v) => s + (v - mx) ** 2, 0) / (n - 1));
+        const vx = valores(cx), n = vx.length, deObs = desviacion(vx);   // (2026.12.25) del núcleo único
         const uObs = deObs / eX.dePoblacion, uEsp = eX.de / eX.dePoblacion;
         filas.push({ tipo: 'selección', variable: `Selección: el ${Math.round(100 * sel.proporcion)} % ${sel.lado} de ${X} (de una población de ${tamanoPoblacion(cfg.tamanoMuestra, sel.proporcion)} casos se conservan ${cfg.tamanoMuestra}); las tablas describen la población`, pedido: '—', obtenido: '—', ok: null });
         filas.push({ tipo: 'u', variable: `${X}: u = DE tras la selección / DE en la población (${num(eX.dePoblacion)})`, pedido: `≈ ${num(uEsp, 3)}`, obtenido: num(uObs, 3), ok: Math.abs(uObs - uEsp) <= (3 * sel.eeDE(X, n)) / eX.dePoblacion + 0.01 });
@@ -588,7 +697,7 @@ export const metodosInforme = {
 
     _informeSociodemograficos(base, filas, num) {
         const cfg = this.configuracion, socios = cfg.sociodemograficos || [];
-        const n = base.n, exactas = cfg.correlacionesExactas !== false;
+        const n = base.n, exactas = this._modoExacto();
         socios.forEach(s => {
             if (!s.niveles || !this._esSocioDiscreto(s) || !base.tiene(s.categoria)) return;
             const datos = base.columna(s.categoria).datos;
@@ -597,7 +706,7 @@ export const metodosInforme = {
             if (!total) return;
             const obtenidas = s.niveles.map(x => ((conteos.get(x.codigo) || 0) / total));
             const maxDif = Math.max(...s.niveles.map((x, k) => Math.abs(obtenidas[k] - x.proporcion)));
-            const tol = (exactas || s.dependeDe) ? 1 / total + 1e-9 : Math.max(0.03, 2 * Math.sqrt(0.25 / total));
+            const tol = (exactas || s.dependeDe) ? 1 / total + 1e-9 : Math.max(0.03, Z_TOLERANCIA * Math.sqrt(0.25 / total));
             filas.push({ tipo: '%', variable: `${s.categoria} (${s.niveles.map(x => x.etiqueta || x.codigo).join(' / ')})`, pedido: s.niveles.map(x => Math.round(x.proporcion * 100) + '%').join(' / '), obtenido: obtenidas.map(p => (p * 100).toFixed(1) + '%').join(' / '), ok: maxDif <= tol });
         });
         socios.forEach(s => {
@@ -615,10 +724,10 @@ export const metodosInforme = {
     _informeEstructuras(base, filas, num) {
         const cfg = this.configuracion, lista = cfg.estructuras || [];
         if (!lista.length) return;
-        const n = base.n, exactas = cfg.correlacionesExactas !== false;
+        const n = base.n, exactas = this._modoExacto();
         // las cargas de ítem llevan el ruido de muestreo del ítem aunque los totales sean exactos
         const tolCarga = Math.max(0.06, 2.5 / Math.sqrt(Math.max(4, n)));
-        const est = arr => { const m = arr.reduce((s, v) => s + v, 0) / arr.length; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - m) ** 2, 0) / arr.length) || 1e-9; return arr.map(v => (v - m) / sd); };
+        const est = arr => Array.from(estandarizar(arr).z);   // (2026.12.25) del núcleo único
         lista.forEach(e => {
             const dims = (cfg.pruebas || []).filter(p => p.prueba === e.prueba && !p.sufijo && p.tipo !== 'general' && p.numItems >= 2 && this.perfilesItems && this.perfilesItems.get(p) && this.perfilesItems.get(p).estructura);
             if (!dims.length) return;
@@ -644,7 +753,7 @@ export const metodosInforme = {
                 const cargas = this._pafUnFactor(R);
                 if (!cargas) return;
                 const pedidas = Array.from(est1.lambda);
-                const mediaP = pedidas.reduce((s, l) => s + l, 0) / pedidas.length, mediaO = cargas.reduce((s, l) => s + l, 0) / cargas.length;
+                const mediaP = mediaNucleo(pedidas), mediaO = mediaNucleo(cargas);   // (2026.12.25) del núcleo único
                 const maxDesv = Math.max(...cargas.map((l, i) => Math.abs(l - pedidas[i])));
                 filas.push({ tipo: 'λ', variable: `${p.nombre}: cargas propias (ejes principales; media, y desviación máxima por ítem)`, pedido: num(mediaP, 2), obtenido: `${num(mediaO, 2)} (máx. desv. ${num(maxDesv, 2)})`, ok: Math.abs(mediaO - mediaP) <= 0.03 + (exactas ? 0 : 1 / Math.sqrt(n)) && maxDesv <= tolCarga * 1.5 });
                 // cruzadas: coeficiente estandarizado del ítem sobre [total propio, total ajeno]
@@ -710,22 +819,32 @@ export const metodosInforme = {
             const preds = d.predictores.map(pr => this._columnaPredictor(base, pr.variable)).filter(Boolean);
             for (let i = 0; i < n; i++) if (y[i] === y[i] && preds.every(c => c[i] === c[i])) casos.push(i);
             if (casos.length < 20) return;
-            const est = col => { const v = casos.map(i => col[i]); const m = v.reduce((s, x) => s + x, 0) / v.length; const sd = Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1)) || 1; return v.map(x => (x - m) / sd); };
+            const est = col => Array.from(estandarizar(casos.map(i => col[i]), { muestral: true }).z);   // (2026.12.25) del núcleo único
             const X = preds.map(est);
+            // (2026.12.22) el OR o la IRR obtenidos (por DE del predictor) frente al pedido; sin estimación finita, «no estimable»
+            // (motivoGlm) en lugar de omitir la fila o dar por bueno un OR sin sentido, informativa o un desvío (glmInformativo).
+            // Con una separación casi completa (ajustados numéricamente 0 o 1), el valor también es informativo: con un EE
+            // enorme, la regla de 2,5 EE lo daría por bueno aunque sea un OR de millones
+            const filasEfecto = (fit, tipo, variable) => d.predictores.forEach((pr, j) => {
+                if (fit.error) { filas.push({ tipo, variable: variable(pr), pedido: num(pr.efecto, 2), obtenido: `no estimable (${motivoGlm(fit.error)})`, ok: glmInformativo(fit.error) ? null : false }); return; }
+                const b = fit.beta[j + 1], ee = fit.ee[j + 1];
+                if (fit.avisos && fit.avisos.length) { filas.push({ tipo, variable: variable(pr), pedido: num(pr.efecto, 2), obtenido: `${num(Math.exp(b), 2)} (no fiable: separación casi completa en la muestra)`, ok: null }); return; }
+                filas.push({ tipo, variable: variable(pr), pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 });
+            });
             // prevalencia/proporciones sobre TODOS los casos con desenlace; los OR sobre los casos completos
             const todosY = []; for (let i = 0; i < n; i++) if (y[i] === y[i]) todosY.push(y[i]);
             if (d.tipo === 'binario') {
                 const yy = casos.map(i => y[i]);
-                const prev = todosY.reduce((s, v) => s + v, 0) / todosY.length;
+                const prev = mediaNucleo(todosY);
                 filas.push({ tipo: 'prevalencia', variable: `${d.nombre} (desenlace binario)`, pedido: num(d.prevalencia * 100, 1) + '%', obtenido: num(prev * 100, 1) + '%', ok: Math.abs(prev - d.prevalencia) <= 1 / todosY.length + 1e-9 });
                 const fit = X.length ? this._glm(yy, X, 'logit') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE, regresión logística)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
+                if (fit) filasEfecto(fit, 'OR', pr => `${d.nombre} ~ ${pr.variable} (OR por DE, regresión logística)`);
             } else if (d.tipo === 'conteo') {
                 const yy = casos.map(i => y[i]);
-                const media = yy.reduce((s, v) => s + v, 0) / yy.length;
-                filas.push({ tipo: 'media', variable: `${d.nombre} (conteo)`, pedido: num(d.media, 2), obtenido: num(media, 2), ok: Math.abs(media - d.media) <= 3 * Math.sqrt(d.media / yy.length) + 0.02 });
+                const media = mediaNucleo(yy);
+                filas.push({ tipo: 'media', variable: `${d.nombre} (conteo)`, pedido: num(d.media, 2), obtenido: num(media, 2), ok: Math.abs(media - d.media) <= Z_TOLERANCIA * Math.sqrt(Math.max(d.media, varianza(yy)) / yy.length) + 0.02 });   // con la varianza observada (los predictores la inflan respecto a la de Poisson)
                 const fit = X.length ? this._glm(yy, X, 'log') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'IRR', variable: `${d.nombre} ~ ${pr.variable} (IRR por DE, regresión de Poisson)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
+                if (fit) filasEfecto(fit, 'IRR', pr => `${d.nombre} ~ ${pr.variable} (IRR por DE, regresión de Poisson)`);
             } else {
                 const yy = casos.map(i => y[i]);
                 const conteos = new Map(); todosY.forEach(v => conteos.set(v, (conteos.get(v) || 0) + 1));
@@ -735,7 +854,7 @@ export const metodosInforme = {
                 let acum = 0, corte = 1; for (let k = 0; k < d.niveles.length - 1; k++) { acum += d.niveles[k].proporcion; if (Math.abs(acum - 0.5) < Math.abs((acum - d.niveles[k].proporcion) - 0.5) || k === 0) corte = k + 1; }
                 const yb = yy.map(v => (v > corte ? 1 : 0));
                 const fit = X.length ? this._glm(yb, X, 'logit') : null;
-                if (fit) d.predictores.forEach((pr, j) => { const b = fit.beta[j + 1], ee = fit.ee[j + 1]; filas.push({ tipo: 'OR', variable: `${d.nombre} ~ ${pr.variable} (OR por DE; odds proporcionales, dicotomía «> ${d.niveles[corte - 1].etiqueta}»)`, pedido: num(pr.efecto, 2), obtenido: num(Math.exp(b), 2), ok: Math.abs(b - Math.log(pr.efecto)) <= 2.5 * (isFinite(ee) ? ee : 0.15) + 0.05 }); });
+                if (fit) filasEfecto(fit, 'OR', pr => `${d.nombre} ~ ${pr.variable} (OR por DE; odds proporcionales, dicotomía «> ${d.niveles[corte - 1].etiqueta}»)`);
             }
         });
         (this.cortesGenerados || []).forEach(c => {
@@ -754,7 +873,7 @@ export const metodosInforme = {
 
     _informeEfectosCompuestos(base, filas, columnaDe, num) {
         const cfg = this.configuracion, n = base.n;
-        const exactas = cfg.correlacionesExactas !== false && this.driversOrtogonalizados === true;
+        const exactas = this._modoExacto() && this.driversOrtogonalizados === true;
         (cfg.diferenciasGrupo || []).forEach(dif => {
             if (!dif.tipo || dif.tipo === 'd') return;
             const cv = columnaDe(dif.cuantitativa);
@@ -781,7 +900,7 @@ export const metodosInforme = {
     },
 
     _informeConcordancia(base, filas, num) {
-        const cfg = this.configuracion, n = base.n, exactas = cfg.correlacionesExactas !== false;
+        const cfg = this.configuracion, n = base.n, exactas = this._modoExacto();
         // informantes: r de concordancia y sesgo (media informante − media base, en DE de la base)
         (cfg.pruebas || []).filter(p => p.informante && p.base).forEach(cl => {
             const c1 = base.columna(this.columnaDeEscala(cl.base)), c2 = base.columna(this.columnaDeEscala(cl));
@@ -791,11 +910,10 @@ export const metodosInforme = {
             if (x.length < 10) return;
             const rPed = (cfg.correlaciones || []).find(c => c.origen === 'repetidas' && ((c.a === cl.base.nombre && c.b === cl.nombre) || (c.b === cl.base.nombre && c.a === cl.nombre)));
             const rObs = this._corr(x, y);
-            if (rPed) filas.push({ tipo: 'r inf', variable: `${cl.base.nombre}: concordancia autoinforme ↔ ${cl.informante}`, pedido: num(rPed.r, 3), obtenido: num(rObs, 3), ok: Math.abs(rObs - rPed.r) <= (exactas ? 0.03 : Math.max(0.03, 2 / Math.sqrt(n))) });
-            const mx = x.reduce((s, v) => s + v, 0) / x.length, my = y.reduce((s, v) => s + v, 0) / y.length;
-            const sd1 = Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) / Math.max(1, x.length - 1)) || 1;
+            if (rPed) filas.push({ tipo: 'r inf', variable: `${cl.base.nombre}: concordancia autoinforme ↔ ${cl.informante}`, pedido: num(rPed.r, 3), obtenido: num(rObs, 3), ok: Math.abs(rObs - rPed.r) <= (exactas ? 0.03 : Math.max(0.03, Z_TOLERANCIA * eeCorrelacion(x, y))) });
+            const mx = mediaNucleo(x), my = mediaNucleo(y), sd1 = desviacion(x) || 1;   // (2026.12.25) del núcleo único
             const sesgoPed = (cl.media - cl.base.media) / cl.base.desviacion;
-            filas.push({ tipo: 'd sesgo', variable: `${cl.base.nombre}: sesgo de ${cl.informante} (media informante − media autoinforme, en DE)`, pedido: num(sesgoPed), obtenido: num((my - mx) / sd1), ok: Math.abs((my - mx) / sd1 - sesgoPed) <= (exactas ? 0.06 : Math.max(0.06, 2 / Math.sqrt(n))) });
+            filas.push({ tipo: 'd sesgo', variable: `${cl.base.nombre}: sesgo de ${cl.informante} (media informante − media autoinforme, en DE)`, pedido: num(sesgoPed), obtenido: num((my - mx) / sd1), ok: Math.abs((my - mx) / sd1 - sesgoPed) <= (exactas ? 0.06 : Math.max(0.06, Z_TOLERANCIA * Math.sqrt((2 * Math.max(0, 1 - rObs) + (sesgoPed * sesgoPed) / 2) / Math.max(4, x.length)))) });
         });
         // jueces
         (this.juecesGenerados || []).forEach(j => {
@@ -864,7 +982,13 @@ export const metodosInforme = {
             // (2026.09.30) cada ítem con su escala, rango y si está invertido (antes solo los invertidos tenían etiqueta)
             const rango = (e.minimo !== null && e.maximo !== null && isFinite(e.minimo) && isFinite(e.maximo)) ? ` (${e.minimo}–${e.maximo})` : '';
             for (let j = 1; j <= e.numItems; j++) if (!((e.invertidos || 0) > 0 && j > e.numItems - e.invertidos)) mapa[`${e.nombreCorto}${j}${suf}`] = `${e.nombre} — ítem ${j}${rango}`;
-            if ((e.invertidos || 0) > 0) for (let j = e.numItems - e.invertidos + 1; j <= e.numItems; j++) mapa[`${e.nombreCorto}${j}${suf}`] = `${e.nombre} — ítem ${j} (INVERTIDO: recodificar)`;
+            // (2026.12.30) con la recodificación que hay que aplicar: «6 − valor» en un Likert de 1 a 5 (mín + máx) y, en una escala
+            // continua, el doble de la media por ítem («1000 − valor»), la constante con que se reflejó (_reflejar); hasta la
+            // 2026.12.29 decía solo «recodificar», y en una continua no había forma de saber cómo
+            if ((e.invertidos || 0) > 0) {
+                const constante = this._reflejar(e, 0);
+                for (let j = e.numItems - e.invertidos + 1; j <= e.numItems; j++) mapa[`${e.nombreCorto}${j}${suf}`] = `${e.nombre} — ítem ${j}${rango} (INVERTIDO: recodificar como ${constante} − valor)`;
+            }
             // test unidimensional: su escala es la variable general → se etiqueta con la variable que mide el test
             // (la del cuadro de pruebas, o el nombre de la escala). Sin «— test» al final: la etiqueta entra en la
             // redacción del Analizador («…e inteligencia cognitiva») y el instrumento ya lo aporta la estructura.
@@ -973,14 +1097,9 @@ export const metodosInforme = {
         if (!base || base.length === 0) {
             throw new Error('No hay datos generados para exportar');
         }
-        const escapar = (valor) => {
-            let v = String(valor ?? '');
-            // Escapar si contiene el separador, comillas o saltos de línea.
-            if (v.includes(sep) || v.includes('"') || v.includes('\n')) {
-                v = `"${v.replace(/"/g, '""')}"`;
-            }
-            return v;
-        };
+        // Escapar si contiene el separador, comillas o saltos de línea (RFC 4180), y sin fórmulas (revisión 2026.12.30: un
+        // nombre o una etiqueta de un maestro ajeno, «=HYPERLINK(…)» o «@SUM(…)», se ejecutaba al abrir la base en Excel)
+        const escapar = (valor) => campoCSV(valor, sep);
         // Número → texto: perdido (NaN) → celda vacía; en formato español los
         // decimales van con coma (3,14). Los enteros no cambian.
         const espanol = sep === ';';
@@ -1008,19 +1127,9 @@ export const metodosInforme = {
     descargarCSV(nombreArchivo = 'base_datos_simulada.csv', sep = ',') {
         const csv = this.exportarCSV(sep);
         // BOM UTF-8: sin él, Excel muestra caracteres rotos en tildes/eñes.
-        const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        
-        if (link.download !== undefined) {
-            const url = URL.createObjectURL(blob);
-            link.setAttribute('href', url);
-            link.setAttribute('download', nombreArchivo);
-            link.style.visibility = 'hidden';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-        }
+        // (2026.12.29) con descargarBlob: la URL se revocaba en el mismo instante del clic (puede cancelar la descarga en
+        // Firefox y Safari)
+        descargarBlob(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }), nombreArchivo);
     },
 
     // ========================================
@@ -1065,21 +1174,13 @@ export const metodosInforme = {
         valores.sort((a, b) => a - b);
 
         const n = valores.length;
-        const suma = valores.reduce((a, b) => a + b, 0);
-        const media = suma / n;
-        
-        const varianza = valores
-            .map(v => Math.pow(v - media, 2))
-            .reduce((a, b) => a + b, 0) / n;
-        
-        const desviacion = Math.sqrt(varianza);
+        // (2026.12.25) la media y la DE poblacional del núcleo único (sobre la serie ordenada, como antes)
+        const media = mediaNucleo(valores), desviacion = desviacionPoblacional(valores);
         
         const min = valores[0];
         const max = valores[n - 1];
         
-        const mediana = n % 2 === 0
-            ? (valores[n / 2 - 1] + valores[n / 2]) / 2
-            : valores[Math.floor(n / 2)];
+        const mediana = medianaOrdenada(valores);   // (2026.12.24) la del núcleo único, sobre la serie ya ordenada
 
         return {
             n: n,

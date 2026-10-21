@@ -1,10 +1,12 @@
 // analizador/psicometria/afe-redaccion.js — textos y tablas APA 7 del análisis factorial exploratorio (sin DOM):
 // párrafo para la tesis, tablas para pantalla y Word, documento Word, CSV de cargas y referencias citadas.
 import { interpretarKMO } from './afe.js';
+import { formatoP } from '../../shared/formato-numero.js';
+import { campoCSV } from '../../shared/csv.js';
 
 export const f2 = x => (Number.isFinite(x) ? x.toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const f2c = x => (Number.isFinite(x) ? x.toFixed(2) : '—');   // χ² y porcentajes (pueden superar 1)
-export const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
+export const fp = p => formatoP(p);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
@@ -118,7 +120,9 @@ export function documentoWord(r, etiqueta, de) {
 
 export function csvCargas(r) {
     const dec = x => (Number.isFinite(x) ? x.toFixed(4).replace('.', ',') : '');
-    const seguro = s => (/^[=+\-@]/.test(String(s)) ? `'${s}` : s);
+    // (revisión 2026.12.30) cada campo con campoCSV: sin fórmulas y entre comillas si lleva «;» (un ítem «Me siento; a
+    // veces» desalineaba las columnas)
+    const fila = (/** @type {unknown[]} */ campos) => campos.map(v => campoCSV(v, ';')).join(';');
     const cab = ['Ítem', ...Array.from({ length: r.m }, (_, j) => nombreFactor(j)), 'h2', 'Factor principal', 'MSA'];
-    return [cab.join(';'), ...r.items.map(it => [seguro(it.nombre), ...it.cargas.map(dec), dec(it.comunalidad), nombreFactor(it.factor), dec(it.msa)].join(';'))].join('\r\n');
+    return [fila(cab), ...r.items.map(it => fila([it.nombre, ...it.cargas.map(dec), dec(it.comunalidad), nombreFactor(it.factor), dec(it.msa)]))].join('\r\n');
 }

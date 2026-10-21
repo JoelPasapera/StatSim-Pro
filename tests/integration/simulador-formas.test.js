@@ -5,6 +5,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
 import { FORMAS_RELACION, esFormaCompuesta, aplicarForma, kappaForma } from '../../src/simulador/dominio/formas-relacion.js';
+import { soloCompleta } from '../solo-completa.js';
 
 const esc = (nombre, corto, dist = 'normal') => ({ nombre, nombreCorto: corto, prueba: 'T', tipo: 'dimension', numItems: 8, media: 24, desviacion: 5, minimo: 1, maximo: 5, alfa: 0.85, distribucion: dist, invertidos: 0 });
 const pear = (a, b) => { const n = a.length, ma = a.reduce((s, v) => s + v, 0) / n, mb = b.reduce((s, v) => s + v, 0) / n; let ab = 0, aa = 0, bb = 0; for (let i = 0; i < n; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
@@ -85,7 +86,7 @@ test('revisión 2026.10.24: Y con diferencias por grupo — aviso de η máxima 
     assert.ok(dup.errores.some(e => /aparece dos veces en la tabla III/.test(e)), dup.errores.join(' | '));
 });
 
-test('revisión 2026.10.26: la ρ de Spearman se verifica — calibrada en bases correctas y con potencia ante una Y que perdió la relación', async () => {
+test('revisión 2026.10.26: la ρ de Spearman se verifica — calibrada en bases correctas y con potencia ante una Y que perdió la relación', { skip: soloCompleta }, async () => {
     const { rhoEsperadaForma, spearman } = await import('../../src/simulador/dominio/formas-relacion.js');
     let filasRho = 0;
     for (const F of FORMAS_RELACION.filter(f => esFormaCompuesta(f.id))) for (const [distX, eta] of [['normal', 0.3], ['uniforme', 0.6]]) {

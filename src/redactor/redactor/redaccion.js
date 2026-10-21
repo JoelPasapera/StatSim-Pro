@@ -379,8 +379,10 @@ export const metodosRedactorTeoricoRedaccion = {
         try { d = JSON.parse(localStorage.getItem(this._CLAVE_GUARDADO) || 'null'); } catch (e) { d = null; }
         if (!d || !Array.isArray(d.secciones) || !d.secciones.length) return false;
         const fuentes = d.fuentes || [];
+        // (2026.12.31, revisión) con su «meta», como el documento recién redactado: el pase F3 la usa (sin ella fallaba sobre una
+        // redacción recuperada o abierta de un proyecto, y el botón quedaba en «Puliendo…»)
         this._documento = { secciones: d.secciones, fuentes,
-            citadas: (d.citadasIdx || []).map(i => fuentes[i]).filter(Boolean), problema: d.problema || '' };
+            citadas: (d.citadasIdx || []).map(i => fuentes[i]).filter(Boolean), problema: d.problema || '', meta: {} };
         const res = document.getElementById('redResultado');
         if (res) { res.style.display = ''; res.textContent = this._renderTexto(d.secciones); }
         const bW = document.getElementById('redDescargarWord'); if (bW) bW.style.display = '';
@@ -480,43 +482,48 @@ export const metodosRedactorTeoricoRedaccion = {
         const objetivos = this._objetivosF3();
         if (!objetivos.length) { if (estado) estado.textContent = '\u2728 F3: los radares est\u00e1n limpios \u2014 nada que pulir.'; return; }
         if (btn) { btn.disabled = true; btn.textContent = '\ud83e\uddea Puliendo\u2026'; }
-        const porSec = new Map();
-        objetivos.forEach(o => { if (!porSec.has(o.iSec)) porSec.set(o.iSec, []); porSec.get(o.iSec).push(o); });
-        let aplicados = 0, rechazados = 0, fallos = 0;
-        const antes = { trenes: 0, muletillas: this._muletillasDoc(this._documento.secciones.map(s => s.texto).join('\n\n')).length, vacios: this._declaracionesVacio(this._documento.secciones.map(s => s.texto).join('\n\n')) };
-        let hechas = 0;
-        for (const [iSec, items] of porSec) {
-            const sec = this._documento.secciones[iSec];
-            if (estado) estado.textContent = `\ud83e\uddea F3: puliendo \u00ab${sec.titulo}\u00bb (${++hechas}/${porSec.size} secciones, ${items.length} pasaje(s))\u2026`;
-            let reescritos = [];
-            try { reescritos = await IAAsistente.pulirPasajes(sec.titulo, items.map(o => ({ i: o.iParr, tipo: o.tipo, instruccion: o.instruccion, texto: o.texto })), { keyHint: (hechas - 1) % 10 }); }
-            catch (e) { fallos += items.length; console.warn('[F3] secci\u00f3n fall\u00f3:', sec.titulo, e && e.codigo, e && e.message); continue; }
-            const parrs = String(sec.texto || '').split(/\n{2,}/);
-            for (const r of reescritos) {
-                const orig = parrs[r.i];
-                if (typeof orig !== 'string') { rechazados++; continue; }
-                const nuevo = this._limpiarTexto(r.texto);
-                const ratio = nuevo.length / Math.max(1, orig.length);
-                const seguro = this._mismaFirma(this._firmaCitas(orig), this._firmaCitas(nuevo))
-                    && !/[\[(]F\d|\bF\d/.test(nuevo) && !/^\[No se pudo/.test(nuevo) && ratio > 0.5 && ratio < 1.7;
-                if (seguro) { parrs[r.i] = nuevo; aplicados++; } else { rechazados++; }
+        // (2026.12.31, revisión) el botón vuelve a estar disponible pase lo que pase (antes, un error lo dejaba en «Puliendo…»)
+        try {
+            const porSec = new Map();
+            objetivos.forEach(o => { if (!porSec.has(o.iSec)) porSec.set(o.iSec, []); porSec.get(o.iSec).push(o); });
+            let aplicados = 0, rechazados = 0, fallos = 0;
+            const antes = { trenes: 0, muletillas: this._muletillasDoc(this._documento.secciones.map(s => s.texto).join('\n\n')).length, vacios: this._declaracionesVacio(this._documento.secciones.map(s => s.texto).join('\n\n')) };
+            let hechas = 0;
+            for (const [iSec, items] of porSec) {
+                const sec = this._documento.secciones[iSec];
+                if (estado) estado.textContent = `\ud83e\uddea F3: puliendo \u00ab${sec.titulo}\u00bb (${++hechas}/${porSec.size} secciones, ${items.length} pasaje(s))\u2026`;
+                let reescritos = [];
+                try { reescritos = await IAAsistente.pulirPasajes(sec.titulo, items.map(o => ({ i: o.iParr, tipo: o.tipo, instruccion: o.instruccion, texto: o.texto })), { keyHint: (hechas - 1) % 10 }); }
+                catch (e) { fallos += items.length; console.warn('[F3] secci\u00f3n fall\u00f3:', sec.titulo, e && e.codigo, e && e.message); continue; }
+                const parrs = String(sec.texto || '').split(/\n{2,}/);
+                for (const r of reescritos) {
+                    const orig = parrs[r.i];
+                    if (typeof orig !== 'string') { rechazados++; continue; }
+                    const nuevo = this._limpiarTexto(r.texto);
+                    const ratio = nuevo.length / Math.max(1, orig.length);
+                    const seguro = this._mismaFirma(this._firmaCitas(orig), this._firmaCitas(nuevo))
+                        && !/[\[(]F\d|\bF\d/.test(nuevo) && !/^\[No se pudo/.test(nuevo) && ratio > 0.5 && ratio < 1.7;
+                    if (seguro) { parrs[r.i] = nuevo; aplicados++; } else { rechazados++; }
+                }
+                sec.texto = parrs.join('\n\n');
             }
-            sec.texto = parrs.join('\n\n');
+            const textoNuevo = this._documento.secciones.map(s => `${s.titulo}\n\n${s.texto}`).join('\n\n\n');
+            const res = document.getElementById('redResultado');
+            if (res) res.textContent = textoNuevo;
+            this._documento.meta = this._documento.meta || {};
+            this._documento.meta.f3 = { fecha: new Date().toISOString(), aplicados, rechazados, fallos };
+            try { this._guardarUltimo(); } catch (e) {}
+            const todo = this._documento.secciones.map(s => s.texto).join('\n\n');
+            const despues = { muletillas: this._muletillasDoc(todo).length, vacios: this._declaracionesVacio(todo) };
+            const contradicPost = this._detectarContradiccionPosicionamiento(this._documento.secciones, this._leerVariables()).length;
+            if (estado) estado.innerHTML = `<div style="text-align:left;border:1px solid #d0d7de;border-radius:10px;padding:10px 14px;background:#f8fafc;line-height:1.6;">`
+                + `<div style="font-weight:700;color:#116329;">\ud83e\uddea Pase de coherencia F3 completado</div>`
+                + `<div><b>\u270d\ufe0f Pulido:</b> ${aplicados} pasaje(s) reescrito(s) \u00b7 ${rechazados} rechazado(s) por seguridad de citas${fallos ? ` \u00b7 ${fallos} sin respuesta del modelo` : ''}</div>`
+                + `<div><b>\ud83d\udcc9 Radares:</b> muletillas ${antes.muletillas}\u2192${despues.muletillas} \u00b7 vac\u00edos ${antes.vacios}\u2192${despues.vacios} \u00b7 posicionamiento contradictorio: ${contradicPost ? '\u26a0\ufe0f a\u00fan presente' : '\u2705 unificado'}</div>`
+                + `<div style="margin-top:4px;color:#57606a;">\ud83d\udce5 Vuelve a descargar Word/PDF para llevarte la versi\u00f3n pulida. Ninguna cita naci\u00f3 ni muri\u00f3: garantizado por firma.</div></div>`;
+        } finally {
+            if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddea Pase de coherencia (F3)'; }
         }
-        const textoNuevo = this._documento.secciones.map(s => `${s.titulo}\n\n${s.texto}`).join('\n\n\n');
-        const res = document.getElementById('redResultado');
-        if (res) res.textContent = textoNuevo;
-        this._documento.meta.f3 = { fecha: new Date().toISOString(), aplicados, rechazados, fallos };
-        try { this._guardarUltimo(); } catch (e) {}
-        const todo = this._documento.secciones.map(s => s.texto).join('\n\n');
-        const despues = { muletillas: this._muletillasDoc(todo).length, vacios: this._declaracionesVacio(todo) };
-        const contradicPost = this._detectarContradiccionPosicionamiento(this._documento.secciones, this._leerVariables()).length;
-        if (estado) estado.innerHTML = `<div style="text-align:left;border:1px solid #d0d7de;border-radius:10px;padding:10px 14px;background:#f8fafc;line-height:1.6;">`
-            + `<div style="font-weight:700;color:#116329;">\ud83e\uddea Pase de coherencia F3 completado</div>`
-            + `<div><b>\u270d\ufe0f Pulido:</b> ${aplicados} pasaje(s) reescrito(s) \u00b7 ${rechazados} rechazado(s) por seguridad de citas${fallos ? ` \u00b7 ${fallos} sin respuesta del modelo` : ''}</div>`
-            + `<div><b>\ud83d\udcc9 Radares:</b> muletillas ${antes.muletillas}\u2192${despues.muletillas} \u00b7 vac\u00edos ${antes.vacios}\u2192${despues.vacios} \u00b7 posicionamiento contradictorio: ${contradicPost ? '\u26a0\ufe0f a\u00fan presente' : '\u2705 unificado'}</div>`
-            + `<div style="margin-top:4px;color:#57606a;">\ud83d\udce5 Vuelve a descargar Word/PDF para llevarte la versi\u00f3n pulida. Ninguna cita naci\u00f3 ni muri\u00f3: garantizado por firma.</div></div>`;
-        if (btn) { btn.disabled = false; btn.textContent = '\ud83e\uddea Pase de coherencia (F3)'; }
     },
 
 

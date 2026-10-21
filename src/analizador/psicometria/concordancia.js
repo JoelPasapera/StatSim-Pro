@@ -4,8 +4,9 @@
 //   · coeficientes de correlación intraclase (CCI) de Shrout y Fleiss (1979) — uno o dos factores, acuerdo absoluto o
 //     consistencia, medida individual o promedio — con intervalos de confianza exactos por la F (McGraw y Wong, 1996).
 // Los intervalos de κ son bootstrap percentil con semilla (motor de bootstrap.js).
-import { cuantilF } from './numerico.js';
+import { cuantilF } from '../../core/stats/numerico.js';
 import { bootstrap, intervaloPercentil } from './bootstrap.js';
+import { media } from '../../core/stats/descriptivos.js';
 
 // categorías: números en orden numérico; etiquetas de texto (p. ej., «Bajo», «Alto») en orden de aparición
 const categoriasDe = cols => { const u = [...new Set(cols.flat())]; return u.every(v => typeof v === 'number') ? u.sort((a, b) => a - b) : u; };
@@ -52,7 +53,7 @@ export function cci(cols, nivel = 0.95) {
     let total = 0;
     cols.forEach(c => c.forEach(v => { total += v; }));
     const gm = total / (n * k);
-    const medF = Array.from({ length: n }, (_, i) => cols.reduce((s, c) => s + c[i], 0) / k), medC = cols.map(c => c.reduce((s, v) => s + v, 0) / n);
+    const medF = Array.from({ length: n }, (_, i) => cols.reduce((s, c) => s + c[i], 0) / k), medC = cols.map(c => media(c));
     let SST = 0;
     cols.forEach(c => c.forEach(v => { SST += (v - gm) ** 2; }));
     const SSR = k * medF.reduce((s, m) => s + (m - gm) ** 2, 0), SSC = n * medC.reduce((s, m) => s + (m - gm) ** 2, 0);

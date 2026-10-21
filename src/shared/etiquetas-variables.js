@@ -1,5 +1,11 @@
 // shared/etiquetas-variables.js — etiquetas y estructura de variables compartidas por el Simulador y el Analizador.
 // Origen: etiquetas-variables.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
+// (2026.12.29) El editor escapa los nombres de columna y las etiquetas que pinta (llegan de un CSV o de un .sav ajeno: un
+// nombre con forma de etiqueta HTML se ejecutaba), y «Aplicar etiquetas» cambia solo las columnas del editor: las demás
+// etiquetas (las de los ítems que trae un .sav) se conservan.
+
+import { escaparHTML } from './html.js';
+import { sinMarcado, sinMarcadoEnTodo } from '../core/data/texto.js';
 
 // ========================================
 // ETIQUETAS DE VARIABLES (estilo "variable labels" de SPSS)
@@ -13,10 +19,12 @@ const EtiquetasVariables = {
     _mapa: {},        // { nombreColumna: etiqueta }
     _estructura: [],  // [{ prueba, columnaGeneral, etiquetaGeneral, dimensiones: [{columna, etiqueta}] }]
     // Registra el diccionario de etiquetas y la estructura de pruebas.
+    // (2026.12.29, revisión) Sin «<» ni «>» en las etiquetas ni en la estructura (core/data/texto.js): llegan del Simulador,
+    // que puede tener los nombres de un CSV de configuración ajeno, y el Analizador los pinta en sus informes.
     fijar(mapa, estructura) {
         this._version = (this._version || 0) + 1;
-        this._mapa = mapa || {};
-        this._estructura = estructura || [];
+        this._mapa = sinMarcadoEnTodo(mapa || {});
+        this._estructura = sinMarcadoEnTodo(estructura || []);
     },
     limpiar() {
         this._version = (this._version || 0) + 1;
@@ -25,8 +33,9 @@ const EtiquetasVariables = {
         this._columnasVacias = [];
     },
     // Etiqueta humana de una columna; si no existe, devuelve la columna tal cual.
+    // (2026.12.31) Solo las propias: la etiqueta de una columna «constructor» o «toString» era la función del prototipo.
     etiqueta(columna) {
-        return this._mapa[columna] || columna;
+        return (Object.prototype.hasOwnProperty.call(this._mapa, columna) && this._mapa[columna]) || columna;
     },
     // Texto para desplegables: "Etiqueta (columna)" cuando hay etiqueta.
     etiquetaConColumna(columna) {
@@ -92,25 +101,30 @@ const EtiquetasVariables = {
         `;
         cont.style.display = 'block';
     },
+    // Las columnas que el editor deja renombrar (las de puntaje, con MODO_RENOMBRADO = 'puntajes').
+    columnasRenombrables(columnas) {
+        const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
+        return (columnas || []).filter(filtro);
+    },
     mostrarEditor(idContenedor, columnas, alAplicar) {
         const cont = document.getElementById(idContenedor);
         if (!cont) return;
-        const filtro = this._FILTROS_RENOMBRADO[this.MODO_RENOMBRADO] || this._FILTROS_RENOMBRADO.todos;
-        const columnasEditables = (columnas || []).filter(filtro);
+        const columnasEditables = this.columnasRenombrables(columnas);
         // Columnas que por NOMBRE son puntajes pero llegaron sin datos: no se
         // pueden renombrar ni analizar, y casi siempre delatan un error de
         // exportación del CSV. Se avisan con nombres concretos.
-        const vaciasPuntaje = (this._columnasVacias || []).filter(filtro);
+        const vaciasPuntaje = this.columnasRenombrables(this._columnasVacias || []);
         this._columnasVacias = []; // no arrastrar a cargas posteriores
+        const codigo = c => '<code>' + escaparHTML(c) + '</code>';
         const avisoVacias = vaciasPuntaje.length
-            ? '<p class="help-text" style="color: #b45309; margin-top: 0.5rem;">⚠️ Sin datos (no se pueden renombrar ni analizar): ' + vaciasPuntaje.map(c => '<code>' + c + '</code>').join(', ') + '. Estas columnas están vacías en tu CSV — rellénalas o elimínalas antes de analizar.</p>'
+            ? '<p class="help-text" style="color: #b45309; margin-top: 0.5rem;">⚠️ Sin datos (no se pueden renombrar ni analizar): ' + vaciasPuntaje.map(codigo).join(', ') + '. Estas columnas están vacías en tu CSV — rellénalas o elimínalas antes de analizar.</p>'
             : '';
         try { console.info('[Etiquetas] columnas recibidas:', columnas, '→ renombrables:', columnasEditables, '· vacías (sin datos):', vaciasPuntaje); } catch (e) {}
         // Sin columnas renombrables: la sección permanece visible con su explicación.
         if (columnasEditables.length === 0) {
-            const muestra = (columnas || []).slice(0, 10).map(c => '<code>' + c + '</code>').join(', ');
+            const muestra = (columnas || []).slice(0, 10).map(codigo).join(', ');
             if (vaciasPuntaje.length) {
-                this.mostrarVacio(idContenedor, '⚠️ Encontré columnas de puntaje pero están VACÍAS (sin datos): ' + vaciasPuntaje.map(c => '<code>' + c + '</code>').join(', ') + '. Una columna sin valores no se puede renombrar ni analizar — rellénala en tu CSV (o elimínala) y vuelve a subirlo.');
+                this.mostrarVacio(idContenedor, '⚠️ Encontré columnas de puntaje pero están VACÍAS (sin datos): ' + vaciasPuntaje.map(codigo).join(', ') + '. Una columna sin valores no se puede renombrar ni analizar — rellénala en tu CSV (o elimínala) y vuelve a subirlo.');
                 return;
             }
             this.mostrarVacio(idContenedor, '⚠️ No se encontraron columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>) en tu base. Columnas leídas: ' + (muestra || '(ninguna)') + (columnas && columnas.length > 10 ? '…' : '') + '. Si alguna debería aparecer aquí, revisa su nombre exacto.');
@@ -118,10 +132,10 @@ const EtiquetasVariables = {
         }
         const filas = columnasEditables.map(col => `
             <tr>
-                <td><code>${col}</code></td>
+                <td><code>${escaparHTML(col)}</code></td>
                 <td>
-                    <input type="text" class="input input-sm" data-columna="${col}"
-                        value="${(this._mapa[col] && this._mapa[col] !== col) ? this._mapa[col] : ''}"
+                    <input type="text" class="input input-sm" data-columna="${escaparHTML(col)}"
+                        value="${escaparHTML(this.etiqueta(col) !== col ? this.etiqueta(col) : '')}"
                         placeholder="Ej: Inteligencia emocional" maxlength="120">
                 </td>
             </tr>
@@ -162,10 +176,12 @@ const EtiquetasVariables = {
         const btn = document.getElementById('btnAplicarEtiquetas');
         if (btn) {
             btn.addEventListener('click', function () {
-                const mapa = {};
+                // Solo cambian las columnas del editor (una vacía pierde su etiqueta); las demás conservan la suya.
+                const mapa = { ...self._mapa };
                 cont.querySelectorAll('input[data-columna]').forEach(input => {
-                    const etiqueta = input.value.trim();
-                    if (etiqueta) mapa[input.getAttribute('data-columna')] = etiqueta;
+                    const etiqueta = sinMarcado(input.value.trim());   // sin «<» ni «>», como lo que llega de un archivo
+                    const columna = input.getAttribute('data-columna');
+                    if (etiqueta) mapa[columna] = etiqueta; else delete mapa[columna];
                 });
                 // Base externa: hay etiquetas pero no estructura de pruebas
                 self.fijar(mapa, []);

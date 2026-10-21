@@ -2,6 +2,16 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { SIGMA_FORMA_ASIMETRICA, NIVELES_DESAJUSTE, PERFILES_HETEROGENEIDAD } from './constantes.js';
+import { media as mediaNucleo, varianza as varianzaNucleo } from '../../core/stats/descriptivos.js';
+import { ejesPrincipalesUnFactor, omegaCovarianzas, alfaCronbach } from '../../core/stats/fiabilidad.js';
+import { biseccion } from '../../core/stats/optimizacion.js';
+import { matrizCorrelaciones } from '../../core/stats/correlacion.js';
+
+/** (2026.12.30) ¿Hay un límite (un número, no una celda vacía)? @param {unknown} v */
+const esLimite = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+
+// semilla propia de la calibración de la fiabilidad (números aleatorios comunes; ver calibrarFiabilidad)
+const SEMILLA_CALIBRACION = 20261203;
 
 export const metodosItems = {
     // ============ PERFILES DE ÍTEMS (B5) ============
@@ -150,24 +160,24 @@ export const metodosItems = {
         return { alfa, omega };
     },
 
+    // Unas cargas reescaladas por un multiplicador (entre 0,05 y 3, por bisección: la fiabilidad implícita crece con él)
+    // hasta que su fiabilidad implícita (α u ω) sea `objetivo`, con tope 0,95 por carga. (2026.12.25) Una sola función,
+    // por la bisección del núcleo único: el panel en vivo de la tarjeta VII tenía su propia copia (con 30 pasos en vez
+    // de 40) y ahora muestra exactamente las cargas que usará el generador.
+    _cargasConFiabilidad(crudas, objetivo, indice) {
+        const m = biseccion(mult => this._fiabilidadImplicita(crudas.map(x => Math.min(0.95, x * mult)))[indice], objetivo, 0.05, 3, 40);
+        return crudas.map(x => Math.min(0.95, x * m));
+    },
+
     // Cargas propias efectivas de una dimensión: las de la matriz o, en modo
     // «alfa», reescaladas por un multiplicador hasta que la fiabilidad implícita
     // sea la de la tabla I (con tope 0.95 por carga).
     _lambdasEfectivas(prueba, filas, idxPropio) {
-        const k = prueba.numItems;
         const crudas = filas.map(f => Math.max(0.05, Math.min(0.95, +f[idxPropio] || 0)));
         const est = this._estructuraDe(prueba);
         if (!est || est.modo !== 'alfa' || !(prueba.alfa > 0 && prueba.alfa < 1)) return crudas;
         const indice = this.configuracion.indiceFiabilidad === 'omega' ? 'omega' : 'alfa';
-        let lo = 0.05, hi = 3;
-        for (let it = 0; it < 40; it++) {
-            const mid = (lo + hi) / 2;
-            const l = crudas.map(x => Math.min(0.95, x * mid));
-            const fi = this._fiabilidadImplicita(l)[indice];
-            if (fi < prueba.alfa) lo = mid; else hi = mid;
-        }
-        const m = (lo + hi) / 2;
-        return crudas.map(x => Math.min(0.95, x * m));
+        return this._cargasConFiabilidad(crudas, prueba.alfa, indice);
     },
 
     // Calibración de μ (escala del ruido propio) para que la carga media
@@ -177,7 +187,7 @@ export const metodosItems = {
         const perfil = this.perfilesItems ? this.perfilesItems.get(prueba) : null;
         const est = perfil && perfil.estructura;
         if (!est || est.calibrada) return;
-        const objetivo = Array.from(est.lambda).reduce((s, l) => s + l, 0) / est.lambda.length;
+        const objetivo = mediaNucleo(est.lambda);   // (2026.12.25) del núcleo único
         const k = prueba.numItems;
         const deIntra = prueba.desviacion * this._factorDE(prueba.nombre);
         // modelo puro: las cruzadas, el método y los pares se descuentan del ruido
@@ -192,7 +202,7 @@ export const metodosItems = {
             }
             const cargas = this._pafUnFactor(this._matrizCorrelacion(cols));
             if (!cargas) return null;
-            return { media: cargas.reduce((s, l) => s + l, 0) / k, cols };
+            return { media: mediaNucleo(cargas), cols };
         };
         let lo = 0.15, hi = 2.5, ultimo = null;
         for (let it = 0; it < 14; it++) {
@@ -447,26 +457,35 @@ export const metodosItems = {
             // _alfaTeorica): se resuelve por bisección sobre la fórmula, sin
             // simular. Así la calibración no añade ruido de muestreo, que con
             // totales asimétricos (colas largas) llegaba a ±0.1 en el α observado.
-            let lo = 0.01, hi = 0.985;
-            for (let it = 0; it < 40; it++) {
-                const mid = (lo + hi) / 2;
-                if (this._alfaTeorica(prueba, mid, perfil) < objetivo) lo = mid; else hi = mid;
-            }
-            return (lo + hi) / 2;
+            return biseccion(interno => this._alfaTeorica(prueba, interno, perfil), objetivo, 0.01, 0.985, 40);   // (2026.12.25) la del núcleo
         }
         // Likert (redondeo) u ω: se simula. Con forma asimétrica se simulan más
         // casos, porque la varianza muestral de un total con cola larga es ruidosa;
         // también con techo o suelo (dimensión B2): un total amontonado en un límite
         // da un α igual de ruidoso (con 400 casos, .656 para .70 pedido)
-        const nSim = (prueba.distribucion === 'asimetrica' || prueba.distribucion === 'techo' || prueba.distribucion === 'suelo') ? 1000 : 400;
-        let lo = 0.01, hi = 0.985;
-        for (let it = 0; it < 12; it++) {
-            const mid = (lo + hi) / 2;
-            const obs = this._simularIndice(prueba, mid, indice, nSim);
-            if (obs === null || !isFinite(obs)) break;
-            if (obs < objetivo) lo = mid; else hi = mid;
-        }
-        return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
+        // (2026.12.03) Con el azar de la base y 400 casos, el error de la simulación (±0,03 con 4 ítems) se arrastraba al objetivo
+        // interno y el índice realizado variaba entre semillas 2,3 veces más que su error de muestreo (con n = 1500, de 0,586 a 0,700
+        // para 0,66 pedido), en los dos modos. Ahora: un azar PROPIO y fijo, guardado y restaurado (la calibración no consume el de la
+        // base), los MISMOS números en cada paso de la bisección (números aleatorios comunes: el índice simulado es una función
+        // determinista y monótona del objetivo interno, y la bisección converge sin deambular) y el tamaño justo para que el error de
+        // Feldt del índice simulado no pase de 0,01 (entre 400 y 4000 casos; con forma asimétrica, techo o suelo, al menos 1000)
+        const k = prueba.numItems, eeUno = (1 - objetivo) * Math.sqrt((2 * k) / (k - 1));
+        const largaCola = prueba.distribucion === 'asimetrica' || prueba.distribucion === 'techo' || prueba.distribucion === 'suelo';
+        const nSim = Math.min(4000, Math.max(largaCola ? 1000 : 400, Math.ceil((eeUno / 0.01) ** 2)));
+        const guardado = this._guardarAleatorio();
+        try {
+            let lo = 0.01, hi = 0.985;
+            // 10 pasos: con números aleatorios comunes la función es determinista y la precisión del objetivo interno (≈ 0,001) ya
+            // está por debajo del error de la simulación (revisión de la 2026.12.06: con 14, la generación era un 60–80 % más lenta)
+            for (let it = 0; it < 10; it++) {
+                const mid = (lo + hi) / 2;
+                this.inicializarAleatorio(SEMILLA_CALIBRACION);
+                const obs = this._simularIndice(prueba, mid, indice, nSim);
+                if (obs === null || !isFinite(obs)) break;
+                if (obs < objetivo) lo = mid; else hi = mid;
+            }
+            return Math.max(0.01, Math.min(0.985, (lo + hi) / 2));
+        } finally { this._restaurarAleatorio(guardado); }
     },
 
     _simularIndice(prueba, objetivoInterno, indice, nSim = 400) {
@@ -558,52 +577,25 @@ export const metodosItems = {
     _indiceObservado(cols, indice) {
         const k = cols.length, n = cols[0].length;
         if (k < 2 || n < 3) return null;
-        const media = c => c.reduce((a, b) => a + b, 0) / n;
-        const varianza = c => { const m = media(c); return c.reduce((a, b) => a + (b - m) ** 2, 0) / (n - 1); };
+        const varianza = varianzaNucleo;   // (2026.12.12) del núcleo único (las columnas miden n)
         const total = new Array(n).fill(0);
         for (let i = 0; i < n; i++) for (let j = 0; j < k; j++) total[i] += cols[j][i];
         const vT = varianza(total);
         if (!(vT > 0)) return null;
         const vars = cols.map(varianza);
         if (indice === 'omega' && k >= 3) {
-            // Ejes principales iterados (1 factor) sobre R y métrica de covarianzas:
-            // réplica compacta del estimador de fiabilidad.js, para calibrar
-            // contra el MISMO número que verá el usuario en el Analizador.
-            const des = vars.map(v => Math.sqrt(v) || 1e-9);
-            const R = Array.from({ length: k }, (_, a) => Array.from({ length: k }, (_, b) => {
-                const ma = media(cols[a]), mb = media(cols[b]);
-                let s = 0;
-                for (let i = 0; i < n; i++) s += (cols[a][i] - ma) * (cols[b][i] - mb);
-                return (s / (n - 1)) / (des[a] * des[b]);
-            }));
-            let h2 = R.map((fila, i) => Math.max(...fila.map((r, j) => i === j ? 0 : Math.abs(r))));
-            let cargas = null;
-            for (let iter = 0; iter < 25; iter++) {
-                const Rr = R.map((fila, i) => fila.map((r, j) => i === j ? h2[i] : r));
-                let v = new Array(k).fill(1 / Math.sqrt(k)), lam = 0;
-                for (let p = 0; p < 40; p++) {
-                    const w = Rr.map(fila => fila.reduce((s, r, j) => s + r * v[j], 0));
-                    const norma = Math.sqrt(w.reduce((s, x) => s + x * x, 0));
-                    if (!(norma > 0)) return null;
-                    v = w.map(x => x / norma); lam = norma;
-                }
-                if (!(lam > 0)) return null;
-                const signo = v.reduce((s, x) => s + x, 0) >= 0 ? 1 : -1;
-                const nuevas = v.map(x => Math.sqrt(lam) * x * signo);
-                const cambio = Math.max(...nuevas.map((c, i) => Math.abs(c * c - h2[i])));
-                h2 = nuevas.map(c => Math.min(c * c, 0.999));
-                cargas = nuevas;
-                if (cambio < 1e-6) break;
-            }
-            if (!cargas) return null;
-            const lCov = cargas.map((l, i) => Math.max(l, 0) * des[i]);
-            const thCov = cargas.map((l, i) => (1 - Math.min(l * l, 0.999)) * vars[i]);
-            const sl = lCov.reduce((s, x) => s + x, 0);
-            const st = thCov.reduce((s, x) => s + x, 0);
-            return (sl * sl) / ((sl * sl) + st);
+            // Ejes principales iterados (1 factor) sobre R y métrica de covarianzas,
+            // para calibrar contra el MISMO número que verá el usuario en el
+            // Analizador. (2026.12.25) La R del núcleo único, la misma que forma la
+            // fiabilidad del Analizador (antes, una copia con √vᵢ·√vⱼ en vez de √(vᵢ·vⱼ)).
+            const R = matrizCorrelaciones(cols);
+            // (2026.12.13) el MISMO motor y la misma fórmula que la fiabilidad del Analizador (antes, una réplica con hasta
+            // 25 iteraciones y 40 pasos de potencias: calibraba contra un número hasta 0,027 distinto del que se mostraba)
+            const ep = ejesPrincipalesUnFactor(R);
+            if (!ep.estimable) return null;
+            return omegaCovarianzas(ep.cargas, vars);
         }
-        const sumaVar = vars.reduce((a, b) => a + b, 0);
-        return (k / (k - 1)) * (1 - sumaVar / vT);
+        return alfaCronbach(vars, vT);   // del núcleo único
     },
 
     // Ajuste iterativo de las medias de ítem (perfil.delta) de una dicotómica:
@@ -747,9 +739,10 @@ export const metodosItems = {
             valor = this.generarValorNormal(socio.promedio, socio.desviacion * factorDE, normalEstandar);
         }
         valor += desplazamiento;
-        if (socio.minimo !== null && socio.maximo !== null) {
-            valor = Math.max(socio.minimo, Math.min(socio.maximo, valor));
-        }
+        // (2026.12.30) cada límite por separado: con solo el mínimo (o solo el máximo) el límite se ignoraba en silencio (una
+        // Edad con mínimo 18 daba casos de 12 años)
+        if (esLimite(socio.minimo)) valor = Math.max(Number(socio.minimo), valor);
+        if (esLimite(socio.maximo)) valor = Math.min(Number(socio.maximo), valor);
         const factor = Math.pow(10, socio.decimales);
         return Math.round(valor * factor) / factor;
     },

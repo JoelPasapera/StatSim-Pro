@@ -8,6 +8,9 @@
 // Multiplicar por g atenúa las correlaciones del residuo con terceras variables por κ = E[g]·E[φ·e]/√(E[g²]·E[φ²]);
 // el motor lo compensa al pasar la matriz objetivo al espacio del residuo.
 import { curvaTeorica } from './formas-relacion.js';
+import { cuantilOrdenado } from '../../core/stats/orden.js';
+import { media, desviacion } from '../../core/stats/descriptivos.js';
+import { regresionSimple } from '../../core/stats/regresion-simple.js';
 
 export const NUBES = [
     { id: 'homogenea', etiqueta: 'Homogénea', g: null },
@@ -69,14 +72,14 @@ export function razonDispersionObservada(x, y, fx) {
     const n = x.length; let mf = 0, my = 0; for (let i = 0; i < n; i++) { mf += fx[i]; my += y[i]; } mf /= n; my /= n;
     let sff = 0, sfy = 0; for (let i = 0; i < n; i++) { sff += (fx[i] - mf) ** 2; sfy += (fx[i] - mf) * (y[i] - my); }
     const b = sff > 0 ? sfy / sff : 0, e = Float64Array.from(y, (v, i) => v - my - b * (fx[i] - mf)), o = ordenPor(x), k = Math.floor(n / 3);
-    const de = idx => { let m = 0; for (const i of idx) m += e[i]; m /= idx.length; let s = 0; for (const i of idx) s += (e[i] - m) ** 2; return Math.sqrt(s / (idx.length - 1)); };
+    const de = idx => desviacion(idx.map(i => e[i]));   // (2026.12.25) del núcleo único
     return de(o.slice(n - k)) / de(o.slice(0, k));
 }
 // bordes de la nube por tramos: 5 tramos de X; en cada uno, los cuantiles .10 y .90 de Y; pendientes frente a la media de X
 export function bordesPorTramos(x, y) {
     const n = x.length, o = ordenPor(x), tramos = 5, cx = [], c10 = [], c90 = [];
-    const cuantil = (v, q) => { const s = [...v].sort((a, b) => a - b), h = (s.length - 1) * q, i = Math.floor(h); return s[i] + (h - i) * (s[Math.min(i + 1, s.length - 1)] - s[i]); };
-    for (let t = 0; t < tramos; t++) { const idx = o.slice(Math.floor((t * n) / tramos), Math.floor(((t + 1) * n) / tramos)); cx.push(idx.reduce((s, i) => s + x[i], 0) / idx.length); const yy = idx.map(i => y[i]); c10.push(cuantil(yy, 0.1)); c90.push(cuantil(yy, 0.9)); }
-    const pend = c => { const mx = cx.reduce((s, v) => s + v, 0) / tramos, mc = c.reduce((s, v) => s + v, 0) / tramos; let a = 0, b = 0; for (let t = 0; t < tramos; t++) { a += (cx[t] - mx) * (c[t] - mc); b += (cx[t] - mx) ** 2; } return b > 0 ? a / b : 0; };
+    const cuantil = (/** @type {ArrayLike<number>} */ v, /** @type {number} */ q) => cuantilOrdenado(Array.from(v).sort((a, b) => a - b), q);;   // tipo 7, del núcleo único
+    for (let t = 0; t < tramos; t++) { const idx = o.slice(Math.floor((t * n) / tramos), Math.floor(((t + 1) * n) / tramos)); cx.push(media(idx.map(i => x[i]))); const yy = idx.map(i => y[i]); c10.push(cuantil(yy, 0.1)); c90.push(cuantil(yy, 0.9)); }
+    const pend = c => { const recta = regresionSimple(cx, c); return recta.sxx > 0 ? recta.pendiente : 0; };   // (2026.12.25) del núcleo único
     return { b10: pend(c10), b90: pend(c90) };
 }

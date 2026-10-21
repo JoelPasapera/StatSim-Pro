@@ -9,6 +9,7 @@ import { coeficientesClasicos } from '../../src/analizador/psicometria/clasica.j
 import { policorica, policoricaDesde } from '../../src/analizador/psicometria/policorica.js';
 import { coeficientesOrdinales, coeficientesOrdinalesRapidos, fiabilidadOrdinal } from '../../src/analizador/psicometria/ordinal.js';
 import { Fiabilidad } from '../../src/analizador/fiabilidad.js';
+import { soloCompleta } from '../solo-completa.js';
 
 const fx = JSON.parse(fs.readFileSync(new URL('../oracle/bootstrap_fixture.json', import.meta.url), 'utf8'));
 const fo = JSON.parse(fs.readFileSync(new URL('../oracle/ordinal_fixture.json', import.meta.url), 'utf8'));
@@ -59,7 +60,7 @@ test('versiones rápidas del bootstrap iguales a las completas (policórica por 
     }
 });
 
-test('bootstrap de una escala: reproducible con la misma semilla, intervalos que contienen el estimado', () => {
+test('bootstrap de una escala: reproducible con la misma semilla, intervalos que contienen el estimado', { skip: soloCompleta }, () => {
     const c = fo.conjuntos.likert5.cols;
     const r1 = bootstrapGrupo(c, { B: 200, semilla: 11 }), r2 = bootstrapGrupo(c, { B: 200, semilla: 11 }), r3 = bootstrapGrupo(c, { B: 200, semilla: 12 });
     assert.deepEqual(r1.intervalos, r2.intervalos, 'misma semilla, mismo resultado');

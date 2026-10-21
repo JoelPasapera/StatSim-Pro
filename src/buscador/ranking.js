@@ -3,6 +3,8 @@
 
 import { ScopusDirecto } from './fuentes/scopus.js';
 import { ProxiesCORS } from '../shared/proxies.js';
+import { asegurarExcelJS } from '../shared/vendor.js';
+import { sinFormula } from '../shared/csv.js';
 
 // ========================================
 // RANKING DE REVISTAS DE PSICOLOGÍA — v2 (auditada).
@@ -382,7 +384,8 @@ const RankingRevistas = {
     // sep: separador de campos · decimalComa: 9,9 en vez de 9.9 (Excel en español
     // espera AMBOS cambios a la vez; el inglés, ninguno).
     _csv(sep, decimalComa, sufijo) {
-        const esc = s => '"' + String(s == null ? '' : s).replace(/"/g, '""').replace(/[\r\n]+/g, ' ') + '"';
+        // (2026.12.30) sin fórmulas: los nombres de revista llegan de Elsevier
+        const esc = s => '"' + sinFormula(String(s == null ? '' : s).replace(/[\r\n]+/g, ' ')).replace(/"/g, '""') + '"';
         const num = (v, dec) => v == null ? '' : (decimalComa ? v.toFixed(dec).replace('.', ',') : v.toFixed(dec));
         const cab = ['#', 'Revista', 'Tipo', 'CiteScore', 'Cuartil', 'Percentil', 'SJR', 'SNIP', 'Subáreas', 'Editorial', 'Acceso abierto', 'ISSN', 'Scopus', 'SCImago'];
         const cuerpo = this._filasExportables().map(f => [f.n, f.titulo, f.tipo, num(f.citeScore, 1), f.cuartil,
@@ -393,10 +396,9 @@ const RankingRevistas = {
     },
 
     async _xlsx() {
-        if (typeof ExcelJS === 'undefined') {
-            this._render('⚠️ ExcelJS no está cargado en esta página: usa los CSV mientras tanto.');
-            return;
-        }
+        // (2026.12.30) ExcelJS a demanda, como en el Buscador; antes se esperaba ya cargado y casi nunca lo estaba
+        try { await asegurarExcelJS(); }
+        catch (e) { this._render('⚠️ ' + e.message + ' Mientras tanto, usa los CSV.'); return; }
         const filas = this._filasExportables();
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet('Ranking PSYC', { views: [{ state: 'frozen', ySplit: 3 }] });
@@ -454,8 +456,11 @@ const RankingRevistas = {
         const anioTitulo = (this._datos.filas.find(f => f.anioCS) || {}).anioCS || '';
         const areas = [...new Set(this._datos.filas.flatMap(f => f.areas))].sort();
         const flecha = k => v.orden === k ? (v.asc ? ' ↑' : ' ↓') : '';
-        const th = (k, txt, alinear) => '<th data-orden="' + k + '" style="padding:0.35rem 0.5rem; cursor:pointer; white-space:nowrap;'
-            + (alinear ? ' text-align:' + alinear + ';' : '') + (v.orden === k ? ' text-decoration:underline;' : '') + '">' + txt + flecha(k) + '</th>';
+        // (2026.12.30) Encabezados ordenables con un botón dentro (se alcanzan con el teclado y se activan con Intro o
+        // Espacio) y aria-sort; hasta la 2026.12.29, solo con el ratón.
+        const th = (k, txt, alinear) => '<th data-orden="' + k + '" scope="col" aria-sort="' + (v.orden === k ? (v.asc ? 'ascending' : 'descending') : 'none') + '" style="padding:0.35rem 0.5rem; white-space:nowrap;'
+            + (alinear ? ' text-align:' + alinear + ';' : '') + '"><button type="button" class="ranking-orden" title="Ordenar por ' + txt + '" style="'
+            + (v.orden === k ? 'text-decoration:underline;' : '') + '">' + txt + flecha(k) + '</button></th>';
 
         const filasHTML = filas.map((f, i) => {
             const barra = f.percentil == null ? '—'
@@ -498,13 +503,13 @@ const RankingRevistas = {
             + '<button id="rankingXLSX" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;" title="Excel con formato: colores, hipervínculos y filtros">⬇ Excel</button>'
             + '<button id="rankingActualizar" class="btn" style="font-size:0.8em; padding:0.25rem 0.7rem;">↻ Actualizar</button></span></div>'
             + '<div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin:0 0 0.5rem;">'
-            + '<input id="rankingFiltro" class="input" placeholder="filtrar por nombre o editorial…" value="' + esc(v.filtro) + '" style="flex:2; min-width:180px; font-size:0.85em; padding:0.3rem 0.5rem;">'
-            + '<select id="rankingArea" class="input" style="flex:2; min-width:180px; font-size:0.85em; padding:0.3rem 0.5rem;"><option value="">Todas las subáreas</option>'
+            + '<input id="rankingFiltro" class="input" aria-label="Filtrar las revistas por nombre o editorial" placeholder="filtrar por nombre o editorial…" value="' + esc(v.filtro) + '" style="flex:2; min-width:180px; font-size:0.85em; padding:0.3rem 0.5rem;">'
+            + '<select id="rankingArea" class="input" aria-label="Subárea" style="flex:2; min-width:180px; font-size:0.85em; padding:0.3rem 0.5rem;"><option value="">Todas las subáreas</option>'
             + areas.map(a => '<option value="' + esc(a) + '"' + (v.area === a ? ' selected' : '') + '>' + esc(a) + '</option>').join('') + '</select>'
-            + '<select id="rankingTipo" class="input" style="flex:1; min-width:130px; font-size:0.85em; padding:0.3rem 0.5rem;">'
+            + '<select id="rankingTipo" class="input" aria-label="Tipo de revista" style="flex:1; min-width:130px; font-size:0.85em; padding:0.3rem 0.5rem;">'
             + '<option value="">Todo tipo</option><option value="emp"' + (v.tipo === 'emp' ? ' selected' : '') + '>Ocultar revisiones 📖</option>'
             + '<option value="rev"' + (v.tipo === 'rev' ? ' selected' : '') + '>Solo revisión 📖</option></select>'
-            + '<select id="rankingTop" class="input" style="flex:0 0 auto; font-size:0.85em; padding:0.3rem 0.5rem;">'
+            + '<select id="rankingTop" class="input" aria-label="Cuántas revistas mostrar" style="flex:0 0 auto; font-size:0.85em; padding:0.3rem 0.5rem;">'
             + [30, 50, 100, 300, 500].map(n => '<option value="' + n + '"' + (v.top === n ? ' selected' : '') + '>Top ' + n + '</option>').join('') + '</select></div>'
             + '<details style="margin:0 0 0.5rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.4rem 0.7rem; font-size:0.8em;">'
             + '<summary style="cursor:pointer; color:#fbbf24;">📚 ¿Qué es esta tabla y cómo leer cada columna?</summary>'

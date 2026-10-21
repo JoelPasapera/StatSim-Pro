@@ -6,7 +6,7 @@ import { GeneradorDatos } from './generador.js';
 
     // ============ AUTOTEST INTERNO ============
     // Verificación en segundos, sin tocar la interfaz. Desde la consola:
-    //     GeneradorDatos.autotest()
+    //     await StatSim.autotest()
     // Cada línea comprueba una propiedad que se rompió alguna vez y ya no debe
     // romperse: correlaciones exactas, fiabilidad autocalibrada, General derivado,
     // relleno intra-test, reparto sobre el General, matrices imposibles,

@@ -3,20 +3,17 @@
 // intervalo percentil o BCa (sesgo corregido y acelerado, con la aceleración por jackknife). Sin DOM: lo ejecuta el
 // Worker (psicometria.worker.js) o, si no hay Worker, el hilo principal.
 import { crearAleatorio } from './aleatorio.js';
-import { cdfNormal, cuantilNormal } from './numerico.js';
+import { cdfNormal, cuantilNormal } from '../../core/stats/numerico.js';
 import { coeficientesClasicos } from './clasica.js';
 import { tipoDeItems, fiabilidadOrdinal, coeficientesOrdinalesRapidos } from './ordinal.js';
 import { policoricaDesde } from './policorica.js';
+import { cuantilOrdenado } from '../../core/stats/orden.js';
+import { media } from '../../core/stats/descriptivos.js';
 
 export const METODOS = { percentil: 'percentil', bca: 'BCa' };
 
 // Cuantil con interpolación lineal (tipo 7 de Hyndman y Fan, 1996: el de R y NumPy por defecto) sobre datos ordenados
-export function cuantilLineal(o, p) {
-    const n = o.length;
-    if (!n) return NaN;
-    const h = (n - 1) * Math.min(1, Math.max(0, p)), lo = Math.floor(h), hi = Math.min(n - 1, lo + 1);
-    return o[lo] + (h - lo) * (o[hi] - o[lo]);
-}
+export function cuantilLineal(o, p) { return cuantilOrdenado(o, p); }   // tipo 7, del núcleo único
 const ordenar = v => Float64Array.from(v).sort();
 
 export function intervaloPercentil(replicas, nivel = 0.95) {
@@ -32,7 +29,7 @@ export function intervaloBCa(replicas, estimado, jack, nivel = 0.95) {
     const p0 = (menores + 0.5 * iguales) / B;
     if (!(p0 > 0 && p0 < 1) || !jack || jack.length < 3) return null;
     const z0 = cuantilNormal(p0);
-    const m = jack.reduce((s, v) => s + v, 0) / jack.length;
+    const m = media(jack);
     let num = 0, den = 0;
     for (const v of jack) { const d = m - v; num += d * d * d; den += d * d; }
     const a = den > 0 ? num / (6 * Math.pow(den, 1.5)) : 0;

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
 import { diagnosticarForma } from '../../src/analizador/relaciones/diagnostico-forma.js';
+import { soloCompleta } from '../solo-completa.js';
 
 const esc = (nombre, corto, dist = 'normal') => ({ nombre, nombreCorto: corto, prueba: 'T', tipo: 'dimension', numItems: 10, media: 30, desviacion: 6, minimo: 1, maximo: 5, alfa: 0.85, distribucion: dist, invertidos: 0 });
 const pear = (a, b) => { const n = a.length, ma = a.reduce((s, v) => s + v, 0) / n, mb = b.reduce((s, v) => s + v, 0) / n; let ab = 0, aa = 0, bb = 0; for (let i = 0; i < n; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; } return ab / Math.sqrt(aa * bb); };
@@ -27,7 +28,7 @@ test('cada nube: el informe verifica la fuerza exacta, la ρ con el residuo de l
     }
 });
 
-test('círculo cerrado con la F3 del Analizador: reconoce el abanico, el triángulo (con su condición necesaria) y la U con abanico', () => {
+test('círculo cerrado con la F3 del Analizador: reconoce el abanico, el triángulo (con su condición necesaria) y la U con abanico', { skip: soloCompleta }, () => {
     const ab = generar(recta(0.5, 'abanico-abre')), dAb = diagnosticarForma(ab.x, ab.y, { B: 49, Bnube: 199 }).nube;
     assert.ok(dAb.heterocedasticidad.hay && dAb.heterocedasticidad.bp.sube && dAb.patron.patron === 'abanico', JSON.stringify(dAb.patron));
     for (const eta of [0.65, -0.6]) {
@@ -79,7 +80,7 @@ test('revisión 2026.11.05: el recorte esperado tiene en cuenta la nube (antes s
     }
 });
 
-test('revisión 2026.11.05: robustez entre semillas — informe completo ✓ y la F3 reconoce la nube en casi todas', () => {
+test('revisión 2026.11.05: robustez entre semillas — informe completo ✓ y la F3 reconoce la nube en casi todas', { skip: soloCompleta }, () => {
     for (const [modelo, op, reconocida] of [[recta(0.5, 'abanico-abre'), {}, d => d.nube.heterocedasticidad.hay && d.nube.patron.patron === 'abanico'], [recta(0.65, 'triangulo'), { distX: 'uniforme' }, d => d.nube.patron.patron === 'techo' && d.nube.necesaria]]) {
         let informeOk = 0, bien = 0;
         for (let s = 0; s < 8; s++) {

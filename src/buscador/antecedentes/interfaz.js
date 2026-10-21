@@ -3,8 +3,10 @@
 
 import { AliciaDirecto } from '../fuentes/alicia.js';
 import { PubMedDirecto } from '../fuentes/pubmed.js';
+import { ScienceDirectDirecto } from '../fuentes/sciencedirect.js';
 import { ScieloDirecto } from '../fuentes/scielo.js';
 import { ScopusDirecto } from '../fuentes/scopus.js';
+import { WebOfScienceDirecto } from '../fuentes/wos.js';
 import { PrismaDiagrama } from '../prisma.js';
 import { ProtocoloBusqueda } from '../protocolo.js';
 import { EVENTOS, bus } from '../../shared/eventos.js';
@@ -22,6 +24,10 @@ export const metodosAntecedentesInterfaz = {
             (ancla ? ancla.parentNode : document.body).insertBefore(cont, ancla || null);
         }
         const sugerida = window.ultimoAnalisis ? `${window.ultimoAnalisis.et1} ${window.ultimoAnalisis.et2}` : '';
+        // (2026.12.30) El ranking de revistas (buscador/ranking.js) vive al inicio de esta misma sección y puede haberse
+        // pintado ya desde la caché: se conserva. Hasta la 2026.12.29, este innerHTML lo borraba y en la 2.ª visita (con la
+        // caché fresca, sin descarga que lo volviera a pintar) el ranking no aparecía.
+        const ranking = document.getElementById('rankingRevistas');
         cont.innerHTML = `
         <div class="card">
             <div>
@@ -34,13 +40,13 @@ export const metodosAntecedentesInterfaz = {
               <details style="margin:0.6rem 0 0.2rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.45rem 0.8rem; font-size:0.85em;">
                 <summary style="cursor:pointer; color:#fbbf24;">📚 Conceptos clave para no perderse: base de datos, revista, cuartil, DOI…</summary>
                 <div style="margin-top:0.5rem; line-height:1.6; color:var(--color-text-soft, #b8c0d4);">
-                  Piensa en una biblioteca. El <b>artículo</b> es el texto que buscas: un estudio concreto. La <b>revista</b> (journal) es la publicación que lo editó tras <b>revisión por pares</b> — el filtro donde expertos independientes evalúan el estudio antes de publicarse; es la línea que separa la evidencia de la opinión (ej.: <i>The Lancet</i>, <i>Revista Latinoamericana de Psicología</i>). Y la <b>base de datos</b> (Scopus, PubMed, SciELO) es el catálogo: indexa artículos de miles de revistas, no publica nada — organiza, filtra y deja buscar. Un artículo se publica en UNA revista, pero puede estar indexado en VARIAS bases a la vez (por eso aquí se deduplican).<br><br>
-                  <b>Indexación:</b> en qué bases figura una revista; «indexada en Scopus» significa que pasó su filtro de calidad. <b>Cuartil (Q1–Q4):</b> la posición de la <u>revista</u> — no del artículo — dentro de su categoría según citas: Q1 es el 25 % superior. <b>DOI:</b> la huella digital permanente de un artículo; el enlace que nunca muere. <b>Repositorio</b> (ALICIA): almacén institucional que aloja los documentos completos, incluida la <b>literatura gris</b> (tesis, informes técnicos) que no pasó por revistas — cobertura local valiosa que las bases comerciales ignoran. <b>Buscador académico</b> (Google Académico): rastrea toda la web académica; más amplio que una base, pero sin su curaduría — encuentra más y filtra menos.
+                  Piensa en una biblioteca. El <b>artículo</b> es el texto que buscas: un estudio concreto. La <b>revista</b> (journal) es la publicación que lo editó tras <b>revisión por pares</b> — el filtro donde expertos independientes evalúan el estudio antes de publicarse; es la línea que separa la evidencia de la opinión (ej.: <i>The Lancet</i>, <i>Revista Latinoamericana de Psicología</i>). Y la <b>base de datos</b> (Scopus, Web of Science, PubMed, SciELO) es el catálogo: indexa artículos de miles de revistas, no publica nada — organiza, filtra y deja buscar. Un artículo se publica en UNA revista, pero puede estar indexado en VARIAS bases a la vez (por eso aquí se deduplican).<br><br>
+                  <b>Indexación:</b> en qué bases figura una revista; «indexada en Scopus» o «en Web of Science» significa que pasó el filtro de calidad de esa base. <b>Cuartil (Q1–Q4):</b> la posición de la <u>revista</u> — no del artículo — dentro de su categoría según citas: Q1 es el 25 % superior. Cada base calcula el suyo (Scopus, con el percentil de CiteScore; Web of Science, con el JCR) y pueden no coincidir: la matriz muestra el de Scopus. <b>DOI:</b> la huella digital permanente de un artículo; el enlace que nunca muere. <b>Plataforma de una editorial</b> (ScienceDirect, de Elsevier): la biblioteca de UNA editorial, con el texto completo de sus revistas y libros; buscar en ella encuentra las palabras en todo el artículo, no solo en el título y el resumen — más resultados y menos precisos, y solo de esa editorial. <b>Repositorio</b> (ALICIA): almacén institucional que aloja los documentos completos, incluida la <b>literatura gris</b> (tesis, informes técnicos) que no pasó por revistas — cobertura local valiosa que las bases comerciales ignoran. <b>Buscador académico</b> (Google Académico): rastrea toda la web académica; más amplio que una base, pero sin su curaduría — encuentra más y filtra menos.
                 </div>
               </details>
                   <div id="antSinonimos" class="help-text" style="margin-top:0.35rem;"></div>
                 </div>
-                <div class="form-group"><label class="label">Desde el año</label>
+                <div class="form-group"><label class="label" for="antDesde">Desde el año</label>
                   <input type="number" id="antDesde" class="input" value="${new Date().getFullYear() - 5}"></div>
                 <div class="form-group" style="grid-column: 1 / -1;"><label class="label">Idiomas de búsqueda</label>
                   <div id="antIdiomas" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
@@ -52,7 +58,7 @@ export const metodosAntecedentesInterfaz = {
                     <label style="display:inline-flex; align-items:center; gap:0.35rem; border:1px solid var(--color-border, #39415a); border-radius:8px; padding:0.3rem 0.55rem; cursor:pointer; font-size:0.88em;"><input type="checkbox" value="zh-CN"> 中文 (chino)</label>
                   </div>
                   <div id="antIdiomasCoste" style="font-size:0.78em; color:var(--color-text-soft, #8b93a7); margin-top:0.35rem;"></div>
-                  <div style="font-size:0.74em; color:var(--color-text-soft, #8b93a7); margin-top:0.15rem;">La consulta se traduce a cada idioma marcado y cada ecuación queda documentada en la ficha del protocolo. Ojo: Scopus y PubMed indexan título y resumen en inglés incluso para artículos en chino, alemán o francés — la consulta en English ya los captura; esos idiomas rinden sobre todo vía Google Académico.</div>
+                  <div style="font-size:0.74em; color:var(--color-text-soft, #8b93a7); margin-top:0.15rem;">La consulta se traduce a cada idioma marcado y cada ecuación queda documentada en la ficha del protocolo. Ojo: Scopus, Web of Science y PubMed indexan título y resumen en inglés incluso para artículos en chino, alemán o francés — la consulta en English ya los captura; esos idiomas rinden sobre todo vía Google Académico.</div>
                 </div>
                 <div class="form-group"><label class="label">Resultados (OMS)</label>
                   <input type="number" id="antNumOMS" class="input" value="15" min="0" max="50" step="1"
@@ -66,6 +72,12 @@ export const metodosAntecedentesInterfaz = {
                 <div class="form-group"><label class="label">Resultados (Scopus)</label>
                   <input type="number" id="antCantidadScopus" class="input" value="500" min="25" max="5000" step="100"
                     title="Paginación paralela directa a Elsevier. Tope 5000: es el techo de la propia API de Scopus (su paginación por offset no llega más lejos). ~200 peticiones = 1% de la cuota semanal de UNA clave."></div>
+                <div class="form-group"><label class="label">Resultados (ScienceDirect)</label>
+                  <input type="number" id="antCantidadSciencedirect" class="input" value="50" min="10" max="6000" step="10"
+                    title="API de ScienceDirect (Elsevier), con las claves del sitio: páginas de hasta 100 resultados, por relevancia. Busca en el texto completo, así que el total suele ser enorme: llegan primero los más pertinentes. Tope 6000: el techo de la propia API."></div>
+                <div class="form-group"><label class="label">Resultados (Web of Science)</label>
+                  <input type="number" id="antCantidadWos" class="input" value="50" min="10" max="1000" step="10"
+                    title="API Starter de Clarivate: cada 50 resultados son 1 petición, al ritmo de 1 por segundo. Plan de prueba: 50 peticiones al día; institucional: 5000. Tope 1000."></div>
                 <div class="form-group"><label class="label">Resultados (PubMed)</label>
                   <input type="number" id="antCantidadPubmed" class="input" value="100" min="10" max="1000" step="10"
                     title="API oficial de NCBI, eficiente en dos pasos: aguanta cifras grandes sin drama."></div>
@@ -82,6 +94,13 @@ export const metodosAntecedentesInterfaz = {
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
                 <input type="checkbox" id="antUsarScopus" checked> Buscar en Scopus (Elsevier, vía proxy)
               </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
+                <input type="checkbox" id="antUsarSciencedirect"> Buscar en ScienceDirect (Elsevier — en el texto completo de sus revistas y libros; pendiente: Elsevier todavía no habilita su API para las claves del sitio)
+              </label><br>
+              <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.4rem;">
+                <input type="checkbox" id="antUsarWos"${WebOfScienceDirecto.configurada() ? ' checked' : ''}> Buscar en Web of Science (Clarivate — Colección Principal; con una clave de su API o el relevo del sitio)
+              </label><br>
+              ${this._htmlConexionWos()}
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarPubmed" checked> Buscar en PubMed (NCBI — psicología clínica, salud, neurociencia)
               </label><br>
@@ -100,16 +119,14 @@ export const metodosAntecedentesInterfaz = {
               <label style="display:inline-flex;align-items:center;gap:0.4rem;margin:0 0 0.6rem;">
                 <input type="checkbox" id="antUsarAbiertas"> Buscar en fuentes complementarias (OpenAlex, Crossref, Semantic Scholar)
               </label><br>
-              <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;">
-                ⚠️ Scopus indexa casi exclusivamente artículos en <strong>inglés</strong>. Con el idioma en «Español», es probable que devuelva pocos o ningún resultado. Para aprovechar Scopus, marca <strong>English</strong> en «Idiomas de búsqueda»: la consulta se traducirá automáticamente.
-              </div>
+              <div id="antAvisoScopusEs" style="display:none; margin:0 0 0.6rem; padding:0.5rem 0.75rem; background:#fff8e1; border-left:3px solid #f5b301; border-radius:4px; font-size:0.85em;"></div>
               <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin:0.2rem 0 0.6rem;">
                 <button id="antBuscar" class="btn btn-primary">🔎 Búsqueda individual</button>
                 <button id="antIntensivaBtn" class="btn btn-primary">🚀 Búsqueda intensiva con variantes</button>
-                <label for="antTopeConsultas" style="font-size:0.85em; color:var(--color-text-soft, #666);">Máx. búsquedas (variantes × idiomas):</label>
+                <label for="antTopeConsultas" style="font-size:0.85em; color:var(--color-text-soft, #8b93a7);">Máx. búsquedas (variantes × idiomas):</label>
                 <input type="number" id="antTopeConsultas" class="input" value="60" min="10" max="200" step="10"
                        style="width:5rem; padding:0.3rem 0.5rem;" title="Número máximo de BÚSQUEDAS que se lanzan (variantes × idiomas). No limita cuántos artículos encuentras: limita cuántas búsquedas se ejecutan.">
-                <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #666);">Nº variantes:</label>
+                <label for="antNumVariantes" style="font-size:0.85em; color:var(--color-text-soft, #8b93a7);">Nº variantes:</label>
                 <input type="number" id="antNumVariantes" class="input" value="5" min="2" max="12" step="1"
                   style="width:4.5rem; padding:0.3rem 0.5rem;" title="Cuántas variantes generar (2 a 12)">
               </div>
@@ -119,19 +136,21 @@ export const metodosAntecedentesInterfaz = {
                   placeholder="Aquí aparecerán las variantes generadas, una por línea. Puedes editarlas, borrar las que no quieras o añadir las tuyas."></textarea>
                 <div style="display:flex; gap:0.6rem; flex-wrap:wrap; align-items:center; margin-top:0.5rem;">
                   <button id="antGenerarVariantes" class="btn btn-outline" style="padding:0.3rem 0.8rem;">🔀 Regenerar variantes</button>
-                  <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85em; color:var(--color-text-soft, #666);">
+                  <label style="display:inline-flex; align-items:center; gap:0.35rem; font-size:0.85em; color:var(--color-text-soft, #8b93a7);">
                     <input type="checkbox" id="antIncluirOriginal" checked> Incluir también la consulta original
                   </label>
                   <span class="help-text" style="font-size:0.82em;">Edita libremente y vuelve a pulsar 🚀: buscará exactamente con las que dejes aquí.</span>
                 </div>
               </div>
-              <div id="antVariantesEstado" class="help-text" style="margin:0 0 0.4rem;"></div>
+              <div id="antVariantesEstado" class="help-text" role="status" aria-live="polite" style="margin:0 0 0.4rem;"></div>
               <button id="antScholar" class="btn btn-outline">↗ Abrir en Google Académico</button>
               <button id="antScopusWeb" class="btn btn-outline">↗ Abrir en Scopus</button>
+              <button id="antSciencedirectWeb" class="btn btn-outline" title="Abre la misma búsqueda en sciencedirect.com (con el acceso de tu institución)">↗ Abrir en ScienceDirect</button>
+              <button id="antWosWeb" class="btn btn-outline" title="Copia la ecuación de búsqueda y abre la búsqueda avanzada de Web of Science (con el acceso de tu institución)">↗ Abrir en Web of Science</button>
               <button id="antPubmedWeb" class="btn btn-outline">↗ Abrir en PubMed</button>
               <button id="antScieloWeb" class="btn btn-outline">↗ Abrir en SciELO</button>
               <button id="antAliciaWeb" class="btn btn-outline">↗ Abrir en ALICIA</button>
-              <div id="antEstado" class="help-text" style="margin-top:0.5rem;"></div>
+              <div id="antEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.5rem;"></div>
               <div id="antResultados"></div>
               <div id="antSeleccion"></div>
               <div id="antProtocolo"></div>
@@ -150,7 +169,7 @@ export const metodosAntecedentesInterfaz = {
                   <textarea id="antCriterios" class="input" rows="8" style="resize:vertical;"
                     placeholder="Se generarán automáticamente al pulsar «Generar criterios» a partir del problema de investigación. Podrás editarlos libremente antes de filtrar."></textarea>
                   <p class="help-text" style="margin:0.4rem 0 0;">La IA propone un borrador; tú decides los criterios finales. Son totalmente editables.</p>
-                  <div id="antCriteriosEstado" class="help-text" style="margin-top:0.4rem;"></div>
+                  <div id="antCriteriosEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.4rem;"></div>
                 </div>
 
                                 <div class="form-group" style="margin-top:1.5rem; padding-top:1.2rem; border-top:1px dashed var(--color-border, #e5e5e5);">
@@ -171,13 +190,14 @@ export const metodosAntecedentesInterfaz = {
                     </select>
                   </div>
                   <p class="help-text" style="margin:0.4rem 0 0;">Oculta de la matriz (y de sus exportaciones a Excel/CSV) los artículos por debajo del umbral, para no borrar filas a mano. No elimina nada: es solo la vista, y puedes volver a «Mostrar todas» cuando quieras.</p>
-                  <div id="antRelevanciaEstado" class="help-text" style="margin-top:0.5rem;"></div>
+                  <div id="antRelevanciaEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.5rem;"></div>
                 </div>
 
                 <div id="antRedactor"></div>
               </div>
             </div>
         </div>`;
+        if (ranking) cont.prepend(ranking);
         document.getElementById('antBuscar').addEventListener('click', () => this._onBuscar());
         if (typeof ProtocoloBusqueda !== 'undefined' && ProtocoloBusqueda.resumen().nFuentes > 0) {
             ProtocoloBusqueda.mostrarFicha('antProtocolo');
@@ -204,7 +224,7 @@ export const metodosAntecedentesInterfaz = {
         });
         document.getElementById('antScholar').addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
-            if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank');
+            if (q) window.open(this.urlScholar(q, { desde: document.getElementById('antDesde').value }), '_blank', 'noopener');
         });
         const btnScopusWeb = document.getElementById('antScopusWeb');
         if (btnScopusWeb) btnScopusWeb.addEventListener('click', async () => {
@@ -214,17 +234,27 @@ export const metodosAntecedentesInterfaz = {
             if (this._idiomasSeleccionados().some(([c]) => c === 'en')) {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
-            window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
+            window.open(ScopusDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank', 'noopener');
+        });
+        const btnSciencedirectWeb = document.getElementById('antSciencedirectWeb');
+        if (btnSciencedirectWeb) btnSciencedirectWeb.addEventListener('click', async () => {
+            let q = document.getElementById('antQuery').value.trim();
+            if (!q || typeof ScienceDirectDirecto === 'undefined') return;
+            // (2026.12.27) ScienceDirect publica sobre todo en inglés: si ese idioma está marcado, va traducida (como Scopus).
+            if (this._idiomasSeleccionados().some(([c]) => c === 'en')) {
+                q = await this.traducirTexto(q, 'es', 'en');
+            }
+            window.open(ScienceDirectDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank', 'noopener');
         });
         const btnScieloWeb = document.getElementById('antScieloWeb');
         if (btnScieloWeb) btnScieloWeb.addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
-            if (q && typeof ScieloDirecto !== 'undefined') window.open(ScieloDirecto.urlPublica(q), '_blank');
+            if (q && typeof ScieloDirecto !== 'undefined') window.open(ScieloDirecto.urlPublica(q), '_blank', 'noopener');
         });
         const btnAliciaWeb = document.getElementById('antAliciaWeb');
         if (btnAliciaWeb) btnAliciaWeb.addEventListener('click', () => {
             const q = document.getElementById('antQuery').value.trim();
-            if (q && typeof AliciaDirecto !== 'undefined') window.open(AliciaDirecto.urlPublica(q), '_blank');
+            if (q && typeof AliciaDirecto !== 'undefined') window.open(AliciaDirecto.urlPublica(q), '_blank', 'noopener');
         });
         const btnPubmedWeb = document.getElementById('antPubmedWeb');
         if (btnPubmedWeb) btnPubmedWeb.addEventListener('click', async () => {
@@ -234,17 +264,21 @@ export const metodosAntecedentesInterfaz = {
             if (this._idiomasSeleccionados().some(([c]) => c === 'en')) {
                 q = await this.traducirTexto(q, 'es', 'en');
             }
-            window.open(PubMedDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank');
+            window.open(PubMedDirecto.urlPublica(q, { desde: document.getElementById('antDesde').value }), '_blank', 'noopener');
         });
         document.getElementById('antQuery').addEventListener('input', () => this._renderSinonimos());
         this._renderSinonimos();
-        // Aviso Scopus+Español: actualizar al cambiar idioma o la casilla de Scopus.
+        // Aviso de las bases que indexan en inglés (Scopus y Web of Science) sin «English» marcado: se actualiza al cambiar
+        // los idiomas o sus casillas.
         const actualizarAvisoScopus = () => {
             const aviso = document.getElementById('antAvisoScopusEs');
             if (!aviso) return;
-            const scopusOn = document.getElementById('antUsarScopus') && document.getElementById('antUsarScopus').checked;
+            const bases = [['antUsarScopus', 'Scopus'], ['antUsarWos', 'Web of Science']]
+                .filter(([id]) => { const el = document.getElementById(id); return el && el.checked; }).map(([, nombre]) => nombre);
             const enMarcado = !!document.querySelector('#antIdiomas input[value="en"]:checked');
-            aviso.style.display = (scopusOn && !enMarcado) ? 'block' : 'none';
+            const varias = bases.length > 1, nombres = bases.join(' y ');
+            if (bases.length) aviso.innerHTML = `⚠️ ${nombres} ${varias ? 'indexan' : 'indexa'} el título y el resumen en <strong>inglés</strong>, también los de artículos en otras lenguas. Con el idioma en «Español», es probable que ${varias ? 'devuelvan' : 'devuelva'} pocos o ningún resultado. Para aprovechar ${nombres}, marca <strong>English</strong> en «Idiomas de búsqueda»: la consulta se traducirá automáticamente.`;
+            aviso.style.display = (bases.length && !enMarcado) ? 'block' : 'none';
         };
         // Contador de coste en vivo: idiomas × variantes = consultas totales.
         const actualizarCosteIdiomas = () => {
@@ -266,6 +300,9 @@ export const metodosAntecedentesInterfaz = {
         if (zonaIdiomas) zonaIdiomas.addEventListener('change', () => { actualizarAvisoScopus(); actualizarCosteIdiomas(); });
         const elUsarScopus = document.getElementById('antUsarScopus');
         if (elUsarScopus) elUsarScopus.addEventListener('change', actualizarAvisoScopus);
+        const elUsarWos = document.getElementById('antUsarWos');
+        if (elUsarWos) elUsarWos.addEventListener('change', actualizarAvisoScopus);
+        this._cablearWos();
         const elNumVar = document.getElementById('antNumVariantes');
         if (elNumVar) elNumVar.addEventListener('input', actualizarCosteIdiomas);
         const elTope = document.getElementById('antTopeConsultas');

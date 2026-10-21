@@ -35,17 +35,6 @@ const RedactorTeorico = {
 
     _PARTICULAS_AP: /^(de|del|der|den|da|das|dos|di|du|la|las|los|le|van|von|ter|ten|mac|mc|san|santa)$/i,
 
-    // ExcelJS BAJO DEMANDA: el index.html la carga, pero si ese <script> falló
-    // (CDN caído, bloqueador de anuncios, red inestable) la librería queda
-    // muerta toda la sesión. Aquí el redactor se cura solo: la inyecta él
-    // mismo, con CDN de respaldo, en vez de rendirse con "recarga la página".
-    _EXCELJS_URLS: [
-        'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js',
-        'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
-    ],
-
-    _cargaExcelJS: null,
-
     // ============================================================
     // DOCUMENTO COMPLETO: plan, orquestación y Word APA
     // ============================================================

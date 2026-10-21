@@ -1,5 +1,9 @@
 // simulador/dominio/generador.js — la clase GeneradorDatos: constructor, generador aleatorio y primitivas
-// numéricas propias, más la composición de los módulos de dominio (una responsabilidad por archivo).
+// numéricas, más la composición de los módulos de dominio (una responsabilidad por archivo). (2026.12.25, cierre de
+// la fase F6) Las primitivas son envoltorios de una línea del núcleo único (core/): el azar con semilla, la normal, la
+// muestra sin reemplazo, Cholesky, la matriz válida más cercana, los mínimos cuadrados y la Pearson; aquí quedan los
+// muestreos que solo usa el generador (Poisson, Bernoulli, categoría, log-normal) y sus ejes principales de un factor
+// con pasos fijos (ver _pafUnFactor).
 // Sin DOM y sin globales: se importa desde la interfaz, el Worker y las pruebas.
 
 import { BaseColumnar } from '../../core/data/base-columnar.js';
@@ -13,7 +17,20 @@ import { metodosItems } from './items.js';
 import { metodosFlujo } from './flujo.js';
 import { metodosImperfecciones } from './imperfecciones.js';
 import { metodosInforme } from './informe.js';
+import { cdfNormal, cuantilNormal, lnGamma } from '../../core/stats/numerico.js';
+import { media as mediaNucleo, centrar, estandarizar } from '../../core/stats/descriptivos.js';
+import { correlacion, matrizCorrelaciones } from '../../core/stats/correlacion.js';
+import { ajustarMlg } from '../../core/stats/mlg.js';
+import { pruebaIndependencia } from '../../core/stats/contingencia.js';
+import { choleskyForzado, esDefinidaPositiva, inversaTriangularInferior, productoTriangularTraspuesto, logDeterminanteDeFactor } from '../../core/linalg/cholesky.js';
+import { suavizarCorrelacion } from '../../core/linalg/autovalores.js';
+import { ajustarMco, proyectorResiduos } from '../../core/stats/mco.js';
+import { mulberry32 } from '../../core/random/mulberry32.js';
+import { normalBoxMuller } from '../../core/random/normal.js';
+import { muestraSinReemplazo } from '../../core/random/permutacion.js';
 import { metodosAtipicos } from './atipicos-motor.js';   // (Atlas, dimensión B4)
+import { metodosExportacionSpss } from './exportacion-spss.js';   // (2026.12.29) la base como .sav
+import { metodosExportacionXlsx } from './exportacion-xlsx.js';   // (2026.12.31) la base como libro de Excel
 
 class GeneradorDatos {
     constructor() {
@@ -47,58 +64,18 @@ class GeneradorDatos {
             return;
         }
 
-        let estado = Math.trunc(semilla) >>> 0;
-        this.aleatorio = function () {
-            estado = (estado + 0x6D2B79F5) >>> 0;
-            let t = estado;
-            t = Math.imul(t ^ (t >>> 15), t | 1);
-            t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-            return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-        };
+        this.aleatorio = mulberry32(semilla);   // (2026.12.25) el generador del núcleo único (core/random/mulberry32.js)
     }
 
-    // Valor normal estándar N(0,1) por el método de Box-Muller.
-    generarNormalEstandar() {
-        let u1 = this.aleatorio();
-        let u2 = this.aleatorio();
-        while (u1 === 0) u1 = this.aleatorio(); // Evitar log(0)
-        return Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
-    }
+    // Valor normal estándar N(0,1) por el método de Box-Muller (core/random/normal.js; si u₁ = 0, se saca otra).
+    generarNormalEstandar() { return normalBoxMuller(this.aleatorio); }
 
-    // Función de error (Abramowitz & Stegun 7.1.26), error < 1.5e-7.
-    erf(x) {
-        const signo = x < 0 ? -1 : 1;
-        x = Math.abs(x);
-        const t = 1 / (1 + 0.3275911 * x);
-        const y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-        return signo * y;
-    }
 
     // CDF de la normal estándar Φ(z).
-    normalCDF(z) {
-        return 0.5 * (1 + this.erf(z / Math.SQRT2));
-    }
+    normalCDF(z) { return cdfNormal(z); }
 
-    // Inversa de la normal estándar Φ⁻¹(p): algoritmo de Acklam (error relativo
-    // < 1.2·10⁻⁹ en todo el dominio).
-    normalInversa(p) {
-        if (!(p > 0 && p < 1)) return p <= 0 ? -Infinity : Infinity;
-        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01];
-        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00];
-        const pBajo = 0.02425;
-        if (p < pBajo) {
-            const q = Math.sqrt(-2 * Math.log(p));
-            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-        }
-        if (p > 1 - pBajo) {
-            const q = Math.sqrt(-2 * Math.log(1 - p));
-            return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-        }
-        const q = p - 0.5, r = q * q;
-        return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
-    }
+    // Inversa de la normal estándar Φ⁻¹(p), del núcleo único (core/stats/numerico.js: AS241, error relativo < 1e-16); ±∞ fuera de (0, 1).
+    normalInversa(p) { return !(p > 0 && p < 1) ? (p <= 0 ? -Infinity : Infinity) : cuantilNormal(p); }
 
     generarValorNormal(media, desviacion, z = null) {
         // z permite inyectar un valor normal estándar "driver" (correlaciones).
@@ -151,144 +128,51 @@ class GeneradorDatos {
         return min + Math.floor(this.aleatorio() * k);
     }
 
-    _lgamma(x) {
-        // Lanczos (g = 7, n = 9)
-        const c = [0.99999999999980993, 676.5203681218851, -1259.1392167224028, 771.32342877765313, -176.61502916214059, 12.507343278686905, -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
-        if (x < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * x)) - this._lgamma(1 - x);
-        x -= 1; let a = c[0]; const tt = x + 7.5;
-        for (let i = 1; i < 9; i++) a += c[i] / (x + i);
-        return 0.5 * Math.log(2 * Math.PI) + (x + 0.5) * Math.log(tt) - tt + Math.log(a);
-    }
+    _lgamma(x) { return lnGamma(x); }
 
-    // Muestra SIN reemplazo de k índices de [0, n): Fisher–Yates parcial, O(k).
+    // Muestra SIN reemplazo de k índices de [0, n): Fisher–Yates parcial (O(n) de memoria, k números del azar).
     // Sustituye a sort(() => aleatorio() − 0.5), que no baraja uniformemente:
     // con n = 200 y k = 20 la fila 1 salía elegida el 25 % de las veces y la
     // 187 el 6 % (lo esperado es 10 % para todas), así que los descuidados se
-    // concentraban en los primeros ID.
-    _muestraSinReemplazo(n, k) {
-        const idx = new Int32Array(n);
-        for (let i = 0; i < n; i++) idx[i] = i;
-        const tope = Math.max(0, Math.min(k, n));
-        for (let j = 0; j < tope; j++) {
-            const r = j + Math.floor(this.aleatorio() * (n - j));
-            const t = idx[j]; idx[j] = idx[r]; idx[r] = t;
-        }
-        return idx.subarray(0, tope);
-    }
+    // concentraban en los primeros ID. (2026.12.25) La del núcleo único
+    // (core/random/permutacion.js), con el azar de la generación.
+    _muestraSinReemplazo(n, k) { return muestraSinReemplazo(n, k, this.aleatorio); }
 
     // ============ INFORME PEDIDO vs OBTENIDO ============
     // Cierra el ciclo «lo que se pide es lo que se entrega»: mide en la base
     // generada cada parámetro solicitado y lo pone al lado del valor real.
-    _corr(x, y) {
-        const n = x.length; let mx = 0, my = 0;
-        for (let i = 0; i < n; i++) { mx += x[i]; my += y[i]; }
-        mx /= n; my /= n;
-        let sxy = 0, sxx = 0, syy = 0;
-        for (let i = 0; i < n; i++) { const dx = x[i] - mx, dy = y[i] - my; sxy += dx * dy; sxx += dx * dx; syy += dy * dy; }
-        return (sxx > 0 && syy > 0) ? sxy / Math.sqrt(sxx * syy) : NaN;
-    }
+    _corr(x, y) { return correlacion(x, y); }   // del núcleo único: NaN si alguna serie es constante, como antes
 
-    // Matriz de correlaciones de columnas (arreglos de igual longitud)
-    _matrizCorrelacion(cols) {
-        const k = cols.length, n = cols[0].length;
-        const medias = cols.map(c => c.reduce((s, v) => s + v, 0) / n);
-        const des = cols.map((c, j) => Math.sqrt(c.reduce((s, v) => s + (v - medias[j]) ** 2, 0) / (n - 1)) || 1e-9);
-        const R = Array.from({ length: k }, () => new Array(k).fill(1));
-        for (let a = 0; a < k; a++) for (let b = a + 1; b < k; b++) {
-            let s = 0; for (let i = 0; i < n; i++) s += (cols[a][i] - medias[a]) * (cols[b][i] - medias[b]);
-            R[a][b] = R[b][a] = (s / (n - 1)) / (des[a] * des[b]);
-        }
-        return R;
-    }
+    // Matriz de correlaciones de columnas (arreglos de igual longitud): la del núcleo
+    // único (2026.12.25), la misma del Analizador; 0 con una columna constante.
+    _matrizCorrelacion(cols) { return matrizCorrelaciones(cols); }
 
     // ========================================
     // CORRELACIONES OBJETIVO (CHOLESKY)
     // ========================================
     // Descomposición de Cholesky (L·Lᵀ = A) de una matriz simétrica. Si la
     // matriz no es definida positiva (correlaciones inconsistentes), los
-    // elementos diagonales se acotan a un mínimo para no producir NaN.
+    // elementos diagonales se acotan a un mínimo (10⁻⁹) para no producir NaN y la
+    // matriz queda marcada como forzada. (2026.12.25) La factorización forzada del
+    // núcleo único (core/linalg/cholesky.js), con la misma aritmética que tenía aquí.
     descomposicionCholesky(A) {
-        const n = A.length;
-        const L = Array.from({ length: n }, () => new Array(n).fill(0));
-        let noDefinidaPositiva = false;
-
-        for (let i = 0; i < n; i++) {
-            for (let j = 0; j <= i; j++) {
-                let suma = 0;
-                for (let k = 0; k < j; k++) suma += L[i][k] * L[j][k];
-
-                if (i === j) {
-                    const d = A[i][i] - suma;
-                    if (d <= 0) noDefinidaPositiva = true;
-                    if (d < 1e-9) this.matrizForzada = true;   // pedido imposible: se fuerza
-                    L[i][j] = Math.sqrt(Math.max(d, 1e-9));
-                } else {
-                    L[i][j] = (A[i][j] - suma) / (L[j][j] || 1e-9);
-                }
-            }
-        }
-
-        this.matrizNoDefinidaPositiva = noDefinidaPositiva;
-        return L;
+        const r = choleskyForzado(A, 1e-9);
+        if (r.forzada) this.matrizForzada = true;   // pedido imposible: se fuerza
+        this.matrizNoDefinidaPositiva = r.noDefinidaPositiva;
+        return r.L;
     }
 
-    _inversaTriangularInferior(S) {
-        const m = S.length;
-        const inv = Array.from({ length: m }, () => new Array(m).fill(0));
-        for (let i = 0; i < m; i++) {
-            inv[i][i] = 1 / (S[i][i] || 1e-9);
-            for (let j = 0; j < i; j++) {
-                let s = 0;
-                for (let k = j; k < i; k++) s += S[i][k] * inv[k][j];
-                inv[i][j] = -s / (S[i][i] || 1e-9);
-            }
-        }
-        return inv;
-    }
+    _inversaTriangularInferior(S) { return inversaTriangularInferior(S); }
 
-    _esDefinidaPositiva(R) {
-        const n = R.length, L = Array.from({ length: n }, () => new Array(n).fill(0));
-        for (let i = 0; i < n; i++) for (let j = 0; j <= i; j++) {
-            let s = 0;
-            for (let k = 0; k < j; k++) s += L[i][k] * L[j][k];
-            if (i === j) { const d = R[i][i] - s; if (d <= 1e-10) return false; L[i][i] = Math.sqrt(d); }
-            else L[i][j] = (R[i][j] - s) / L[j][j];
-        }
-        return true;
-    }
+    // ¿Definida positiva con un margen? (todos los pivotes de Cholesky mayores que 10⁻¹⁰). (2026.12.25) La del núcleo único:
+    // con un NaN en la matriz dice que no; la copia de aquí decía que sí (su comparación d ≤ 10⁻¹⁰ es falsa con NaN). Las
+    // matrices que recibe no tienen NaN.
+    _esDefinidaPositiva(R) { return esDefinidaPositiva(R, { tolerancia: 1e-10, absoluta: true }); }
 
-    // Autovalores/autovectores de una matriz simétrica (Jacobi cíclico).
-    _jacobi(A) {
-        const n = A.length, M = A.map(f => f.slice()), V = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
-        for (let sweep = 0; sweep < 60; sweep++) {
-            let off = 0;
-            for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) off += M[p][q] * M[p][q];
-            if (off < 1e-14) break;
-            for (let p = 0; p < n; p++) for (let q = p + 1; q < n; q++) {
-                if (Math.abs(M[p][q]) < 1e-14) continue;
-                const theta = (M[q][q] - M[p][p]) / (2 * M[p][q]);
-                const tt = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
-                const c = 1 / Math.sqrt(tt * tt + 1), s = tt * c;
-                for (let k = 0; k < n; k++) { const mkp = M[k][p], mkq = M[k][q]; M[k][p] = c * mkp - s * mkq; M[k][q] = s * mkp + c * mkq; }
-                for (let k = 0; k < n; k++) { const mpk = M[p][k], mqk = M[q][k]; M[p][k] = c * mpk - s * mqk; M[q][k] = s * mpk + c * mqk; }
-                for (let k = 0; k < n; k++) { const vkp = V[k][p], vkq = V[k][q]; V[k][p] = c * vkp - s * vkq; V[k][q] = s * vkp + c * vkq; }
-            }
-        }
-        return { valores: M.map((f, i) => f[i]), vectores: V };
-    }
-
-    _matrizValidaMasCercana(R) {
-        const n = R.length, { valores, vectores } = this._jacobi(R);
-        const piso = 1e-3;
-        const S = Array.from({ length: n }, () => new Array(n).fill(0));
-        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
-            let s = 0;
-            for (let k = 0; k < n; k++) s += vectores[i][k] * Math.max(valores[k], piso) * vectores[j][k];
-            S[i][j] = s;
-        }
-        const d = S.map((f, i) => Math.sqrt(f[i]));
-        return S.map((f, i) => f.map((x, j) => (i === j ? 1 : x / (d[i] * d[j]))));
-    }
+    // La matriz de correlaciones válida más cercana a una pedida imposible: los autovalores menores que 10⁻³ pasan a
+    // 10⁻³ y se reescala a diagonal unitaria. (2026.12.25) El suavizado del núcleo único (core/linalg/autovalores.js),
+    // con su Jacobi; el de aquí paraba con un criterio absoluto (10⁻¹⁴ sobre la suma de cuadrados fuera de la diagonal).
+    _matrizValidaMasCercana(R) { return suavizarCorrelacion(R, 1e-3).R; }
 
     _triadasIncompatibles(R, nombres) {
         const out = [], n = R.length;
@@ -312,60 +196,34 @@ class GeneradorDatos {
         return { imposible: true, triadas, ajustes, R: Rv };
     }
 
-    // Coeficientes de regresión de y sobre los predictores, con y estandarizada
-    // y (si estandarizarX) cada predictor estandarizado; si no, los predictores
-    // entran tal cual (para el producto z_X·z_W). Mínimos cuadrados por
-    // eliminación gaussiana (p pequeño). null si el sistema es singular.
+    // Coeficientes de regresión de y (estandarizada) sobre los predictores, estandarizados (si estandarizarX) o solo
+    // centrados (para el producto z_X·z_W). null si y o un predictor no varían, o si los predictores son colineales. Solo lo
+    // usa el informe. (2026.12.25) Las puntuaciones típicas (con la DE poblacional) y los mínimos cuadrados del núcleo único
+    // (core/stats/descriptivos.js y core/stats/mco.js, por la QR; todo centrado: la constante sale 0). Antes, las
+    // ecuaciones normales resueltas por Gauss-Jordan, que daban null con un pivote menor que 10⁻¹² (con los predictores
+    // estandarizados, un R² con los anteriores mayor que 1 − 10⁻¹²); ahora decide el criterio de colinealidad del núcleo
+    // (1 − 10⁻¹⁴, el de lm de R).
     _betasEstandarizadas(y, predictores, estandarizarX = true) {
         const n = y.length, p = predictores.length;
         if (n < p + 3) return null;
-        const est = arr => { const mu = arr.reduce((s, v) => s + v, 0) / n; const sd = Math.sqrt(arr.reduce((s, v) => s + (v - mu) ** 2, 0) / n); return sd > 0 ? arr.map(v => (v - mu) / sd) : null; };
+        const est = arr => { const e = estandarizar(arr); return e.de > 0 ? e.z : null; };
         const yz = est(y);
         if (!yz) return null;
         const Xs = [];
         for (let j = 0; j < p; j++) {
-            const c = estandarizarX ? est(predictores[j]) : (() => { const mu = predictores[j].reduce((s, v) => s + v, 0) / n; return predictores[j].map(v => v - mu); })();
+            const c = estandarizarX ? est(predictores[j]) : centrar(predictores[j]);
             if (!c) return null;
             Xs.push(c);
         }
-        // Ecuaciones normales A·β = g (todo centrado: sin intercepto)
-        const A = Array.from({ length: p }, () => new Array(p + 1).fill(0));
-        for (let j = 0; j < p; j++) {
-            for (let k = j; k < p; k++) { let s = 0; for (let i = 0; i < n; i++) s += Xs[j][i] * Xs[k][i]; A[j][k] = s / n; A[k][j] = s / n; }
-            let s = 0; for (let i = 0; i < n; i++) s += Xs[j][i] * yz[i]; A[j][p] = s / n;
-        }
-        for (let col = 0; col < p; col++) {
-            let piv = col;
-            for (let r = col + 1; r < p; r++) if (Math.abs(A[r][col]) > Math.abs(A[piv][col])) piv = r;
-            if (Math.abs(A[piv][col]) < 1e-12) return null;
-            if (piv !== col) { const t = A[piv]; A[piv] = A[col]; A[col] = t; }
-            for (let r = 0; r < p; r++) {
-                if (r === col) continue;
-                const f = A[r][col] / A[col][col];
-                for (let c = col; c <= p; c++) A[r][c] -= f * A[col][c];
-            }
-        }
-        return A.map((f, j) => f[p] / f[j]);
+        const f = ajustarMco(yz, Xs);
+        return f ? Array.from(f.beta.subarray(1)) : null;
     }
 
     // Residualiza `col` contra las columnas X (con intercepto) por mínimos
     // cuadrados; sin efectos secundarios. Devuelve un Float64Array nuevo.
-    _residualizarColumna(col, columnasX) {
-        const n = col.length, q = columnasX.length + 1;
-        const x = j => (j === 0 ? null : columnasX[j - 1]);
-        const G = Array.from({ length: q }, () => new Array(q).fill(0)), g = new Array(q).fill(0);
-        for (let a = 0; a < q; a++) {
-            const ca = x(a);
-            for (let b = a; b < q; b++) { const cb = x(b); let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * (cb ? cb[i] : 1); G[a][b] = G[b][a] = s; }
-            let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * col[i]; g[a] = s;
-        }
-        const L = this.descomposicionCholesky(G), Linv = this._inversaTriangularInferior(L);
-        const beta = new Array(q).fill(0);
-        for (let a = 0; a < q; a++) { let s = 0; for (let k = 0; k < q; k++) { let gik = 0; for (let r = 0; r < q; r++) gik += Linv[r][a] * Linv[r][k]; s += gik * g[k]; } beta[a] = s; }
-        const out = new Float64Array(n);
-        for (let i = 0; i < n; i++) { let s = beta[0]; for (let a = 1; a < q; a++) s += columnasX[a - 1][i] * beta[a]; out[i] = col[i] - s; }
-        return out;
-    }
+    // (2026.12.25) La proyección del núcleo único (core/stats/mco.js, por la QR: una columna colineal no añade nada y se omite);
+    // antes, las ecuaciones normales con el Cholesky forzado.
+    _residualizarColumna(col, columnasX) { return proyectorResiduos(columnasX, col.length)(col); }
 
     // Genera el vector de valores normales correlacionados (uno por variable
     // correlacionable) para un participante: y = L·z con z ~ N(0,1) i.i.d.
@@ -400,50 +258,24 @@ class GeneradorDatos {
         return C;
     }
 
-    // GLM por mínimos cuadrados reponderados (logit o log), con intercepto.
-    // X: columnas de predictores (arreglos). Devuelve { beta, ee } o null.
+    // GLM (logit o log) con intercepto, para el informe de verificación (el OR o la IRR obtenidos en la base): del núcleo único
+    // (core/stats/mlg.js: IRLS sobre la QR ponderada, el de la regresión del Analizador). X: columnas de predictores. Devuelve
+    // { beta, ee, avisos } o { error } (separación, colinealidad). (2026.12.22) Antes, un IRLS propio por las ecuaciones normales con
+    // un pivote absoluto, que ante una separación devolvía la última iteración (un OR enorme con un EE enorme, que el informe
+    // podía dar por bueno). No interviene en la generación: las bases de una semilla no cambian.
     _glm(y, X, familia) {
-        const n = y.length, p = X.length + 1;
-        let beta = new Array(p).fill(0);
-        if (familia === 'logit') { const m = y.reduce((s, v) => s + v, 0) / n; beta[0] = Math.log(Math.max(1e-6, m) / Math.max(1e-6, 1 - m)); }
-        else { const m = y.reduce((s, v) => s + v, 0) / n; beta[0] = Math.log(Math.max(1e-6, m)); }
-        const fila = i => { const x = new Array(p); x[0] = 1; for (let j = 1; j < p; j++) x[j] = X[j - 1][i]; return x; };
-        let info = null;
-        for (let it = 0; it < 30; it++) {
-            const A = Array.from({ length: p }, () => new Array(p + 1).fill(0));
-            for (let i = 0; i < n; i++) {
-                const x = fila(i); let eta = 0; for (let j = 0; j < p; j++) eta += beta[j] * x[j];
-                let mu, w;
-                if (familia === 'logit') { mu = 1 / (1 + Math.exp(-eta)); w = mu * (1 - mu); }
-                else { mu = Math.exp(Math.min(30, eta)); w = mu; }
-                if (!(w > 1e-9)) continue;
-                const z = eta + (y[i] - mu) / w;
-                for (let a = 0; a < p; a++) { for (let b = 0; b < p; b++) A[a][b] += w * x[a] * x[b]; A[a][p] += w * x[a] * z; }
-            }
-            info = A.map(f => f.slice(0, p));
-            for (let c = 0; c < p; c++) {
-                let piv = c; for (let r = c + 1; r < p; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
-                if (Math.abs(A[piv][c]) < 1e-12) return null;
-                if (piv !== c) { const tmp = A[piv]; A[piv] = A[c]; A[c] = tmp; }
-                for (let r = 0; r < p; r++) { if (r === c) continue; const f = A[r][c] / A[c][c]; for (let k = c; k <= p; k++) A[r][k] -= f * A[c][k]; }
-            }
-            const nuevo = A.map((f, j) => f[p] / f[j]);
-            const cambio = Math.max(...nuevo.map((b, j) => Math.abs(b - beta[j])));
-            beta = nuevo;
-            if (cambio < 1e-7) break;
-        }
-        // errores estándar: diagonal de la inversa de la información
-        let ee = new Array(p).fill(NaN);
-        try {
-            const L = this.descomposicionCholesky(info.map(f => f.slice()));
-            const Linv = this._inversaTriangularInferior(L);
-            ee = Array.from({ length: p }, (_, j) => { let s = 0; for (let r = 0; r < p; r++) s += Linv[r][j] * Linv[r][j]; return Math.sqrt(s); });
-        } catch (e) { /* singular: sin EE */ }
-        return { beta, ee };
+        const M = ajustarMlg(y, X, { familia: familia === 'logit' ? 'logistica' : 'poisson' });
+        return 'error' in M ? { error: M.error } : { beta: Array.from(M.beta), ee: Array.from(M.ee), avisos: M.avisos };
     }
 
     // Un factor por ejes principales iterados sobre una matriz de correlaciones
     // (misma rutina que usa el ω): devuelve las cargas estandarizadas o null.
+    // (2026.12.25) Queda fuera del núcleo a propósito: con pasos fijos (30
+    // iteraciones de 60 pasos de potencias, desde el mayor |r| de cada fila) no
+    // llega a la solución con 3 o 4 ítems, pero el motor del núcleo, que itera hasta
+    // la convergencia, cae a menudo en un caso Heywood con tan pocos ítems y desvía
+    // la calibración de μ (que lo usa en la generación: cambiaría las bases de una
+    // semilla sin mejorarlas en conjunto). Lo usan esa calibración y el informe.
     _pafUnFactor(R) {
         const k = R.length;
         if (k < 2) return null;
@@ -474,10 +306,9 @@ class GeneradorDatos {
         const k = R.length;
         try {
             const L = this.descomposicionCholesky(R.map(f => f.slice()));
-            const Linv = this._inversaTriangularInferior(L);
-            const inv = Array.from({ length: k }, (_, i) => Array.from({ length: k }, (_, j) => { let s = 0; for (let r = 0; r < k; r++) s += Linv[r][i] * Linv[r][j]; return s; }));
-            let sumR2 = 0, sumP2 = 0, logDet = 0;
-            for (let i = 0; i < k; i++) { logDet += 2 * Math.log(L[i][i]); for (let j = 0; j < k; j++) { if (i === j) continue; sumR2 += R[i][j] * R[i][j]; const pij = -inv[i][j] / Math.sqrt(inv[i][i] * inv[j][j]); sumP2 += pij * pij; } }
+            const inv = productoTriangularTraspuesto(this._inversaTriangularInferior(L)), logDet = logDeterminanteDeFactor(L);
+            let sumR2 = 0, sumP2 = 0;
+            for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) { if (i === j) continue; sumR2 += R[i][j] * R[i][j]; const pij = -inv[i][j] / Math.sqrt(inv[i][i] * inv[j][j]); sumP2 += pij * pij; }
             const kmo = sumR2 / (sumR2 + sumP2);
             const chi2 = -(n - 1 - (2 * k + 5) / 6) * logDet;
             const gl = k * (k - 1) / 2;
@@ -485,16 +316,22 @@ class GeneradorDatos {
         } catch (e) { return null; }
     }
 
-    // V de Cramér entre dos columnas de códigos (casos completos)
+    // V de Cramér entre dos columnas de códigos (casos completos; 0 sin casos o con menos de 2 categorías en alguna): la de
+    // la χ² de independencia del núcleo único (core/stats/contingencia.js). (2026.12.24) Antes, una copia propia de la χ²;
+    // las categorías siguen el orden en que aparecen, como en ella (la χ² se suma en el mismo orden), y la V difiere a lo
+    // sumo en el último bit, porque la división se agrupa de otro modo (el informe la muestra con tres decimales).
     _cramerV(a, b) {
-        const tabla = new Map(); const filas = new Set(), cols = new Set(); let n = 0;
-        for (let i = 0; i < a.length; i++) { if (!(a[i] === a[i]) || !(b[i] === b[i])) continue; const k = `${a[i]}|${b[i]}`; tabla.set(k, (tabla.get(k) || 0) + 1); filas.add(a[i]); cols.add(b[i]); n++; }
-        if (n === 0 || filas.size < 2 || cols.size < 2) return 0;
-        const mf = new Map(), mc = new Map();
-        tabla.forEach((v, k) => { const [f, c] = k.split('|'); mf.set(f, (mf.get(f) || 0) + v); mc.set(c, (mc.get(c) || 0) + v); });
-        let chi2 = 0;
-        mf.forEach((nf, f) => mc.forEach((nc, c) => { const e = nf * nc / n; const o = tabla.get(`${f}|${c}`) || 0; chi2 += (o - e) * (o - e) / e; }));
-        return Math.sqrt(chi2 / n / Math.min(filas.size - 1, cols.size - 1));
+        const filas = new Map(), cols = new Map(), pares = [];
+        for (let i = 0; i < a.length; i++) {
+            if (!(a[i] === a[i]) || !(b[i] === b[i])) continue;
+            if (!filas.has(a[i])) filas.set(a[i], filas.size);
+            if (!cols.has(b[i])) cols.set(b[i], cols.size);
+            pares.push([filas.get(a[i]), cols.get(b[i])]);
+        }
+        if (pares.length === 0 || filas.size < 2 || cols.size < 2) return 0;
+        const tabla = Array.from({ length: filas.size }, () => new Array(cols.size).fill(0));
+        for (const [f, c] of pares) tabla[f][c]++;
+        return pruebaIndependencia(tabla).cramerV;
     }
 
     // (C4) CCI(1) por ANOVA de un factor: (MSB − MSW) / (MSB + (n₀ − 1)·MSW)
@@ -505,7 +342,7 @@ class GeneradorDatos {
         let N = 0, sumaTotal = 0; grupos.forEach(g => { N += g.length; g.forEach(v => { sumaTotal += v; }); });
         const mediaG = sumaTotal / N;
         let ssb = 0, ssw = 0, sumN2 = 0;
-        grupos.forEach(g => { const m = g.reduce((s, v) => s + v, 0) / g.length; ssb += g.length * (m - mediaG) ** 2; g.forEach(v => { ssw += (v - m) ** 2; }); sumN2 += g.length * g.length; });
+        grupos.forEach(g => { const m = mediaNucleo(g); ssb += g.length * (m - mediaG) ** 2; g.forEach(v => { ssw += (v - m) ** 2; }); sumN2 += g.length * g.length; });
         const msb = ssb / (K - 1), msw = ssw / Math.max(1, N - K);
         const n0 = (N - sumN2 / N) / (K - 1);
         return (msb - msw) / (msb + (n0 - 1) * msw);
@@ -519,7 +356,7 @@ class GeneradorDatos {
         for (let i = 0; i < n; i++) { const v = valores[i]; if (!(v === v)) continue; const g = codigos[i]; if (!porGrupo.has(g)) porGrupo.set(g, []); porGrupo.get(g).push(v); }
         if (porGrupo.size < 2) return null;
         let ssIntra = 0, gl = 0;
-        porGrupo.forEach(vals => { const mg = vals.reduce((a, b) => a + b, 0) / vals.length; vals.forEach(v => { ssIntra += (v - mg) ** 2; }); gl += vals.length - 1; });
+        porGrupo.forEach(vals => { const mg = mediaNucleo(vals); vals.forEach(v => { ssIntra += (v - mg) ** 2; }); gl += vals.length - 1; });
         const deIntra = Math.sqrt(ssIntra / Math.max(1, gl));
         let mc = 0, mv = 0, k = 0;
         for (let i = 0; i < n; i++) { if (valores[i] === valores[i]) { mc += codigos[i]; mv += valores[i]; k++; } }
@@ -536,7 +373,7 @@ class GeneradorDatos {
         for (let i = 0; i < valores.length; i++) { const v = valores[i]; if (!(v === v)) continue; const a = codA[i] === 1 ? 1 : 0, b = codB[i] === 1 ? 1 : 0; celdas[a][b].push(v); }
         if (celdas.some(f => f.some(c => c.length < 2))) return null;
         let ss = 0, gl = 0;
-        const media = c => c.reduce((s, v) => s + v, 0) / c.length;
+        const media = mediaNucleo;   // (2026.12.12) del núcleo único
         celdas.forEach(f => f.forEach(c => { const m = media(c); c.forEach(v => { ss += (v - m) ** 2; }); gl += c.length - 1; }));
         const de = Math.sqrt(ss / Math.max(1, gl));
         if (!(de > 0)) return null;
@@ -577,7 +414,7 @@ class GeneradorDatos {
 }
 
 // Composición explícita: cada módulo aporta sus métodos al prototipo.
-Object.assign(GeneradorDatos.prototype, metodosConfiguracion, metodosValidacion, metodosCorrelaciones, metodosGrupos, metodosItems, metodosFlujo, metodosImperfecciones, metodosInforme, metodosAtipicos);
+Object.assign(GeneradorDatos.prototype, metodosConfiguracion, metodosValidacion, metodosCorrelaciones, metodosGrupos, metodosItems, metodosFlujo, metodosImperfecciones, metodosInforme, metodosAtipicos, metodosExportacionSpss, metodosExportacionXlsx);
 
 export { GeneradorDatos };
 export const Generador = GeneradorDatos;

@@ -1,7 +1,7 @@
 // simulador/ui/concordancia.js — tarjeta IX (informantes y jueces).
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
-import { escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 
 // ---- (C7) Tarjeta IX: concordancia ----
 // Variables según el tipo: informante y jueces con puntuación → escalas (sin generales);
@@ -67,7 +67,7 @@ function actualizarFilaConcordancia(fila) {
 
 function csvDeConcordancia() {
     let csv = 'Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo\n';
-    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyConcordancia .fila-concordancia').forEach(f => {
         const v = et => { const el = f.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
         csv += `${v('Tipo de concordancia')},${esc(v('Variable de concordancia'))},${esc(v('Etiqueta o número de jueces'))},${v('Concordancia')},${v('Sesgo del informante')}\n`;
@@ -80,7 +80,9 @@ function aplicarCSVConcordancia(csv) {
     const tbody = document.getElementById('bodyConcordancia'); if (tbody) tbody.innerHTML = '';
     let aplicadas = 0;
     for (const linea of lineas.slice(1)) {
-        const [tipo, variable, etiqueta, concordancia, sesgo] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const [tipo, variable, etiqueta, concordancia, sesgo] = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!variable) continue;
         const fila = agregarFilaConcordancia({ tipo, variable, etiqueta, concordancia, sesgo });
         if (fila && fila.querySelector('[aria-label="Variable de concordancia"]').value === '') { fila.remove(); continue; }

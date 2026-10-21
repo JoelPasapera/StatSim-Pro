@@ -8,7 +8,8 @@
 //   la distribución de las tablas de Aiken (1985), calculada por convolución exacta.
 //   Decisión por el LÍMITE INFERIOR del intervalo frente al criterio V₀ (Merino-Soto y Livia, 2009):
 //     válido si L ≥ V₀ · revisar si V ≥ V₀ pero L < V₀ · no válido si V < V₀.
-import { zBilateral } from './numerico.js';
+import { zBilateral } from '../../core/stats/numerico.js';
+import { media } from '../../core/stats/descriptivos.js';
 
 const EPS = 1e-12;
 export const CRITERIOS_V0 = [
@@ -120,7 +121,7 @@ export function analizarValidezContenido(entrada) {
         const incompletos = items.filter(x => x.n < nJueces);
         if (incompletos.length) avisos.push(`«${nombre}»: ${incompletos.length} ítem(s) con valoraciones faltantes; su V se calcula con los jueces que sí los valoraron.`);
         return { nombre, nJueces, jueces: c.jueces || [], items,
-            resumen: { vMedia: vs.reduce((s, v) => s + v, 0) / vs.length, vMin: Math.min(...vs), vMax: Math.max(...vs),
+            resumen: { vMedia: media(vs), vMin: Math.min(...vs), vMax: Math.max(...vs),
                 validos: cuenta('valido'), revisar: cuenta('revisar'), noValidos: cuenta('no_valido') } };
     });
     const nJuecesMin = Math.min(...resCriterios.map(c => c.nJueces));

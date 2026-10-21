@@ -28,7 +28,9 @@ test('AFC por ML igual al oráculo: estimaciones, errores estándar, χ², CFI, 
     cerca(R.rmseaIC[0], or.rmseaIC[0], 1e-4, 'RMSEA IC inf'); cerca(R.rmseaIC[1], or.rmseaIC[1], 1e-4, 'RMSEA IC sup'); cerca(R.SRMR, or.SRMR, 1e-8, 'SRMR');
     assert.equal(R.parametros.length, Object.keys(or.parametros).length);
     for (const p of R.parametros) {
-        const [v, se] = or.parametros[p.nombre];
+        const [v, se, pOr] = or.parametros[p.nombre];
+        // (2026.12.10) también su valor p (z de Wald, bilateral), en escala logarítmica: ninguna prueba lo comprobaba
+        assert.ok(Math.abs(Math.log(p.pValor) - Math.log(pOr)) < 0.01, `p ${p.nombre}: ${p.pValor} frente a ${pOr} (oráculo)`);
         cerca(p.estimado, v, 2e-6 * Math.max(1, Math.abs(v)), p.nombre); cerca(p.se, se, 1e-5 * Math.max(1, se), 'EE ' + p.nombre);
     }
 });
@@ -128,3 +130,17 @@ test('revisión 2026.10.18: WLSMV avisa de modelo no identificado antes de ajust
     AnalizadorEstadistico.cargarDatos(Array.from({ length: 200 }, (_, i) => ({ a: 1 + (i % 3), b: 1 + ((i * 7) % 3), c: 1 + ((i * 5) % 4), d: 1 + ((i * 3) % 4) })));
     assert.match(SEM.ajustar('F1 =~ a + b\nF2 =~ c + d\na ~~ c\nb ~~ d\na ~~ d\nb ~~ c', null, 'x', { estimador: 'WLSMV' }).error, /Modelo no identificado: 9 parámetros frente a 6/);
 });
+
+test('revisión de la 2026.12.09: con WLSMV, el valor p de la χ² es finito y es la cola de la χ² (ninguna prueba lo comprobaba: roto, siempre NaN, nada avisaba)', async () => {
+    const { pChiCuadrado } = await import('../../src/core/stats/numerico.js');
+    let s = 12345 >>> 0;
+    const u = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    const cat = z => (z < -1.2 ? 1 : z < -0.4 ? 2 : z < 0.4 ? 3 : z < 1.2 ? 4 : 5);
+    AnalizadorEstadistico.cargarDatos(Array.from({ length: 300 }, () => { const f = nrm(), it = () => cat(0.75 * f + 0.66 * nrm()); return { a: it(), b: it(), c: it(), d: it() }; }));
+    const R = SEM.ajustar('F1 =~ a + b + c + d', null, 'x', { estimador: 'WLSMV' });
+    assert.ok(!R.error, R.error);
+    assert.ok(R.gl > 0 && Number.isFinite(R.pChi2) && R.pChi2 > 0 && R.pChi2 <= 1, `p ${R.pChi2} con χ²(${R.gl}) = ${R.chi2}`);
+    cerca(R.pChi2, pChiCuadrado(R.chi2, R.gl), 1e-12, 'p de la χ² (WLSMV)');
+});
+

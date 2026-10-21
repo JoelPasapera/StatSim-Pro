@@ -1,3 +1,4 @@
+import { cdfNormal } from '../core/stats/numerico.js';
 // buscador/meta-analisis.js — meta-análisis de los estudios seleccionados.
 // Origen: meta-analisis.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
 
@@ -36,7 +37,7 @@ const MetaAnalisis = {
             <button id="metaCalcular" class="btn btn-primary" style="padding:0.4rem 1rem;">🧮 Calcular y dibujar</button>
             <button id="metaPNG" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">⬇ Descargar PNG</button>
           </div>
-          <div id="metaEstado" class="help-text" style="margin-top:0.5rem;"></div>
+          <div id="metaEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.5rem;"></div>
           <div id="metaResultado" style="display:none; margin-top:0.8rem; padding:0.9rem 1rem; border:1px solid var(--color-border,#ddd); border-radius:0.5rem; background:#fafafa; font-size:0.93rem; line-height:1.55;"></div>
           <div id="metaLienzo" style="display:none; margin-top:0.8rem; overflow:auto; border:1px solid var(--color-border,#ddd); border-radius:0.5rem; background:#fff; padding:0.8rem;"></div>`;
         secc.parentElement.appendChild(panel);
@@ -114,13 +115,9 @@ const MetaAnalisis = {
             p, Q, df, tau2, I2, detalle
         };
     },
-    // Φ(x): función de distribución normal estándar (aprox. Abramowitz-Stegun).
-    _phi(x) {
-        const t = 1 / (1 + 0.2316419 * x);
-        const d = 0.3989422804014327 * Math.exp(-x * x / 2);
-        const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-        return 1 - p;
-    },
+    // Φ(x): función de distribución normal estándar, del núcleo único (core/stats/numerico.js); antes, una aproximación de
+    // Abramowitz-Stegun que daba valores absurdos con x negativo (sin efecto visible: solo se le pasaba |z|).
+    _phi(x) { return cdfNormal(x); },
     _fmt(x, dec = 3) { return Number(x).toFixed(dec).replace('.', ','); },
     _onCalcular() {
         const estado = document.getElementById('metaEstado');

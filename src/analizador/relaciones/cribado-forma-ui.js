@@ -2,9 +2,10 @@
 // la criba, los avisos del resultado principal y de los objetivos específicos, y las letras y la nota de la matriz del
 // Word. El botón «Diagnosticar» solo lleva el par en atributos de datos: lo atiende la tarjeta 7 (diagnostico-forma-ui).
 import { claveParForma } from './cribado-forma.js';
+import { formatoP } from '../../shared/formato-numero.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
+const fp = p => formatoP(p);
 const resultadoDe = (formas, a, b) => (formas && formas.resultados ? formas.resultados.get(claveParForma(a, b)) || null : null);
 const boton = r => `<button type="button" class="btn btn-outline" style="padding:0.1rem 0.5rem;font-size:0.8em;" data-diagnosticar-x="${esc(r.a)}" data-diagnosticar-y="${esc(r.b)}" title="Abrir el diagnóstico completo de este par en la tarjeta 7">Diagnosticar</button>`;
 const NOMBRE_TIPO_FORMA = { recta: 'Recta', 'curva-monotona': '∿ Curva monótona', 'no-monotona': 'Cambia de sentido', 'no-evaluable': 'No evaluable' };

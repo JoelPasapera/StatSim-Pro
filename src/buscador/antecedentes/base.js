@@ -17,23 +17,8 @@
 // CORS lo impide a nivel de navegador; se ofrece como pestaña externa.
 // ========================================
 
-// ---- ExcelJS bajo demanda: se descarga UNA vez, al primer uso (exportar o
-// importar .xlsx), en vez de en el arranque de la página (~926 KB ahorrados).
-let _excelJSPromesa = null;
-function asegurarExcelJS() {
-    if (typeof ExcelJS !== 'undefined') return Promise.resolve();
-    if (_excelJSPromesa) return _excelJSPromesa;
-    _excelJSPromesa = new Promise((listo, falla) => {
-        const s = document.createElement('script');
-        s.src = 'assets/vendor/exceljs.min.js';
-        s.onload = listo;
-        s.onerror = () => {
-            _excelJSPromesa = null;
-            falla(new Error('No se pudo descargar el módulo de Excel. Revisa tu conexión e inténtalo de nuevo.'));
-        };
-        document.head.appendChild(s);
-    });
-    return _excelJSPromesa;
-}
+// ---- ExcelJS bajo demanda: se descarga UNA vez, al primer uso (exportar o importar .xlsx), en vez de en el arranque de la
+// página (~926 KB ahorrados); (2026.12.30) el cargador es el de shared/vendor.js, el mismo del Ranking y del Redactor.
+import { asegurarExcelJS } from '../../shared/vendor.js';
 
-export { _excelJSPromesa, asegurarExcelJS };
+export { asegurarExcelJS };

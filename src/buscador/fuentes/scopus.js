@@ -2,6 +2,8 @@
 // Origen: scopus-directo.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
 
 import { ProxiesCORS } from '../../shared/proxies.js';
+import { CLAVES_ELSEVIER, RotacionClaves } from './claves-elsevier.js';
+import { PALABRAS_VACIAS, terminosClave } from './terminos.js';
 
 // ========================================
 // BÚSQUEDA EN SCOPUS (Elsevier) — módulo dedicado.
@@ -17,17 +19,9 @@ import { ProxiesCORS } from '../../shared/proxies.js';
 
 const ScopusDirecto = {
 
-    // API keys propias del proyecto (rotación ante cuota/caída).
-    API_KEYS: [
-        'd54be3207354b928a6e2ce355101c81f',
-        '147d71e438d2d472bea28abbe4aa9c4e',
-        '359dd3266f644bf44e1b6610d7c6664c',
-        '16ccbb33ab907de19c7064a0d479451f',
-        '1c4210c2199d31dc7d7560702729d51d',
-        '92d98589eeb9940076461f3a1857661a',
-        'ce978a4f4d8c9f38507a7720ddbb3998',
-        '81e47fc17a598deb0880e72af71709d5'
-    ],
+    // API keys propias del proyecto (rotación ante cuota/caída). (2026.12.27) La lista vive en fuentes/claves-elsevier.js,
+    // que comparten Scopus y ScienceDirect; el reparto de Scopus (_siguienteKey, _keyEstado) no cambia.
+    API_KEYS: CLAVES_ELSEVIER,
     _idxKey: 0,
     _keyEstado: {}, // key → {agotada:bool, ts}
 
@@ -44,18 +38,14 @@ const ScopusDirecto = {
 
     _marcarAgotada(k) { this._keyEstado[k] = { agotada: true, ts: Date.now() }; },
 
-    // Palabras vacías que estorban el match en Scopus (ES + EN).
-    _VACIAS: new Set(['entre','e','y','o','u','de','del','la','el','los','las','en','con','para','por',
-        'un','una','su','sus','al','a','the','of','and','or','in','on','for','to','with','between','a','an']),
+    // Palabras vacías que estorban el match en Scopus (ES + EN): las comunes de fuentes/terminos.js.
+    _VACIAS: PALABRAS_VACIAS,
 
     // Convierte la consulta en términos clave unidos por AND (mejor recall que
     // una frase larga literal, que en Scopus suele dar 0 resultados).
+    // (2026.12.26) La implementación es la compartida de fuentes/terminos.js.
     _terminosClave(query) {
-        const toks = String(query).toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // sin acentos
-            .replace(/[^a-z0-9ñ\s]/g, ' ').split(/\s+/)
-            .filter(t => t.length > 2 && !this._VACIAS.has(t));
-        return [...new Set(toks)];
+        return terminosClave(query, this._VACIAS);
     },
 
     // Construye la query Scopus (cadena TITLE-ABS-KEY + filtro de año).
@@ -121,18 +111,32 @@ const ScopusDirecto = {
     // del percentil de ranking por materia: ≥75→Q1, ≥50→Q2, ≥25→Q3, resto Q4.
     // Recupera el ABSTRACT de un artículo por su DOI usando la Abstract Retrieval
     // API de Elsevier (cubre lo que las APIs abiertas no traen: p. ej. artículos
-    // de Elsevier/ScienceDirect, como los DOI 10.1016/...). Rota las claves y
-    // marca agotadas ante 401/403/429. Devuelve el texto o '' si no hay.
+    // de Elsevier/ScienceDirect, como los DOI 10.1016/...). Devuelve el texto o '' si no hay.
+    // (2026.12.27) Tres correcciones, que ScienceDirect (todo DOI de Elsevier, sin resumen) hizo urgentes:
+    //   · Pide la vista META_ABS: la vista por omisión (META, según la WADL de la API) no trae el resumen (dc:description)
+    //     y FULL está restringida por suscripción (sc_abstract_retrieval_views); META_ABS lo trae y no lo está.
+    //   · El DOI va en la ruta con sus barras tal cual (cada tramo codificado), como en los ejemplos de Elsevier; antes la
+    //     barra viajaba como %2F (lo mismo rompía la consulta a OpenAlex, ver seleccion.js).
+    //   · Las claves, con su propio reparto y sus pausas (la cuota de esta API es aparte de la de Scopus Search): un
+    //     rechazo o un 429 aquí apartaban la clave también de las búsquedas de Scopus (_keyEstado). Con todas las claves
+    //     en pausa, no se pide nada; sin red o con el navegador bloqueando la llamada, otra clave no lo arregla.
+    _rotacionResumen: new RotacionClaves(CLAVES_ELSEVIER),
+
     async abstractPorDoi(doi) {
         const limpio = String(doi || '').replace(/^https?:\/\/doi\.org\//, '').trim();
         if (!limpio) return '';
+        const ruta = limpio.split('/').map(encodeURIComponent).join('/');
         const intentos = Math.min(this.API_KEYS.length, 4);
         for (let i = 0; i < intentos; i++) {
-            const key = this._siguienteKey();
+            const key = this._rotacionResumen.siguiente();
+            if (!key) return '';
             try {
-                const url = `https://api.elsevier.com/content/abstract/doi/${encodeURIComponent(limpio)}?apiKey=${key}&httpAccept=application/json`;
+                const url = `https://api.elsevier.com/content/abstract/doi/${ruta}?apiKey=${key}&httpAccept=application/json&view=META_ABS`;
+                const enviada = this._rotacionResumen.ahora();   // los 429 de las peticiones que ya iban en vuelo son una ráfaga
                 const r = await fetch(url);
-                if (r.status === 401 || r.status === 403 || r.status === 429) { this._marcarAgotada(key); continue; }
+                if (r.status === 401 || r.status === 403) { this._rotacionResumen.pausar(key, Infinity, 'auth'); continue; }
+                if (r.status === 429) { this._rotacionResumen.frenar(key, 30000, enviada); continue; }
+                if (r.ok || r.status === 404) this._rotacionResumen.exito(key);   // respondió: sus frenazos ya no cuentan
                 if (r.status === 404) return ''; // no indexado en Scopus
                 if (!r.ok) continue;
                 const d = await r.json();
@@ -149,7 +153,7 @@ const ScopusDirecto = {
                 }
                 const t = String(a || '').replace(/\s+/g, ' ').trim();
                 return t.length > 40 ? t : '';
-            } catch (e) { /* red/CORS: probar siguiente clave */ }
+            } catch (e) { return ''; /* sin red o bloqueada por el navegador: otra clave no lo arregla */ }
         }
         return '';
     },

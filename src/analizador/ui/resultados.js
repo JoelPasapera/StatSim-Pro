@@ -5,9 +5,11 @@ import { AnalizadorEstadistico } from '../estadistica.js';
 import { Fiabilidad } from '../fiabilidad.js';
 import { ScientificCharts } from '../graficas.js';
 import { InterpretacionesEstadisticas } from '../interpretaciones.js';
-import { bloqueApaComparacionHTML, conectarCopiaComparacion, fmtPApp, interpretarComparacion, interpretarCramerV, lineaApaComparacion } from './analisis.js';
+import { bloqueApaComparacionHTML, conectarCopiaComparacion, fmtPApp, interpretarComparacion, lineaApaComparacion } from './analisis.js';
+import { asociacionCramerV } from '../motor/magnitudes.js';   // (2026.12.24) las bandas de la V de Cramér, antes en analisis.js
 import { desplazarHacia } from '../../shared/tabla-datos.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { formatoMitades, formatoNumero, textoP } from '../../shared/formato-numero.js';
 
 function mostrarChiCuadrado(var1, var2, resultado) {
     const container = document.getElementById('resultadosChiCuadrado');
@@ -22,9 +24,9 @@ function mostrarChiCuadrado(var1, var2, resultado) {
     const avisoEsperadas = resultado.esperadasBajas > 0
         ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">⚠️ ${resultado.esperadasBajas} casilla(s) tienen una frecuencia esperada menor que 5; la prueba de chi-cuadrado puede no ser fiable (considera la prueba exacta de Fisher).</p>`
         : '';
-    const pTexto = resultado.pValor < 0.001 ? 'p < .001' : 'p = ' + resultado.pValor.toFixed(3).replace(/^0/, '');
+    const pTexto = textoP(resultado.pValor, { alfa: AnalizadorEstadistico.alfaEstudio() });
     const interpretacion = significativa
-        ? `Existe una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}). La V de Cramér (${resultado.cramerV.toFixed(3)}) indica una ${interpretarCramerV(resultado.cramerV)}. Las dos variables no son independientes.`
+        ? `Existe una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}). La V de Cramér (${resultado.cramerV.toFixed(3)}) indica una ${asociacionCramerV(resultado.cramerV)}. Las dos variables no son independientes.`
         : `No se halló una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}); las variables pueden considerarse independientes.`;
     container.innerHTML = `
         <div class="result-section">
@@ -42,8 +44,8 @@ function mostrarChiCuadrado(var1, var2, resultado) {
             <div class="result-box">
                 <table class="result-table">
                     <tr><td>Chi-cuadrado de Pearson:</td><td><strong>χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(3)}</strong></td></tr>
-                    <tr><td>p-valor:</td><td><strong>${fmtPApp(resultado.pValor)}</strong></td></tr>
-                    <tr><td>V de Cramér (tamaño del efecto):</td><td><strong>${resultado.cramerV.toFixed(3)}</strong> (${interpretarCramerV(resultado.cramerV)})</td></tr>
+                    <tr><td>p-valor:</td><td><strong>${fmtPApp(resultado.pValor, AnalizadorEstadistico.alfaEstudio())}</strong></td></tr>
+                    <tr><td>V de Cramér (tamaño del efecto):</td><td><strong>${resultado.cramerV.toFixed(3)}</strong> (${asociacionCramerV(resultado.cramerV)})</td></tr>
                     <tr><td>N:</td><td>${resultado.n}</td></tr>
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
@@ -258,10 +260,10 @@ function mostrarCorrelacion(var1, var2, resultado) {
                     </tr>
                     <tr>
                         <td>p-valor (${resultado.tipoPrueba}):</td>
-                        <td><strong>${fmtPApp(resultado.pValor)}</strong></td>
+                        <td><strong>${fmtPApp(resultado.pValor, AnalizadorEstadistico.alfaEstudio())}</strong></td>
                     </tr>
                     <tr>
-                        <td>IC 95% del coeficiente:</td>
+                        <td>IC ${Math.round(100 * ((resultado.intervaloConfianza && resultado.intervaloConfianza.nivel) || 0.95))}% del coeficiente${resultado.tipoPrueba === 'unilateral' ? ' (el de la prueba unilateral)' : ''}:</td>
                         <td>${resultado.intervaloConfianza ?
             `[${resultado.intervaloConfianza.inferior.toFixed(3)}, ${resultado.intervaloConfianza.superior.toFixed(3)}]` :
             'No disponible (N ≤ 3)'}</td>
@@ -312,11 +314,11 @@ function mostrarDecision(var1, var2, resultado) {
                     </tr>
                     <tr>
                         <td>p-valor:</td>
-                        <td><strong>${fmtPApp(resultado.pValor)}</strong></td>
+                        <td><strong>${fmtPApp(resultado.pValor, prueba.alpha)}</strong></td>
                     </tr>
                     <tr>
                         <td>Comparación:</td>
-                        <td>${fmtPApp(resultado.pValor)} ${prueba.decision === 'rechazar' ? '<' : '≥'} α = ${prueba.alpha}</td>
+                        <td>${textoP(resultado.pValor, { alfa: prueba.alpha })} ${prueba.decision === 'rechazar' ? '<' : '≥'} α = ${prueba.alpha}</td>
                     </tr>
                     <tr>
                         <td>Decisión sobre H₀:</td>
@@ -336,7 +338,7 @@ function mostrarDecision(var1, var2, resultado) {
                 </table>
                 <div style="margin-top: 1rem; padding: 1rem; background-color: #f9f9f9; border-radius: 6px;">
                     <p style="margin: 0; font-size: 0.9rem; line-height: 1.6;">
-                        ${prueba.conclusionH0}${resultado.poder != null && resultado.poder < 0.8 ? ' La potencia es inferior al 80% recomendado por Cohen; un resultado no significativo podría deberse a un tamaño muestral insuficiente (riesgo de error tipo II).' : ''}
+                        ${prueba.conclusionH0}${resultado.poder != null && resultado.poder < 0.8 && prueba.decision !== 'rechazar' ? ' La potencia es inferior al 80% recomendado por Cohen; un resultado no significativo podría deberse a un tamaño muestral insuficiente (riesgo de error tipo II).' : ''}
                     </p>
                 </div>
             </div>
@@ -452,9 +454,10 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
     const prueba = resultado.prueba;
     const ef = resultado.tamanoEfecto;
     const significativa = resultado.decision === 'rechazar';
+    // (2026.12.22) con grupos constantes y distintos, t y d son infinitos (∞, no 0) y la Levene puede serlo
     const estadisticoTexto = resultado.parametrica
-        ? `t(${prueba.gl.toFixed(2)}) = ${prueba.estadistico.toFixed(3)}`
-        : `U = ${prueba.U.toFixed(1)}, z = ${prueba.z.toFixed(3)}`;
+        ? `t(${formatoNumero(prueba.gl, 2)}) = ${formatoNumero(prueba.estadistico, 3)}`
+        : `U = ${formatoMitades(prueba.U)}, z = ${formatoNumero(prueba.z, 3)}`;
     const lineaApa = lineaApaComparacion(varCuantitativa, varAgrupacion, resultado);
     container.innerHTML = `
         <div class="result-section">
@@ -464,17 +467,17 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
                 <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Descriptivos por grupo</h5>
                 <table class="result-table">
                     <tr><th>Grupo</th><th>N</th><th>Media</th><th>DE</th><th>Normalidad (p)</th></tr>
-                    <tr><td>${resultado.etiqueta1}</td><td>${d1.n}</td><td>${d1.media.toFixed(2)}</td><td>${d1.desviacion.toFixed(2)}</td><td>${resultado.normalidad1.pValor.toFixed(3)} (${resultado.normalidad1.normal ? 'normal' : 'no normal'})</td></tr>
-                    <tr><td>${resultado.etiqueta2}</td><td>${d2.n}</td><td>${d2.media.toFixed(2)}</td><td>${d2.desviacion.toFixed(2)}</td><td>${resultado.normalidad2.pValor.toFixed(3)} (${resultado.normalidad2.normal ? 'normal' : 'no normal'})</td></tr>
+                    <tr><td>${resultado.etiqueta1}</td><td>${d1.n}</td><td>${d1.media.toFixed(2)}</td><td>${d1.desviacion.toFixed(2)}</td><td>${fmtPApp(resultado.normalidad1.pValor)} (${resultado.normalidad1.normal ? 'normal' : 'no normal'})</td></tr>
+                    <tr><td>${resultado.etiqueta2}</td><td>${d2.n}</td><td>${d2.media.toFixed(2)}</td><td>${d2.desviacion.toFixed(2)}</td><td>${fmtPApp(resultado.normalidad2.pValor)} (${resultado.normalidad2.normal ? 'normal' : 'no normal'})</td></tr>
                 </table>
             </div>
             <div class="result-box">
                 <table class="result-table">
-                    <tr><td>Levene (igualdad de varianzas):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${resultado.levene.estadistico.toFixed(3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)} (${resultado.levene.varianzasIguales ? 'varianzas iguales' : 'varianzas desiguales'})</td></tr>
+                    <tr><td>Levene (centrada en la media):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${formatoNumero(resultado.levene.estadistico, 3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)} (${resultado.levene.varianzasIguales ? 'varianzas iguales' : 'varianzas desiguales'})</td></tr>
                     <tr><td>Prueba aplicada:</td><td><strong>${prueba.prueba}</strong></td></tr>
                     <tr><td>Estadístico:</td><td>${estadisticoTexto}</td></tr>
-                    <tr><td>p-valor (bilateral):</td><td><strong>${fmtPApp(prueba.pValor)}</strong></td></tr>
-                    <tr><td>Tamaño del efecto (d de Cohen):</td><td><strong>${ef.d.toFixed(3)}</strong> (${ef.interpretacion})</td></tr>
+                    <tr><td>p-valor (bilateral):</td><td><strong>${fmtPApp(prueba.pValor, AnalizadorEstadistico.alfaEstudio())}</strong></td></tr>
+                    <tr><td>Tamaño del efecto (d de Cohen):</td><td><strong>${formatoNumero(ef.d, 3)}</strong> (${ef.interpretacion})</td></tr>
                     ${resultado.tamanoEfectoRangos ? `<tr><td>Tamaño del efecto (r de rangos):</td><td><strong>${resultado.tamanoEfectoRangos.r.toFixed(3)}</strong> (${resultado.tamanoEfectoRangos.interpretacion}) — apropiado para la prueba no paramétrica</td></tr>` : ''}
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
@@ -522,37 +525,45 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
     const significativa = resultado.decision === 'rechazar';
     const k = resultado.etiquetas.length;
     const filasDesc = resultado.descriptivas.map((d, i) =>
-        `<tr><td>${resultado.etiquetas[i]}</td><td>${d.n}</td><td>${d.media.toFixed(2)}</td><td>${d.desviacion.toFixed(2)}</td><td>${resultado.normalidades[i].pValor.toFixed(3)} (${resultado.normalidades[i].normal ? 'normal' : 'no normal'})</td></tr>`
+        `<tr><td>${resultado.etiquetas[i]}</td><td>${d.n}</td><td>${d.media.toFixed(2)}</td><td>${d.desviacion.toFixed(2)}</td><td>${fmtPApp(resultado.normalidades[i].pValor)} (${resultado.normalidades[i].normal ? 'normal' : 'no normal'})</td></tr>`
     ).join('');
+    // gl: enteros tal cual; los fraccionarios del ANOVA de Welch, con dos decimales.
+    const fgl = g => Number.isInteger(g) ? String(g) : formatoNumero(g, 2);
     const lineaPrueba = resultado.parametrica
-        ? `F(${prueba.glEntre}, ${prueba.glDentro}) = ${prueba.F.toFixed(3)}`
+        ? `F(${fgl(prueba.glEntre)}, ${fgl(prueba.glDentro)}) = ${formatoNumero(prueba.F, 3)}`
         : `H(${prueba.gl}) = ${prueba.H.toFixed(3)}`;
     const efecto = resultado.parametrica
         ? `η² = ${prueba.etaCuadrado.toFixed(3)} (${(prueba.etaCuadrado * 100).toFixed(1)}% de varianza explicada)`
         : `ε² = ${prueba.epsilonCuadrado.toFixed(3)}`;
     let postHocHtml = '';
     if (resultado.postHoc) {
-        const filas = resultado.postHoc.comparaciones.map(c =>
-            `<tr><td>${c.grupo1}</td><td>${c.grupo2}</td><td>${c.pAjustada.toFixed(4)}</td><td>${c.significativa ? 'Sí' : 'No'}</td></tr>`
+        // (2026.12.20) con el estadístico y el p sin ajustar de cada par: hasta la 2026.12.19 solo el p ajustado (Bonferroni)
+        const ph = resultado.postHoc, conGl = ph.comparaciones.some(c => Number.isFinite(c.gl));
+        const filas = ph.comparaciones.map(c =>
+            `<tr><td>${c.grupo1}</td><td>${c.grupo2}</td><td>${formatoNumero(c.estadistico, 3)}</td>${conGl ? `<td>${Number.isFinite(c.gl) ? fgl(c.gl) : '—'}</td>` : ''}<td>${fmtPApp(c.pValor)}</td><td>${fmtPApp(c.pAjustada)}</td><td>${c.significativa ? 'Sí' : 'No'}</td></tr>`
         ).join('');
+        const nota = ph.clave === 'mce' ? 't de Student con la media cuadrática del error (MCE) del ANOVA, el mismo término de error de la prueba global'
+            : ph.clave === 'welch' ? 't de Welch de cada par, que, como el ANOVA de Welch, no supone varianzas iguales'
+            : 'z de Dunn, con los rangos de la ordenación conjunta de todos los grupos, la misma de Kruskal-Wallis';
         postHocHtml = `
             <div class="result-box">
-                <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Comparaciones por pares (post-hoc, ${resultado.postHoc.metodo})</h5>
+                <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Comparaciones por pares (post-hoc: ${ph.prueba}; corrección de ${ph.metodo})</h5>
+                <p class="help-text" style="margin: 0 0 0.4rem;">Cada par se contrasta con la ${nota}; los p se ajustan por ${ph.metodo} para controlar la probabilidad de algún falso positivo entre todas las comparaciones.</p>
                 <table class="result-table">
-                    <tr><th>Grupo A</th><th>Grupo B</th><th>p ajustada</th><th>Significativa</th></tr>
+                    <tr><th>Grupo A</th><th>Grupo B</th><th>${ph.clave === 'dunn' ? 'z' : 't'}</th>${conGl ? '<th>gl</th>' : ''}<th>p</th><th>p ajustada (${ph.metodo})</th><th>Significativa</th></tr>
                     ${filas}
                 </table>
             </div>`;
     }
-    const pTexto = prueba.pValor < 0.001 ? 'p < .001' : 'p = ' + prueba.pValor.toFixed(3).replace(/^0/, '');
+    const pTexto = textoP(prueba.pValor, { alfa: AnalizadorEstadistico.alfaEstudio() });
     const interpretacion = significativa
-        ? `Existen diferencias estadísticamente significativas en ${varCuantitativa} entre al menos dos de los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). Las comparaciones por pares (Bonferroni) indican entre qué grupos se encuentran las diferencias.`
+        ? `Existen diferencias estadísticamente significativas en ${varCuantitativa} entre al menos dos de los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). Las comparaciones por pares (${resultado.postHoc ? `${resultado.postHoc.prueba}, corrección de ${resultado.postHoc.metodo}` : 'corrección de Holm'}) indican entre qué grupos se encuentran las diferencias.`
         : `No se hallaron diferencias estadísticamente significativas en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}).`;
     const lineaApa = lineaApaComparacion(varCuantitativa, varAgrupacion, resultado);
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Comparación de Grupos (${k} grupos)</h3>
-            <p class="result-subtitle">Comparación de <strong>${varCuantitativa}</strong> entre los ${k} grupos de <strong>${varAgrupacion}</strong>. Se usa ANOVA de una vía si todos los grupos son normales, o Kruskal-Wallis si alguno no lo es. Si el resultado global es significativo, se muestran comparaciones por pares con corrección de Bonferroni.</p>
+            <p class="result-subtitle">Comparación de <strong>${varCuantitativa}</strong> entre los ${k} grupos de <strong>${varAgrupacion}</strong>. Se usa ANOVA de un factor si todos los grupos son normales con varianzas homogéneas (Levene), ANOVA de Welch si son normales con varianzas desiguales, o Kruskal-Wallis si alguno no es normal. Si el resultado global es significativo, se muestran comparaciones por pares con corrección de Holm.</p>
             <div class="result-box">
                 <h5 style="margin-bottom: 0.5rem; font-weight: 600;">Descriptivos por grupo</h5>
                 <table class="result-table">
@@ -562,10 +573,10 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
             </div>
             <div class="result-box">
                 <table class="result-table">
-                    <tr><td>Levene (igualdad de varianzas):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${resultado.levene.estadistico.toFixed(3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)}</td></tr>
+                    <tr><td>Levene (centrada en la media):</td><td>F(${resultado.levene.df1}, ${resultado.levene.df2}) = ${formatoNumero(resultado.levene.estadistico, 3)}, ${fmtPApp(resultado.levene.pValor) === '< .001' ? 'p < .001' : 'p = ' + fmtPApp(resultado.levene.pValor)}</td></tr>
                     <tr><td>Prueba aplicada:</td><td><strong>${prueba.prueba}</strong></td></tr>
                     <tr><td>Estadístico:</td><td>${lineaPrueba}</td></tr>
-                    <tr><td>p-valor:</td><td><strong>${fmtPApp(prueba.pValor)}</strong></td></tr>
+                    <tr><td>p-valor:</td><td><strong>${fmtPApp(prueba.pValor, AnalizadorEstadistico.alfaEstudio())}</strong></td></tr>
                     <tr><td>Tamaño del efecto:</td><td><strong>${efecto}</strong></td></tr>
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
@@ -624,7 +635,7 @@ function mostrarDispersion(var1, var2, resultado) {
         ];
         const ic = resultado.intervaloConfianza;
         if (ic && Number.isFinite(ic.inferior)) {
-            anot.push(`IC 95% [${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]`);
+            anot.push(`IC ${Math.round(100 * (ic.nivel || 0.95))}% [${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]`);   // (revisión 2026.12.30) con su nivel
         }
         chart.createScatterPlotPro(pares.x, pares.y, {
             title: `${var1} vs ${var2}`,

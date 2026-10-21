@@ -1,6 +1,10 @@
 // simulador/dominio/constantes.js — constantes del generador (presets de estilos, desajuste y heterogeneidad).
 
 export const TAMANO_MUESTRAL_MAXIMO = 100000;
+/** (2026.12.30) Los porcentajes de imperfecciones que cambian la base después de generarla (realismo): una sola lista. La
+ * respuesta extrema se escribía «pctExtremos» (la clave es «pctExtrema») en tres sitios: con solo ella, el informe no
+ * verificaba la base limpia y la DE salía ✗, y faltaban los avisos de los atípicos y de la selección. */
+export const IMPERFECCIONES = Object.freeze(['pctPerdidos', 'pctDescuidados', 'pctAquiescencia', 'pctExtrema', 'pctDigitacion']);
 
 export const SIGMA_FORMA_ASIMETRICA = 0.6;
 

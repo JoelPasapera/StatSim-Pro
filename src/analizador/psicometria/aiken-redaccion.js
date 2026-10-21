@@ -2,10 +2,11 @@
 // apartado de validez del instrumento, las referencias que ese párrafo cita, las tablas para Word (mismo estilo que el
 // exportador del capítulo de resultados) y el CSV de resultados.
 import { CRITERIOS_V0 } from './aiken.js';
+import { formatoP } from '../../shared/formato-numero.js';
 
 // APA: los estadísticos acotados entre 0 y 1 van sin cero inicial (.85); p con tres decimales o «< .001»
 export const f2 = x => (Number.isFinite(x) ? x.toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
-export const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
+export const fp = p => formatoP(p);
 const pct = c => `${String(Math.round(c * 1000) / 10).replace('.', ',')} %`;
 export const ROTULO_DECISION = { valido: 'Válido', revisar: 'Revisar', no_valido: 'No válido' };
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

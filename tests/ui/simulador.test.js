@@ -81,6 +81,34 @@ test('tarjetas I–IX: se añaden filas y la configuración se recolecta y valid
     assert.deepEqual(v.errores, []);
 });
 
+test('(2026.12.25) tarjeta VII: con «el α de la tabla I», el panel muestra la fiabilidad de las cargas que usará el generador (la misma función)', () => {
+    estructura.poblarSelectorEstructura();
+    q('#selectorTestEstructura').value = 'EQ-i';
+    estructura.renderMatrizCargas('EQ-i');
+    estructura.proponerCargas();
+    const est = estructura.estructurasUI['EQ-i'], g = globalThis.generadorDatos;
+    // cargas propias de 0,4 (su α implícito queda lejos del de la tabla I): en este modo se reescalan hasta alcanzarlo
+    ['Intrapersonal', 'Interpersonal', 'Adaptabilidad'].forEach((dim, di) => { est.cargas[dim] = est.cargas[dim].map(f => f.map((c, j) => (j === di ? 0.4 : c))); });
+    q('#modoEstructura').value = 'alfa';
+    estructura.leerOpcionesEstructura();
+    // el panel llama a la función del generador (no a una copia): se espía cada llamada con sus argumentos y su resultado
+    /** @type {any[]} */ const llamadas = [], original = g._cargasConFiabilidad;
+    g._cargasConFiabilidad = function (...a) { const r = original.apply(this, a); llamadas.push({ a, r }); return r; };
+    try { estructura.actualizarPanelEstructura(); } finally { g._cargasConFiabilidad = original; }
+    assert.deepEqual(llamadas.map(l => [l.a[1], l.a[2]]), [[0.8, 'alfa'], [0.85, 'alfa'], [0.78, 'alfa']], 'una llamada por dimensión, con el α de la tabla I');
+    const texto = q('#panelEstructura').textContent;
+    [['Intrapersonal', 0.8], ['Interpersonal', 0.85], ['Adaptabilidad', 0.78]].forEach(([dim, alfa], di) => {
+        assert.match(texto, new RegExp(`${dim}: carga media [0-9.]+ \\(reescalada al α de la tabla I\\); α implícito ${alfa.toFixed(2).replace('.', '\\.')}`), dim);
+        const propias = est.cargas[dim].map(f => Math.max(0.05, Math.min(0.95, +f[di] || 0))), l = g._cargasConFiabilidad(propias, alfa, 'alfa');
+        assert.deepEqual(llamadas[di].a[0], propias, `${dim}: las cargas crudas de la matriz`);
+        assert.deepEqual(llamadas[di].r, l, `${dim}: el panel usa exactamente las cargas de la función`);
+        assert.ok(Math.abs(g._fiabilidadImplicita(l).alfa - alfa) < 1e-10, `${dim}: α implícito de las cargas del generador`);
+        assert.match(texto, new RegExp(`${dim}: carga media ${(l.reduce((s, x) => s + x, 0) / l.length).toFixed(2).replace('.', '\\.')} `), `${dim}: la carga media del panel es la de esas cargas`);
+    });
+    estructura.quitarEstructura();
+    assert.equal(estructura.estructurasUI['EQ-i'], undefined, 'se deja la configuración como estaba');
+});
+
 test('generar desde la interfaz (respaldo en el hilo principal): vista previa, informe y descargas', async () => {
     q('#tamanoMuestra').value = '200';
     motor.generarBaseDatos();
@@ -98,8 +126,8 @@ test('maestro: exportar, vaciar, importar y recuperar las nueve tablas', async (
     const blob = env.descargas[env.descargas.length - 1]; const texto = await blob.text();
     for (const marca of ['###GENERAL###', '###TESTS###', '###PRUEBAS###', '###SOCIODEMOGRAFICOS###', '###CORRELACIONES###', '###DIFERENCIAS###', '###MODELOS###', '###REPETIDAS###', '###ESTRUCTURA###', '###CORTES###', '###DESENLACES###', '###CONCORDANCIA###']) assert.ok(texto.includes(marca), 'falta ' + marca);
     for (const id of ['bodyTests', 'bodyPruebas', 'bodySocio', 'bodyCorrelaciones', 'bodyDiferencias', 'bodyModelos', 'bodyRepetidas', 'bodyCortes', 'bodyDesenlaces', 'bodyConcordancia']) q('#' + id).innerHTML = '';
-    globalThis.FileReader = class { readAsText() { setTimeout(() => this.onload({ target: { result: texto } }), 0); } };
-    maestro.importarConfigTodo({ target: { files: [{}], value: '' } });
+    // (2026.12.29) el archivo elegido: sus bytes (shared/archivos.js los decodifica)
+    maestro.importarConfigTodo({ target: { files: [{ name: 'maestro.csv', arrayBuffer: async () => new TextEncoder().encode(texto).buffer }], value: '' } });
     await esperar(() => filasPruebas().length === 5);
     assert.equal(qa('#bodySocio .fila-socio').filter(f => f.querySelector('input').value.trim()).length, 4); assert.equal(qa('#bodyModelos .fila-modelo').length, 2); assert.equal(qa('#bodyConcordancia .fila-concordancia').length, 2);
     globalThis.generadorDatos.recolectarConfiguracion();
@@ -122,8 +150,8 @@ test('renombrar una escala y una sociodemográfica se propaga a todas las tablas
 
 test('un maestro de la época B5 abre sin error y valida', async () => {
     const antiguo = ['###GENERAL###', 'Campo,Valor', 'TamanoMuestra,120', 'Semilla,42', '', '###TESTS###', 'Prueba,Variable,CorrDimensiones', 'BAI,Ansiedad,0.4', '', '###PRUEBAS###', 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos', 'BAI,Somática,10,normal,20,5,0,3,0.85,0', 'BAI,Cognitiva,11,normal,22,5,0,3,0.85,2', '', '###SOCIODEMOGRAFICOS###', 'Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales', 'Edad,normal,21,3,17,35,0', 'Sexo,binaria,0.5,,,,0', '', '###CORRELACIONES###', 'VariableA,VariableB,Correlacion', 'Somática,Cognitiva,0.5', ''].join('\n');
-    globalThis.FileReader = class { readAsText() { setTimeout(() => this.onload({ target: { result: antiguo } }), 0); } };
-    maestro.importarConfigTodo({ target: { files: [{}], value: '' } });
+    // (2026.12.29) el archivo elegido: sus bytes (shared/archivos.js los decodifica)
+    maestro.importarConfigTodo({ target: { files: [{ name: 'maestro.csv', arrayBuffer: async () => new TextEncoder().encode(antiguo).buffer }], value: '' } });
     await esperar(() => filasPruebas().length === 2 && qa('#bodyCorrelaciones .fila-correlacion').length === 1);
     globalThis.generadorDatos.recolectarConfiguracion();
     const v = globalThis.generadorDatos.validarConfiguracion();

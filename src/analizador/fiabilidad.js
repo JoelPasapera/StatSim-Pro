@@ -8,6 +8,15 @@ import { montarBloqueBootstrap, filasBootstrap, notaBootstrap, fraseBootstrap, C
 import { bus, EVENTOS } from '../shared/eventos.js';
 import { AnalizadorEstadistico } from './estadistica.js';
 import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
+import { cdfF, cuantilF } from '../core/stats/numerico.js';
+import { media, varianza, covarianza } from '../core/stats/descriptivos.js';
+import { correlacion } from '../core/stats/correlacion.js';
+import { aNumero } from '../core/data/celdas.js';
+import { plegarComoRegExp } from '../core/data/texto.js';
+import { cifrasFinales, prefijoYNumero, primeroPorSigla, repartoPorSigla } from './motor/nombres-items.js';
+
+import { alfaCronbach } from '../core/stats/fiabilidad.js';
+import { nivelFiabilidad } from './motor/magnitudes.js';
 
 // ============================================================
 // FIABILIDAD Y CONSISTENCIA INTERNA — StatSim Pro
@@ -32,73 +41,12 @@ const Fiabilidad = {
     _ultimo: null,
 
     // ---------- utilidades numéricas autónomas ----------
-    _media(v) { return v.reduce((s, x) => s + x, 0) / v.length; },
-    _varianza(v) { // muestral (n-1)
-        const m = this._media(v);
-        return v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1);
-    },
-    _cov(a, b) {
-        const ma = this._media(a), mb = this._media(b);
-        let s = 0;
-        for (let i = 0; i < a.length; i++) s += (a[i] - ma) * (b[i] - mb);
-        return s / (a.length - 1);
-    },
-    _cor(a, b) {
-        const c = this._cov(a, b), va = this._varianza(a), vb = this._varianza(b);
-        return (va > 0 && vb > 0) ? c / Math.sqrt(va * vb) : 0;
-    },
-    // Beta incompleta regularizada (para la CDF de la F de Fisher)
-    _betacf(a, b, x) {
-        const MAXIT = 200, EPS = 3e-12, FPMIN = 1e-300;
-        let qab = a + b, qap = a + 1, qam = a - 1;
-        let c = 1, d = 1 - qab * x / qap;
-        if (Math.abs(d) < FPMIN) d = FPMIN;
-        d = 1 / d;
-        let h = d;
-        for (let m = 1; m <= MAXIT; m++) {
-            const m2 = 2 * m;
-            let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
-            d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
-            c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
-            d = 1 / d; h *= d * c;
-            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
-            d = 1 + aa * d; if (Math.abs(d) < FPMIN) d = FPMIN;
-            c = 1 + aa / c; if (Math.abs(c) < FPMIN) c = FPMIN;
-            d = 1 / d;
-            const del = d * c; h *= del;
-            if (Math.abs(del - 1) < EPS) break;
-        }
-        return h;
-    },
-    _gammaln(x) {
-        const cof = [76.18009172947146, -86.50532032941677, 24.01409824083091,
-            -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
-        let y = x, tmp = x + 5.5;
-        tmp -= (x + 0.5) * Math.log(tmp);
-        let ser = 1.000000000190015;
-        for (let j = 0; j < 6; j++) ser += cof[j] / ++y;
-        return -tmp + Math.log(2.5066282746310005 * ser / x);
-    },
-    _betai(a, b, x) {
-        if (x <= 0) return 0;
-        if (x >= 1) return 1;
-        const bt = Math.exp(this._gammaln(a + b) - this._gammaln(a) - this._gammaln(b)
-            + a * Math.log(x) + b * Math.log(1 - x));
-        if (x < (a + 1) / (a + b + 2)) return bt * this._betacf(a, b, x) / a;
-        return 1 - bt * this._betacf(b, a, 1 - x) / b;
-    },
-    _pF(f, df1, df2) { // CDF de la F
-        if (!(f > 0)) return 0;
-        return this._betai(df1 / 2, df2 / 2, df1 * f / (df1 * f + df2));
-    },
-    _qF(p, df1, df2) { // inversa por bisección
-        let lo = 1e-8, hi = 1e6;
-        for (let i = 0; i < 200; i++) {
-            const mid = (lo + hi) / 2;
-            if (this._pF(mid, df1, df2) < p) lo = mid; else hi = mid;
-        }
-        return (lo + hi) / 2;
-    },
+    _media(v) { return media(v); },
+    _varianza(v) { return varianza(v); },   // muestral (n − 1)
+    _cov(a, b) { return covarianza(a, b); },
+    _cor(a, b) { const r = correlacion(a, b); return Number.isNaN(r) ? 0 : r; },   // 0 si no está definida, como siempre aquí
+    _pF(f, df1, df2) { return f > 0 ? cdfF(f, df1, df2) : 0; },   // OJO: la CDF (cola INFERIOR), no el valor p; en ComparacionGrupos, _pF es la cola superior
+    _qF(p, df1, df2) { return cuantilF(p, df1, df2); },   // inversa de la CDF
 
     // ---------- detección de estructura ----------
     // Devuelve grupos { nombre, etiqueta, items:[col...], origen } a partir de:
@@ -106,10 +54,12 @@ const Fiabilidad = {
     //  2) la estructura del Simulador (EtiquetasVariables), si existe,
     //  3) la heurística de prefijos: columnas numéricas no-puntaje con patrón
     //     «prefijo + número» (PE1…PE8, F1…F36) forman una escala candidata.
-    _grupoDesdeTexto(nombre, listaTexto, numericas, usados, origen) {
+    // (2026.12.31, cuarta revisión) esNumerica: las columnas numéricas en un conjunto (antes, recorrer su lista por cada
+    // ítem pedido: con el configurador relleno, cada detección era O(columnas²); 16 000 columnas, 2 s)
+    _grupoDesdeTexto(nombre, listaTexto, esNumerica, usados, origen) {
         const pedidos = (listaTexto || '').split(',').map(s => s.trim()).filter(Boolean);
-        const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
-        const noEncontrados = pedidos.filter(it => !numericas.includes(it));
+        const items = pedidos.filter(it => esNumerica.has(it) && !usados.has(it));
+        const noEncontrados = pedidos.filter(it => !esNumerica.has(it));
         if (items.length < 2) return null;
         items.forEach(it => usados.add(it));
         return {
@@ -128,7 +78,8 @@ const Fiabilidad = {
         // Una columna cuenta como numérica si CUALQUIER fila aporta un valor
         // válido (resiliencia: una primera celda vacía no debe descartar el ítem).
         const numericas = columnas.filter(c =>
-            datos.some(f => Number.isFinite(parseFloat(f[c]))));
+            datos.some(f => Number.isFinite(aNumero(f[c]))));   // (2026.12.18) la conversión del núcleo
+        const esNumerica = new Set(numericas);
 
         // 0) Configurador visual: si el usuario tiene filas definidas ahí,
         //    esa configuración MANDA sobre toda detección automática.
@@ -139,7 +90,7 @@ const Fiabilidad = {
                 filasCfg.forEach(f => {
                     const nom = (f.querySelector('[data-fb-nombre]') || {}).value || '';
                     const lst = (f.querySelector('[data-fb-items]') || {}).value || '';
-                    const g = this._grupoDesdeTexto(nom, lst, numericas, usados, 'config');
+                    const g = this._grupoDesdeTexto(nom, lst, esNumerica, usados, 'config');
                     if (g) grupos.push(g);
                 });
                 // (2026.10.07) también con el configurador se añade la escala total de cada test de la estructura:
@@ -156,8 +107,8 @@ const Fiabilidad = {
                 const [nombre, lista] = bloque.split(':');
                 if (!nombre || !lista) return;
                 const pedidos = lista.split(',').map(s => s.trim()).filter(Boolean);
-                const items = pedidos.filter(it => numericas.includes(it) && !usados.has(it));
-                const noEncontrados = pedidos.filter(it => !numericas.includes(it));
+                const items = pedidos.filter(it => esNumerica.has(it) && !usados.has(it));
+                const noEncontrados = pedidos.filter(it => !esNumerica.has(it));
                 if (items.length >= 2) {
                     items.forEach(it => usados.add(it));
                     grupos.push({
@@ -171,16 +122,20 @@ const Fiabilidad = {
         // 2) Estructura del Simulador
         if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.tieneEtiquetas
             && EtiquetasVariables.tieneEtiquetas() && Array.isArray(EtiquetasVariables._estructura)) {
+            // (2026.12.31, revisiones) Los ítems de una dimensión son las columnas numéricas libres «sigla + número» (sin
+            // distinguir mayúsculas, como /^sigla\d+$/i: la sigla «T» también se queda con «T21»), si son al menos 2: el
+            // reparto de motor/nombres-items.js, que no vuelve a mirar las que ya tomó otra sigla. Antes, una expresión
+            // regular por dimensión y columna, O(dimensiones × columnas), y con la sigla sin escapar: «(a+)+» colgaba la página.
+            const libres = numericas.filter(c => !usados.has(c) && !esPuntaje(c));
+            const tomar = repartoPorSigla(libres, 2);
             EtiquetasVariables._estructura.forEach(prueba => {
                 // (2026.10.03) test unidimensional: su única escala (la variable general) también es un grupo de ítems
                 const escalasDelTest = (prueba.unidimensional && prueba.siglaGeneral)
                     ? [{ sigla: prueba.siglaGeneral, etiqueta: prueba.etiquetaGeneral }]
                     : (prueba.dimensiones || []);
                 escalasDelTest.forEach(dim => {
-                    const sigla = dim.sigla || dim.columna || '';
-                    const items = numericas.filter(c =>
-                        !usados.has(c) && !esPuntaje(c) &&
-                        new RegExp('^' + sigla + '\\d+$', 'i').test(c));
+                    const sigla = String(dim.sigla || dim.columna || '');
+                    const items = tomar(sigla).map(i => libres[i]);
                     if (items.length >= 2) {
                         items.forEach(it => usados.add(it));
                         grupos.push({
@@ -196,18 +151,31 @@ const Fiabilidad = {
         // I1: escala TOTAL por prueba del Simulador (todas sus dimensiones)
         grupos.push(...this._totalesPorPrueba(grupos));
         // 3) Heurística de prefijos sobre lo restante
-        const porPrefijo = {};
+        // (2026.12.31, tercera revisión) las columnas de puntaje (Total_X, Dimension_X, General_X) por su X, plegada como la
+        // compara una expresión regular con «i» (core/data/texto.js), y la primera de cada una, una vez: antes, una expresión
+        // regular por prefijo y columna, O(columnas²) (un CSV de 8000 columnas tenía la página 20 s detectando dimensiones)
+        const puntajePorNombre = new Map();
+        for (const c of columnas) {
+            const m = /^\s*(?:total|dimensi[oó]n|general)[_\-]([\s\S]*)$/i.exec(c);
+            const clave = m ? plegarComoRegExp(m[1]) : null;
+            if (clave !== null && !puntajePorNombre.has(clave)) puntajePorNombre.set(clave, c);
+        }
+        // sin prototipo: un prefijo «constructor» o «__proto__» (de las columnas «constructor1», «constructor2») no es una
+        // propiedad heredada (antes, «push is not a function» y la tarjeta de fiabilidad sin dimensiones)
+        const porPrefijo = Object.create(null);
         numericas.forEach(c => {
             if (usados.has(c) || esPuntaje(c)) return;
-            const m = c.match(/^(.+?)[_\-]?(\d+)$/);
-            if (!m || !m[1]) return;
-            const clave = m[1].replace(/[_\-]$/, '');
+            const m = prefijoYNumero(c);
+            if (!m || !m.prefijo) return;
+            const clave = m.prefijo.replace(/[_\-]$/, '');
             (porPrefijo[clave] = porPrefijo[clave] || []).push(c);
         });
         Object.keys(porPrefijo).forEach(prefijo => {
             const items = porPrefijo[prefijo];
             if (items.length < 2) return;
-            items.sort((a, b) => (parseInt(a.match(/(\d+)$/)[1], 10)) - (parseInt(b.match(/(\d+)$/)[1], 10)));
+            // por su número: todas sus cifras finales (en «129», 129; el prefijo «1» y el número «29» son para agruparlo)
+            const numero = (/** @type {string} */ x) => parseInt(cifrasFinales(x), 10);
+            items.sort((a, b) => numero(a) - numero(b));
             items.forEach(it => usados.add(it));
             // El prefijo es un ALIAS: si existe una columna de puntaje asociada
             // (Dimension_F / Total_F / General_F) y el usuario la renombró en el
@@ -216,7 +184,7 @@ const Fiabilidad = {
             let etiqueta = prefijo;
             if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.etiqueta) {
                 const etDirecta = EtiquetasVariables.etiqueta(prefijo);
-                const asociada = columnas.find(c => new RegExp('^\\s*(total|dimensi[oó]n|general)[_\\-]' + prefijo.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&') + '$', 'i').test(c));
+                const asociada = puntajePorNombre.get(plegarComoRegExp(prefijo));
                 const etAsociada = asociada ? EtiquetasVariables.etiqueta(asociada) : null;
                 if (etDirecta && etDirecta !== prefijo) etiqueta = etDirecta;
                 else if (asociada && etAsociada && etAsociada !== asociada) etiqueta = etAsociada;
@@ -234,7 +202,7 @@ const Fiabilidad = {
         let itemsUtiles = grupo.items.slice();
         const bajaCobertura = [];
         itemsUtiles = itemsUtiles.filter(it => {
-            const validos = datos.reduce((s, f) => s + (Number.isFinite(parseFloat(f[it])) ? 1 : 0), 0);
+            const validos = datos.reduce((s, f) => s + (Number.isFinite(aNumero(f[it])) ? 1 : 0), 0);
             if (validos / datos.length < 0.6) { bajaCobertura.push(it); return false; }
             return true;
         });
@@ -242,7 +210,7 @@ const Fiabilidad = {
         if (itemsUtiles.length < 2) return { error: 'Se requieren al menos 2 ítems con cobertura suficiente.', avisos };
         const filas = [];
         datos.forEach(f => {
-            const vals = itemsUtiles.map(it => parseFloat(f[it]));
+            const vals = itemsUtiles.map(it => aNumero(f[it]));
             if (vals.every(Number.isFinite)) filas.push(vals);
         });
         const nExcluidos = datos.length - filas.length;
@@ -309,13 +277,13 @@ const Fiabilidad = {
             });
             const totR = filas.map((_, i) => colsR.reduce((s, c) => s + c[i], 0));
             const vT = this._varianza(totR);
-            if (vT > 0) alfaRecod = (k / (k - 1)) * (1 - colsR.reduce((s, c) => s + this._varianza(c), 0) / vT);
+            if (vT > 0) alfaRecod = alfaCronbach(colsR.map(c => this._varianza(c)), vT);   // (2026.12.24) el α del núcleo único
         }
         if (negativos.length) avisos.push(`Correlaciones inter-ítem negativas (${negativos.slice(0, 4).join('; ')}${negativos.length > 4 ? '…' : ''})${inversos.length ? `; ítem(s) con correlación media negativa con el resto de la escala: ${inversos.map(i => items[i]).join(', ')}` : ''}. Este patrón constituye una ALERTA cuyo origen debe examinarse: puede obedecer a formulación en sentido inverso sin recodificar, a deficiencias de redacción, a multidimensionalidad, a errores de codificación o digitación, o a que el ítem mida un constructo distinto.${alfaRecod != null ? ` Como análisis de sensibilidad, ÚNICAMENTE si la causa fuera la formulación inversa, la recodificación elevaría el alfa a ${alfaRecod.toFixed(3)}; el alfa de la tabla refleja los datos tal como fueron capturados.` : ''}`);
 
         // Alfa (bruto y estandarizado) y lambda 2 de Guttman
         const sumaVarItems = vars.reduce((s, v) => s + v, 0);
-        const alfa = (k / (k - 1)) * (1 - sumaVarItems / varTotal);
+        const alfa = alfaCronbach(vars, varTotal);   // (2026.12.24) del núcleo único: k/(k − 1)·(1 − Σσ²ᵢ/σ²ₜ), la misma suma
         const alfaStd = (k * rMedia) / (1 + (k - 1) * rMedia);
         const lambda1 = 1 - sumaVarItems / varTotal;
         const lambda2 = lambda1 + Math.sqrt((k / (k - 1)) * (2 * sumaCov2)) / varTotal;
@@ -353,7 +321,7 @@ const Fiabilidad = {
                 const varsSin = vars.filter((_, q) => q !== j);
                 const totalSin = resto;
                 const vTotSin = this._varianza(totalSin);
-                a = vTotSin > 0 ? ((k - 1) / (k - 2)) * (1 - varsSin.reduce((s, v) => s + v, 0) / vTotSin) : null;
+                a = vTotSin > 0 ? alfaCronbach(varsSin, vTotSin) : null;   // los k − 1 restantes
             }
             return {
                 item: it,
@@ -481,14 +449,8 @@ const Fiabilidad = {
     // (2026.10.09) una sola fuente: psicometria/clasica.js (la usa también el bootstrap)
     _omegaUnifactorial(R, k) { return omegaUnifactorial(R, k); },
 
-    interpretar(alfa) {
-        if (alfa >= 0.9) return 'excelente';
-        if (alfa >= 0.8) return 'buena';
-        if (alfa >= 0.7) return 'aceptable';
-        if (alfa >= 0.6) return 'cuestionable';
-        if (alfa >= 0.5) return 'pobre';
-        return 'inaceptable';
-    },
+    // Bandas de George y Mallery (2003), las mismas del análisis general (2026.12.24: una sola definición)
+    interpretar(alfa) { return nivelFiabilidad(alfa); },
 
     // ---------- análisis completo ----------
     analizarTodo(datos, opciones = {}) {
@@ -523,14 +485,26 @@ const Fiabilidad = {
 
     // Escala total de cada test con 2+ dimensiones en la estructura del Simulador: se forma si cada dimensión está
     // presente como un grupo con exactamente sus ítems (sigla + número), venga de la estructura o del configurador.
+    // (2026.12.31, revisiones) Sin recorrer los grupos por cada dimensión: el primer grupo (en su orden) con todos sus ítems
+    // «sigla + número», por la raíz y las cifras que comparten sus ítems (motor/nombres-items.js), y los nombres de los
+    // grupos en un conjunto. Y cada grupo, en la escala total de un solo test y una sola vez (en el Simulador, dos tests no
+    // comparten una dimensión): antes, una expresión regular por dimensión, grupo e ítem, y un proyecto ajeno con miles de
+    // tests sobre los mismos dos grupos repetía sus ítems en cada total (decenas de millones) y la pestaña se quedaba sin
+    // memoria.
     _totalesPorPrueba(grupos) {
         const est = (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.estructura) ? (EtiquetasVariables.estructura() || []) : [];
-        const escapar = s => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        if (!est.length) return [];
+        const primero = primeroPorSigla(grupos.map(g => (g.particion || g.items.length < 2 ? null : g.items)));
+        const grupoDeLaSigla = sigla => { const i = primero(sigla); return i < 0 ? null : grupos[i]; };
+        const nombres = new Set(grupos.map(g => g.nombre));
+        const enUnTotal = new Set();
         const totales = [];
         est.forEach(p => {
             if (!p.dimensiones || p.dimensiones.length < 2 || !p.dimensiones.every(d => d.sigla)) return;
-            const dims = p.dimensiones.map(d => { const re = new RegExp('^' + escapar(d.sigla) + '\\d+$', 'i'); return grupos.find(g => !g.particion && g.items.length >= 2 && g.items.every(it => re.test(it))); });
-            if (dims.some(g => !g) || grupos.some(g => g.nombre === 'TOTAL_' + p.prueba)) return;
+            const dims = p.dimensiones.map(d => grupoDeLaSigla(d.sigla));
+            if (dims.some(g => !g) || nombres.has('TOTAL_' + p.prueba)) return;
+            if (new Set(dims).size !== dims.length || dims.some(g => enUnTotal.has(g))) return;
+            dims.forEach(g => enUnTotal.add(g));
             totales.push({ nombre: 'TOTAL_' + p.prueba, etiqueta: `Escala total (${p.prueba})`, items: dims.flatMap(g => g.items), origen: 'simulador',
                 particion: dims.map(g => ({ nombre: g.etiqueta, items: g.items.slice() })) });
         });
@@ -599,7 +573,9 @@ const Fiabilidad = {
         if (bajaVar.length) {
             t += `${bajaVar.length === 1 ? `El ítem ${bajaVar[0].item} exhibe` : `Los ítems ${bajaVar.map(x => x.item).join(', ')} exhiben`} una variabilidad notablemente inferior a la del resto, circunstancia que limita su capacidad de discriminación entre participantes. `;
         }
-        t += `En conjunto, el patrón observado resulta coherente con el alfa de ${f3(r.alfa)} de la escala, de interpretación ${r.interpretacion}.`;
+        // (2026.12.30) la banda, la del coeficiente que se nombra: antes, «el alfa de .691 … de interpretación aceptable (ω)»
+        // mezclaba el valor del α con la banda del ω (con ese α, «cuestionable»)
+        t += `En conjunto, el patrón observado resulta coherente con el alfa de ${f3(r.alfa)} de la escala, de interpretación ${this.interpretar(r.alfa)}${r.omega != null ? ` (con el omega de ${f3(r.omega)}, ${this.interpretar(r.omega)})` : ''}.`;
         return t;
     },
 
@@ -711,7 +687,14 @@ const Fiabilidad = {
         });
         const conAviso = validos.filter(r => r.avisos.length).length;
         let texto = `El análisis de consistencia interna se aplicó a ${validos.length === 1 ? 'la escala detectada' : `las ${validos.length} escalas detectadas`} en la base de datos. ${partes.join('; ')}. `;
-        texto += `La convergencia entre el alfa y el omega respalda la estabilidad de las estimaciones, dado que el omega no exige el supuesto de tau-equivalencia que el alfa presupone. `;
+        // (2026.12.30) solo si hay algún ω (con 2 ítems no se estima) y según lo que de verdad se parezcan
+        const conOmega = validos.filter(r => r.omega != null && Number.isFinite(r.alfa));
+        if (conOmega.length) {
+            const maxDif = Math.max(...conOmega.map(r => Math.abs(r.omega - r.alfa)));
+            texto += maxDif <= 0.05
+                ? `La convergencia entre el alfa y el omega respalda la estabilidad de las estimaciones, dado que el omega no exige el supuesto de tau-equivalencia que el alfa presupone. `
+                : `El alfa y el omega difieren en hasta ${fmt(maxDif)}: como el omega no exige el supuesto de tau-equivalencia que el alfa presupone, la diferencia sugiere que los ítems no contribuyen por igual al constructo, y el omega es la estimación más adecuada. `;
+        }
         if (validos.some(r => r.ordinal)) texto += `Para los ítems de respuesta ordinal o dicotómica se estimaron además el α y el ω ordinales sobre las matrices de correlaciones policóricas o tetracóricas (Olsson, 1979; Zumbo et al., 2007), que no subestiman la fiabilidad como ocurre con las correlaciones de Pearson en ítems con pocas categorías (Gadermann et al., 2012). `;
         const fraseIC = this._bootstrap ? fraseBootstrap(validos.map(r => ({ clave: r.huella, etiqueta: r.etiqueta })), this._bootstrap.porClave, this._bootstrap.opciones) : '';
         if (fraseIC) texto += fraseIC + ' ';

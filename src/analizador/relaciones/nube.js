@@ -10,9 +10,11 @@
 //  · efecto techo o suelo de la medida: casos en el valor extremo observado (más del 15 %; Terwee et al., 2007);
 //  · atípicos influyentes en la recta de Y sobre X: distancia de Cook (1977), residuos estudentizados eliminados con
 //    Bonferroni, y cambio de r al retirar los casos con D > 4/n.
-import { gammaRegularizadaQ, betaRegularizada, cuantilF } from '../psicometria/numerico.js';
+import { gammaRegularizadaQ, betaRegularizada, cuantilF, minimizarSeccionAurea } from '../../core/stats/numerico.js';
 import { calibrarInfluencia } from './mcd.js';
 import { media, regresionMCO, cuantil, pearson, aleatorio, submuestraPares as submuestra } from './util-numerico.js';
+import { kEsimo as seleccionar } from '../../core/stats/orden.js';
+import { barajar } from '../../core/random/permutacion.js';
 
 
 // ---------------------------------------------------------------- abanico: Breusch–Pagan (Koenker)
@@ -23,19 +25,6 @@ export function breuschPaganKoenker(e, cols) {
     return { lm, gl, p: gammaRegularizadaQ(gl / 2, lm / 2), sube: f.beta[1] > 0 };
 }
 
-// ---------------------------------------------------------------- regresión de cuantiles
-// k-ésimo menor (0-based) por selección rápida (Hoare con mediana de tres), sobre una copia de trabajo
-function seleccionar(a, k) {
-    let lo = 0, hi = a.length - 1;
-    while (hi > lo) {
-        const m = (lo + hi) >> 1, v1 = a[lo], v2 = a[m], v3 = a[hi];
-        const piv = v1 < v2 ? (v2 < v3 ? v2 : v1 < v3 ? v3 : v1) : (v1 < v3 ? v1 : v2 < v3 ? v3 : v2);
-        let i = lo, j = hi;
-        while (i <= j) { while (a[i] < piv) i++; while (a[j] > piv) j--; if (i <= j) { const t = a[i]; a[i] = a[j]; a[j] = t; i++; j--; } }
-        if (k <= j) hi = j; else if (k >= i) lo = i; else return a[k];
-    }
-    return a[k];
-}
 // Para una pendiente b, la constante óptima es un cuantil τ de y − b·x y la pérdida es convexa en b (minimización parcial
 // de una función convexa): la pendiente se busca por sección áurea y el resultado es la solución exacta de la programación
 // lineal de Koenker y Bassett (1978), comprobada contra scipy.optimize.linprog
@@ -49,12 +38,8 @@ export function regresionCuantil(x, y, tau, iteraciones = 80) {
         return { a, s };
     };
     const mx = media(x), my = media(y); let sxx = 0, syy = 0; for (let i = 0; i < n; i++) { sxx += (x[i] - mx) ** 2; syy += (y[i] - my) ** 2; }
-    const M = 100 * Math.sqrt(syy / (sxx || 1)) + 1, g = (Math.sqrt(5) - 1) / 2;
-    let lo = -M, hi = M, c = hi - g * (hi - lo), d = lo + g * (hi - lo), fc = perdida(c).s, fd = perdida(d).s;
-    for (let it = 0; it < iteraciones; it++) {
-        if (fc <= fd) { hi = d; d = c; fd = fc; c = hi - g * (hi - lo); fc = perdida(c).s; } else { lo = c; c = d; fc = fd; d = lo + g * (hi - lo); fd = perdida(d).s; }
-    }
-    const b = (lo + hi) / 2, { a, s } = perdida(b);
+    const M = 100 * Math.sqrt(syy / (sxx || 1)) + 1;
+    const b = minimizarSeccionAurea(v => perdida(v).s, -M, M, iteraciones), { a, s } = perdida(b);   // (2026.12.25) la del núcleo
     return { tau, a, b, perdida: s };
 }
 function cuantilesNube(xs, ys, { B = 200, semilla = 20261031, maximo = 20000, maximoRemuestreo = 2000 } = {}) {
@@ -109,7 +94,7 @@ export function analisisNecesidad(x0, y, { direccion = 1, B = null, semilla = 20
     if (pares.length >= 2) { const f = regresionMCO([Float64Array.from(pares, p => p[0])], Float64Array.from(pares, p => p[1])); if (f) { recta = { a: f.beta[0], b: f.beta[1] }; dCR = zonaSobreRecta(recta.a, recta.b, u[0], u[m - 1], ymin, ymax) / alcance; } }
     // prueba por permutaciones de Y (Dul et al., 2020): el alcance no cambia al permutar
     const R = B || (n <= 20000 ? 999 : n <= 100000 ? 199 : 99), aleat = aleatorio(semilla), yp = Float64Array.from(y); let mayores = 0;
-    for (let r = 0; r < R; r++) { for (let i = n - 1; i > 0; i--) { const j = Math.floor(aleat() * (i + 1)); const t = yp[i]; yp[i] = yp[j]; yp[j] = t; } if (zonaTecho(u, maxPor(yp), ymax).zona >= zona - 1e-12 * alcance) mayores++; }
+    for (let r = 0; r < R; r++) { barajar(yp, aleat); if (zonaTecho(u, maxPor(yp), ymax).zona >= zona - 1e-12 * alcance) mayores++; }
     const tamano = d < 0.1 ? 'pequeño' : d < 0.3 ? 'mediano' : d < 0.5 ? 'grande' : 'muy grande';
     const techo = pares.map(([xx, yy]) => [direccion < 0 ? -xx : xx, yy]);
     return { direccion, d, dCR, tamano, p: (1 + mayores) / (R + 1), B: R, esquinas: pares.length, techo, recta: recta && direccion < 0 ? { a: recta.a, b: -recta.b } : recta };

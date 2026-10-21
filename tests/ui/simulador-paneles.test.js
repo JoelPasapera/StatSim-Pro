@@ -27,10 +27,25 @@ test('rezagada desactiva el efecto Y → X; recíproca lo activa; la recolecció
     const tipo = campo(fila, 'Tipo de relación en el tiempo'); tipo.value = 'reciproca'; env.disparar(tipo, 'change', { bubbles: true });
     assert.equal(campo(fila, 'Efecto Y → X').disabled, false);
     campo(fila, 'Efecto Y → X').value = '0.1';
-    const esperado = [{ tipo: 'reciproca', x: 'Estrés', y: 'Sueño', r: 0.3, cXY: 0.25, cYX: 0.1 }];
+    const esperado = [{ tipo: 'reciproca', x: 'Estrés', y: 'Sueño', r: 0.3, cXY: 0.25, cYX: 0.1 , iccX: 0, iccY: 0, rRI: 0 }];   // (RI-CLPM, 2026.12.07) vacías: 0, el panel clásico
     assert.deepEqual(globalThis.generadorDatos.recolectarPaneles(), esperado);
     const csv = paneles.csvDePaneles();
     document.getElementById('bodyPaneles').innerHTML = '';
     assert.deepEqual(paneles.aplicarCSVPaneles(csv), { aplicadas: 1, omitidas: 0 });
     assert.deepEqual(globalThis.generadorDatos.recolectarPaneles(), esperado);
 });
+
+test('RI-CLPM (2026.12.07): las tres casillas opcionales se recogen, viajan en el CSV y un CSV anterior de seis columnas sigue cargándose', () => {
+    document.getElementById('bodyPaneles').innerHTML = '';
+    paneles.agregarFilaPanel({ tipo: 'reciproca', x: 'Estrés', y: 'Sueño', r: 0.1, cXY: 0, cYX: 0, iccX: 0.5, iccY: 0.4, rRI: 0.6 });
+    const pn = globalThis.generadorDatos.recolectarPaneles()[0];
+    assert.deepEqual([pn.iccX, pn.iccY, pn.rRI], [0.5, 0.4, 0.6]);
+    const csv = paneles.csvDePaneles();
+    assert.match(csv.split('\n')[0], /ICCX,ICCY,rInterceptos/);
+    paneles.aplicarCSVPaneles(csv);
+    assert.deepEqual(['iccX', 'iccY', 'rRI'].map(k => globalThis.generadorDatos.recolectarPaneles()[0][k]), [0.5, 0.4, 0.6], 'ida y vuelta');
+    paneles.aplicarCSVPaneles('Tipo,X,Y,rMismaOnda,EfectoXY,EfectoYX\nrezagada,Estrés,Sueño,0.3,0.25,\n');
+    const viejo = globalThis.generadorDatos.recolectarPaneles()[0];
+    assert.deepEqual([viejo.tipo, viejo.r, viejo.cXY, viejo.iccX, viejo.iccY, viejo.rRI], ['rezagada', 0.3, 0.25, 0, 0, 0], 'el CSV antiguo: el panel clásico');
+});
+

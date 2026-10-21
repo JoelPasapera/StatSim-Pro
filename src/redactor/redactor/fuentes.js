@@ -2,6 +2,7 @@
 // Origen: redactor/redactor.js (Fase 6: partición por responsabilidad, sin cambios de comportamiento).
 
 import { fuentesBuscador } from './base.js';
+import { leerXlsx } from '../../core/data/xlsx/lector.js';
 
 export const metodosRedactorTeoricoFuentes = {
     async _onArchivo(file) {
@@ -336,48 +337,17 @@ export const metodosRedactorTeoricoFuentes = {
         return { cols: filas[0].map(c => String(c).trim()), filas: filas.slice(1) };
     },
 
-    _cargaExcelJS: null,
-
-    async _asegurarExcelJS() {
-        if (typeof ExcelJS !== 'undefined') return;
-        if (!this._cargaExcelJS) {
-            this._cargaExcelJS = (async () => {
-                for (const url of this._EXCELJS_URLS) {
-                    const ok = await new Promise(res => {
-                        const s = document.createElement('script');
-                        s.src = url; s.async = true;
-                        const tid = setTimeout(() => { s.remove(); res(false); }, 12000);
-                        s.onload = () => { clearTimeout(tid); res(true); };
-                        s.onerror = () => { clearTimeout(tid); s.remove(); res(false); };
-                        document.head.appendChild(s);
-                    });
-                    if (ok && typeof ExcelJS !== 'undefined') return;
-                }
-                throw Object.assign(new Error('No se pudo cargar la librería de Excel desde ningún CDN. Revisa tu conexión o desactiva bloqueadores para cdnjs.cloudflare.com / cdn.jsdelivr.net y reintenta.'), { codigo: 'EXCELJS_NO_CARGA', reintentable: true });
-            })();
-        }
-        try { await this._cargaExcelJS; }
-        catch (e) { this._cargaExcelJS = null; throw e; } // fallo: permitir reintentar
-    },
-
-    // Lee la primera hoja de un .xlsx (con ExcelJS asegurado bajo demanda).
+    // Lee la primera hoja de un .xlsx: sus encabezados (la primera fila con algo) y sus filas, como texto. (2026.12.31) Con
+    // el lector propio (core/data/xlsx/lector.js): ya no descarga ExcelJS, y las fechas llegan como «AAAA-MM-DD» (con
+    // ExcelJS, como «Wed May 01 2024 …»).
     async _parsearXLSX(buffer) {
-        await this._asegurarExcelJS();
-        const wb = new ExcelJS.Workbook();
-        await wb.xlsx.load(buffer);
-        const ws = wb.worksheets[0];
-        if (!ws) throw new Error('El Excel no tiene hojas.');
-        const filas = [];
-        let cols = [];
-        ws.eachRow((row, n) => {
-            const vals = row.values.slice(1).map(v => {
-                if (v == null) return '';
-                if (typeof v === 'object') return String(v.text || v.result || v.richText?.map(r => r.text).join('') || '');
-                return String(v);
-            });
-            if (n === 1) cols = vals.map(s => s.trim());
-            else filas.push(vals);
-        });
+        const libro = await leerXlsx(new Uint8Array(buffer));
+        const hoja = libro.hojas[0];
+        if (!hoja) throw new Error('El Excel no tiene hojas.');
+        const comoTexto = v => (v === null || v === undefined ? '' : typeof v === 'boolean' ? (v ? 'VERDADERO' : 'FALSO') : String(v));
+        const conDatos = hoja.filas.filter(f => f && f.some(v => v !== null && v !== ''));
+        const cols = conDatos.length ? conDatos[0].map(v => comoTexto(v).trim()) : [];
+        const filas = conDatos.slice(1).map(f => f.map(comoTexto));
         if (!cols.length || !filas.length) throw new Error('El Excel no tiene datos.');
         return { cols, filas };
     },
@@ -427,7 +397,9 @@ export const metodosRedactorTeoricoFuentes = {
                 cita = this._citaDesdeRef(ref, anio);
                 autoresPendientes = /^\("/.test(cita) || cita.startsWith('(s. a.');
             }
-            return { cita, ref, titulo, anio, resumen, doi, autores: autoresCol, _autoresPendientes: autoresPendientes };
+            // (2026.12.30) la relevancia de la matriz (antes no se copiaba: el filtro «≥ 4» la daba siempre por «sin dato»)
+            const relevancia = iRel >= 0 ? limpiar(f[iRel]) : '';
+            return { cita, ref, titulo, anio, resumen, doi, relevancia, autores: autoresCol, _autoresPendientes: autoresPendientes };
         }).filter(Boolean).filter(x => x.titulo || x.ref);
         const vistosDedup = new Set();
         return lista.filter(x => {
@@ -474,7 +446,10 @@ export const metodosRedactorTeoricoFuentes = {
             ref: (fb.citaAPA ? fb.citaAPA(o) : ''),
             titulo: o.titulo || '',
             anio: o.anio || '',
-            relevancia: iRel >= 0 ? String(f[iRel] ?? '').trim() : '',
+            // (2026.12.30) la nota del Buscador (0 = sin evaluar). Aquí estaba la línea de la relevancia de _filasAFuentes,
+            // con variables de otro ámbito: con una obra marcada, «Usar la matriz generada» lanzaba un ReferenceError y el
+            // Redactor no redactaba con la matriz del Buscador
+            relevancia: o._relevancia > 0 ? String(o._relevancia) : '',
             resumen: o.resumen || o.abstract || ''
         })));
     },

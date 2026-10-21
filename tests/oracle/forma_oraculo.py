@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """forma_oraculo.py — referencia independiente del diagnóstico de forma (Analizador): r de Pearson, ρ de Spearman y τ-b de
-Kendall (scipy.stats, con p asintótica), IC de Fisher (y de Fieller para ρ), correlación de distancias por su definición
+Kendall (scipy.stats, con p asintótica), IC de Fisher (el de r, el de scipy.stats; el de ρ, con el error típico de Bonett y
+Wright, 2000, la convención de todo el programa desde la 2026.12.17; antes, el de Fieller), correlación de distancias por su definición
 matricial (NumPy), η por tramos, y el mínimo de la suma de cuadrados de cada modelo de forma buscado con los optimizadores
 de SciPy (varios arranques). Escribe forma_fixture.json; lo compara tests/unit/diagnostico-forma.test.js."""
 import json
@@ -16,8 +17,11 @@ def dataset(nombre, n, f, ruido, entero=False):
 datos = [dataset('lineal', 300, lambda z: z, 0.8), dataset('u_invertida', 400, lambda z: -z * z, 0.6), dataset('logaritmica', 350, lambda z: np.log(z + 3.5), 0.15),
          dataset('sigmoide', 300, lambda z: 1 / (1 + np.exp(-4 * z)), 0.12), dataset('ciclica', 400, lambda z: np.cos(2.2 * z), 0.4), dataset('empates', 250, lambda z: np.exp(0.8 * z), 0.6, True)]
 
-def fisher(r, n, factor=1.0):
-    z, ee = np.arctanh(r), np.sqrt(factor / (n - 3)); return [float(np.tanh(z - 1.959963984540054 * ee)), float(np.tanh(z + 1.959963984540054 * ee))]
+def fisher(r, n, spearman=False):
+    # IC por la z de Fisher con el valor crítico exacto; EE de z: 1/√(n − 3) para r y √((1 + ρ²/2)/(n − 3)) para ρ (Bonett y
+    # Wright, 2000; hasta la 2026.12.16, aquí √(1,06/(n − 3)), de Fieller, Hartley y Pearson, 1957)
+    z, ee, c = np.arctanh(r), (np.sqrt((1 + r * r / 2) / (n - 3)) if spearman else 1 / np.sqrt(n - 3)), stats.norm.ppf(0.975)
+    return [float(np.tanh(z - c * ee)), float(np.tanh(z + c * ee))]
 def dcor(x, y):
     a = np.abs(x[:, None] - x[None, :]); b = np.abs(y[:, None] - y[None, :])
     A = a - a.mean(0) - a.mean(1)[:, None] + a.mean(); B = b - b.mean(0) - b.mean(1)[:, None] + b.mean()
@@ -56,7 +60,9 @@ def modelos(x, y):
 fixture = []
 for nombre, x, y in datos:
     n = len(x); pr, sr, kt = stats.pearsonr(x, y), stats.spearmanr(x, y), stats.kendalltau(x, y, method='asymptotic')
-    fixture.append({'nombre': nombre, 'x': x.tolist(), 'y': y.tolist(), 'r': float(pr[0]), 'p_r': float(pr[1]), 'ic_r': fisher(pr[0], n), 'rho': float(sr[0]), 'p_rho': float(sr[1]), 'ic_rho': fisher(sr[0], n, 1.06),
+    ci = pr.confidence_interval(0.95)   # el IC de r de scipy.stats (z de Fisher), independiente de la fórmula de arriba
+    assert max(abs(ci.low - fisher(pr[0], n)[0]), abs(ci.high - fisher(pr[0], n)[1])) < 1e-12, nombre
+    fixture.append({'nombre': nombre, 'x': x.tolist(), 'y': y.tolist(), 'r': float(pr[0]), 'p_r': float(pr[1]), 'ic_r': [float(ci.low), float(ci.high)], 'rho': float(sr[0]), 'p_rho': float(sr[1]), 'ic_rho': fisher(sr[0], n, True),
                     'tau': float(kt[0]), 'p_tau': float(kt[1]), 'dcor': dcor(x, y), 'eta': eta_tramos(x, y), 'rss': modelos(x, y)})
 json.dump(fixture, open('forma_fixture.json', 'w'))
 print('forma_fixture.json escrito: ' + ' · '.join(f"{d['nombre']} r {d['r']:.3f} dCor {d['dcor']:.3f}" for d in fixture))

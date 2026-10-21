@@ -24,7 +24,9 @@ const PrismaDiagrama = {
         cribados: 0,         // evaluados por relevancia (títulos/resúmenes)
         excluidos: 0,        // descartados por el umbral de relevancia
         motivoExclusion: '', // p. ej. 'relevancia < 3 según criterios'
-        incluidos: 0         // fuentes finales en la matriz de revisión
+        incluidos: 0,        // fuentes finales en la matriz de revisión
+        porConsulta: {},     // (2026.12.30) { clave de la consulta: { fuente, n } }: lo que aportó cada una
+        duplicadosPorBusqueda: {}   // (2026.12.30) { clave de la búsqueda: n }
     },
     // ---- API de registro (hooks del buscador) ----
     // registrar('identificados', {fuente:'Scopus', n:120})
@@ -39,29 +41,88 @@ const PrismaDiagrama = {
     _cargar() {
         if (typeof sessionStorage === 'undefined') return;
         try {
-            const g = JSON.parse(sessionStorage.getItem(this._CLAVE) || 'null');
-            if (g && typeof g === 'object' && g.identificados) this._datos = g;
+            const g = this.validar(JSON.parse(sessionStorage.getItem(this._CLAVE) || 'null'));
+            if (g) this._datos = g;
         } catch (e) {}
     },
+    // (2026.12.31, revisión) El flujo que llega de fuera —el de un proyecto, que puede ser de otra persona, o el del
+    // almacenamiento de la sesión— solo se acepta con la forma que escribe registrar(): los conteos, enteros ≥ 0; el motivo,
+    // un texto; los nombres de las fuentes y las claves de las consultas, textos (una copia con solo esos campos; null si
+    // algo no la tiene). Antes, un proyecto manipulado con un contador con forma de etiqueta HTML la metía en el diagrama.
+    validar(datos) {
+        const entero = v => (Number.isSafeInteger(v) && v >= 0 ? v : null);
+        if (!datos || typeof datos !== 'object' || Array.isArray(datos) || !datos.identificados || typeof datos.identificados !== 'object') return null;
+        // { texto: valor } con cada valor convertido por `valor` (null: no vale); una clave «__proto__», como propiedad propia
+        const mapa = (o, valor) => {
+            if (o === undefined || o === null) return {};
+            if (typeof o !== 'object' || Array.isArray(o)) return null;
+            const r = {};
+            for (const [k, v] of Object.entries(o)) {
+                const x = valor(v);
+                if (x === null || k.length > 20000) return null;
+                Object.defineProperty(r, k, { value: x, enumerable: true, writable: true, configurable: true });
+            }
+            return r;
+        };
+        const identificados = mapa(datos.identificados, entero);
+        const porConsulta = mapa(datos.porConsulta, v => (v && typeof v === 'object' && typeof v.fuente === 'string' && entero(v.n) !== null ? { fuente: v.fuente, n: v.n } : null));
+        const duplicadosPorBusqueda = mapa(datos.duplicadosPorBusqueda, entero);
+        const conteo = k => (datos[k] === undefined ? 0 : entero(datos[k]));
+        const duplicados = conteo('duplicados'), cribados = conteo('cribados'), excluidos = conteo('excluidos'), incluidos = conteo('incluidos');
+        const m = datos.motivoExclusion;
+        const motivoExclusion = m === undefined || m === null ? '' : typeof m === 'string' && m.length <= 2000 ? m : null;
+        if (!identificados || !porConsulta || !duplicadosPorBusqueda || motivoExclusion === null || [duplicados, cribados, excluidos, incluidos].includes(null)) return null;
+        return { identificados, duplicados, cribados, excluidos, motivoExclusion, incluidos, porConsulta, duplicadosPorBusqueda };
+    },
+    // (2026.12.30) `consulta`: la clave de la consulta (identificados) o de la búsqueda (duplicados). Con ella, repetir la
+    // misma búsqueda reemplaza su aporte en lugar de sumarlo otra vez, como la ficha del protocolo (que la cuenta una vez,
+    // con «veces» = 2); sin ella (registros manuales o de otro origen), se suma como antes.
     registrar(evento, datos = {}) {
         const d = this._datos;
         const n = Math.max(0, parseInt(datos.n, 10) || 0);
+        const clave = typeof datos.consulta === 'string' && datos.consulta ? datos.consulta : null;
         if (evento === 'identificados' && datos.fuente) {
-            d.identificados[datos.fuente] = (d.identificados[datos.fuente] || 0) + n;
-        } else if (evento === 'duplicados') d.duplicados += n;
+            let previo = 0;
+            if (clave) {
+                d.porConsulta = d.porConsulta || {};
+                const antes = d.porConsulta[clave];
+                if (antes && antes.fuente === datos.fuente) previo = antes.n;
+                d.porConsulta[clave] = { fuente: datos.fuente, n };
+            }
+            d.identificados[datos.fuente] = Math.max(0, (d.identificados[datos.fuente] || 0) - previo + n);
+        } else if (evento === 'duplicados') {
+            let previo = 0;
+            if (clave) { d.duplicadosPorBusqueda = d.duplicadosPorBusqueda || {}; previo = d.duplicadosPorBusqueda[clave] || 0; d.duplicadosPorBusqueda[clave] = n; }
+            d.duplicados = Math.max(0, d.duplicados - previo + n);
+        }
         else if (evento === 'cribados') d.cribados = n;
         else if (evento === 'excluidos') { d.excluidos = n; if (datos.motivo) d.motivoExclusion = datos.motivo; }
         else if (evento === 'incluidos') d.incluidos = n;
         this._guardar();
         this._pintarResumen();
     },
-    reiniciar() {
-        this._datos = { identificados: {}, duplicados: 0, cribados: 0, excluidos: 0, motivoExclusion: '', incluidos: 0 };
+    // (2026.12.31) Para el archivo de proyecto (buscador/proyecto.js): el flujo guardado, en lugar del de esta sesión.
+    restaurar(datos) {
+        const valido = this.validar(datos);
+        if (!valido) throw new Error('el flujo PRISMA guardado no tiene la forma esperada');
+        this._datos = valido;
         this._guardar();
+        this._refrescar();
+    },
+    reiniciar() {
+        this._datos = { identificados: {}, duplicados: 0, cribados: 0, excluidos: 0, motivoExclusion: '', incluidos: 0, porConsulta: {}, duplicadosPorBusqueda: {} };
+        this._guardar();
+        this._refrescar();
+    },
+    // (2026.12.31) El resumen y, si está a la vista, el diagrama, con los números de ahora (tras abrir un proyecto o empezar
+    // una revisión nueva, el diagrama ya dibujado seguía con los de antes).
+    _refrescar() {
         this._pintarResumen();
+        const lienzo = typeof document !== 'undefined' ? document.getElementById('prismaLienzo') : null;
+        if (lienzo && lienzo.style.display !== 'none' && lienzo.querySelector('svg')) this.mostrar();
     },
     _totalIdentificados() {
-        return Object.values(this._datos.identificados).reduce((s, v) => s + v, 0);
+        return Object.values(this._datos.identificados || {}).reduce((s, v) => s + (Number.isFinite(v) && v > 0 ? v : 0), 0);
     },
     // ---- UI: panel dentro de la sección del buscador ----
     montar() {
@@ -116,7 +177,7 @@ const PrismaDiagrama = {
         this._pintarResumen();
     },
     _pintarResumen() {
-        const el = document.getElementById('prismaResumen');
+        const el = typeof document !== 'undefined' ? document.getElementById('prismaResumen') : null;
         if (!el) return;
         const d = this._datos, tot = this._totalIdentificados();
         if (!tot && !d.incluidos) { el.textContent = 'Aún sin datos: busca en las bases (o pulsa «Editar números» para escribirlos a mano).'; return; }
@@ -134,8 +195,10 @@ const PrismaDiagrama = {
     _aplicarEditor() {
         const g = id => Math.max(0, parseInt((document.getElementById(id) || {}).value, 10) || 0);
         const tot = g('prismaInIdent');
-        // Entrada manual: el total sustituye el desglose por fuente (si difiere).
-        if (tot !== this._totalIdentificados()) this._datos.identificados = { 'Bases de datos': tot };
+        // Entrada manual: el total sustituye el desglose por fuente (si difiere), y las cifras escritas a mano ya no se
+        // descuentan cuando se repite una búsqueda anterior.
+        if (tot !== this._totalIdentificados()) { this._datos.identificados = { 'Bases de datos': tot }; this._datos.porConsulta = {}; }
+        if (g('prismaInDup') !== this._datos.duplicados) this._datos.duplicadosPorBusqueda = {};
         this._datos.duplicados = g('prismaInDup');
         this._datos.cribados = g('prismaInCrib');
         this._datos.excluidos = g('prismaInExc');
@@ -146,23 +209,49 @@ const PrismaDiagrama = {
         this.mostrar();
     },
     // Autocompletar huecos con la aritmética del flujo (sin inventar de más).
+    // (2026.12.31, revisión) Los conteos, siempre números (lo que no lo es cuenta 0): el diagrama los pinta en su SVG.
     _completo() {
         const d = this._datos;
-        const tot = this._totalIdentificados();
-        const cribados = d.cribados || Math.max(0, tot - d.duplicados);
-        const excluidos = d.excluidos || Math.max(0, cribados - d.incluidos);
-        const incluidos = d.incluidos || Math.max(0, cribados - excluidos);
-        return { tot, duplicados: d.duplicados, cribados, excluidos, incluidos,
-                 motivo: d.motivoExclusion || 'No cumplir los criterios de relevancia',
-                 fuentes: d.identificados };
+        const num = v => (Number.isFinite(v) && v > 0 ? v : 0);
+        const tot = num(this._totalIdentificados()), duplicados = num(d.duplicados);
+        const cribados = num(d.cribados) || Math.max(0, tot - duplicados);
+        const excluidos = num(d.excluidos) || Math.max(0, cribados - num(d.incluidos));
+        const incluidos = num(d.incluidos) || Math.max(0, cribados - excluidos);
+        const fuentes = {};
+        for (const [f, n] of Object.entries(d.identificados || {})) if (num(n) > 0) Object.defineProperty(fuentes, f, { value: n, enumerable: true, writable: true, configurable: true });
+        return { tot, duplicados, cribados, excluidos, incluidos,
+                 motivo: typeof d.motivoExclusion === 'string' && d.motivoExclusion ? d.motivoExclusion : 'No cumplir los criterios de relevancia',
+                 fuentes };
+    },
+    // (2026.12.30) Un texto en líneas de hasta `ancho` caracteres, partido entre palabras (una palabra más larga que la línea
+    // se parte), con «…» al final si no cabe en `maxLineas`.
+    _partirEnLineas(texto, ancho, maxLineas) {
+        const lineas = [];
+        let actual = '';
+        for (let palabra of String(texto).split(/\s+/).filter(Boolean)) {
+            while (palabra.length > ancho) {
+                if (actual) { lineas.push(actual); actual = ''; }
+                lineas.push(palabra.slice(0, ancho)); palabra = palabra.slice(ancho);
+            }
+            if (!actual) actual = palabra;
+            else if (actual.length + 1 + palabra.length <= ancho) actual += ' ' + palabra;
+            else { lineas.push(actual); actual = palabra; }
+        }
+        if (actual) lineas.push(actual);
+        if (lineas.length <= maxLineas) return lineas;
+        const visibles = lineas.slice(0, maxLineas);
+        const ultima = visibles[maxLineas - 1];
+        visibles[maxLineas - 1] = (ultima.length < ancho ? ultima : ultima.slice(0, ancho - 1)) + '…';
+        return visibles;
     },
     // ---- El diagrama (SVG, estilo PRISMA 2020 en español) ----
     _svg() {
         const c = this._completo();
         const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        // (2026.12.31, revisión) sin escapar aquí: las líneas se escapan al pintarlas (antes, dos veces: «Taylor &amp;amp; …»)
         const fuentesTxt = Object.entries(c.fuentes)
             .filter(([, n]) => n > 0)
-            .map(([f, n]) => `${esc(f)} (n = ${n})`);
+            .map(([f, n]) => `${f} (n = ${n})`);
         // Partir el desglose de fuentes en líneas de ~3 items.
         const lineasFuentes = [];
         for (let i = 0; i < fuentesTxt.length; i += 3) lineasFuentes.push(fuentesTxt.slice(i, i + 3).join('; '));
@@ -197,10 +286,12 @@ const PrismaDiagrama = {
         const y2 = y;
         partes.push(caja(60, y, 420, 46,
             [`<tspan font-weight="bold">Registros cribados por título y resumen (n = ${c.cribados})</tspan>`], false));
-        partes.push(caja(510, y - 2, 230, 66,
-            [`<tspan font-weight="bold">Registros excluidos (n = ${c.excluidos})</tspan>`,
-             'Motivo: ' + esc(c.motivo).slice(0, 34),
-             esc(c.motivo).slice(34, 70)].filter(Boolean), false));
+        // (2026.12.30) El motivo, en líneas que se parten entre palabras y se escapan después: hasta la 2026.12.29 se cortaba
+        // en los caracteres 34 y 70 del texto YA escapado («relevancia &l|t; 4»), partiendo palabras y entidades, y lo que
+        // pasaba de 70 se perdía.
+        const lineasMotivo = this._partirEnLineas('Motivo: ' + c.motivo, 34, 4).map(esc);
+        partes.push(caja(510, y - 2, 230, Math.max(66, 36 + lineasMotivo.length * 15),
+            [`<tspan font-weight="bold">Registros excluidos (n = ${c.excluidos})</tspan>`, ...lineasMotivo], false));
         partes.push(flecha(480, y + 23, 510, y + 23));
         y += 46 + 34;
         partes.push(flecha(270, y2 + 46, 270, y));

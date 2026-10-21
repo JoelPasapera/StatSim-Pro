@@ -2,12 +2,13 @@
 // (con el coeficiente que corresponde a la forma), referencias CITADAS y documento Word.
 import { REF_NUBE, CABECERA_NUBE, filasNube, notaNube, parrafoNube } from './nube-redaccion.js';
 import { REF_CONFIRMACION, CABECERA_CAMBIO, filasCambio, notaCambio, CABECERA_EQUIVALENCIA, filasEquivalencia, notaEquivalencia, parrafoConfirmacion } from './confirmacion-forma-redaccion.js';
+import { formatoP, textoP } from '../../shared/formato-numero.js';
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const f2 = x => (Number.isFinite(x) ? (Math.abs(x) < 0.005 ? 0 : x).toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const f3 = x => (Number.isFinite(x) ? x.toFixed(3).replace(/^(-?)0\./, '$1.') : '—');
 const fnum = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '—');
-const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
-const pAPA = p => (!Number.isFinite(p) ? '' : p < 0.001 ? 'p < .001' : `p = ${p.toFixed(3).replace(/^0\./, '.')}`);
+const fp = p => formatoP(p);
+const pAPA = p => textoP(p);
 const ic = v => `[${f2(v[0])}, ${f2(v[1])}]`;
 // p por permutaciones: si ninguna permutación iguala lo observado, p = 1/(B + 1) es solo una cota superior («p ≤ …»)
 const esCota = c => Number.isFinite(c.p) && c.p <= 1 / (c.B + 1) + 1e-12;
@@ -25,7 +26,7 @@ export const filasCoeficientes = d => {
         ['η por tramos', 'Diferencias entre medias por tramos de X', f2(c.eta.eta), '—', fp(c.eta.p)]
     ];
 };
-export const notaCoeficientes = d => `n = ${d.n}. IC de r por la transformación de Fisher; el de ρ, con el error típico de Fieller et al. (1957). τ-b con corrección por empates (Kendall, 1945). dCor: correlación de distancias (Székely et al., 2007), p por ${d.coeficientes.dcor.B} permutaciones${d.coeficientes.dcor.nPermutacion < d.n ? ` sobre una submuestra de ${d.coeficientes.dcor.nPermutacion} casos` : ''}${d.coeficientes.dcor.n < d.n ? `; su valor, sobre una submuestra de ${d.coeficientes.dcor.n}` : ''}. η por tramos: ${d.coeficientes.eta.grupos} tramos de X, p del ANOVA de un factor.`;
+export const notaCoeficientes = d => `n = ${d.n}. IC de r por la transformación de Fisher; el de ρ, con el error típico de Bonett y Wright (2000). τ-b con corrección por empates (Kendall, 1945). dCor: correlación de distancias (Székely et al., 2007), p por ${d.coeficientes.dcor.B} permutaciones${d.coeficientes.dcor.nPermutacion < d.n ? ` sobre una submuestra de ${d.coeficientes.dcor.nPermutacion} casos` : ''}${d.coeficientes.dcor.n < d.n ? `; su valor, sobre una submuestra de ${d.coeficientes.dcor.n}` : ''}. η por tramos: ${d.coeficientes.eta.grupos} tramos de X, p del ANOVA de un factor.`;
 
 export const CABECERA_MODELOS = ['Forma', 'k', 'R²', 'AICc', 'ΔAICc', 'Peso'];
 export const filasModelos = d => d.modelos.map(m => [m.nombre + (m === d.modeloDescriptivo ? ' *' : ''), String(m.k), f2(m.r2), fnum(m.aicc, 1), fnum(m.delta, 2), f2(m.peso)]);
@@ -37,7 +38,7 @@ const REF = {
     westfall: 'Westfall, P. H. y Young, S. S. (1993). <i>Resampling-based multiple testing: Examples and methods for p-value adjustment</i>. Wiley.',
     davidson: 'Davidson, R. y Flachaire, E. (2008). The wild bootstrap, tamed at last. <i>Journal of Econometrics, 146</i>(1), 162–169. https://doi.org/10.1016/j.jeconom.2008.08.003',
     burnham: 'Burnham, K. P. y Anderson, D. R. (2002). <i>Model selection and multimodel inference: A practical information-theoretic approach</i> (2.ª ed.). Springer. https://doi.org/10.1007/b97636',
-    fieller: 'Fieller, E. C., Hartley, H. O. y Pearson, E. S. (1957). Tests for rank correlation coefficients. I. <i>Biometrika, 44</i>(3/4), 470–481. https://doi.org/10.1093/biomet/44.3-4.470',
+    bonett: 'Bonett, D. G. y Wright, T. A. (2000). Sample size requirements for estimating Pearson, Kendall and Spearman correlations. <i>Psychometrika, 65</i>(1), 23–28. https://doi.org/10.1007/BF02294183',
     hurvich: 'Hurvich, C. M. y Tsai, C.-L. (1989). Regression and time series model selection in small samples. <i>Biometrika, 76</i>(2), 297–307. https://doi.org/10.1093/biomet/76.2.297',
     kendall: 'Kendall, M. G. (1945). The treatment of ties in ranking problems. <i>Biometrika, 33</i>(3), 239–251. https://doi.org/10.1093/biomet/33.3.239',
     szekely: 'Székely, G. J., Rizzo, M. L. y Bakirov, N. K. (2007). Measuring and testing dependence by correlation of distances. <i>The Annals of Statistics, 35</i>(6), 2769–2794. https://doi.org/10.1214/009053607000000505'
@@ -75,7 +76,7 @@ export function redactarParrafo(d, nx, ny) {
         partes.push(`La mejor forma fue la ${m.nombre.toLowerCase()} (R² = ${f2(m.r2)}, peso de Akaike = ${f2(m.peso)}), y las curvas mejoraron a la recta más de lo esperable por azar (prueba de no linealidad por bootstrap salvaje de los residuos, ${pnl}; Davidson y Flachaire, 2008): la relación es ${d.descripcion.nombre}.`);
         partes.push(coef === 'τ'
             ? `Al ser monotónica pero no lineal, y con ${d.n < 30 ? 'una muestra pequeña' : 'una variable de pocas categorías'}, se describe con la τ-b de Kendall (Kendall, 1945): τ-b = ${f2(c.tau.valor)}, ${pAPA(c.tau.p)}; la r de Pearson (r = ${f2(c.r.valor)}) solo capta su parte recta.`
-            : `Al ser monotónica pero no lineal, se describe con la correlación por rangos de Spearman: ρ = ${f2(c.rho.valor)}, IC 95 % ${ic(c.rho.ic)}, ${pAPA(c.rho.p)} (Fieller et al., 1957); la r de Pearson (r = ${f2(c.r.valor)}) solo capta su parte recta.`);
+            : `Al ser monotónica pero no lineal, se describe con la correlación por rangos de Spearman: ρ = ${f2(c.rho.valor)}, IC 95 % ${ic(c.rho.ic)}, ${pAPA(c.rho.p)} (Bonett y Wright, 2000); la r de Pearson (r = ${f2(c.r.valor)}) solo capta su parte recta.`);
     } else {
         const giros = (d.clasificacion.giros || []).map(gi => giroTexto(gi, nx));
         partes.push(`La mejor forma fue la ${m.nombre.toLowerCase()} (R² = ${f2(m.r2)}, peso de Akaike = ${f2(m.peso)}), y las curvas mejoraron a la recta más de lo esperable por azar (prueba de no linealidad por bootstrap salvaje de los residuos, ${pnl}; Davidson y Flachaire, 2008): la relación es ${d.descripcion.nombre}${giros.length ? `, con ${giros.join(' y ')}` : ''}.`);

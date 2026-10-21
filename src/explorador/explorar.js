@@ -4,6 +4,8 @@
 import { ProxiesCORS } from '../shared/proxies.js';
 import { IAAsistente } from '../shared/ia-asistente.js';
 import { d3 } from '../shared/statviz.js';
+import { escaparHTML, urlSegura } from '../shared/html.js';
+import { media as mediaNucleo } from '../core/stats/descriptivos.js';
 
 // ========================================
 // EXPLORAR — Descubrimiento de problemáticas latentes (Fase 1).
@@ -52,7 +54,7 @@ const Explorar = {
                   <input type="checkbox" id="expRef" checked style="width:auto; margin:0;"> 🏛️ Medir en medios de referencia (ONU·OMS·prensa)
                 </label>
               </div>
-              <div id="expEstado" class="help-text" style="margin-top:0.6rem;"></div>
+              <div id="expEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.6rem;"></div>
               <div id="expTablaCont" class="table-container" style="display:none; margin-top:0.8rem;">
                 <table class="table"><thead><tr>
                   <th></th><th>Subtema</th><th>📰 Noticias (3 m)</th><th>🎓 Académicos (${this.ANIOS_ACADEMICOS} a)</th>
@@ -214,7 +216,7 @@ const Explorar = {
     _tendencia(serie) {
         if (!serie || serie.length < 9) return null;
         const k = Math.floor(serie.length / 3);
-        const media = a => a.reduce((s, x) => s + x, 0) / a.length;
+        const media = mediaNucleo;   // (2026.12.12) del núcleo único
         const ini = media(serie.slice(0, k)), fin = media(serie.slice(-k));
         if (ini + fin < 0.15) return null; // actividad ínfima: sin veredicto
         const pct = ini > 0 ? Math.round(((fin - ini) / ini) * 100) : (fin > 0 ? 999 : 0);
@@ -233,14 +235,23 @@ const Explorar = {
         return `<svg class="exp-spark" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true" style="display:block; margin-top:0.25rem; opacity:0.85;"><polyline points="${linea}" fill="none" stroke="#8caaff" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
     },
     // ---- Orquestación ----
+    // (2026.12.30) Una exploración a la vez: el árbol y el panorama la lanzan aunque el botón esté desactivado, y dos en
+    // paralelo se pisaban la tabla (y el botón se quedaba en «Explorando…», el texto que la segunda tomaba por el suyo).
     async _onExplorar() {
         const tema = (document.getElementById('expTema') || {}).value.trim();
         const estado = document.getElementById('expEstado');
         const btn = document.getElementById('expBuscar');
+        if (this._explorando) { if (estado) estado.textContent = '⏳ Ya hay una exploración en curso: espera a que termine.'; return; }
         if (tema.length < 4) { if (estado) estado.textContent = '⚠️ Escribe un área o tema semilla (o toca un chip).'; return; }
         const soloEsp = !!(document.getElementById('expEspanol') || {}).checked;
         const conRef = !!(document.getElementById('expRef') || {}).checked;
-        const t0 = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Explorando…';
+        if (!this._textoBoton) this._textoBoton = btn.textContent;
+        this._explorando = true;
+        btn.disabled = true; btn.textContent = '⏳ Explorando…';
+        try { await this._explorar(tema, soloEsp, conRef, estado); }
+        finally { this._explorando = false; btn.disabled = false; btn.textContent = this._textoBoton; }
+    },
+    async _explorar(tema, soloEsp, conRef, estado) {
         const nSub = Math.max(1, Math.min(50, parseInt((document.getElementById('expNum') || {}).value, 10) || 8));
         let subtemas;
         if (nSub === 1) {
@@ -294,7 +305,6 @@ const Explorar = {
             ? `✓ ${nOK} subtema(s) medidos. Ordenados por índice de brecha (🔥 = candidatos a problemática latente${nOK < 3 ? '; con menos de 3, el semáforo usa reglas absolutas, no comparación entre subtemas' : ''}).`
               + (motivos.length ? ` ${motivos.length} con ⚠️ (causa principal: ${causa}); pasa el ratón por el ⚠️ para ver cada motivo.` : '')
             : `❌ Las noticias no pudieron medirse — causa principal: ${causa || 'fuente sin respuesta'}. Reintenta en ~1 minuto (GDELT libera el límite solo).`;
-        btn.disabled = false; btn.textContent = t0;
         this._pintarNube();
     },
     // ---- F3: nube de brechas (circle packing con el d3 ya vendorizado) ----
@@ -316,7 +326,7 @@ const Explorar = {
             d3.hierarchy({ children: datos.map(f => ({ ...f, valor: Math.max(f.indice, 0.05) })) })
               .sum(d => d.valor));
         const color = { '🔥': '#e05d44', '📊': '#2E5BBA', '📚': '#8a8f98' };
-        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const esc = escaparHTML;   // (2026.12.30) con comillas: el de antes no las escapaba y se usaba dentro de atributos
         const burbujas = raiz.leaves().map(h => {
             const f = h.data;
             const palabras = f.tema.split(/\s+/);
@@ -329,7 +339,7 @@ const Explorar = {
                 + `<circle cx="${h.x}" cy="${h.y}" r="${h.r}" fill="${color[f.icono] || '#2E5BBA'}" fill-opacity="0.88"/>${txt}</g>`;
         }).join('');
         cont.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Arial, sans-serif" style="max-width:100%; height:auto;">
-            <text x="${W / 2}" y="20" text-anchor="middle" font-size="13" font-weight="bold" fill="#1a1a1a">Nube de brechas — área ∝ índice · 🔥 latente · 📊 equilibrado · 📚 saturado</text>
+            <text x="${W / 2}" y="20" text-anchor="middle" font-size="13" font-weight="bold" fill="currentColor">Nube de brechas — área ∝ índice · 🔥 latente · 📊 equilibrado · 📚 saturado</text>
             <g transform="translate(0,26)">${burbujas}</g></svg>`;
         cont.style.display = '';
     },
@@ -345,7 +355,7 @@ const Explorar = {
             tr.nextElementSibling.remove(); return;
         }
         const t0 = btn.textContent; btn.disabled = true; btn.textContent = '⏳…';
-        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const esc = escaparHTML;   // (2026.12.30) con comillas: el de antes no las escapaba y se usaba dentro de atributos
         let html;
         try {
             if (typeof IAAsistente === 'undefined' || !IAAsistente.disponible()) throw new Error('El asistente de IA no está disponible.');
@@ -377,7 +387,7 @@ const Explorar = {
         btn.disabled = false; btn.textContent = t0;
     },
     _filaHTML(f, i) {
-        const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const esc = escaparHTML;   // (2026.12.30) con comillas: el de antes no las escapaba y se usaba dentro de atributos
         if (f.pendiente) {
             return `<tr data-idx="${i}" class="exp-midiendo">
               <td style="font-size:1.2em;">⏳</td>
@@ -391,13 +401,16 @@ const Explorar = {
             </tr>`;
         }
         const tits = f.titulares.map(t =>
-            `<div style="font-size:0.82em; margin:0.15rem 0;"><a href="${esc(t.u)}" target="_blank" rel="noopener">${esc(t.t).slice(0, 90)}</a> <span style="color:#888;">(${esc(t.d)})</span></div>`).join('')
+            // (2026.12.30) la dirección del titular, solo http(s) y escapada (llega de GDELT o de Google Noticias por proxies
+            // públicos: una con comillas inyectaba atributos, y «javascript:» llegaba al href); el título, recortado ANTES de
+            // escaparlo (recortado después podía partir una entidad)
+            `<div style="font-size:0.82em; margin:0.15rem 0;">${urlSegura(t.u) ? `<a href="${urlSegura(t.u)}" target="_blank" rel="noopener">${esc(String(t.t ?? '').slice(0, 90))}</a>` : esc(String(t.t ?? '').slice(0, 90))} <span style="color:#888;">(${esc(t.d)})</span></div>`).join('')
             || '<span style="color:#888; font-size:0.85em;">—</span>';
         return `<tr data-idx="${i}">
           <td style="font-size:1.2em;">${f.icono}</td>
           <td><strong>${esc(f.tema)}</strong></td>
           <td>${f.noticias >= 0
-            ? `<a href="${esc(f.urlFuentes || '#')}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>${f.tend ? ` <span title="Tendencia del trimestre: promedio diario ${f.tend.ini} → ${f.tend.fin} (${f.tend.pct > 0 ? '+' : ''}${f.tend.pct} %). Comparación del primer tercio vs el último.">${f.tend.icono}</span>` : ''}${f.nRef > 0 ? ` · <a href="${esc(f.urlRef)}" target="_blank" rel="noopener" title="${f.nRef} noticia(s) en medios de referencia y organismos (BBC, Reuters, El País, DW… ONU, UNICEF, OMS/OPS). Clic: ver esa cobertura." style="text-decoration:none;">🏛️${f.nRef.toLocaleString('es')}</a>` : ''}${this._sparkSVG(f.serie)}`
+            ? `<a href="${urlSegura(f.urlFuentes) || '#'}" target="_blank" rel="noopener" title="${f.aprox ? 'Estimado con Google Noticias (muestra de hasta ~100): GDELT no respondió. Clic: ver la cobertura.' : 'Ver la cobertura completa en GDELT (todas las fuentes de este conteo)'}">${f.aprox ? '≈' : ''}${f.noticias.toLocaleString('es')} 📰</a>${f.tend ? ` <span title="Tendencia del trimestre: promedio diario ${f.tend.ini} → ${f.tend.fin} (${f.tend.pct > 0 ? '+' : ''}${f.tend.pct} %). Comparación del primer tercio vs el último.">${f.tend.icono}</span>` : ''}${f.nRef > 0 ? ` · <a href="${urlSegura(f.urlRef) || '#'}" target="_blank" rel="noopener" title="${f.nRef} noticia(s) en medios de referencia y organismos (BBC, Reuters, El País, DW… ONU, UNICEF, OMS/OPS). Clic: ver esa cobertura." style="text-decoration:none;">🏛️${f.nRef.toLocaleString('es')}</a>` : ''}${this._sparkSVG(f.serie)}`
             : `<span title="${esc(f.motivo || 'fuente sin respuesta')}" style="cursor:help;">⚠️ —</span>`}</td>
           <td>${f.academicos >= 0 ? f.academicos.toLocaleString('es') : '—'}</td>
           <td>${f.indice >= 0 ? f.indice.toFixed(2).replace('.', ',') : '—'}</td>

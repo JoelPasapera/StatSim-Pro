@@ -21,7 +21,7 @@ export const metodosRedactorTeoricoInterfaz = {
                 <button id="redQuitarImport" class="btn btn-outline" style="padding:0.25rem 0.7rem; display:none;">✕ Quitar matriz importada</button>
               </div>
               <p class="help-text" style="margin:0.5rem 0 0.2rem;">🎯 <b>Filtrar por relevancia:</b> 
-                <select id="redFiltroRel" style="padding:0.15rem 0.4rem;">
+                <select id="redFiltroRel" aria-label="Filtrar las fuentes por relevancia" style="padding:0.15rem 0.4rem;">
                   <option value="0">Todas las fuentes</option>
                   <option value="2">≥ 2</option>
                   <option value="3">≥ 3</option>
@@ -29,7 +29,7 @@ export const metodosRedactorTeoricoInterfaz = {
                   <option value="5">≥ 5</option>
                 </select> <span id="redFiltroRelInfo" class="help-text"></span></p>
               <p class="help-text" style="margin:0.4rem 0 0;"><b>Usar la matriz generada</b>: redacta con lo que tengas ahora en el Buscador (respetando el filtro de relevancia). <b>Subir archivo</b>: usa una matriz exportada antes — Excel (.xlsx), CSV español (;) o CSV internacional (,) — sin repetir la búsqueda.</p>
-              <div id="redImportInfo" class="help-text" style="margin-top:0.4rem;"></div>
+              <div id="redImportInfo" class="help-text" role="status" aria-live="polite" style="margin-top:0.4rem;"></div>
             </div>
             <div style="display:flex; align-items:center; gap:0.6rem; flex-wrap:wrap; margin-top:0.2rem;">
               <button id="redRedactarTodo" class="btn btn-primary" style="padding:0.45rem 1.1rem;">📄 Redactar marco teórico completo</button>
@@ -40,7 +40,7 @@ export const metodosRedactorTeoricoInterfaz = {
               <button id="redCopiar" class="btn btn-outline" style="padding:0.4rem 1rem; display:none;">📋 Copiar texto</button>
             </div>
             <p class="help-text" style="margin:0.4rem 0 0;">El documento completo redacta todas las secciones en paralelo (planteamiento, estado de la cuestión, antecedentes, bases teóricas y modelos por variable, justificación y definiciones), con la regla de oro: <strong>toda idea con su cita</strong>. Al terminar podrás descargarlo como Word (.docx) en formato APA con las referencias al final.</p>
-            <div id="redEstado" class="help-text" style="margin-top:0.5rem;"></div>
+            <div id="redEstado" class="help-text" role="status" aria-live="polite" style="margin-top:0.5rem;"></div>
             <a id="redRecuperar" href="#" class="help-text" style="display:none; margin-top:0.3rem; text-decoration:underline; cursor:pointer;">📂 Recuperar última redacción</a>
             <div id="redResultado" style="display:none; margin-top:0.8rem; padding:1rem; border:1px solid var(--color-border, #ddd); border-radius:0.5rem; background:#fafafa; white-space:pre-wrap; font-family:'Times New Roman', serif; font-size:0.95rem; line-height:1.6; max-height:28rem; overflow:auto;"></div>
           </div>`;
@@ -64,7 +64,7 @@ export const metodosRedactorTeoricoInterfaz = {
         if (btnVar) btnVar.addEventListener('click', () => this._onIdentificarVariables());
         const btnProbar = document.getElementById('redProbar');
         if (btnProbar) btnProbar.addEventListener('click', () => this._onProbarSeccion());
-        console.info('[Redactor] versión ' + this._VERSION + ' activa · verificación: RedactorTeorico.autotest()');
+        console.info('[Redactor] versión ' + this._VERSION + ' activa · verificación: StatSim.api.redactor.RedactorTeorico.autotest()');
         const rec = document.getElementById('redRecuperar');
         if (rec) {
             rec.addEventListener('click', (ev) => { ev.preventDefault(); this._recuperarUltimo(); });

@@ -1,5 +1,6 @@
 // shared/proxies.js — proxies CORS (infraestructura compartida por el Buscador y el Explorador) con memoria de salud (localStorage) para consultar las fuentes desde el navegador.
-// Origen: proxies-cors.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
+// Origen: proxies-cors.js (Fase 4), sin cambios de comportamiento; dependencias explícitas. Desde la 2026.12.27, la carrera
+// admite la opción sigueAnte403HTML (la pide ScienceDirect; ver carrera).
 
 // ========================================
 // ARSENAL DE PROXIES CORS — módulo dedicado (separa los proxies de la lógica).
@@ -220,8 +221,13 @@ const ProxiesCORS = {
     //
     //   objetivo : URL a pedir (ya con sus parámetros)
     //   validar  : (htmlString) => obrasArray | null   (null = respuesta inútil)
-    //   op       : { anchura=4, timeout=15000, oleadas=2 }
-    // Devuelve { obras, proxy } o lanza con diagnóstico.
+    //   op       : { anchura=4, timeout=15000, oleadas=2, sigueAnte403HTML=false }
+    //     sigueAnte403HTML (2026.12.27): un 403 del destino con una página HTML no para la carrera: es el cortafuegos de
+    //     su borde bloqueando la IP de ESE proxy (otro puede pasar), no su veredicto sobre la petición. Para las APIs que
+    //     responden sus errores en JSON (ScienceDirect); por omisión, todo 4xx firme (≠429) la para.
+    // Devuelve { obras, proxy } o lanza con diagnóstico. Si el destino respondió con error, el que lanza lleva destino,
+    // destinoStatus y cuerpoDestino: el código y el cuerpo de LA MISMA respuesta (desde la 2026.12.27; el último cuerpo
+    // que vio el validador puede ser de otro proxy).
     // ========================================================================
     // ---- CACHÉ + DEDUP DE VUELOS -------------------------------------
     // La misma URL pedida dos veces en 10 min (reintentos, variantes que
@@ -329,7 +335,7 @@ const ProxiesCORS = {
                         // los módulos el error real de la fuente para rotar claves).
                         const obras = validar(cuerpo);
                         if (!obras || !obras.length) {
-                            if (codigoDestino >= 400) throw Object.assign(new Error(`destino HTTP${codigoDestino}`), { proxyId: proxy.id, destino: true, destinoStatus: codigoDestino });
+                            if (codigoDestino >= 400) throw Object.assign(new Error(`destino HTTP${codigoDestino}`), { proxyId: proxy.id, destino: true, destinoStatus: codigoDestino, paginaHTML: /<html|<!doctype/i.test(String(cuerpo)), cuerpoDestino: String(cuerpo ?? '').slice(0, 20000) });
                             throw Object.assign(new Error('vacío'), { proxyId: proxy.id });
                         }
                         // El deadline vive hasta validar; recién aquí se desarma.
@@ -349,7 +355,8 @@ const ProxiesCORS = {
                             // sigue (otro camino puede esquivar un borde caído), pero
                             // el proxy no paga.
                             const cod = +(String(err.message).match(/HTTP(\d+)/) || [])[1] || 0;
-                            if (cod >= 400 && cod < 500 && cod !== 429) pararPorDestino(err);
+                            const bloqueoDeEsteProxy = !!op.sigueAnte403HTML && cod === 403 && !!err.paginaHTML;
+                            if (cod >= 400 && cod < 500 && cod !== 429 && !bloqueoDeEsteProxy) pararPorDestino(err);
                         } else if (!err.esCancelacion) {
                             this.registrar(err.proxyId, false, 0, /HTTP429/.test(String(err.message)));
                             adelantar(); // AVANCE RÁPIDO: fallo definitivo ⇒ el siguiente sale ya
@@ -399,6 +406,7 @@ const ProxiesCORS = {
         if (errDestino) {
             const err = new Error(`${errDestino.message} — el problema está en la fuente consultada, no en los intermediarios`);
             err.carrera = true; err.destino = true; err.destinoStatus = errDestino.destinoStatus || 0;
+            if (typeof errDestino.cuerpoDestino === 'string') err.cuerpoDestino = errDestino.cuerpoDestino;   // el cuerpo de ESA respuesta
             throw err;
         }
         if (!op._gracia) {

@@ -2,6 +2,10 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { BaseColumnar } from '../../core/data/base-columnar.js';
+import { mulberry32 } from '../../core/random/mulberry32.js';
+import { normalBoxMuller } from '../../core/random/normal.js';
+import { biseccion } from '../../core/stats/optimizacion.js';
+import { estandarizar } from '../../core/stats/descriptivos.js';
 
 export const metodosGrupos = {
     // ============ DIFERENCIAS POR GRUPO (d de Cohen) ============
@@ -135,8 +139,8 @@ export const metodosGrupos = {
                     if (ronda === 0) this.diferenciasLimitadas.push({ variable: req.nombre, agrupacion: req.agrup.categoria, pedido: req.d, alcanzable: dGeneral(req) });
                     return;
                 }
-                for (let it = 0; it < 40; it++) { const mid = (lo + hi) / 2; if (probar(mid) < req.d) lo = mid; else hi = mid; }
-                libres.forEach(p => anadir(p.nombre, req.agrup, (lo + hi) / 2, req.nombre));
+                const dLibre = biseccion(probar, req.d, lo, hi, 40);   // (2026.12.25) la bisección del núcleo único
+                libres.forEach(p => anadir(p.nombre, req.agrup, dLibre, req.nombre));
             });
         }
         // (B7) Las ondas T2… heredan las d que el General derivado trasladó a su
@@ -196,11 +200,9 @@ export const metodosGrupos = {
                 if (e.tipo === 'icc') {
                     // (C4) efecto de conglomerado estandarizado ENTRE PERSONAS (media 0, DE 1):
                     // amplitud √CCI ⇒ varianza entre = CCI·σ² exacta, sin calibrar
-                    let m = 0; for (let i = 0; i < n; i++) { c[i] = e.efectos[codigos[i]] || 0; m += c[i]; }
-                    m /= n; let v = 0; for (let i = 0; i < n; i++) { c[i] -= m; v += c[i] * c[i]; }
-                    const sd = Math.sqrt(v / Math.max(1, n - 1)) || 1;
-                    for (let i = 0; i < n; i++) c[i] /= sd;
-                    partes.push({ agrup: e.agrup, tipo: 'icc', d: e.d, amplitud: e.amplitud, c, codigos, fija: true });
+                    for (let i = 0; i < n; i++) c[i] = e.efectos[codigos[i]] || 0;
+                    // (2026.12.25) las puntuaciones típicas del núcleo único (DE muestral; sin varianza, la escala 1)
+                    partes.push({ agrup: e.agrup, tipo: 'icc', d: e.d, amplitud: e.amplitud, c: estandarizar(c, { muestral: true }).z, codigos, fija: true });
                     return;
                 }
                 for (let i = 0; i < n; i++) c[i] = this._codigoCentrado(e.agrup, codigos[i]);
@@ -249,7 +251,7 @@ export const metodosGrupos = {
     // uniforme continua (que no la tiene), (máx − mín)/√12.
     _deEfectiva(socio) {
         if (typeof socio.desviacion === 'number' && isFinite(socio.desviacion) && socio.desviacion > 0) return socio.desviacion;
-        if (socio.distribucion === 'uniforme' && isFinite(socio.minimo) && isFinite(socio.maximo)) return (socio.maximo - socio.minimo) / Math.sqrt(12);
+        if (socio.distribucion === 'uniforme' && Number.isFinite(socio.minimo) && Number.isFinite(socio.maximo)) return (socio.maximo - socio.minimo) / Math.sqrt(12);   // (2026.12.30) sin aceptar null como 0
         return 0;
     },
 
@@ -334,9 +336,8 @@ export const metodosGrupos = {
         nivR.forEach((nv, k) => { for (let j = 0; j < recR[k]; j++) a[pos++] = nv.codigo; });
         // PRNG propio y fijo (mulberry32): el valor esperado no depende del estado
         // del generador principal ni lo consume, así el informe es reproducible
-        let semilla = 0x9E3779B9 ^ Math.round(f * 1000) ^ (nivR.length * 131 + nivS.length * 17);
-        const u = () => { semilla = (semilla + 0x6D2B79F5) | 0; let x = Math.imul(semilla ^ (semilla >>> 15), 1 | semilla); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
-        const normal = () => { const u1 = Math.max(1e-12, u()), u2 = u(); return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); };
+        // (2026.12.25) el generador y la normal del núcleo único (core/random/)
+        const u = mulberry32(0x9E3779B9 ^ Math.round(f * 1000) ^ (nivR.length * 131 + nivS.length * 17)), normal = () => normalBoxMuller(u);
         for (let i = 0; i < nS; i++) lat[i] = f * (a[i] - media) / de + c * normal();
         const idx = Array.from({ length: nS }, (_, i) => i).sort((x, y) => lat[x] - lat[y]);
         const b = new Float64Array(nS); const recS = this._recuentosExactos(nivS, nS); pos = 0;

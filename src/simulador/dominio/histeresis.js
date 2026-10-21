@@ -1,18 +1,30 @@
+// @ts-check
 // simulador/dominio/histeresis.js — estados con histéresis (Atlas de relaciones, fase E2; sin DOM ni estado).
 // Un estado de dos valores (bajo 0, alto 1) depende del CAMINO de X: se entra por encima del umbral de entrada y se sale por debajo
 // del de salida, más bajo; entre los dos (la franja) se conserva el estado de la onda anterior. Con el mismo X hoy, dos personas
 // pueden estar en estados distintos según de dónde vengan. En T1, sin pasado, el estado alto es tanto más probable cuanto más cerca
 // está X del umbral de entrada. La nitidez es la proporción de observaciones en que el estado no sigue la regla: con 0 la separación
 // es perfecta y una regresión logística con el estado anterior no converge.
+import { cuantilOrdenado as cuantilTipo7 } from '../../core/stats/orden.js';
 
 // Cuantil empírico con interpolación lineal (tipo 7) de un vector ya ordenado
-export function cuantilOrdenado(ordenados, p) {
-    const h = (ordenados.length - 1) * p, i = Math.floor(h);
-    return i + 1 < ordenados.length ? ordenados[i] + (h - i) * (ordenados[i + 1] - ordenados[i]) : ordenados[i];
-}
+/**
+ * @param {ArrayLike<number>} ordenados  de menor a mayor
+ * @param {number} p  en [0, 1]
+ * @returns {number}
+ */
+export function cuantilOrdenado(ordenados, p) { return cuantilTipo7(ordenados, p); }   // del núcleo único
 
 // Estados de n personas en K ondas: X[k][i] (totales), umbrales alto > bajo, ruido en [0, 0.5), aleatorio() uniforme en [0, 1).
 // Devuelve S[k] (Uint8Array con 0/1)
+/**
+ * @param {ArrayLike<number>[]} X  X[k][i], el total de la persona i en la onda k
+ * @param {number} alto  umbral de entrada
+ * @param {number} bajo  umbral de salida (menor que el de entrada)
+ * @param {number} ruido  nitidez, en [0, 0.5)
+ * @param {() => number} aleatorio  uniforme en [0, 1)
+ * @returns {Uint8Array[]}
+ */
 export function generarEstados(X, alto, bajo, ruido, aleatorio) {
     const K = X.length, n = X[0].length, S = X.map(() => new Uint8Array(n));
     for (let i = 0; i < n; i++) {
@@ -31,6 +43,13 @@ export function generarEstados(X, alto, bajo, ruido, aleatorio) {
 // cuántas conservan el estado dentro (desde la onda 2), el estado según el anterior dentro de la franja, el X medio al entrar y al
 // salir SIGUIENDO la regla (revisión de la fase E2: mezclar los cambios de la nitidez daba entradas por debajo del umbral de
 // entrada), los cambios que no la siguen, las observaciones en la franja y las personas con algún cambio
+/**
+ * @param {ArrayLike<number>[]} X  X[k][i]
+ * @param {ArrayLike<number>[]} S  S[k][i], el estado (0/1; tras las imperfecciones, NaN donde falta)
+ * @param {number} alto
+ * @param {number} bajo
+ * @returns los contadores descritos arriba (tipo deducido del objeto que se devuelve)
+ */
 export function resumenHisteresis(X, S, alto, bajo) {
     const K = X.length, n = X[0].length, r = { nFuera: 0, fueraSigue: 0, nDentro: 0, dentroConserva: 0, altosDesdeAlto: 0, nDesdeAlto: 0, altosDesdeBajo: 0, nDesdeBajo: 0, sumaEntra: 0, nEntra: 0, sumaSale: 0, nSale: 0, cambios: 0, cambiosFueraDeRegla: 0, nObs: 0, nFranja: 0, personasConCambio: 0, personas: 0 };
     for (let i = 0; i < n; i++) {

@@ -1,3 +1,6 @@
+import { cuantilOrdenado } from '../core/stats/orden.js';
+import { media as mediaNucleo, desviacion, asimetria, curtosis } from '../core/stats/descriptivos.js';
+import { fuerzaCorrelacionGrafico as bandaFuerza } from './motor/magnitudes.js';   // (2026.12.24) la de graficas.js, una sola
 // analizador/analisis-graficos.js — análisis de gráficos.
 // Origen: analisis-graficos.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
@@ -20,39 +23,27 @@
 
 // ------------------------- utilidades estadísticas -------------------------
 
-function cuantil(ordenados, p) {
-    const h = (ordenados.length - 1) * p;
-    const lo = Math.floor(h), hi = Math.ceil(h);
-    return ordenados[lo] + (h - lo) * (ordenados[hi] - ordenados[lo]);
-}
+function cuantil(ordenados, p) { return cuantilOrdenado(ordenados, p); }   // tipo 7, del núcleo único
 
 function stats(valores) {
     const v = valores.filter(Number.isFinite).slice().sort((a, b) => a - b);
     const n = v.length;
     if (n === 0) return null;
-    const media = v.reduce((s, x) => s + x, 0) / n;
-    const m2 = v.reduce((s, x) => s + (x - media) ** 2, 0) / n;
-    const de = Math.sqrt(m2 * n / Math.max(1, n - 1));
-    const m3 = v.reduce((s, x) => s + (x - media) ** 3, 0) / n;
-    const m4 = v.reduce((s, x) => s + (x - media) ** 4, 0) / n;
-    const q1 = cuantil(v, 0.25), q3 = cuantil(v, 0.75);
+    // (2026.12.19) media, DE, asimetría y curtosis del núcleo único: las MISMAS que la tabla de descriptivos (asimetría y
+    // curtosis ajustadas, G1 y G2, las de SPSS); antes, aquí los momentos sin ajustar, y la misma variable tenía dos valores
+    const q1 = cuantil(v, 0.25), q3 = cuantil(v, 0.75), a = asimetria(v), c = curtosis(v);
     return {
-        n, media, de, q1, q3,
+        n, media: mediaNucleo(v), de: n > 1 ? desviacion(v) : 0, q1, q3,
         mediana: cuantil(v, 0.5),
         ric: q3 - q1,
         min: v[0], max: v[n - 1],
-        asimetria: m2 > 0 ? m3 / Math.pow(m2, 1.5) : 0,
-        curtosis: m2 > 0 ? m4 / (m2 * m2) - 3 : 0
+        asimetria: Number.isFinite(a) ? a : 0,
+        curtosis: Number.isFinite(c) ? c : 0
     };
 }
 
 const fr = x => (x < 0 ? '\u2212' : '') + Math.abs(x).toFixed(2).replace(/^0/, '');
 const f1 = x => (Math.round(x * 10) / 10).toFixed(1);
-
-function bandaFuerza(r) {
-    const a = Math.abs(r);
-    return a < 0.1 ? 'despreciable' : a < 0.3 ? 'd\u00e9bil' : a < 0.5 ? 'moderada' : 'fuerte';
-}
 
 function listaNatural(items) {
     if (items.length <= 1) return items.join('');
@@ -164,25 +155,27 @@ function analisisMatriz(d) {
         }
     }
     if (!pares.length) return '';
-    const positivas = pares.filter(x => x.r >= 0.1);
-    const negativas = pares.filter(x => x.r <= -0.1);
+    // (2026.12.24) las bandas únicas (motor/magnitudes.js): un par cuenta si no es «despreciable» (|r| ≥ .10), y su banda
+    // decide si es débil, moderado o fuerte; un r no numérico no cuenta
+    const relevante = r => bandaFuerza(r) !== 'despreciable';
+    const positivas = pares.filter(x => x.r > 0 && relevante(x.r));
+    const negativas = pares.filter(x => x.r < 0 && relevante(x.r));
     const nulas = pares.length - positivas.length - negativas.length;
     const maxPos = pares.slice().sort((x, y) => y.r - x.r)[0];
     const minNeg = pares.slice().sort((x, y) => x.r - y.r)[0];
     const mediaAbs = pares.reduce((s, x) => s + Math.abs(x.r), 0) / pares.length;
-    const fuertes = pares.filter(x => Math.abs(x.r) >= 0.5).length;
-    const moderadas = pares.filter(x => Math.abs(x.r) >= 0.3 && Math.abs(x.r) < 0.5).length;
-    const debiles = pares.filter(x => Math.abs(x.r) >= 0.1 && Math.abs(x.r) < 0.3).length;
+    const cuantos = banda => pares.filter(x => !Number.isNaN(Math.abs(x.r)) && bandaFuerza(x.r) === banda).length;
+    const fuertes = cuantos('fuerte'), moderadas = cuantos('moderada'), debiles = cuantos('d\u00e9bil');
 
     // 1) Panorama del patrón de signos
     let p = `El examen de los ${pares.length} pares de variables revel\u00f3 ${positivas.length} ${positivas.length === 1 ? 'asociaci\u00f3n positiva' : 'asociaciones positivas'}, ${negativas.length} ${negativas.length === 1 ? 'negativa' : 'negativas'} y ${nulas} de magnitud despreciable (|r| < .10). `;
     // 2) Extremos con lectura direccional y varianza compartida
-    if (maxPos.r >= 0.1) {
+    if (maxPos.r > 0 && relevante(maxPos.r)) {
         p += `La asociaci\u00f3n positiva de mayor magnitud se observ\u00f3 entre ${maxPos.a} y ${maxPos.b} (${fr(maxPos.r)}; ${bandaFuerza(maxPos.r)}; r\u00b2 = ${f1(100 * maxPos.r * maxPos.r)} % de varianza compartida), lo que indica que puntuaciones m\u00e1s elevadas en ${maxPos.a} tienden a acompa\u00f1arse de puntuaciones m\u00e1s elevadas en ${maxPos.b}. `;
     }
-    if (minNeg.r <= -0.1) {
+    if (minNeg.r < 0 && relevante(minNeg.r)) {
         p += `La relaci\u00f3n inversa m\u00e1s marcada correspondi\u00f3 a ${minNeg.a} y ${minNeg.b} (${fr(minNeg.r)}; ${bandaFuerza(minNeg.r)}), de modo que valores m\u00e1s altos en ${minNeg.a} tienden a asociarse con valores m\u00e1s bajos en ${minNeg.b}. `;
-    } else if (maxPos.r >= 0.1) {
+    } else if (maxPos.r > 0 && relevante(maxPos.r)) {
         p += `No se registraron asociaciones negativas de magnitud relevante. `;
     }
     // 3) Estructura global

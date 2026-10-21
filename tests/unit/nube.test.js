@@ -38,6 +38,20 @@ test('NCA: d del techo CE-FDH exacto, esquinas y d del CR-FDH (integración fina
     }
 });
 
+test('NCA: la prueba por permutaciones de Y (Dul et al., 2020): p mínimo con un techo marcado, alto con variables independientes', async () => {
+    const { mulberry32 } = await import('../../src/core/random/mulberry32.js'), { normalBoxMuller } = await import('../../src/core/random/normal.js');
+    const tri = /** @type {any} */ (fx.find((/** @type {any} */ c) => c.nombre === 'triangulo'));
+    const r = analisisNecesidad(Float64Array.from(tri.x), Float64Array.from(tri.y), { B: 199 });
+    assert.equal(r.B, 199); assert.ok(r.p <= 0.01, `triángulo: p = ${r.p}`);
+    // con variables independientes, p es uniforme: en 20 bases, como mucho 4 por debajo de 0,05 (P(≥ 5) ≈ 0,003) y no todas iguales
+    const u = mulberry32(12), ps = [];
+    for (let k = 0; k < 20; k++) {
+        const x = Float64Array.from({ length: 150 }, () => normalBoxMuller(u)), y = Float64Array.from({ length: 150 }, () => normalBoxMuller(u));
+        ps.push(analisisNecesidad(x, y, { B: 99 }).p);
+    }
+    assert.ok(ps.filter(p => p < 0.05).length <= 4 && new Set(ps).size > 5, `independientes: p = ${ps.join(', ')}`);
+});
+
 test('techo o suelo e influencia (Cook, estudentizados con Bonferroni, r sin influyentes) iguales al oráculo', () => {
     for (const c of fx) {
         const x = Float64Array.from(c.x), y = Float64Array.from(c.y), ts = techoSuelo(y), inf = influenciaLineal(x, y);

@@ -9,6 +9,7 @@ import { tablaAutovalores, tablaCargas, tablaPhi, redactarParrafo, referenciasAF
 import { mostrarToast } from '../../shared/toast.js';
 import { descargarArchivo, descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
+import { aNumero } from '../../core/data/celdas.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -116,7 +117,7 @@ export function calcular() {
     const faltan = eleccion ? eleccion.items.filter(it => !(it in (datos[0] || {}))) : [];
     if (faltan.length) errores.push(`No están en la base: ${faltan.join(', ')}.`);
     if (errores.length) { mensajes(errores, []); return null; }
-    const filas = datos.map(f => eleccion.items.map(it => parseFloat(f[it]))).filter(v => v.every(Number.isFinite));
+    const filas = datos.map(f => eleccion.items.map(it => aNumero(f[it]))).filter(v => v.every(Number.isFinite));   // (2026.12.18) la conversión del núcleo
     const cols = eleccion.items.map((_, j) => filas.map(f => f[j]));
     const avisos = datos.length > filas.length ? [`${datos.length - filas.length} caso(s) con datos incompletos en estos ítems se excluyeron (n = ${filas.length}).`] : [];
     const opciones = { correlacion: contenedor.querySelector('#afeCorrelacion').value, factores: contenedor.querySelector('#afeFactores').value, rotacion: contenedor.querySelector('#afeRotacion').value,

@@ -23,7 +23,10 @@ const AnalisisDimensiones = {
     _cacheCriba: { clave: null, criba: null },
 
     // Construye los pares candidatos a partir de la estructura del simulador.
-    _candidatos(var1, var2) {
+    // (2026.12.31, tercera revisión) Con soloConLaGeneral, sin los pares dimensión ↔ dimensión (prioridad 2), que la criba
+    // descarta: antes se construían todos y se tiraban, un producto (dos tests de 2500 dimensiones, o un CSV con 3000
+    // columnas Dimension_, eran millones de pares y la pestaña se quedaba sin memoria).
+    _candidatos(var1, var2, soloConLaGeneral = false) {
         const E = (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables : null;
         const candidatos = [];
         const agregar = (prueba, columnaObjetivo) => {
@@ -45,7 +48,7 @@ const AnalisisDimensiones = {
         if (p2 && p2.dimensiones.length) agregar(p2, var1);
         candidatos.forEach(c => { c.prioridad = 1; c.tipoPar = 'general-dim'; });
         // PRIORIDAD 2 (relleno hasta el máximo): dimensión ↔ dimensión entre pruebas
-        if (p1 && p2 && p1.dimensiones.length && p2.dimensiones.length) {
+        if (!soloConLaGeneral && p1 && p2 && p1.dimensiones.length && p2.dimensiones.length) {
             p1.dimensiones.forEach(d1 => {
                 p2.dimensiones.forEach(d2 => {
                     candidatos.push({
@@ -96,13 +99,15 @@ const AnalisisDimensiones = {
                     });
                 });
             });
-            for (let i = 0; i < dims.length; i++) {
-                for (let j = i + 1; j < dims.length; j++) {
-                    candidatos.push({
-                        columnaX: dims[i], columnaY: dims[j],
-                        etiquetaX: et(dims[i]), etiquetaY: et(dims[j]),
-                        prioridad: 2, tipoPar: 'dim-dim'
-                    });
+            if (!soloConLaGeneral) {
+                for (let i = 0; i < dims.length; i++) {
+                    for (let j = i + 1; j < dims.length; j++) {
+                        candidatos.push({
+                            columnaX: dims[i], columnaY: dims[j],
+                            etiquetaX: et(dims[i]), etiquetaY: et(dims[j]),
+                            prioridad: 2, tipoPar: 'dim-dim'
+                        });
+                    }
                 }
             }
         }
@@ -120,7 +125,7 @@ const AnalisisDimensiones = {
 
         // Estándar de tesis: SOLO dimensión × escala general (prioridad 1).
         // Los pares dimensión×dimensión se excluyen por circularidad conceptual.
-        const candidatos = this._candidatos(var1, var2).filter(c => c.prioridad === 1);
+        const candidatos = this._candidatos(var1, var2, true);
         if (candidatos.length === 0) return null;
 
         const criba = CribaCorrelaciones.cribar(
@@ -156,7 +161,7 @@ const AnalisisDimensiones = {
                 ${otras.length === 0 ? 'Genera una base con filas de tipo <strong>Dimensión</strong> en cada prueba (además de la General).' : ''}</p>
                         <p class="help-text" style="font-family: monospace; font-size: 0.85em;">Diagnóstico técnico —
                         CribaCorrelaciones: ${typeof CribaCorrelaciones} ·
-                        candidatos en vivo: ${this._candidatos(var1, var2).length} ·
+                        candidatos en vivo: ${this._candidatos(var1, var2, true).length} ·
                         estructura: ${typeof EtiquetasVariables !== 'undefined' ? EtiquetasVariables.estructura().length : '—'} ·
                         caché: ${this._cacheCriba.clave || 'vacía'} ·
                         criba: ${criba ? 'evaluados=' + criba.evaluados.length : 'null'}</p>`;
@@ -219,10 +224,11 @@ const AnalisisDimensiones = {
             const esSp = I._esSpearman(resultado.tipoCorrelacion);
             const ic = resultado.intervaloConfianza;
             const icTxt = (ic && Number.isFinite(ic.inferior)) ? `[${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]` : '—';
-            const sigCruda = resultado.pValor < 0.05;
-            const sigHolm = pHolm[i] < 0.05;
+            const alfa = AnalizadorEstadistico.alfaEstudio();   // (2026.12.22) el α del estudio; antes, .05 fijo
+            const sigCruda = resultado.pValor < alfa;
+            const sigHolm = pHolm[i] < alfa;
             html += `<div class="table-container"><table class="table">
-                    <thead><tr><th>n</th><th>Método</th><th>Coeficiente</th><th>p-valor</th><th>p ajustado (Holm)</th><th>IC 95%</th><th>Magnitud</th><th>Decisión (Holm)</th></tr></thead>
+                    <thead><tr><th>n</th><th>Método</th><th>Coeficiente</th><th>p-valor</th><th>p ajustado (Holm)</th><th>IC ${Math.round(100 * ((ic && ic.nivel) || 0.95))}%</th><th>Magnitud</th><th>Decisión (Holm)</th></tr></thead>
                     <tbody><tr>
                         <td>${resultado.n}</td>
                         <td>${esSp ? 'Spearman (ρ)' : 'Pearson (r)'}</td>
@@ -237,7 +243,7 @@ const AnalisisDimensiones = {
                 ${sigCruda && !sigHolm ? `<p class="help-text" style="margin: 0.4rem 0 0;">⚠️ Este par resulta significativo con el p sin ajustar, pero NO tras la corrección de Holm: en el contexto de ${resultadosSel.length} objetivos evaluados podría tratarse de un falso positivo, por lo que debe interpretarse con cautela.</p>` : ''}
                 <details style="margin: 0.5rem 0 0;">
                     <summary style="cursor: pointer; font-weight: 600;">Interpretación profesional</summary>
-                    <p style="margin: 0.5rem 0 0;">${I.generarInterpretacionCorrelacion(`la dimensión ${sel.etiquetaX}`, sel.etiquetaY, resultado)}</p>
+                    <p style="margin: 0.5rem 0 0;">${I.generarInterpretacionCorrelacion(`la dimensión ${sel.etiquetaX}`, sel.etiquetaY, resultado, { pAjustado: pHolm[i], familia: resultadosSel.length })}</p>
                 </details>
             </div>`;
         });

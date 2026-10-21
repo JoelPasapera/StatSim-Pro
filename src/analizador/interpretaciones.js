@@ -2,6 +2,9 @@
 // Origen: interpretaciones-estadisticas.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
 import { CribaCorrelaciones } from './criba-correlaciones.js';
+import { formatoNumero, textoP } from '../shared/formato-numero.js';
+import { magnitudR } from './motor/magnitudes.js';
+import { indiceGrupoMayor } from './motor/grupos.js';
 
 // ========================================
 // MÓDULO DE INTERPRETACIONES ESTADÍSTICAS
@@ -22,9 +25,13 @@ const InterpretacionesEstadisticas = {
     },
 
     // p-valor con criterio profesional: nunca reportar p = 0.000
-    _fmtP(p) {
+    // «p = 0.034» o «p < 0.001» (con el cero inicial, como «α = 0.05» en estas redacciones), sin que el redondeo cruce el α
+    // del estudio ni .01, .05 o .10 (2026.12.30: p = .0496 se escribía «p = 0.050», junto a «inferior al nivel de
+    // significancia»).
+    /** @param {number} p @param {number} [alfa] */
+    _fmtP(p, alfa) {
         if (!Number.isFinite(p)) return 'p no disponible';
-        return p < 0.001 ? 'p < 0.001' : `p = ${p.toFixed(3)}`;
+        return textoP(p, { alfa, ceroInicial: true });
     },
 
     _fmtNum(x, dec = 3) {
@@ -36,12 +43,10 @@ const InterpretacionesEstadisticas = {
         return /^h?i(?![eé])/i.test(String(siguientePalabra).trim()) ? 'e' : 'y';
     },
 
-    // Punto de corte de Cohen (1988) para correlaciones: .10 / .30 / .50
+    // Punto de corte de Cohen (1988) para correlaciones: .10 / .30 / .50 (2026.12.24: las bandas únicas de motor/magnitudes.js;
+    // por debajo de .10, la redacción lo dice con todas sus letras)
     _benchmarkCohen(rAbs) {
-        if (rAbs < 0.1) return 'inferior al umbral de efecto pequeño';
-        if (rAbs < 0.3) return 'pequeño';
-        if (rAbs < 0.5) return 'mediano';
-        return 'grande';
+        return rAbs < 0.1 ? 'inferior al umbral de efecto pequeño' : magnitudR(rAbs);
     },
 
     // ========================================
@@ -91,7 +96,12 @@ const InterpretacionesEstadisticas = {
         }
 
         // 4) Recomendación de corroboración visual
-        texto += `La inspección de los gráficos Q-Q respalda visualmente esta decisión, en tanto los puntos se alinean sobre la recta de referencia.`;
+        // (2026.12.30) según la decisión: antes decía siempre que «los puntos se alinean sobre la recta», también al rechazar la
+        // normalidad
+        const noNormales = [[var1, norm1], [var2, norm2]].filter(([, nr]) => !nr.normal).map(([v]) => v);
+        texto += noNormales.length
+            ? `Los gráficos Q-Q permiten corroborarlo visualmente: con una distribución normal los puntos se alinean sobre la recta de referencia, y la desviación que detectó la prueba en ${noNormales.join(' y en ')} se aprecia como puntos que se apartan de ella, sobre todo en las colas.`
+            : `La inspección de los gráficos Q-Q respalda visualmente esta decisión, en tanto los puntos se alinean sobre la recta de referencia.`;
 
         return texto;
     },
@@ -100,9 +110,13 @@ const InterpretacionesEstadisticas = {
     // INTERPRETACIONES DE CORRELACIÓN
     // ========================================
 
-    generarInterpretacionCorrelacion(var1, var2, resultado) {
+    // (2026.12.30) `opciones.pAjustado` y `opciones.familia`: con varias correlaciones (los objetivos específicos), la
+    // decisión y el texto usan el p corregido por Holm, el de la tabla (antes, el texto decía «significativo» con el p sin
+    // ajustar justo debajo de una tabla que decía «No significativa»).
+    generarInterpretacionCorrelacion(var1, var2, resultado, opciones = {}) {
         const coef = resultado.coeficiente;
         const pValor = resultado.pValor;
+        const pAjustado = Number.isFinite(opciones.pAjustado) ? opciones.pAjustado : null;
         const n = resultado.n;
         const gl = Number.isFinite(resultado.gl) ? resultado.gl : (n - 2);
         const esSpearman = this._esSpearman(resultado.tipoCorrelacion);
@@ -125,7 +139,7 @@ const InterpretacionesEstadisticas = {
         }
 
         // 2) Reporte del resultado (estilo APA, con IC si está disponible)
-        texto += `El análisis arrojó ${tipoCoef}(${gl}) = ${this._fmtNum(coef)}, ${this._fmtP(pValor)} (N = ${n})`;
+        texto += `El análisis arrojó ${tipoCoef}(${gl}) = ${this._fmtNum(coef)}, ${this._fmtP(pValor, resultado.alfa)} (N = ${n})`;
         if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
             const nivelIC = Math.round((ic.nivel || 0.95) * 100);
             texto += `, IC ${nivelIC}% [${this._fmtNum(ic.inferior)}, ${this._fmtNum(ic.superior)}]`;
@@ -144,13 +158,20 @@ const InterpretacionesEstadisticas = {
             }
         }
 
-        // 4) Significancia estadística
-        if (pValor < 0.05) {
-            texto += pValor < 0.01
-                ? `El resultado es estadísticamente significativo incluso bajo el criterio exigente de 0.01 (${this._fmtP(pValor)}), lo que aporta evidencia sólida de que la asociación observada no se debe al azar muestral. `
-                : `El resultado es estadísticamente significativo al nivel convencional de 0.05 (${this._fmtP(pValor)}), lo que indica que la asociación observada difícilmente se explica por el azar muestral. `;
+        // 4) Significancia estadística. (2026.12.30) Con el α del estudio (antes, .05 fijo aunque el estudio usara otro).
+        const alfa = Number.isFinite(resultado.alfa) ? resultado.alfa : 0.05;
+        const significativa = (pAjustado ?? pValor) < alfa;
+        if (pAjustado !== null) {
+            const familia = opciones.familia ? ` por los ${opciones.familia} contrastes` : '';
+            texto += significativa
+                ? `El resultado es estadísticamente significativo también tras la corrección de Holm${familia} (p ajustado ${this._fmtP(pAjustado, alfa).replace(/^p\s*/, '')}, α = ${alfa}), lo que indica que la asociación observada difícilmente se explica por el azar muestral. `
+                : `Tras la corrección de Holm${familia}, el resultado NO es estadísticamente significativo (p ajustado ${this._fmtP(pAjustado, alfa).replace(/^p\s*/, '')} ≥ α = ${alfa}${pValor < alfa ? `; sin ajustar, ${this._fmtP(pValor, alfa)}` : ''}): los datos no aportan evidencia suficiente de una asociación ${tipoRelacion} en la población. `;
+        } else if (significativa) {
+            texto += pValor < 0.01 && alfa >= 0.01
+                ? `El resultado es estadísticamente significativo incluso bajo el criterio exigente de 0.01 (${this._fmtP(pValor, alfa)}), lo que aporta evidencia sólida de que la asociación observada no se debe al azar muestral. `
+                : `El resultado es estadísticamente significativo al nivel α = ${alfa} del estudio (${this._fmtP(pValor, alfa)}), lo que indica que la asociación observada difícilmente se explica por el azar muestral. `;
         } else {
-            texto += `El resultado NO alcanzó significancia estadística (${this._fmtP(pValor)} ≥ 0.05): los datos no aportan evidencia suficiente de una asociación ${tipoRelacion} en la población. `;
+            texto += `El resultado NO alcanzó significancia estadística (${this._fmtP(pValor, alfa)} ≥ α = ${alfa}): los datos no aportan evidencia suficiente de una asociación ${tipoRelacion} en la población. `;
             texto += `Cabe precisar la lectura correcta de este hallazgo: la ausencia de evidencia de asociación no equivale a evidencia de ausencia de asociación. `;
         }
 
@@ -162,21 +183,31 @@ const InterpretacionesEstadisticas = {
             texto += `Asimismo, el coeficiente de determinación r² = ${this._fmtNum(r2, 3)} indica que ${var1} y ${var2} comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza; el ${(100 - r2 * 100).toFixed(1)}% restante obedece a otros factores no contemplados en este análisis bivariado. `;
         }
 
-        // 6) Intervalo de confianza: precisión y coherencia con la decisión
+        // 6) Intervalo de confianza: precisión y coherencia con la decisión. (2026.12.30) La frase depende de las dos: antes
+        // decía «coherente con la falta de significancia» siempre que el IC incluyera el cero, también con un resultado
+        // significativo.
         if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
             const cruzaCero = ic.inferior <= 0 && ic.superior >= 0;
-            if (cruzaCero) {
+            if (pAjustado !== null && !cruzaCero && !significativa) {
+                texto += `El intervalo de confianza excluye el cero, pero no incorpora la corrección por los contrastes múltiples: con ella, la evidencia no basta para afirmar la asociación en la población. `;
+            } else if (cruzaCero && !significativa) {
                 texto += `El intervalo de confianza incluye el valor cero, lo que es coherente con la falta de significancia: no puede descartarse que la correlación poblacional sea nula. `;
-            } else {
+            } else if (!cruzaCero && significativa) {
                 texto += `El intervalo de confianza excluye el cero, de modo que incluso el escenario más conservador del intervalo sigue indicando una asociación ${direccion} en la población. `;
+            } else {
+                // un caso límite: el p (la prueba t, o la de los rangos) y el intervalo (la z de Fisher) son aproximaciones
+                // distintas y, cerca del umbral, pueden discrepar
+                texto += cruzaCero
+                    ? `El intervalo de confianza roza el cero y llega a incluirlo, aunque la prueba resultó significativa: es un resultado en el límite, en el que la prueba y el intervalo (calculado por otra aproximación) discrepan; conviene informarlo con cautela. `
+                    : `El intervalo de confianza excluye el cero por poco, aunque la prueba no alcanzó la significancia: es un resultado en el límite, en el que la prueba y el intervalo (calculado por otra aproximación) discrepan; conviene informarlo con cautela. `;
             }
         }
 
         // 7) Potencia post-hoc, especialmente informativa cuando no hay significancia
         if (poder !== null) {
-            if (pValor >= 0.05 && poder < 0.8) {
+            if (!significativa && poder < 0.8) {
                 texto += `No puede descartarse un error de Tipo II: con este tamaño muestral, un efecto real de esta magnitud podría haber pasado inadvertido.`;
-            } else if (pValor >= 0.05) {
+            } else if (!significativa) {
                 texto += `El tamaño muestral otorgaba capacidad razonable para detectar el efecto si existiera; la no significancia resulta, por tanto, informativa.`;
             } else {
                 texto += `La precisión del intervalo de confianza respalda la estabilidad del hallazgo.`;
@@ -215,16 +246,16 @@ const InterpretacionesEstadisticas = {
         texto += `La regla de decisión fue: rechazar H₀ si p < α. `;
 
         // 2) Evidencia y decisión
-        texto += `Con ${simboloMuestral}(${gl}) = ${this._fmtNum(coef)} y ${this._fmtP(pValor)}, `;
+        texto += `Con ${simboloMuestral}(${gl}) = ${this._fmtNum(coef)} y ${this._fmtP(pValor, alpha)}, `;
 
         if (prueba.decision === 'rechazar') {
-            texto += `el p-valor resulta inferior al nivel de significancia (${this._fmtP(pValor)}, frente a α = ${alpha}), por lo que SE RECHAZA H₀. `;
+            texto += `el p-valor resulta inferior al nivel de significancia (${this._fmtP(pValor, alpha)}, frente a α = ${alpha}), por lo que SE RECHAZA H₀. `;
             texto += `Se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre ${var1} y ${var2} en la población es distinta de cero. `;
             // Salvaguardas profesionales
             texto += `Dos precisiones son obligadas en un reporte riguroso. Primera: significancia estadística no equivale a relevancia práctica; la importancia del hallazgo debe juzgarse por el tamaño del efecto (|${simboloMuestral}| = ${this._fmtNum(coefAbs, 2)}) y no por el p-valor. `;
             texto += `Segunda: correlación no implica causalidad; este resultado documenta covariación sistemática, pero la dirección causal solo podría establecerse con un diseño experimental o longitudinal apropiado. `;
         } else {
-            texto += `el p-valor no es inferior al nivel de significancia (${this._fmtP(pValor)}, frente a α = ${alpha}), por lo que NO SE RECHAZA H₀. `;
+            texto += `el p-valor no es inferior al nivel de significancia (${this._fmtP(pValor, alpha)}, frente a α = ${alpha}), por lo que NO SE RECHAZA H₀. `;
             texto += `Se concluye que no existe evidencia suficiente para afirmar que la correlación poblacional entre ${var1} y ${var2} sea distinta de cero. `;
             texto += `Cabe precisar que esta decisión no equivale a la aceptación de H₀; la prueba no demuestra que la correlación sea exactamente nula, solo que los datos no permiten descartarlo. `;
 
@@ -531,14 +562,14 @@ const InterpretacionesEstadisticas = {
 
         // Sección 3: Resultados
         d += `---\n\n**RESULTADOS**\n\n`;
-        d += `El análisis arrojó ${simbolo}(${gl}) = ${this._fmtNum(resultado.coeficiente)}, ${this._fmtP(resultado.pValor)} (N = ${resultado.n})`;
+        d += `El análisis arrojó ${simbolo}(${gl}) = ${this._fmtNum(resultado.coeficiente)}, ${this._fmtP(resultado.pValor, pruebaHip.alpha)} (N = ${resultado.n})`;
         if (ic && Number.isFinite(ic.inferior) && Number.isFinite(ic.superior)) {
             d += `, IC ${Math.round((ic.nivel || 0.95) * 100)}% [${this._fmtNum(ic.inferior)}, ${this._fmtNum(ic.superior)}]`;
         }
         d += `. `;
 
         if (pruebaHip.decision === 'rechazar') {
-            d += `Dado que el p-valor es inferior a α (${this._fmtP(resultado.pValor)} frente a α = ${pruebaHip.alpha}), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre ${var1} y ${var2}${contexto}.\n\n`;
+            d += `Dado que el p-valor es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre ${var1} y ${var2}${contexto}.\n\n`;
             d += `La magnitud corresponde a una correlación **${resultado.interpretacion.fuerza}** de dirección **${resultado.interpretacion.direccion}** (tamaño del efecto ${this._benchmarkCohen(coefAbs)} según Cohen, 1988), lo que indica que ${resultado.interpretacion.direccion === 'positiva'
                 ? 'a medida que aumenta una variable, la otra tiende a aumentar'
                 : 'a medida que aumenta una variable, la otra tiende a disminuir'}. `;
@@ -546,7 +577,7 @@ const InterpretacionesEstadisticas = {
                 ? `El coeficiente al cuadrado (ρ² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de la varianza de sus rangos.\n\n`
                 : `El coeficiente de determinación (r² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza.\n\n`;
         } else {
-            d += `Dado que el p-valor no es inferior a α (${this._fmtP(resultado.pValor)} frente a α = ${pruebaHip.alpha}), no se rechaza la hipótesis nula: **no existe evidencia suficiente** de una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}. `;
+            d += `Dado que el p-valor no es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), no se rechaza la hipótesis nula: **no existe evidencia suficiente** de una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}. `;
             d += `Cabe recordar que no rechazar H₀ no equivale a demostrar que la correlación poblacional sea nula`;
             d += (poder !== null && poder < 0.8)
                 ? `; no puede descartarse un error de Tipo II.\n\n`
@@ -583,9 +614,15 @@ const InterpretacionesEstadisticas = {
 
     generarInterpretacionComparacion(varCuantitativa, varAgrupacion, resultado) {
         const significativa = resultado.decision === 'rechazar';
-        const d1 = resultado.descriptivas1;
-        const d2 = resultado.descriptivas2;
-        const grupoMayor = d1.media >= d2.media ? resultado.etiqueta1 : resultado.etiqueta2;
+        // (2026.12.30) La dirección, como la compara la prueba: por la media en la t, por el rango medio en la U de
+        // Mann-Whitney (antes, siempre por la media: con valores extremos, el grupo «de media más alta» era el contrario
+        // del que detectó la prueba)
+        const iMayor = indiceGrupoMayor(resultado);
+        const grupoMayor = iMayor === 0 ? resultado.etiqueta1 : resultado.etiqueta2;
+        const porRangos = !resultado.parametrica && Array.isArray(resultado.rangosMedios);
+        const direccion = porRangos
+            ? `El grupo "${grupoMayor}" presenta los valores más altos (rango medio ${formatoNumero(resultado.rangosMedios[iMayor], 1)} frente a ${formatoNumero(resultado.rangosMedios[1 - iMayor], 1)}).`
+            : `El grupo "${grupoMayor}" presenta la media más alta.`;
         const prueba = resultado.prueba;
         const ef = resultado.tamanoEfecto;
         const pTexto = this._fmtP(prueba.pValor);
@@ -593,10 +630,10 @@ const InterpretacionesEstadisticas = {
         // (apropiado para Mann-Whitney); d de Cohen en el caso paramétrico.
         const efTexto = resultado.tamanoEfectoRangos
             ? `r de rangos = ${resultado.tamanoEfectoRangos.r.toFixed(2)}, tamaño ${resultado.tamanoEfectoRangos.interpretacion}`
-            : `d de Cohen = ${ef.d.toFixed(2)}, tamaño ${ef.interpretacion}`;
+            : `d de Cohen = ${formatoNumero(ef.d, 2)}, tamaño ${ef.interpretacion}`;
 
         if (significativa) {
-            return `Existe una diferencia estadísticamente significativa en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). El grupo "${grupoMayor}" presenta la media más alta. La magnitud de la diferencia corresponde a ${efTexto}. Una diferencia significativa no implica causalidad cuando los grupos no se asignaron al azar.`;
+            return `Existe una diferencia estadísticamente significativa en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). ${direccion} La magnitud de la diferencia corresponde a ${efTexto}. Una diferencia significativa no implica causalidad cuando los grupos no se asignaron al azar.`;
         }
         return `No se hallaron diferencias estadísticamente significativas en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}); el tamaño del efecto corresponde a ${efTexto}. Un resultado no significativo no demuestra la igualdad de los grupos: podría deberse a un tamaño muestral insuficiente para detectar la diferencia.`;
     }

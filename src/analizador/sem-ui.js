@@ -2,10 +2,12 @@
 // Origen: sem-ui.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
 import { CABECERA_VALIDEZ, filasValidez, cabeceraHTMT, filasHTMT, NOTA_VALIDEZ, redactarValidez } from './psicometria/validez.js';
-import { ComparacionGrupos } from './comparacion-grupos.js';
 import { AnalizadorEstadistico } from './estadistica.js';
 import { SEM } from './sem-motor.js';
 import { obtenerColumnasNumericas } from './ui/carga.js';
+import { pChiCuadrado } from '../core/stats/numerico.js';
+import { aNumero } from '../core/data/celdas.js';
+import { formatoP, pConSigno } from '../shared/formato-numero.js';   // (revisión 2026.12.30) también los p del χ² y del Δχ²
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -40,7 +42,7 @@ const SEMUI = {
         modelo.regresiones.forEach(r => { if (!lat.includes(r.y)) obs.add(r.y); r.xs.forEach(x => { if (!lat.includes(x)) obs.add(x); }); });
         const p = obs.size;
         const nombres = [...obs];
-        const filas = datos.map(d => nombres.map(c => +d[c])).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => nombres.map(c => aNumero(d[c]))).filter(f => f.every(Number.isFinite));   // (2026.12.18) antes +valor: la celda vacía contaba como 0
         const n = filas.length;
         let q = p; // varianzas de observadas
         Object.values(modelo.latentes).forEach(is => { q += (is.length - 1) + 1; }); // cargas libres + var factor
@@ -111,14 +113,14 @@ const SEMUI = {
         const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
         const D = {
             chi2: {
-                titulo: `χ²(${R.gl}) = ${fx(R.chi2, 2)}, p ${R.pChi2 < 0.001 ? '< .001' : '= ' + fx(R.pChi2)}`,
+                titulo: `χ²(${R.gl}) = ${fx(R.chi2, 2)}, p ${pConSigno(R.pChi2)}`,
                 que: 'Contrasta la hipótesis de ajuste PERFECTO: que la matriz de covarianzas que tu modelo implica sea idéntica a la observada. Es la única prueba estadística formal del SEM; los demás índices son descriptivos.',
                 porque: 'Porque el SEM es, en el fondo, una teoría sobre covarianzas: tu diagrama de flechas PREDICE cuánto deben covariar las variables, y el χ² mide la discrepancia entre esa predicción y la realidad, escalada por el tamaño muestral: χ² = (n−1)·F_ML.',
                 como: 'p > .05 significa que no puedes rechazar el ajuste perfecto (deseable). Pero cuidado con la lectura ingenua: al crecer n, discrepancias triviales se vuelven "significativas" — el χ² castiga el éxito de reclutar muestra.',
                 sifuera: 'Un χ² significativo con n grande y buenos índices descriptivos NO condena el modelo; un χ² no significativo con n = 80 tampoco lo salva (falta potencia para detectar el desajuste).',
                 mejorar: 'Revisa los residuos de covarianza mayores: señalan pares de variables cuya relación el modelo no reproduce (¿falta una carga cruzada teóricamente defendible? ¿una covarianza de errores por redacción similar de ítems?). Nunca agregues parámetros solo para bajar el χ².',
                 errores: 'El error clásico: reportar solo "χ² significativo, mal modelo" o esconderlo. Las revistas esperan verlo SIEMPRE, con gl y p, aunque los índices descriptivos lleven el peso del argumento.',
-                apa: `Reporte tipo: «El modelo mostró χ²(${R.gl}) = ${fx(R.chi2, 2)}, p ${R.pChi2 < 0.001 ? '< .001' : '= ' + fx(R.pChi2)}».`
+                apa: `Reporte tipo: «El modelo mostró χ²(${R.gl}) = ${fx(R.chi2, 2)}, p ${pConSigno(R.pChi2)}».`
             },
             CFI: {
                 titulo: `CFI = ${fx(R.CFI)} ${this._semaforo('CFI', R)}`,
@@ -288,8 +290,8 @@ const SEMUI = {
             }
             if (this._anidados(Ra, Rb)) {
                 const dChi = simple.chi2 - complejo.chi2, dGl = simple.gl - complejo.gl;
-                const pD = (typeof ComparacionGrupos !== 'undefined' && dGl > 0) ? ComparacionGrupos._pChi2(Math.max(dChi, 0), dGl) : NaN;
-                h += `<p style="margin:0.4rem 0 0;"><b>${simple.etiquetaModelo} vs ${complejo.etiquetaModelo} (anidados):</b> Δχ²(${dGl}) = ${fx(Math.max(dChi, 0), 2)}, p ${pD < 0.001 ? '< .001' : '= ' + fx(pD)}. ${pD < 0.05
+                const pD = (dGl > 0) ? pChiCuadrado(Math.max(dChi, 0), dGl) : NaN;
+                h += `<p style="margin:0.4rem 0 0;"><b>${simple.etiquetaModelo} vs ${complejo.etiquetaModelo} (anidados):</b> Δχ²(${dGl}) = ${fx(Math.max(dChi, 0), 2)}, p ${pConSigno(pD)}. ${pD < 0.05
                     ? `La mejora del modelo más complejo es real: sus parámetros adicionales compran ajuste genuino, no ruido. Preferible: <b>${complejo.etiquetaModelo}</b>.`
                     : `El modelo complejo NO mejora significativamente al simple: sus parámetros extra no se justifican y, por parsimonia, es preferible <b>${simple.etiquetaModelo}</b>.`} <i>¿Por qué Δχ²?</i> Cuando un modelo es un caso particular del otro, la diferencia de sus χ² sigue a su vez una χ² con gl = diferencia de gl — una prueba formal de si la complejidad extra vale la pena.</p>`;
             } else {
@@ -373,7 +375,7 @@ const SEMUI = {
         const R = SEM.ajustar(sx, null, etiqueta, { estimador });
         if (R.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${R.error}</p>`; return; }
         const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
-        const fp = p => !Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
+        const fp = p => formatoP(p);
         const grupos = { coeficiente: 'Cargas y coeficientes estructurales', 'var/cov': 'Varianzas y covarianzas' };
         const avisosModelo = (R.avisos || []).map(a => `<p class="help-text" style="margin:0 0 0.3rem;color:var(--color-warning);">⚠️ ${a}</p>`).join('');
         let h = `<h4 style="margin:0 0 0.2rem;">${etiqueta} — parámetros estimados (n = ${R.n})</h4>`;

@@ -16,7 +16,8 @@ test('descriptivos: media, DE, mediana, asimetría y curtosis', () => {
     for (const [clave, datos] of [['descriptivas_x', D.x], ['descriptivas_z', D.z]]) {
         const d = A.calcularDescriptivas(datos), r = R[clave];
         cerca(d.media, r.media, 1e-6, clave + ' media'); cerca(d.desviacion, r.desviacion, 1e-6, clave + ' DE'); cerca(d.mediana, r.mediana, 1e-6, clave + ' mediana');
-        cerca(d.asimetria, r.asimetria, 0.02, clave + ' asimetría'); cerca(d.curtosis, r.curtosis, 0.05, clave + ' curtosis');
+        // (2026.12.19) G1 y G2 del núcleo, las de SciPy con bias=False: tolerancia numérica (antes, 0,02 y 0,05)
+        cerca(d.asimetria, r.asimetria, 1e-10 * Math.max(1, Math.abs(r.asimetria)), clave + ' asimetría'); cerca(d.curtosis, r.curtosis, 1e-10 * Math.max(1, Math.abs(r.curtosis)), clave + ' curtosis');
     }
 });
 
@@ -36,8 +37,10 @@ test('dos grupos: t de Student, t de Welch, U de Mann–Whitney, Levene y d de C
     const a = D.y_g.filter((_, i) => D.g2[i] === 0), b = D.y_g.filter((_, i) => D.g2[i] === 1);
     const t = A.pruebaTStudent(a, b); cerca(Math.abs(t.estadistico), Math.abs(R.t_student.t), 1e-6, 't'); assert.equal(t.gl, R.t_student.gl); cercaP(t.pValor, R.t_student.p, 'p de t');
     const w = A.pruebaTWelch(a, b); cerca(Math.abs(w.estadistico), Math.abs(R.t_welch.t), 1e-6, 't de Welch'); cercaP(w.pValor, R.t_welch.p, 'p de Welch');
-    const u = A.pruebaMannWhitney(a, b); cerca(u.U, R.mann_whitney.U, 1e-6, 'U'); cercaP(u.pValor, R.mann_whitney.p, 'p de U');
-    const l = A.pruebaLevene([a, b]); cerca(l.estadistico, R.levene.F, 1e-4, 'F de Levene (Brown–Forsythe, centrado en la mediana)'); cercaP(l.pValor, R.levene.p, 'p de Levene');
+    const u = A.pruebaMannWhitney(a, b); cerca(u.U, R.mann_whitney.U, 1e-6, 'U');
+    // (2026.12.15) tolerancia ajustada: con el 3 % de cercaP, la corrección por continuidad pasaba inadvertida
+    cerca(u.pValor, R.mann_whitney.p, 1e-9 * R.mann_whitney.p, 'p de U (sin continuidad, como SPSS)');
+    const l = A.pruebaLevene([a, b]); cerca(l.estadistico, R.levene.F, 1e-9 * R.levene.F, 'F de Levene (centrada en la media, como SPSS)'); cerca(l.pValor, R.levene.p, 1e-9 * R.levene.p, 'p de Levene');
     const d = A.calcularCohenD(a, b); cerca(Math.abs(d.d), Math.abs(R.cohen_d), 1e-6, 'd de Cohen');
 });
 
@@ -49,7 +52,7 @@ test('tres grupos: ANOVA y Kruskal–Wallis', () => {
 
 test('regresión lineal simple y alfa de Cronbach', () => {
     const r = A.calcularRegresionLineal(D.x, D.y);
-    cerca(r.pendiente, R.regresion.pendiente, 1e-6, 'pendiente'); cerca(r.intercepto, R.regresion.intercepto, 1e-6, 'intercepto'); cerca(r.r2, R.regresion.r2, 1e-6, 'R²'); cercaP(r.pPendiente, R.regresion.p, 'p de la pendiente');
+    cerca(r.pendiente, R.regresion.pendiente, 1e-6, 'pendiente'); cerca(r.intercepto, R.regresion.intercepto, 1e-6, 'intercepto'); cerca(r.r2, R.regresion.r2, 1e-6, 'R²'); cerca(r.pPendiente, R.regresion.p, 1e-9 * R.regresion.p, 'p de la pendiente');   // (2026.12.19) la recta del núcleo: tolerancia numérica
     const items = D.items[0].map((_, j) => 'it' + (j + 1));
     const datos = D.items.map(fila => Object.fromEntries(fila.map((v, j) => [items[j], v])));
     const res = Fiabilidad.analizarGrupo(datos, { nombre: 'Escala', etiqueta: 'Escala', origen: 'manual', items, invertidos: [] });

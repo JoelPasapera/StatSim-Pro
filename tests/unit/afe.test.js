@@ -7,7 +7,7 @@ import { analizarAFE, kmo, bartlett, analisisParalelo, rotar, ordenarFactores, m
 import { ejesPrincipales } from '../../src/analizador/psicometria/factorial.js';
 import { matrizCorrelaciones } from '../../src/analizador/psicometria/clasica.js';
 import { multiplicar, traspuesta, eigenSimetrica } from '../../src/analizador/psicometria/algebra.js';
-import { pChiCuadrado } from '../../src/analizador/psicometria/numerico.js';
+import { pChiCuadrado } from '../../src/core/stats/numerico.js';
 
 const fx = JSON.parse(fs.readFileSync(new URL('../oracle/afe_fixture.json', import.meta.url), 'utf8'));
 const cerca = (a, b, tol, que) => assert.ok(Math.abs(a - b) <= tol, `${que}: ${a} vs ${b}`);

@@ -13,3 +13,9 @@
     .table-container { font-size: 0.8125rem; }
     .card { padding: var(--spacing-lg); }
 }
+
+/* (2026.12.30) En pantallas estrechas los botones parten su texto: con white-space: nowrap, «🚀 Búsqueda intensiva con
+   variantes» medía más que los 360 px de un teléfono y la página se desplazaba de lado. */
+@media (max-width: 480px) {
+    .btn { white-space: normal; text-align: center; justify-content: center; }
+}

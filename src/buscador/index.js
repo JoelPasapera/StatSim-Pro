@@ -2,6 +2,8 @@
 // Los módulos se montan solos al cargar el DOM (como antes); este índice reexporta la API de la sección.
 import { ProxiesCORS } from '../shared/proxies.js';
 import { ScopusDirecto } from './fuentes/scopus.js';
+import { ScienceDirectDirecto } from './fuentes/sciencedirect.js';
+import { WebOfScienceDirecto } from './fuentes/wos.js';
 import { PubMedDirecto } from './fuentes/pubmed.js';
 import { ScieloDirecto } from './fuentes/scielo.js';
 import { AliciaDirecto } from './fuentes/alicia.js';
@@ -12,6 +14,7 @@ import { MetaAnalisis } from './meta-analisis.js';
 import { RankingRevistas } from './ranking.js';
 import { Antecedentes } from './antecedentes/index.js';
 import { estado, CLAVES } from '../shared/estado.js';
+import './proyecto.js';   // (2026.12.31) lo que el Buscador guarda en un proyecto (se inscribe al importarse)
 
 // Servicio que el Redactor consume sin importar al Buscador: fuentes seleccionadas y formato APA.
 estado.set(CLAVES.FUENTES_BUSCADOR, {
@@ -24,4 +27,4 @@ estado.set(CLAVES.FUENTES_BUSCADOR, {
     get relevanciaAplicada() { return Antecedentes._relevanciaAplicada; }
 });
 
-export { ProxiesCORS, ScopusDirecto, PubMedDirecto, ScieloDirecto, AliciaDirecto, ScholarDirecto, ProtocoloBusqueda, PrismaDiagrama, MetaAnalisis, RankingRevistas, Antecedentes };
+export { ProxiesCORS, ScopusDirecto, ScienceDirectDirecto, WebOfScienceDirecto, PubMedDirecto, ScieloDirecto, AliciaDirecto, ScholarDirecto, ProtocoloBusqueda, PrismaDiagrama, MetaAnalisis, RankingRevistas, Antecedentes };

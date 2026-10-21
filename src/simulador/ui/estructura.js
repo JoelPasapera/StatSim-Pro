@@ -1,13 +1,24 @@
 // simulador/ui/estructura.js — tarjeta VII (estructura factorial: matriz de cargas y panel).
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
-import { escapeAttr } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { barajar } from '../../core/random/permutacion.js';
+import { excesoDeJson } from '../../core/data/json-acotado.js';
 
 // ---- (C1) Tarjeta VII: estructura factorial de cada test ----
 // Estado por test: { modo, factores, cargas: { <dimensión>: [[λ por factor] por ítem] }, metodo: {carga}|null, desajuste }.
 // Se persiste como JSON en #estructurasJSON, que es lo que lee el generador (recolectarEstructuras).
-const estructurasUI = {};
+// (2026.12.31, cuarta revisión) sin prototipo: un test llamado «constructor» o «__proto__» (de un maestro ajeno) no tiene
+// una estructura heredada (la tarjeta lo marcaba con ✓ y «Generar» fallaba con un error de JavaScript)
+const estructurasUI = Object.create(null);
+
+/**
+ * Lo más que trae la estructura de un test en el maestro (un JSON por línea): sus factores y la carga de cada ítem, con
+ * holgura; medida antes de leerla (core/data/json-acotado.js), porque el maestro puede ser de otra persona.
+ * @type {import('../../core/data/json-acotado.js').TopesJson}
+ */
+const TOPES_JSON_ESTRUCTURA = { profundidad: 8, contenedores: 100000, elementos: 1000000 };
 
 function testsConItems() {
     const porTest = new Map();
@@ -42,7 +53,8 @@ function cargasPropuestas(dim) {
     const media = Math.max(0.3, Math.min(0.9, Math.sqrt(Math.max(0.05, l2))));
     const het = (document.getElementById('heterogeneidadItems') || {}).value || 'leve';
     const disp = { ninguna: 0, leve: 0.05, moderada: 0.10, alta: 0.15 }[het] || 0.05;
-    const orden = Array.from({ length: k }, (_, i) => i).sort(() => Math.random() - 0.5);
+    // (2026.12.25) un barajado uniforme (el del núcleo); ordenar con un comparador aleatorio no lo es
+    const orden = barajar(Array.from({ length: k }, (_, i) => i), Math.random);
     return Array.from({ length: k }, (_, i) => +Math.max(0.15, Math.min(0.95, media + disp * (k > 1 ? (2 * orden[i] / (k - 1) - 1) : 0))).toFixed(2));
 }
 
@@ -53,9 +65,10 @@ function estructuraReconciliada(prueba) {
     if (!test) return null;
     const previa = estructurasUI[prueba] || { modo: 'cargas', metodo: null, desajuste: 'ninguno', cargas: {} };
     const factores = test.dims.map(d => d.nombre);
-    const cargas = {};
+    // (cuarta revisión) por dimensión, sin heredar: una dimensión «constructor» no tiene la función del prototipo por cargas
+    const cargas = Object.create(null);
     test.dims.forEach((d, di) => {
-        const antes = previa.cargas[d.nombre] || [];
+        const antes = (previa.cargas && Object.prototype.hasOwnProperty.call(previa.cargas, d.nombre) && previa.cargas[d.nombre]) || [];
         const propuesta = cargasPropuestas(d);
         const filas = [];
         for (let i = 0; i < d.numItems; i++) {
@@ -132,15 +145,12 @@ function actualizarPanelEstructura() {
     test.dims.forEach((d, di) => {
         const filas = est.cargas[d.nombre] || [];
         let propias = filas.map(f => Math.max(0.05, Math.min(0.95, +f[di] || 0)));
-        if (est.modo === 'alfa' && d.alfa > 0 && d.alfa < 1 && typeof generadorDatos !== 'undefined') {
-            let lo = 0.05, hi = 3;
-            for (let it = 0; it < 30; it++) { const mid = (lo + hi) / 2; const fi = generadorDatos._fiabilidadImplicita(propias.map(x => Math.min(0.95, x * mid)))[indice]; if (fi < d.alfa) lo = mid; else hi = mid; }
-            propias = propias.map(x => Math.min(0.95, x * (lo + hi) / 2));
-        }
+        // (2026.12.25) las cargas con la fiabilidad pedida, de la misma función que usa el generador (antes, una copia aquí)
+        if (est.modo === 'alfa' && d.alfa > 0 && d.alfa < 1 && typeof generadorDatos !== 'undefined') propias = generadorDatos._cargasConFiabilidad(propias, d.alfa, indice);
         const fi = (typeof generadorDatos !== 'undefined') ? generadorDatos._fiabilidadImplicita(propias) : { alfa: NaN, omega: NaN };
         const sumaL = propias.reduce((s, l) => s + l, 0), mediaL = sumaL / Math.max(1, propias.length);
         const sigmaItem = isFinite(d.desviacion) && sumaL > 0 ? d.desviacion / sumaL : NaN;
-        const likert = isFinite(d.minimo) && isFinite(d.maximo);
+        const likert = Number.isFinite(d.minimo) && Number.isFinite(d.maximo);   // (2026.12.30) null no es 0: una continua no es Likert
         let nota = '';
         if (likert && isFinite(sigmaItem)) {
             const ruido = sigmaItem * sigmaItem * (1 - mediaL * mediaL);
@@ -213,17 +223,36 @@ function cargarEstructurasDesdeJSON(texto) {
 function renombrarEnEstructuras(viejo, nuevo) {
     if (!viejo || !nuevo || viejo === nuevo) return;
     Object.values(estructurasUI).forEach(est => {
-        if (est.cargas[viejo]) { est.cargas[nuevo] = est.cargas[viejo]; delete est.cargas[viejo]; }
+        // (quinta revisión) rehechas sin prototipo: las de una estructura leída del maestro son un objeto normal, y renombrar
+        // una dimensión a «__proto__» le cambiaba el prototipo en vez de crear la clave (y sus cargas se perdían)
+        if (Object.prototype.hasOwnProperty.call(est.cargas, viejo)) {
+            const cargas = Object.create(null);
+            for (const [k, v] of Object.entries(est.cargas)) if (k !== viejo) cargas[k] = v;
+            cargas[nuevo] = est.cargas[viejo];
+            est.cargas = cargas;
+        }
         if (Array.isArray(est.factores)) est.factores = est.factores.map(f => f === viejo ? nuevo : f);
     });
     guardarEstructurasJSON();
 }
 
 // CSV del archivo maestro: una fila por test con la estructura en JSON
+// (revisión 2026.12.30) con campoCSV, como los demás bloques: el nombre del test sin fórmulas («=HYPERLINK(…)» se ejecutaba
+// al abrir el maestro en Excel) y con las comillas dobladas
 function csvDeEstructuras() {
     let csv = 'Prueba,EstructuraJSON\n';
-    Object.values(estructurasUI).forEach(est => { csv += `${String(est.prueba).includes(',') ? `"${est.prueba}"` : est.prueba},"${JSON.stringify(est).replace(/"/g, '""')}"\n`; });
+    Object.values(estructurasUI).forEach(est => { csv += `${campoCSV(est.prueba)},${campoCSV(JSON.stringify(est))}\n`; });
     return csv;
+}
+
+/** La estructura de una línea del bloque: por los campos del CSV y, si no se lee así (un maestro antiguo con comillas sueltas en el nombre), por el JSON entre comillas que la cierra. @param {string} linea */
+function estructuraDeLinea(linea) {
+    /** @param {string} json */
+    const leer = json => (excesoDeJson(json, TOPES_JSON_ESTRUCTURA) ? null : JSON.parse(json));
+    try { const json = parsearLineaCSV(linea)[1]; if (json) return leer(json); } catch (e) { /* se prueba la lectura antigua */ }
+    const i = linea.indexOf(',"');
+    if (i < 0) return null;
+    try { return leer(linea.slice(i + 2, linea.length - 1).replace(/""/g, '"')); } catch (e) { return null; }
 }
 
 function aplicarCSVEstructuras(csv) {
@@ -231,10 +260,8 @@ function aplicarCSVEstructuras(csv) {
     Object.keys(estructurasUI).forEach(k => delete estructurasUI[k]);
     let aplicadas = 0;
     for (const linea of lineas.slice(1)) {
-        const i = linea.indexOf(',"');
-        if (i < 0) continue;
-        const json = linea.slice(i + 2, linea.length - 1).replace(/""/g, '"');
-        try { const est = JSON.parse(json); if (est && est.prueba && est.cargas) { estructurasUI[est.prueba] = est; aplicadas++; } } catch (e) { /* fila ilegible */ }
+        const est = estructuraDeLinea(linea);
+        if (est && est.prueba && est.cargas) { estructurasUI[est.prueba] = est; aplicadas++; }
     }
     guardarEstructurasJSON();
     poblarSelectorEstructura();

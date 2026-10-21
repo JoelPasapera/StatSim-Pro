@@ -82,9 +82,11 @@ test('revisión 2026.11.09: errores típicos del propio modelo (la cola seleccio
     assert.ok(conFallo <= 2, `informes con alguna ✗: ${conFallo} de 30`);
 });
 
-test('revisión 2026.11.09: escalas de acierto/error relacionadas → error; un puntaje general → r informativa y Thorndike verificada; imperfecciones → aviso y filas informativas', () => {
+test('escalas de acierto/error relacionadas → se generan con lo esperado tras la selección (2026.11.26; antes, error); un puntaje general → r informativa y Thorndike verificada; imperfecciones → aviso', () => {
     const dic = generar({ extra: { pruebas: [esc('Examen', 'EX'), esc('Razonamiento', 'RZ', { minimo: 0, maximo: 1, numItems: 20, media: 12, desviacion: 3.5, alfa: 0.8 }), esc('Motivación', 'MO')], correlaciones: [{ a: 'Examen', b: 'Razonamiento', r: 0.5 }, { a: 'Examen', b: 'Motivación', r: 0.3 }] } });
-    assert.ok(dic.v.errores.some(e => /escalas de acierto\/error relacionadas en la tabla III \(«Razonamiento»\)/.test(e)));
+    assert.deepEqual(dic.v.errores, []);
+    assert.deepEqual(dic.informe.filter(f => f.ok === false).map(f => `${f.tipo} ${f.variable}`), []);
+    assert.match(dic.informe.find(f => f.tipo === 'KR-20' && /Razonamiento/.test(f.variable)).pedido, /^≈ /, 'el KR-20 se compara con lo esperado tras la selección');
     const pr = [esc('Examen', 'EX'), { ...esc('Lectura', 'LE'), prueba: 'B' }, { ...esc('Escritura', 'ES'), prueba: 'B' }];
     const gen = generar({ extra: { pruebas: pr, variablesPorTest: { T: { variable: 'R', rIntra: 0 }, B: { variable: 'Lengua', rIntra: 0.4 } }, correlaciones: [{ a: 'Examen', b: 'Lengua — B', r: 0.45 }] } });
     const filasGeneral = gen.informe.filter(f => /Lengua — B/.test(f.variable));

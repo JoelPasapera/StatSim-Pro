@@ -2,6 +2,7 @@
 // Origen: buscador/antecedentes/interfaz.js (Fase 6, segunda pasada: partición por responsabilidad).
 
 import { PrismaDiagrama } from '../prisma.js';
+import { textoSeguro as t, urlSegura, htmlConCursivas } from '../../shared/html.js';
 
 export const metodosAntecedentesResultados = {
 
@@ -15,16 +16,19 @@ export const metodosAntecedentesResultados = {
         const ini = this._pagina * POR_PAGINA;
         const visibles = obras.slice(ini, ini + POR_PAGINA);
 
+        // (2026.12.26) Todo lo que llega de las fuentes se pinta como texto (shared/html.js: sin las etiquetas de algunos
+        // títulos, con sus entidades decodificadas y escapado) y los enlaces solo pueden ser http(s).
         const filas = visibles.map((o, j) => {
             const i = ini + j; // índice real en this._obras
+            const href = urlSegura(o.link || o.doi);
             return `
             <tr>
-              <td><input type="checkbox" data-i="${i}" ${this._seleccion.has(this._norm(o.titulo)) ? 'checked' : ''}></td>
-              <td>${(o.autores || []).slice(0, 3).join('; ')}${(o.autores || []).length > 3 ? ' et al.' : ''} (${o.anio || 's. f.'})</td>
-              <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank">${o.titulo}</a>` : o.titulo}</td>
-              <td>${o.fuente}</td><td>${o.citas}</td>
-              <td>${(o.link || o.doi) ? `<a href="${o.link || o.doi}" target="_blank" title="Abrir artículo">🔗</a>` : '—'}</td>
-              <td style="font-size:0.8em;color:#888;">${(o.fuentesAPI || []).join('+')}</td>
+              <td><input type="checkbox" data-i="${i}" aria-label="Seleccionar: ${t(o.titulo)}" ${this._seleccion.has(this._norm(o.titulo)) ? 'checked' : ''}></td>
+              <td>${t((o.autores || []).slice(0, 3).join('; '))}${(o.autores || []).length > 3 ? ' et al.' : ''} (${t(o.anio || 's. f.')})</td>
+              <td>${href ? `<a href="${href}" target="_blank" rel="noopener">${t(o.titulo)}</a>` : t(o.titulo)}</td>
+              <td>${t(o.fuente)}</td><td>${t(o.citas)}</td>
+              <td>${href ? `<a href="${href}" target="_blank" rel="noopener" title="Abrir artículo">🔗</a>` : '—'}</td>
+              <td style="font-size:0.8em;color:#888;">${t((o.fuentesAPI || []).join('+'))}</td>
             </tr>`;
         }).join('');
 
@@ -102,7 +106,7 @@ export const metodosAntecedentesResultados = {
         }
         const filasMatriz = selMatriz.map(o => this._filaMatriz(o));
         const infoUmbral = umbralRel > 0
-            ? ` <span style="font-weight:normal; font-size:0.75em; color:#666;">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
+            ? ` <span style="font-weight:normal; font-size:0.75em; color:var(--color-text-soft, #8b93a7);">(mostrando ${selMatriz.length} de ${sel.length} · relevancia ≥ ${umbralRel})</span>`
             : '';
         const npMat = Math.max(1, Math.ceil(filasMatriz.length / PP));
         if (this._selMat >= npMat) this._selMat = npMat - 1;
@@ -119,7 +123,7 @@ export const metodosAntecedentesResultados = {
                 <span>Referencias seleccionadas (APA 7, orden alfabético)</span>
                 <button id="antCopiarRefs" class="btn btn-primary" style="padding:0.3rem 0.8rem;">📋 Copiar con formato</button>
             </h4>
-            <div class="result-box" id="antRefsBox">${refsVis.map(r => `<p style="margin:0 0 0.5rem;padding-left:2rem;text-indent:-2rem;">${r}</p>`).join('')}</div>
+            <div class="result-box" id="antRefsBox">${refsVis.map(r => `<p style="margin:0 0 0.5rem;padding-left:2rem;text-indent:-2rem;">${htmlConCursivas(r)}</p>`).join('')}</div>
             ${this._barraPaginas('Ref', this._selRef, npRef, iniR, refs.length, PP)}
 
             <h4 style="margin-top:1.5rem; display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;">
@@ -165,7 +169,7 @@ export const metodosAntecedentesResultados = {
         if (p === 0) return '<span title="No evaluado" style="color:#999;">—</span>';
         // Colores: 5 verde fuerte, 4 verde, 3 ámbar, 2 naranja, 1 rojo.
         const estilos = {
-            5: 'background:#1D9E75;color:#fff;',
+            5: 'background:#137a5b;color:#fff;',   // (2026.12.30) más oscuro: #1D9E75 con blanco daba 3.4:1
             4: 'background:#97C459;color:#173404;',
             3: 'background:#EF9F27;color:#412402;',
             2: 'background:#F0997B;color:#4A1B0C;',
@@ -193,22 +197,25 @@ export const metodosAntecedentesResultados = {
         const autorCorto = autoresAPA.length
             ? (autoresAPA.length === 1 ? autoresAPA[0] : autoresAPA[0] + ' et al.')
             : '';
+        // (2026.12.26) Las celdas que se pintan van como texto (limpio y escapado) y el enlace solo puede ser http(s); las
+        // planas (CSV y Excel), tal cual.
+        const href = urlSegura(link);
         const celdas = [
             ...(incluirRel ? [this._insigniaRelevancia(o) || ph] : []),
-            o.titulo || ph,
-            autorCorto || ph,
-            o.anio || '',
-            pais || ph,
-            objetivo || ph,
-            muestra || ph,
+            t(o.titulo) || ph,
+            t(autorCorto) || ph,
+            t(o.anio || ''),
+            t(pais) || ph,
+            t(objetivo) || ph,
+            t(muestra) || ph,
             ph, // instrumentos: no disponible en metadatos
-            o.resumen ? (o.resumen.slice(0, 200) + (o.resumen.length > 200 ? '…' : '')) : ph, // resultados ≈ resumen
+            o.resumen ? t(o.resumen.slice(0, 200) + (o.resumen.length > 200 ? '…' : '')) : ph, // resultados ≈ resumen
             ph, // conclusiones: requiere texto completo
-            o.fuente || ph,
+            t(o.fuente) || ph,
             this._insigniaCuartil(o) || ph,
-            indexacion || ph,
-            ref,
-            link ? `<a href="${link}" target="_blank">${link}</a>` : ph
+            t(indexacion) || ph,
+            t(ref),
+            href ? `<a href="${href}" target="_blank" rel="noopener">${href}</a>` : (link ? t(link) : ph)
         ];
         const planas = [
             ...(incluirRel ? [o._relevancia ? `${o._relevancia} (${o._relevanciaMotivo || ''})` : ''] : []),

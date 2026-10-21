@@ -6,6 +6,7 @@ import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
 import { EtiquetasVariables } from '../../src/shared/etiquetas-variables.js';
 import { Fiabilidad } from '../../src/analizador/fiabilidad.js';
 import { AnalisisDimensiones } from '../../src/analizador/analisis-dimensiones.js';
+import { AnalizadorEstadistico } from '../../src/analizador/estadistica.js';
 
 const escala = (nombre, corto, prueba, k, media, de, min, max, alfa) => ({ nombre, nombreCorto: corto, prueba, tipo: 'dimension', numItems: k, media, desviacion: de, minimo: min, maximo: max, alfa, distribucion: 'normal', invertidos: 0 });
 const g = new GeneradorDatos();
@@ -45,5 +46,28 @@ test('Analizador: instrumentos, fiabilidad y pares dimensión ↔ general con la
     const pares = AnalisisDimensiones._candidatos('General_IC', generalTMMS);
     assert.deepEqual(pares.map(p => `${p.columnaX}↔${p.columnaY}`).sort(), ['Dimension_CE↔General_IC', 'Dimension_PE↔General_IC', 'Dimension_RE↔General_IC']);
     assert.ok(!pares.some(p => p.columnaY === generalTMMS), 'ninguna dimensión se contrasta con su propio general');
+    EtiquetasVariables.limpiar();
+});
+
+test('(2026.12.31, tercera revisión) la criba solo construye los pares dimensión ↔ general: sin el producto de dimensiones', () => {
+    const dims = (/** @type {string} */ t, /** @type {number} */ n) => Array.from({ length: n }, (_, i) => ({ columna: `Dimension_${t}${i}`, etiqueta: `${t}${i}`, sigla: `${t}${i}` }));
+    const prueba = (/** @type {string} */ t, /** @type {number} */ n) => ({ prueba: t, variable: t, columnaGeneral: `General_${t}`, etiquetaGeneral: t, siglaGeneral: null, unidimensional: false, dimensiones: dims(t, n) });
+    EtiquetasVariables.fijar({ General_X: 'X', General_Y: 'Y' }, [prueba('X', 3), prueba('Y', 2)]);
+    const tipos = (/** @type {any[]} */ l) => l.map(c => c.tipoPar).join();
+    assert.equal(tipos(AnalisisDimensiones._candidatos('General_X', 'General_Y')), 'general-dim,general-dim,general-dim,general-dim,general-dim,dim-dim,dim-dim,dim-dim,dim-dim,dim-dim,dim-dim');
+    assert.equal(tipos(AnalisisDimensiones._candidatos('General_X', 'General_Y', true)), 'general-dim,general-dim,general-dim,general-dim,general-dim');
+    // dos tests de 2500 dimensiones (el tope de la estructura de un proyecto): 5000 pares, no 6,25 millones más
+    EtiquetasVariables.fijar({ General_X: 'X', General_Y: 'Y' }, [prueba('X', 2500), prueba('Y', 2500)]);
+    const t0 = Date.now();
+    assert.equal(AnalisisDimensiones._candidatos('General_X', 'General_Y', true).length, 5000);
+    assert.ok(Date.now() - t0 < 500, `${Date.now() - t0} ms`);
+    // y la criba, con datos, solo evalúa esos (los pares dimensión ↔ dimensión no llegan a ella)
+    const columnas = ['General_X', 'General_Y', 'Dimension_X0', 'Dimension_X1', 'Dimension_X2', 'Dimension_Y0', 'Dimension_Y1'];
+    let s = 3;
+    const az = () => (s = (s * 48271) % 2147483647) / 2147483647;
+    AnalizadorEstadistico.cargarDatos(Array.from({ length: 40 }, () => Object.fromEntries(columnas.map(c => [c, Math.round(az() * 100) / 10]))));
+    EtiquetasVariables.fijar({ General_X: 'X', General_Y: 'Y' }, [prueba('X', 3), prueba('Y', 2)]);
+    const criba = AnalisisDimensiones.cribarObjetivos('General_X', 'General_Y');
+    assert.deepEqual(criba.evaluados.map((/** @type {any} */ e) => e.tipoPar).sort(), ['general-dim', 'general-dim', 'general-dim', 'general-dim', 'general-dim']);
     EtiquetasVariables.limpiar();
 });

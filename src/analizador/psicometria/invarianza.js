@@ -7,7 +7,9 @@
 // χ² = N·F. Gradiente analítico, BFGS y errores estándar por la hessiana (diferencias centrales del gradiente).
 import { inversaYLogDet, inversaDefinidaPositiva } from './algebra.js';
 import { bfgs } from './optimizacion.js';
-import { gammaRegularizadaQ, ncpParaProbabilidad, cdfNormal } from './numerico.js';
+import { gammaRegularizadaQ, ncpParaProbabilidad, cdfNormal } from '../../core/stats/numerico.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
+import { media as mediaNucleo, matrizCovarianzasPoblacional } from '../../core/stats/descriptivos.js';
 
 export const NIVELES = [
     { clave: 'configural', nombre: 'Configural', cargas: false, interceptos: false, residuos: false },
@@ -26,8 +28,8 @@ export function estadisticosPorGrupo(filas, items, variableGrupo, { minimoPorGru
     const p = items.length, porGrupo = new Map();
     let excluidos = 0;
     for (const f of filas) {
-        const gv = f[variableGrupo], x = items.map(c => { const v = f[c]; return v === '' || v === null || v === undefined ? NaN : typeof v === 'string' ? Number(v.trim().replace(',', '.')) : Number(v); });
-        if (gv === '' || gv === null || gv === undefined || x.some(v => !Number.isFinite(v))) { excluidos++; continue; }
+        const gv = f[variableGrupo], x = items.map(c => aNumero(f[c]));   // (2026.12.18) la conversión y los perdidos del núcleo
+        if (esPerdido(gv) || x.some(v => !Number.isFinite(v))) { excluidos++; continue; }
         const k = String(gv);
         (porGrupo.get(k) || porGrupo.set(k, []).get(k)).push(x);
     }
@@ -38,8 +40,8 @@ export function estadisticosPorGrupo(filas, items, variableGrupo, { minimoPorGru
     for (const nombre of claves) {
         const X = porGrupo.get(nombre), n = X.length;
         if (n < minimo) return { error: `El grupo «${nombre}» tiene ${n} casos completos; hacen falta al menos ${minimo} para ${p} ítems.` };
-        const media = items.map((_, j) => X.reduce((s, x) => s + x[j], 0) / n);
-        const S = items.map((_, i) => items.map((_, j) => X.reduce((s, x) => s + (x[i] - media[i]) * (x[j] - media[j]), 0) / n));
+        // (2026.12.25) las medias y la matriz de covarianzas de máxima verosimilitud (n) del núcleo único; antes, una copia
+        const columnas = items.map((_, j) => X.map(x => x[j])), media = columnas.map(c => mediaNucleo(c)), S = matrizCovarianzasPoblacional(columnas);
         const inv = inversaYLogDet(S);
         if (!inv) {
             const constante = items.filter((_, j) => S[j][j] <= 1e-12);

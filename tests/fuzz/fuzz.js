@@ -1,6 +1,8 @@
 // tests/fuzz/fuzz.js — configuraciones aleatorias contra el dominio del Simulador.
 // Uso: node tests/fuzz/fuzz.js [iteraciones=80] [semilla=12345]
 import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
+import { aJsonFiel, deJsonFiel } from '../../src/core/data/json-fiel.js';
+import { comprobarGeneracionGuardada, generacionParaGuardar } from '../../src/simulador/dominio/generacion-guardada.js';
 import { AVISO_EXTREMO } from './avisos-extremos.js';
 
 const N = parseInt(process.argv[2] || '80', 10), SEMILLA = parseInt(process.argv[3] || '12345', 10);
@@ -28,6 +30,14 @@ function configAleatoria() {
     const diferenciasGrupo = []; if (rnd() < 0.6) diferenciasGrupo.push({ tipo: 'd', cuantitativa: elegir(nombres), agrupacion: 'Sexo', d: +((rnd() - 0.5) * 1.6).toFixed(2) });
     if (socios.length === 3 && rnd() < 0.4) diferenciasGrupo.push({ tipo: 'icc', cuantitativa: elegir(nombres), agrupacion: 'Aula', d: +(0.05 + 0.3 * rnd()).toFixed(2) });
     const modelos = []; if (nombres.length >= 3 && rnd() < 0.4) modelos.push({ tipo: 'mediacion', x: nombres[0], m: nombres[1], y: nombres[2], c1: +(0.2 + 0.4 * rnd()).toFixed(2), c2: +(-0.4 + 0.3 * rnd()).toFixed(2), c3: +(-0.2 + 0.4 * rnd()).toFixed(2) });
+    // (Atlas, Simpson) X e Y con su r dentro de los grupos de Sexo y sus dos d. La pareja, del final de la lista: la de las relaciones
+    // entre niveles y en el tiempo es la del principio (con la misma, la validación rechazaba el conflicto y Simpson no se probaba).
+    // La mitad de las veces, una inversión construida (las d contradicen la r de dentro y son grandes): al azar casi nunca salía
+    else if (nombres.length >= 3 && rnd() < 0.35 && !diferenciasGrupo.some(d => d.agrupacion === 'Sexo' && nombres.slice(-2).includes(d.cuantitativa))) {
+        const sx = rnd() < 0.5 ? 1 : -1, c1 = +(sx * (0.2 + 0.3 * rnd())).toFixed(2), dX = +((rnd() < 0.5 ? 1 : -1) * (1.2 + rnd())).toFixed(2);
+        const invertir = rnd() < 0.5, dY = invertir ? +(-Math.sign(c1) * Math.sign(dX) * (1.2 + rnd())).toFixed(2) : +((rnd() - 0.5) * 3).toFixed(2);
+        modelos.push({ tipo: 'simpson', x: nombres[nombres.length - 1], m: 'Sexo', y: nombres[nombres.length - 2], c1, c2: dX, c3: dY });
+    }
     else if (nombres.length >= 2 && rnd() < 0.5 && !correlaciones.length) modelos.push({ tipo: 'curvilinea', x: 'Edad', m: 'Edad', y: nombres[0], c1: +((rnd() - 0.5) * 0.6).toFixed(2), c2: +((rnd() - 0.5) * 0.5).toFixed(2), c3: 0 });
     const medidasRepetidas = []; if (rnd() < 0.4) medidasRepetidas.push({ variable: elegir(nombres), ondas: entre(2, 3), estabilidad: +(0.4 + 0.5 * rnd()).toFixed(2), cambio: +((rnd() - 0.5) * 0.8).toFixed(2), agrupacion: rnd() < 0.4 ? 'Sexo' : '', cambioGrupo: +((rnd() - 0.5) * 0.8).toFixed(2), modelo: elegir(['ar1', 'crecimiento', 'intercepto']), dePendientes: +(0.3 * rnd()).toFixed(2), rInterceptoPendiente: +((rnd() - 0.5) * 0.6).toFixed(2) });
     // (fase D) relación entre personas y dentro de la persona: dos escalas con interceptos aleatorios y el mismo número de ondas
@@ -75,6 +85,13 @@ for (let it = 0; it < N; it++) {
     const b2 = g2.generarBaseDatos();
     if (JSON.stringify(b.aObjetos(0, 20)) !== JSON.stringify(b2.aObjetos(0, 20))) fallos.push(`iter ${it}: no reproducible con la misma semilla`);
     if (JSON.stringify(inf) !== JSON.stringify(g.informePedidoObtenido(b.aObjetos()))) fallos.push(`iter ${it}: informe distinto al reconstruir desde objetos`);
+    // (2026.12.31, revisión) lo que guarda un proyecto de esta generación se acepta al abrirlo, con las mismas etiquetas
+    try {
+        const abierta = comprobarGeneracionGuardada(deJsonFiel(aJsonFiel(generacionParaGuardar(g, inf))), new GeneradorDatos(), b.columnas.length);
+        const otra = new GeneradorDatos();
+        otra.configuracion = abierta.configuracion;
+        if (JSON.stringify(otra.obtenerEtiquetas()) !== JSON.stringify(g.obtenerEtiquetas())) fallos.push(`iter ${it}: proyecto: las etiquetas cambian al abrir la generación guardada`);
+    } catch (e) { fallos.push(`iter ${it}: proyecto: la generación guardada se rechaza al abrirla: ${e.message}`); }
 }
 console.log(`${N} configuraciones · ${generadas} generadas · ${rechazadas} rechazadas por la validación · ${fallos.length} fallos · ${Math.round((Date.now() - t0) / Math.max(1, generadas))} ms por base`);
 fallos.forEach(f => console.log('✗ ' + f));

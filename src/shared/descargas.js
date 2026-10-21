@@ -1,19 +1,11 @@
 // shared/descargas.js — descarga de archivos generados en el navegador.
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
+import { temporizadorCosmetico } from './temporizador.js';
 
+// (2026.12.29) Con descargarBlob: revocaba la URL en el mismo instante del clic, lo que puede cancelar la descarga en Firefox
+// y Safari.
 function descargarArchivo(contenido, nombreArchivo, tipoMime) {
-    const blob = new Blob([contenido], { type: tipoMime + ';charset=utf-8;' });
-    const link = document.createElement('a');
-    if (link.download !== undefined) {
-        const url = URL.createObjectURL(blob);
-        link.setAttribute('href', url);
-        link.setAttribute('download', nombreArchivo);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(url);
-    }
+    descargarBlob(new Blob([contenido], { type: tipoMime + ';charset=utf-8;' }), nombreArchivo);
 }
 
 // Descarga un Blob ya construido (Word, imágenes…). El enlace se añade al documento (Firefox lo exige) y la URL se
@@ -25,7 +17,7 @@ function descargarBlob(blob, nombreArchivo) {
     document.body.appendChild(enlace);
     enlace.click();
     enlace.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    temporizadorCosmetico(() => URL.revokeObjectURL(url), 1500);
 }
 
 export { descargarArchivo, descargarBlob };

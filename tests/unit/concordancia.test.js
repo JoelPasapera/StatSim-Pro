@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { kappaCohen, kappaFleiss, cci, intervaloKappa, interpretarKappa, interpretarCCI } from '../../src/analizador/psicometria/concordancia.js';
-import { cuantilF, cdfF } from '../../src/analizador/psicometria/numerico.js';
+import { cuantilF, cdfF } from '../../src/core/stats/numerico.js';
 
 const fx = JSON.parse(fs.readFileSync(new URL('../oracle/concordancia_fixture.json', import.meta.url), 'utf8'));
 const cerca = (a, b, tol, que) => assert.ok(Math.abs(a - b) <= tol, `${que}: ${a} vs ${b}`);

@@ -4,6 +4,7 @@
 //   ∂F/∂A_ij = 2·(Bᵀ·G·E)_ij   y   ∂F/∂S_ij = (Bᵀ·G·B)_ij (×2 fuera de la diagonal, por simetría)
 // Información esperada (ML): I_ab = (n − 1)/2 · tr(Σ⁻¹·Δ_a·Σ⁻¹·Δ_b), con Δ_a = ∂Σ/∂θ_a.
 import { multiplicar, traspuesta, inversaGeneral, inversaDefinidaPositiva } from './algebra.js';
+import { gaussJordan } from '../../core/linalg/gauss.js';
 
 export function aplicarTheta(est, theta) {
     const A = est.A.map(f => f.slice()), S = est.S.map(f => f.slice());
@@ -11,9 +12,14 @@ export function aplicarTheta(est, theta) {
     return { A, S };
 }
 
-export function implicada(est, theta) {
+// Σ(θ), con B = (I − A)⁻¹ y E = B·S·Bᵀ (observadas y latentes); null si I − A no se puede invertir (un pivote menor que
+// 10⁻¹⁴). Con `admisible`, la condición del objetivo del SEM (sem-motor.js): también null si det(I − A) ≤ 0 o si un pivote
+// es menor que 10⁻¹². (2026.12.25) El SEM tenía su propia copia de Σ(θ) con esa condición; ahora usa esta.
+export function implicada(est, theta, { admisible = false } = {}) {
     const { A, S } = aplicarTheta(est, theta);
-    const B = inversaGeneral(A.map((f, i) => f.map((v, j) => (i === j ? 1 : 0) - v)));
+    const IA = A.map((f, i) => f.map((v, j) => (i === j ? 1 : 0) - v));
+    let B = null;
+    if (admisible) { const r = gaussJordan(IA, 1e-12); B = r && r.signo > 0 ? r.inversa : null; } else B = inversaGeneral(IA);
     if (!B) return null;
     const E = multiplicar(multiplicar(B, S), traspuesta(B)), p = est.nObs;
     return { B, E, Sigma: E.slice(0, p).map(f => f.slice(0, p)) };

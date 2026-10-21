@@ -8,7 +8,7 @@
 // 3) DWLS: F(θ) = (ρ̂ − ρ(θ))ᵀ·W·(ρ̂ − ρ(θ)), W = diag(Γ)⁻¹, con ρ(θ) fuera de la diagonal de Σ* = Λ·Φ·Λᵀ (parametrización
 //    delta: varianzas de y* iguales a 1). Errores estándar robustos (sándwich) y χ² corregido en media y varianza
 //    («scaled-shifted»; Asparouhov y Muthén, 2010), con el que se calculan CFI, TLI y RMSEA.
-import { cuantilNormal, cdfNormal, densidadNormal, cdfNormalBivariada, densidadNormalBivariada } from './numerico.js';
+import { cuantilNormal, cdfNormal, densidadNormal, cdfNormalBivariada, densidadNormalBivariada } from '../../core/stats/numerico.js';
 import { policorica } from './policorica.js';
 import { multiplicar, traspuesta, inversaDefinidaPositiva } from './algebra.js';
 import { implicada, derivadasSigma } from './ram.js';

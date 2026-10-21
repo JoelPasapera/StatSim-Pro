@@ -13,14 +13,17 @@
 // sobre una submuestra de 1 500 casos y, con n = 50 000 y r = .04, p = 3·10⁻²³, salía «sin relación»). Solo con más de
 // 2 000 valores distintos (X continua) se submuestrea, y entonces la prueba de relación se combina por Bonferroni con la
 // r de Pearson de la base completa, para que la decisión nunca contradiga a la tabla de coeficientes.
-import { betaRegularizada } from '../psicometria/numerico.js';
+import { pCorrelacion } from '../../core/stats/correlacion.js';
 import { media, malla, cuantilPonderado, aicc, pearson, aleatorio } from './util-numerico.js';
+import { barajar } from '../../core/random/permutacion.js';
+import { cotaInferior } from '../../core/stats/orden.js';
+import { estandarizar } from '../../core/stats/descriptivos.js';
 
 const MAXIMO_VALORES_PERMUTACION = 2000;
 
 // diseños candidatos (sin la constante) sobre los valores distintos de X; producto interno ponderado por su número de casos
 function disenosCandidatos(x) {
-    const n = x.length, mx = media(x), sx = Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) / n) || 1, z = Float64Array.from(x, v => (v - mx) / sx);
+    const n = x.length, z = estandarizar(x).z;   // (2026.12.25) las puntuaciones típicas del núcleo único
     const o = new Uint32Array(n); for (let i = 0; i < n; i++) o[i] = i;
     o.sort((p, q) => z[p] - z[q]);
     const uL = [], wL = [], grupo = new Int32Array(n);
@@ -70,10 +73,7 @@ const NO_LINEALES = ['cuadratica', 'cubica', 'potencia', 'exponencial', 'sigmoid
 const estadisticoGlobal = m => m.constante - Math.min(...Object.entries(m).filter(([f]) => f !== 'constante').map(([, v]) => v));
 const estadisticoNoLineal = m => m.lineal - Math.min(...NO_LINEALES.filter(f => f in m).map(f => m[f]));
 
-function pPearson(x, y) {
-    const n = x.length, r = pearson(x, y), gl = n - 2, t = (r * Math.sqrt(gl)) / Math.sqrt(Math.max(1e-300, 1 - r * r));
-    return Math.abs(r) >= 1 ? 0 : betaRegularizada(gl / (gl + t * t), gl / 2, 0.5);
-}
+const pPearson = (x, y) => pCorrelacion(pearson(x, y), x.length);   // (2026.12.17) la prueba del núcleo único
 export function pruebasPermutacionForma(xs, ys, { maximoValores = MAXIMO_VALORES_PERMUTACION, B = null, semilla = 20261029 } = {}) {
     let x = Float64Array.from(xs), y = Float64Array.from(ys), submuestra = false;
     if (new Set(x).size > maximoValores) {
@@ -83,7 +83,6 @@ export function pruebasPermutacionForma(xs, ys, { maximoValores = MAXIMO_VALORES
     // al menos 99 permutaciones: estas pruebas DECIDEN, y con menos la p mínima (1/(B + 1)) podría no bajar de .05
     const n = x.length, d = disenosCandidatos(x), R = Math.max(99, B || (n <= 800 ? 199 : 99));
     const u01 = aleatorio(semilla);
-    const barajar = v => { for (let i = v.length - 1; i > 0; i--) { const j = Math.floor(u01() * (i + 1)); const t = v[i]; v[i] = v[j]; v[j] = t; } return v; };
     const obs = mejoresAICc(d, y), Tg = estadisticoGlobal(obs), Tl = obs.constante - obs.lineal, Tnl = estadisticoNoLineal(obs);
     const Ag = new Float64Array(R + 1), Al = new Float64Array(R + 1); Ag[0] = Tg; Al[0] = Tl;
     // ajuste lineal (para el bootstrap salvaje): ŷ y residuos
@@ -91,12 +90,12 @@ export function pruebasPermutacionForma(xs, ys, { maximoValores = MAXIMO_VALORES
     const ajuste = Float64Array.from(d.grupo, g => my + b * ql[g]), resid = Float64Array.from(y, (v, i) => v - ajuste[i]);
     let mayNL = 0; const yp = new Float64Array(n);
     for (let r = 0; r < R; r++) {
-        yp.set(y); barajar(yp); const mp = mejoresAICc(d, yp); Ag[r + 1] = estadisticoGlobal(mp); Al[r + 1] = mp.constante - mp.lineal;
+        yp.set(y); barajar(yp, u01); const mp = mejoresAICc(d, yp); Ag[r + 1] = estadisticoGlobal(mp); Al[r + 1] = mp.constante - mp.lineal;
         for (let i = 0; i < n; i++) yp[i] = ajuste[i] + (u01() < 0.5 ? -resid[i] : resid[i]);   // bootstrap salvaje (Rademacher)
         if (estadisticoNoLineal(mejoresAICc(d, yp)) >= Tnl - 1e-9) mayNL++;
     }
     // mínimo p en una sola etapa (Westfall y Young, 1993): el conjunto de referencia son lo observado y las R permutaciones
-    const pDe = A => { const orden = Float64Array.from(A).sort(), k = A.length; return Float64Array.from(A, t => { let lo = 0, hi = k; while (lo < hi) { const mid = (lo + hi) >> 1; if (orden[mid] >= t - 1e-9) hi = mid; else lo = mid + 1; } return (k - lo) / k; }); };
+    const pDe = A => { const orden = Float64Array.from(A).sort(), k = A.length; return Float64Array.from(A, t => (k - cotaInferior(orden, t - 1e-9)) / k); };
     const pg = pDe(Ag), pl = pDe(Al), minimo = Float64Array.from(pg, (v, i) => Math.min(v, pl[i]));
     let bajos = 0; for (let i = 0; i <= R; i++) if (minimo[i] <= minimo[0] + 1e-12) bajos++;
     const pMinimo = bajos / (R + 1), pRecta = submuestra ? pPearson(Float64Array.from(xs), Float64Array.from(ys)) : null;

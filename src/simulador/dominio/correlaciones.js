@@ -9,6 +9,11 @@ import { tamanoPoblacion, indicesSeleccionados, esperadoTrasSeleccion } from './
 import { esTerceraVariable, estructuraTercera, TIPOS_TERCERA } from './terceras.js';
 import { estructuraNiveles } from './niveles.js';
 import { correlacionEntreOndas, estructuraPanel } from './paneles.js';
+import { rTotalSimpson } from './simpson.js';
+import { coeficientesHermite, rDeCoeficientes, rhoDeCoeficientes } from './hermite-numerica.js';
+import { proyectorResiduos } from '../../core/stats/mco.js';
+import { correlacion, matrizCorrelaciones } from '../../core/stats/correlacion.js';
+import { media as mediaNucleo, varianza, estandarizar } from '../../core/stats/descriptivos.js';
 
 export const metodosCorrelaciones = {
     prepararCorrelaciones() {
@@ -123,7 +128,7 @@ export const metodosCorrelaciones = {
             // formas no normales no vale 1 + ρ².
             const forma = (indice) => {
                 const v = variables[indice];
-                if (v.tipo === 'escala') { const p = this.configuracion.pruebas.find(x => this._claveEscala(x) === v.clave); const dist = p ? p.distribucion : 'normal'; return z => this.transformarFormaZ(z, dist); }
+                if (v.tipo === 'escala') { const p = this.configuracion.pruebas.find(x => this._claveEscala(x) === v.clave); return p ? this._txDe(p.nombre).tx : (z => z); }   // (2026.12.04) la transformación única (_txDe: formaTotal y recorte); antes, solo la distribución
                 const s = this.configuracion.sociodemograficos.find(x => x.categoriaCorta === v.clave);
                 return z => this._formaSocioEstandar(s, z, this._factorDE(s.categoria));
             };
@@ -279,8 +284,21 @@ export const metodosCorrelaciones = {
         const cfg = this.configuracion, p = (cfg.pruebas || []).find(q => q.nombre === nombre), s = (cfg.sociodemograficos || []).find(q => q.categoria === nombre);
         const cen = p ? this._censuraDe(p) : null;
         if (cen) return { tx: formaCensurada(cen), clave: `p:${cen.lado}:${cen.c.toFixed(8)}` };   // (dimensión B2) techo o suelo
-        const tx = p ? (z => this.transformarFormaZ(z, p.distribucion || 'normal')) : s ? (z => this._formaSocioEstandar(s, z, 1)) : (z => z);
-        return { tx, clave: p ? `p:${p.distribucion || 'normal'}` : s ? `s:${s.distribucion}:${s.promedio}:${s.desviacion}` : 'normal' };
+        // la forma del total, la MISMA que usa el generador (prueba.formaTotal || prueba.distribucion): en una escala de acierto/error,
+        // la beta-binomial de sus ítems (antes, aquí la normal: lo esperado tras la selección no la modelaba)
+        const forma = p ? (typeof p.formaTotal === 'function' ? p.formaTotal : (p.distribucion || 'normal')) : null;
+        // (2026.12.04) con el RECORTE al rango alcanzable, como el generador (_totalEnteroLikert): la teoría que usa esta transformación
+        // (curvas de las relaciones con forma, nube, lo esperado tras la selección, Hermite) describe así los totales que salen de verdad.
+        // Antes no lo incluía; con la forma asimétrica compensada, que estira la cola para que tras el recorte la DE sea la pedida, una
+        // relación en U veía esa cola sin recortar y la DE de Y salía 4,69 en vez de 5
+        // (revisión de la 2026.12.06) sin recorte si la DE no es positiva (una escala a medio configurar): antes, NaN en toda la escala
+        const conRango = p && p.minimo !== null && p.maximo !== null && p.numItems > 0 && p.desviacion > 0;
+        const lo = conRango ? (p.numItems * p.minimo - p.media) / p.desviacion : -Infinity;
+        const hi = conRango ? (p.numItems * p.maximo - p.media) / p.desviacion : Infinity;
+        const tx = p ? (z => Math.max(lo, Math.min(hi, this.transformarFormaZ(z, forma)))) : s ? (z => this._formaSocioEstandar(s, z, 1)) : (z => z);
+        const rango = `${p ? p.media : ''}:${p ? p.desviacion : ''}:${p ? p.numItems : ''}:${p ? p.minimo : ''}:${p ? p.maximo : ''}`;
+        const claveForma = p && typeof forma === 'function' ? `bb:${p.nombre}:${rango}:${p.alfa}:${(p.dificultadesEfectivas || []).join(',')}` : (p ? `${p.distribucion || 'normal'}:${rango}` : '');
+        return { tx, clave: p ? `p:${claveForma}` : s ? `s:${s.distribucion}:${s.promedio}:${s.desviacion}` : 'normal' };
     },
 
     // (Atlas, fase C) terceras variables: cada fila fija sus tres correlaciones, r(Z,X) = c1, r(Z,Y) = c2 y la r(X,Y) de orden
@@ -311,7 +329,8 @@ export const metodosCorrelaciones = {
     // (Atlas, fase E1) relación en el tiempo (panel cruzado): la r de X e Y en la misma onda (la de T1 entra en la matriz como las
     // demás; las de las otras ondas y las de cada escala consigo misma las fija la expansión con la dinámica)
     _correlacionesImplicadasPorPaneles(cfg = this.configuracion) {
-        return (cfg.paneles || []).map(pn => (this._datosPanel(pn, cfg) ? { a: pn.x, b: pn.y, r: pn.r, origen: `Relación en el tiempo ${pn.x} ↔ ${pn.y}` } : null)).filter(Boolean);
+        // la r OBSERVADA en T1 (con interceptos aleatorios, la de dentro más la de los rasgos estables; sin ellos, la de la fila)
+        return (cfg.paneles || []).map(pn => { const d = this._datosPanel(pn, cfg); return d ? { a: pn.x, b: pn.y, r: correlacionEntreOndas(d.est, 1, 1)[0][1], origen: `Relación en el tiempo ${pn.x} ↔ ${pn.y}` } : null; }).filter(Boolean);
     },
 
     // Una fila se aplica si X e Y se repiten con AR(1), con el mismo número de ondas, y la dinámica es posible: { K, est }
@@ -320,7 +339,7 @@ export const metodosCorrelaciones = {
         if (!mx || !my || pn.x === pn.y || (mx.modelo || 'ar1') !== 'ar1' || (my.modelo || 'ar1') !== 'ar1') return null;
         const ondas = mr => Math.max(2, Math.min(4, Math.round(mr.ondas || 2))), K = ondas(mx);
         if (K !== ondas(my) || !(Math.abs(mx.estabilidad) < 1 && Math.abs(my.estabilidad) < 1 && Math.abs(pn.r) < 1)) return null;
-        const est = estructuraPanel({ estabX: mx.estabilidad, estabY: my.estabilidad, r: pn.r, cXY: pn.cXY, cYX: pn.tipo === 'rezagada' ? 0 : pn.cYX });
+        const est = estructuraPanel({ estabX: mx.estabilidad, estabY: my.estabilidad, r: pn.r, cXY: pn.cXY, cYX: pn.tipo === 'rezagada' ? 0 : pn.cYX, iccX: pn.iccX || 0, iccY: pn.iccY || 0, rRI: pn.rRI || 0 });
         return est.posible ? { K, est } : null;
     },
 
@@ -336,11 +355,21 @@ export const metodosCorrelaciones = {
         return null;
     },
 
+    // (Atlas, Simpson) la r de toda la base que implican la r dentro de los grupos y las dos diferencias (ver simpson.js); las
+    // diferencias las materializa _materializarSimpson
+    _correlacionesImplicadasPorSimpson(cfg = this.configuracion) {
+        return (cfg.modelos || []).filter(md => md.tipo === 'simpson' && this._simpsonValido(md, cfg)).map(md => {
+            const agrup = (cfg.sociodemograficos || []).find(s => s.categoria === md.m), v = agrup ? this._varianzaCodigo(agrup) : null;   // (2026.12.05) binaria o categórica: Var(código)
+            if (!(v > 0) || ![md.c1, md.c2, md.c3].every(c => typeof c === 'number' && isFinite(c)) || !(Math.abs(md.c1) < 1)) return null;
+            return { a: md.x, b: md.y, r: rTotalSimpson({ rDentro: md.c1, dX: md.c2, dY: md.c3, varianzaCodigo: v }), origen: `Simpson ${md.x} ↔ ${md.y} (grupos de ${md.m})` };
+        }).filter(Boolean);
+    },
+
     // Correlaciones que los modelos fijan directamente (mediación, terceras variables, relación entre niveles): fuente única
     // para la matriz, los pares fijados y la validación de conflictos
     _correlacionesImplicadasDirectas(cfg = this.configuracion) {
         const g = this.configuracion; this.configuracion = cfg;
-        try { return this._correlacionesImplicadasPorMediacion().concat(this._correlacionesImplicadasPorTerceras(), this._correlacionesImplicadasPorNiveles(cfg), this._correlacionesImplicadasPorPaneles(cfg)); } finally { this.configuracion = g; }
+        try { return this._correlacionesImplicadasPorMediacion().concat(this._correlacionesImplicadasPorTerceras(), this._correlacionesImplicadasPorNiveles(cfg), this._correlacionesImplicadasPorPaneles(cfg), this._correlacionesImplicadasPorSimpson(cfg)); } finally { this.configuracion = g; }
     },
 
     // Pares fijados por algún modelo (la tabla III no manda sobre ellos).
@@ -413,6 +442,9 @@ export const metodosCorrelaciones = {
     _formaMarginal(variable) {
         if (variable.tipo === 'escala') {
             const p = (this.configuracion.pruebas || []).find(x => this._claveEscala(x) === variable.clave);
+            // (2026.12.03) escala de acierto/error: su total es ESCALONADO (k + 1 valores) y su correlación se atenúa respecto a la de su
+            // latente; la matriz la compensa con los coeficientes de Hermite numéricos de su forma real (_coeficientesForma)
+            if (p && this._esDicotomica(p) && typeof p.formaTotal === 'function') return { forma: 'discreta', orden: 4, sigma: 0, nombre: variable.nombre };
             const dist = p ? p.distribucion : 'normal', cen = this._censuraDe(p);
             // (dimensión B2) techo o suelo: normal censurada; sus correlaciones se hacen exactas con la serie de Hermite
             if (cen) return { forma: 'censurada', orden: 3, lado: cen.lado, c: cen.c };
@@ -435,6 +467,7 @@ export const metodosCorrelaciones = {
     //   N–N: ρ · U–U: (6/π)·asen(ρ/2) · N–U: ρ·√(3/π) · N–LN: ρ·σ/√(e^{σ²}−1)
     //   U–LN: (Φ(ρσ/√2) − ½)·√12/√(e^{σ²}−1) · LN–LN: (e^{σₐσᵦρ} − 1)/√((e^{σₐ²}−1)(e^{σᵦ²}−1))
     _rTransformada(fa, fb, rho) {
+        if (fa.forma === 'discreta' || fb.forma === 'discreta') return rDeCoeficientes(this._coeficientesForma(fa), this._coeficientesForma(fb), rho);
         if (fa.forma === 'censurada' || fb.forma === 'censurada') return rHermite(fa, fb, rho);
         const [x, y] = fa.orden <= fb.orden ? [fa, fb] : [fb, fa];
         switch (x.forma + '-' + y.forma) {
@@ -451,6 +484,7 @@ export const metodosCorrelaciones = {
     // Inversa de la anterior: ρ del espacio normal que produce la Pearson r. Si
     // r no es alcanzable con esas formas, se acota a ±0.99 y se marca.
     _rhoIntermedia(fa, fb, r) {
+        if (fa.forma === 'discreta' || fb.forma === 'discreta') return rhoDeCoeficientes(this._coeficientesForma(fa), this._coeficientesForma(fb), r);
         if (fa.forma === 'censurada' || fb.forma === 'censurada') { const rho = rhoHermite(fa, fb, r); return { rho: Math.max(-0.99, Math.min(0.99, rho)), limitada: !(Math.abs(rho) <= 0.99) }; }
         const [x, y] = fa.orden <= fb.orden ? [fa, fb] : [fb, fa];
         const tope = 0.99;
@@ -477,22 +511,48 @@ export const metodosCorrelaciones = {
         return { rho: Math.max(-tope, Math.min(tope, rho)), limitada };
     },
 
+    // Covarianza entre los términos de grupo de dos variables, con la escala de cada término (la misma que usa _factorDE para su
+    // varianza): una diferencia (d) es el código de su agrupación, Var(c); una interacción, el producto de los dos códigos centrados,
+    // V_A·V_B, y solo covaría con la MISMA interacción; un efecto de conglomerado (CCI) está estandarizado (varianza 1) y solo covaría
+    // si son LOS MISMOS efectos (las ondas de una escala los comparten; dos escalas distintas los tienen independientes). Términos de
+    // tipos distintos no covarían. (Modo no exacto, 2026.12.02: antes se usaba Var(c) para todos y sin mirar si los efectos eran los
+    // mismos; con una CCI de 0,14 por un Aula de 12 niveles, Var(c) ≈ 11,9 y la covarianza entre ondas salía 12 veces mayor: la r de
+    // los latentes entre T1 y T2 era −0,49 con una estabilidad de 0,36. En modo exacto el punto fijo lo compensaba y no se veía.)
+    _covarianzaTerminos(ei, ej) {
+        const ti = ei.tipo || 'd', tj = ej.tipo || 'd';
+        if (ti !== tj) return 0;
+        if (ti === 'icc') return ei.efectos && ei.efectos === ej.efectos ? 1 : 0;
+        if (ti === 'interaccion') return ei.agrup === ej.agrup && ei.agrup2 === ej.agrup2 ? this._varianzaCodigo(ei.agrup) * this._varianzaCodigo(ei.agrup2) : 0;
+        return ei.agrup === ej.agrup ? this._varianzaCodigo(ei.agrup) : 0;
+    },
+
+    // Coeficientes de Hermite de la forma de una variable, con la MISMA transformación latente → valor que usa el generador (_txDe);
+    // en caché por su clave. Las formas analíticas sin nombre (no deberían llegar aquí) se tratan como normales
+    _coeficientesForma(f) {
+        const { tx, clave } = f.nombre ? this._txDe(f.nombre) : { tx: (/** @type {number} */ z) => z, clave: 'normal' };
+        this._cacheHermite = this._cacheHermite || new Map();
+        if (!this._cacheHermite.has(clave)) this._cacheHermite.set(clave, coeficientesHermite(tx));
+        return this._cacheHermite.get(clave);
+    },
+
     _matrizIntermedia(Robjetivo, variables) {
         // (B6) criterios de moderación: su fila pasa al espacio del residuo e_Y
         const R = this._aResidualModeracion(Robjetivo);
         const m = R.length, limitadas = [];
-        const formas = variables.map(v => this._formaMarginal(v));
+        // (2026.12.03) cada forma lleva el nombre de su variable: si la pareja incluye una escala de acierto/error, la otra también
+        // necesita sus coeficientes de Hermite, con su propia transformación
+        const formas = variables.map(v => Object.assign(this._formaMarginal(v), { nombre: v.nombre }));
         const nombres = variables.map(v => v.nombre);
         const s = nombres.map(nm => this._factorDE(nm));
         const lista = nm => (this.diferenciasEfectivas && this.diferenciasEfectivas.get(nm)) || [];
         const Rint = Array.from({ length: m }, (_, i) => Array.from({ length: m }, (_, j) => (i === j ? 1 : 0)));
         for (let i = 0; i < m; i++) for (let j = i + 1; j < m; j++) {
             const r = R[i][j];
-            // covarianza entre grupos compartida (misma agrupación en ambas
-            // variables): Σ_k amp_ik·amp_jk·Var(c_k), en unidades de σ_i·σ_j
+            // covarianza entre grupos compartida: Σ amp_i·amp_j·Cov(término_i, término_j), en unidades de σ_i·σ_j (ver
+            // _covarianzaTerminos: cada término solo covaría con otro del mismo tipo sobre las mismas agrupaciones)
             let b = 0;
             lista(nombres[i]).forEach(ei => lista(nombres[j]).forEach(ej => {
-                if (ei.agrup === ej.agrup) b += ei.amplitud * ej.amplitud * this._varianzaCodigo(ei.agrup);
+                b += ei.amplitud * ej.amplitud * this._covarianzaTerminos(ei, ej);
             }));
             const rhoIntra = (r - b) / (s[i] * s[j]);
             const inv = this._rhoIntermedia(formas[i], formas[j], rhoIntra);
@@ -510,7 +570,10 @@ export const metodosCorrelaciones = {
 
     generarMatrizDrivers(n, codigosGrupo = [], funcionesValor = null) {
         const m = this.correlVariables.length;
-        if (!m || n < 3) return null;
+        // (revisión 2026.12.30) con n ≤ m la correlación muestral de los m drivers es singular (centrada, su rango no pasa
+        // de n − 1) y el blanqueo forzado dejaba columnas constantes (con 6 escalas y n = 5, totales «15/15/15/15/15»): sin
+        // exactitud, por muestreo (el informe lo juzga entonces como el modo no exacto). Con n = m + 1 ya es de rango completo.
+        if (!m || n < 3 || n < m + 1) return null;
         let Z = Array.from({ length: n }, () => Array.from({ length: m }, () => this.generarNormalEstandar()));
         // Modo exacto + diferencias por grupo: drivers ortogonales a los códigos
         // (medias de grupo del driver = 0 exacto → la d obtenida es la pedida).
@@ -567,12 +630,8 @@ export const metodosCorrelaciones = {
             // asimétricas o uniformes (antes fluctuaban ±3 % de σ con n = 150 y,
             // con ellas, el cambio de una medida repetida).
             if (f.conForma) {
-                const u = Float64Array.from(Zcols[a], z => f.transformar(z));
-                let m = 0; for (let i = 0; i < n; i++) m += u[i]; m /= n;
-                let v = 0; for (let i = 0; i < n; i++) v += (u[i] - m) * (u[i] - m);
-                const sd = Math.sqrt(v / Math.max(1, n - 1)) || 1;
-                for (let i = 0; i < n; i++) u[i] = (u[i] - m) / sd;
-                Zcols[a] = u; f.formaAplicada = true;
+                // (2026.12.25) las puntuaciones típicas del núcleo único (DE muestral; sin varianza, la escala 1)
+                Zcols[a] = estandarizar(Float64Array.from(Zcols[a], z => f.transformar(z)), { muestral: true }).z; f.formaAplicada = true;
             }
         });
         (this.modelosModeracion || []).forEach(md => {
@@ -594,7 +653,7 @@ export const metodosCorrelaciones = {
     _componerForma(md, xFinal, e) {
         // fuerza intragrupo: con diferencias por grupo en Y, η/s (s = DE intra/total), acotada (η máxima ≈ s)
         const n = e.length, eta = Math.min(0.995, md.eta / (this._factorDE(md.y) || 1));
-        const est = col => { let mu = 0; for (let i = 0; i < n; i++) mu += col[i]; mu /= n; let v = 0; for (let i = 0; i < n; i++) v += (col[i] - mu) ** 2; const sd = Math.sqrt(v / n); return sd > 1e-9 ? Float64Array.from(col, x => (x - mu) / sd) : null; };
+        const est = col => { const s = estandarizar(col); return s.de > 1e-9 ? s.z : null; };   // (2026.12.25) del núcleo único
         const zx = est(xFinal), zf = est(aplicarForma(md.forma, xFinal));
         if (!zx || !zf || n < 8) return e;
         // (Atlas, dimensión B) nube: el residuo propio se multiplica por g(X) (y, en el triángulo, se acota: Φ(e) − ½) ANTES de
@@ -619,9 +678,8 @@ export const metodosCorrelaciones = {
         const medir = eta => {
             const z = componer(eta), y = new Float64Array(n);
             for (let i = 0; i < n; i++) y[i] = funcionY.valor(i, z[i]);
-            let ma = 0, mb = 0; for (let i = 0; i < n; i++) { ma += fx[i]; mb += y[i]; } ma /= n; mb /= n;
-            let ab = 0, aa = 0, bb = 0; for (let i = 0; i < n; i++) { ab += (fx[i] - ma) * (y[i] - mb); aa += (fx[i] - ma) ** 2; bb += (y[i] - mb) ** 2; }
-            return aa > 0 && bb > 0 ? ab / Math.sqrt(aa * bb) : objetivo;
+            const r = correlacion(fx, y);   // (2026.12.25) la del núcleo único
+            return Number.isNaN(r) ? objetivo : r;
         };
         // (revisión 2026.10.25) la η efectiva no sube más de 0,05 sobre la pedida: compensar un recorte fuerte dejaba a Y casi
         // sin varianza propia y hundía su DE, su α y sus demás correlaciones (la validación avisa de ese recorte)
@@ -653,7 +711,7 @@ export const metodosCorrelaciones = {
         // coeficientes que verá quedan multiplicados por s. Se compensa aquí.
         const s = this._factorDE(md.y) || 1;
         md = Object.assign({}, md, { b1: md.b1 / s, b2: md.b2 / s, b3: md.b3 / s });
-        const est = col => { let mu = 0; for (let i = 0; i < n; i++) mu += col[i]; mu /= n; let v = 0; for (let i = 0; i < n; i++) v += (col[i] - mu) ** 2; const sd = Math.sqrt(v / n); return sd > 1e-9 ? Float64Array.from(col, x => (x - mu) / sd) : null; };
+        const est = col => { const t = estandarizar(col); return t.de > 1e-9 ? t.z : null; };   // (2026.12.25) del núcleo único
         const zx = est(xFinal), zw = est(wFinal);
         if (!zx || !zw || n < 8) return e;   // X o W sin varianza (caso degenerado): Y queda con su driver propio
         const p = new Float64Array(n);
@@ -756,7 +814,6 @@ export const metodosCorrelaciones = {
         let Rt = this.correlRIntermedia.map(f => f.slice());
         let L = this.descomposicionCholesky(Rt);
         const X = Array.from({ length: m }, () => new Float64Array(n));
-        const medias = new Float64Array(m), des = new Float64Array(m);
         // Se conserva la mejor candidata: con valores redondeados (Likert,
         // decimales) la Pearson muestral cambia a saltos y el punto fijo puede
         // oscilar alrededor del objetivo en vez de clavarlo.
@@ -776,17 +833,10 @@ export const metodosCorrelaciones = {
             const cols = this._prepararColumnasDeDrivers(Zmix.map(c => c), funciones, codigos);
             // …y los valores finales de cada variable
             for (let a = 0; a < m; a++) for (let i = 0; i < n; i++) X[a][i] = funciones[a].valor(i, cols[a][i]);
-            for (let a = 0; a < m; a++) {
-                let s = 0; for (let i = 0; i < n; i++) s += X[a][i];
-                medias[a] = s / n;
-                let v = 0; for (let i = 0; i < n; i++) v += (X[a][i] - medias[a]) ** 2;
-                des[a] = Math.sqrt(v / n) || 1e-9;
-            }
-            const C = Array.from({ length: m }, () => new Float64Array(m));
+            // (2026.12.25) su Pearson, la del núcleo único (antes, una copia con las DE poblacionales y 10⁻⁹ como guarda)
+            const C = matrizCorrelaciones(X);
             let maxError = 0, maxErrorR = 0;
             for (let a = 0; a < m; a++) for (let b = a + 1; b < m; b++) {
-                let s = 0; for (let i = 0; i < n; i++) s += (X[a][i] - medias[a]) * (X[b][i] - medias[b]);
-                C[a][b] = C[b][a] = s / n / (des[a] * des[b]);
                 if (fijosPorBeta.has(`${a}|${b}`)) continue;   // (B6) los fijan los coeficientes
                 maxErrorR = Math.max(maxErrorR, Math.abs(R[a][b] - C[a][b]));
             }
@@ -874,7 +924,7 @@ export const metodosCorrelaciones = {
         if (!sel) return null;
         // (fase C) los modelos entran en la clave: las terceras variables fijan correlaciones de la matriz (antes, cambiar solo un
         // modelo reutilizaba un cálculo obsoleto)
-        const clave = JSON.stringify([sel, cfg.correlaciones, cfg.modelos, (cfg.pruebas || []).map(p => [p.nombre, p.media, p.desviacion, p.distribucion, p.numItems, p.minimo, p.maximo]), (cfg.sociodemograficos || []).map(s => [s.categoria, s.promedio, s.desviacion, s.distribucion])]);
+        const clave = JSON.stringify([sel, cfg.correlaciones, cfg.modelos, (cfg.pruebas || []).map(p => [p.nombre, p.media, p.desviacion, p.distribucion, p.numItems, p.minimo, p.maximo, typeof p.formaTotal === 'function', p.alfa, p.dificultadesEfectivas]), (cfg.sociodemograficos || []).map(s => [s.categoria, s.promedio, s.desviacion, s.distribucion])]);
         if (this._cacheSeleccion && this._cacheSeleccion.clave === clave) return this._cacheSeleccion.valor;
         this.prepararCorrelaciones();
         const vars = this.correlVariables || [], iX = vars.findIndex(v => v.nombre === sel.variable);
@@ -892,6 +942,55 @@ export const metodosCorrelaciones = {
             eeR: (a, b, n) => { const ia = porNombre.get(a), ib = porNombre.get(b); return ia && ib ? e.eeR(ia.indice, ib.indice, n) : null; } };
         this._cacheSeleccion = { clave, valor };
         return valor;
+    },
+
+    // (deuda técnica de la B3) escala de acierto/error con la selección por rango: dificultades y KR-20 esperados en la muestra
+    // seleccionada, por Monte Carlo con el PROPIO generador: latentes de la población con su correlación con la variable de la
+    // selección, seleccionados como en la base (por el latente de X), y para cada uno los MISMOS dos pasos que el flujo: el total
+    // (_totalObjetivo) y su reparto en ítems (_repartirEnItems) con el objetivo interno de fiabilidad calibrado en la generación
+    // (con el α pedido, los ítems salían menos acoplados que los reales: con la selección sobre la propia escala, un KR-20
+    // esperado 0.07 por debajo del observado). Con un azar propio, guardado y restaurado: no altera la base ni lo que venga después.
+    // null si no hay selección o la escala no se relaciona con ella (entonces su distribución no cambia)
+    _dicotomicaTrasSeleccion(p) {
+        const sel = this._esperadoTrasSeleccion();
+        if (!sel || !p || !this._esDicotomica(p) || !this.correlL) return null;
+        const vars = this.correlVariables || [], iX = vars.findIndex(v => v.nombre === sel.variable), iY = vars.findIndex(v => v.nombre === p.nombre);
+        if (iX < 0 || iY < 0) return null;
+        const L = this.correlL;
+        let rho = 0; for (let k = 0; k < L[iX].length; k++) rho += L[iX][k] * (L[iY][k] || 0);
+        if (iX !== iY && Math.abs(rho) < 1e-9) return null;
+        const clave = JSON.stringify([sel.variable, sel.lado, sel.proporcion, p.nombre, p.numItems, p.media, p.desviacion, p.alfa, p.dificultadesEfectivas, Math.round(rho * 1e6)]);
+        this._cacheDicotomicaSel = this._cacheDicotomicaSel || new Map();
+        if (this._cacheDicotomicaSel.has(clave)) return this._cacheDicotomicaSel.get(clave);
+        const guardado = this._guardarAleatorio();
+        try {
+            this.inicializarAleatorio(20261126);
+            const N = 30000, zx = new Float64Array(N), zy = new Float64Array(N), c = Math.sqrt(Math.max(0, 1 - rho * rho));
+            for (let i = 0; i < N; i++) { const a = this.generarNormalEstandar(); zx[i] = a; zy[i] = iX === iY ? a : rho * a + c * this.generarNormalEstandar(); }
+            const orden = Array.from({ length: N }, (_, i) => i).sort((a, b) => zx[a] - zx[b]), m = Math.max(2, Math.round(N * sel.proporcion));
+            const elegidos = sel.lado === 'inferior' ? orden.slice(0, m) : orden.slice(N - m);
+            const k = p.numItems, deIntra = p.desviacion * this._factorDE(p.nombre), perfil = this.perfilesItems ? (this.perfilesItems.get(p) || null) : null;
+            const zOtras = (perfil && (perfil.cruzadas.length || (perfil.estructura && perfil.estructura.metodo))) ? this._zOtrasSimuladas(p, perfil) : null;
+            const objetivo = this._objetivoInternoFiabilidad && this._objetivoInternoFiabilidad.has(p) ? this._objetivoInternoFiabilidad.get(p) : p.alfa, forma = p.formaTotal ? p.formaTotal : p.distribucion;
+            const suma = new Float64Array(k), matriz = new Uint8Array(m * k); let sT = 0, sT2 = 0, fila = 0;
+            for (const i of elegidos) {
+                const z = zy[i], total = this._totalObjetivo(p.media, deIntra, z, forma, this._desplazamientoAleatorio(p.nombre, p.desviacion));
+                const r = this._repartirEnItems(k, total, p.media, deIntra, p.minimo, p.maximo, objetivo, perfil, typeof zOtras === 'function' ? zOtras(z) : zOtras, z);
+                let t = 0; for (let j = 0; j < k; j++) { const v = r.items[j] - p.minimo; suma[j] += v; t += v; matriz[fila * k + j] = v; }
+                sT += t; sT2 += t * t; fila++;
+            }
+            // (2026.12.25) la varianza de los totales, la r ítem–resto y su media, del núcleo único, en dos pasadas; antes, a mano
+            // en una pasada (Σx² − (Σx)²/m, que pierde cifras por cancelación)
+            const totales = new Float64Array(m);
+            for (let f = 0; f < m; f++) { let t = 0; for (let q = 0; q < k; q++) t += matriz[f * k + q]; totales[f] = t; }
+            const dificultades = Array.from(suma, s => s / m), varT = varianza(totales), spq = dificultades.reduce((s, q) => s + q * (1 - q), 0);
+            // discriminación esperada: la r ítem–resto media de los ítems simulados (con la restricción de rango baja por diseño)
+            const rItemResto = j => { const x = new Float64Array(m), y = new Float64Array(m); for (let f = 0; f < m; f++) { x[f] = matriz[f * k + j]; y[f] = /** @type {number} */ (totales[f]) - x[f]; } return correlacion(x, y); };
+            const discs = Array.from({ length: k }, (_, j) => rItemResto(j)).filter(Number.isFinite);
+            const valor = { dificultades, kr20: varT > 0 ? (k / (k - 1)) * (1 - spq / varT) : NaN, discriminacion: discs.length ? mediaNucleo(discs) : NaN, n: m };
+            this._cacheDicotomicaSel.set(clave, valor);
+            return valor;
+        } finally { this._restaurarAleatorio(guardado); }
     },
 
     _driversDeFila(fila) {
@@ -925,33 +1024,27 @@ export const metodosCorrelaciones = {
         if ((cfg.correlaciones || []).length > 0) return true;
         if ((cfg.modelos || []).length > 0) return true;
         if ((cfg.gruposPruebas || []).some(g => g.escalas.length >= 2 && (g.rIntra === undefined ? 0.40 : g.rIntra) !== 0)) return true;
-        return cfg.correlacionesExactas !== false && !!this.diferenciasEfectivas && this.diferenciasEfectivas.size > 0;
+        if (cfg.correlacionesExactas === false) return false;
+        if (this.diferenciasEfectivas && this.diferenciasEfectivas.size > 0) return true;
+        // (2026.12.30) En modo exacto, también sin nada que correlacionar, si hay alguna variable continua: la matriz de
+        // drivers (la identidad) es la que hace exactas la media y la DE. Sin ella, una sola escala, o dos tests sin
+        // correlaciones pedidas, salían por muestreo y el informe, que en modo exacto no tolera el muestreo, marcaba la
+        // media «⚠ se desvía» en un tercio de las semillas con n = 100 (auditoría del 2026-10-16).
+        return (cfg.pruebas || []).length > 0 || (cfg.sociodemograficos || []).some(s => !this._esSocioDiscreto(s));
     },
 
     // Residualiza cada columna de Z (n × m) contra [1 | X] por mínimos cuadrados:
-    // Z ← Z − X·(XᵀX)⁻¹·XᵀZ. Deja las medias de grupo de cada driver en 0 exacto.
+    // Z ← Z − X·(XᵀX)⁻¹·XᵀZ. Deja las medias de grupo de cada driver en 0 (a la precisión
+    // de la máquina). (2026.12.25) Con la proyección del núcleo único (core/stats/mco.js, por la
+    // QR); antes, las ecuaciones normales con el Cholesky forzado.
     _ortogonalizarContraCodigos(Z, X) {
         const n = Z.length, m = Z[0].length, q = X.length + 1;
         if (X.length === 0 || n <= q + m + 2) return Z;
         this.driversOrtogonalizados = true;
-        const col = j => (j === 0 ? null : X[j - 1]);
-        const G = Array.from({ length: q }, () => new Array(q).fill(0));
-        for (let a = 0; a < q; a++) for (let b = a; b < q; b++) {
-            let s = 0;
-            const ca = col(a), cb = col(b);
-            for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * (cb ? cb[i] : 1);
-            G[a][b] = G[b][a] = s;
-        }
-        const L = this.descomposicionCholesky(G), Linv = this._inversaTriangularInferior(L);
-        const Ginv = Array.from({ length: q }, (_, a) => Array.from({ length: q }, (_, b) => {
-            let s = 0; for (let k = 0; k < q; k++) s += Linv[k][a] * Linv[k][b]; return s;
-        }));
+        const proyectar = proyectorResiduos(X, n);
         for (let j = 0; j < m; j++) {
-            const xtz = new Array(q).fill(0);
-            for (let a = 0; a < q; a++) { const ca = col(a); let s = 0; for (let i = 0; i < n; i++) s += (ca ? ca[i] : 1) * Z[i][j]; xtz[a] = s; }
-            const beta = new Array(q).fill(0);
-            for (let a = 0; a < q; a++) { let s = 0; for (let k = 0; k < q; k++) s += Ginv[a][k] * xtz[k]; beta[a] = s; }
-            for (let i = 0; i < n; i++) { let s = beta[0]; for (let a = 1; a < q; a++) s += X[a - 1][i] * beta[a]; Z[i][j] -= s; }
+            const r = proyectar(Float64Array.from(Z, fila => fila[j]));
+            for (let i = 0; i < n; i++) Z[i][j] = r[i];
         }
         return Z;
     },

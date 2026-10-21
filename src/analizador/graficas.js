@@ -2,6 +2,11 @@
 // Origen: graficas.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
 import { d3 } from '../shared/statviz.js';
+import { cuantilNormal, densidadNormal } from '../core/stats/numerico.js';
+import { pCorrelacion, icCorrelacion } from '../core/stats/correlacion.js';
+import { regresionSimple, bandaConfianzaRecta } from '../core/stats/regresion-simple.js';
+import { fuerzaCorrelacionGrafico } from './motor/magnitudes.js';
+import { formatoP } from '../shared/formato-numero.js';
 /**
  * ScientificCharts - Librería de Visualización Científica
  * Arquitectura: Patrón Builder con Clases ES6
@@ -214,45 +219,80 @@ class ScientificCharts {
     /** @private */
     _ocultarTooltip() { if (this._tt) this._tt.style.display = 'none'; }
     /**
-     * CDF de la normal estándar (aproximación de Zelen & Severo).
-     * @private
-     */
-    _phi(x) {
-        const t = 1 / (1 + 0.2316419 * Math.abs(x));
-        const d = Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
-        const p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-        return x >= 0 ? 1 - p : p;
-    }
-    /**
-     * p-valor bilateral aproximado del coeficiente de correlación (estadístico
-     * t con aproximación normal; adecuado para los N habituales del análisis).
+     * p-valor bilateral del coeficiente de correlación: la prueba del núcleo único (t con n − 2 gl), la misma que la
+     * tabla de correlaciones del Analizador. null si no se conoce n o con menos de 4 casos.
      * @private
      */
     _pCorrelacion(r, n) {
-        if (n == null || n < 4 || Math.abs(r) >= 1) return null;
-        const t = Math.abs(r) * Math.sqrt((n - 2) / Math.max(1e-12, 1 - r * r));
-        return Math.max(0, Math.min(1, 2 * (1 - this._phi(t))));
+        if (n == null || n < 4 || !Number.isFinite(r)) return null;
+        return pCorrelacion(r, n);   // (2026.12.17) del núcleo: con |r| = 1, p = 0 (antes, sin p)
     }
     /**
-     * IC 95% del coeficiente por transformación z de Fisher.
+     * IC 95% del coeficiente por la z de Fisher, del núcleo único (2026.12.17): con la ρ de Spearman, el error típico de
+     * Bonett y Wright, el del resto del programa (antes, aquí el de Pearson para las dos, y z = 1,96).
      * @private
      */
-    _icFisher(r, n) {
-        if (n == null || n < 4 || Math.abs(r) >= 1) return null;
-        const z = Math.atanh(r);
-        const se = 1 / Math.sqrt(n - 3);
-        return [Math.tanh(z - 1.96 * se), Math.tanh(z + 1.96 * se)];
+    _icFisher(r, n, spearman = false) {
+        if (n == null) return null;
+        const ic = icCorrelacion(r, n, { spearman });
+        return ic ? [ic.inferior, ic.superior] : null;
+    }
+    /**
+     * Contenido del tooltip de una celda del mapa de correlaciones (sin DOM, para poder probarlo): coeficiente, p, N, IC 95 %
+     * e interpretación. (2026.12.17) p e IC con el coeficiente exacto y el n de los pares completos de la celda (antes, el
+     * valor redondeado a dos decimales y el mínimo de las longitudes de las dos columnas).
+     * @private
+     */
+    _htmlTooltipCorrelacion(d, labels, options = {}) {
+        if (d.i === d.j) return `<b style="color:#fbbf24;">${labels[d.i]}</b><br>Correlación de la variable consigo misma: siempre 1.00 por definición.`;
+        const normalesVar = options.normalesPorVariable || null, exactos = options.coeficientesExactos || null, nPorPar = options.nPorPar || null;
+        const esPearson = normalesVar ? (normalesVar[d.i] && normalesVar[d.j]) : null;
+        const metodo = esPearson === null ? 'Coeficiente' : (esPearson ? "Pearson's r" : "Spearman's ρ");
+        const N = nPorPar ? nPorPar[d.i][d.j] : null, rExacto = exactos ? exactos[d.i][d.j] : d.value;
+        const p = this._pCorrelacion(rExacto, N);
+        const ic = this._icFisher(rExacto, N, esPearson === false);
+        const { fuerza, direccion } = this._fuerzaCorrelacion(d.value);
+        const fr = x => (x < 0 ? '-' : '') + Math.abs(x).toFixed(2).replace(/^0/, '');
+        let html = `<b style="color:#fbbf24;">${labels[d.i]} × ${labels[d.j]}</b><br>`;
+        html += `${metodo} = ${fr(d.value)}`;
+        if (p != null) html += `<br>${this._fmtPTooltip(p)}`;
+        if (N != null) html += `<br>N = ${N}`;
+        if (ic) html += `<br>IC 95% [${fr(ic[0])}, ${fr(ic[1])}]`;
+        html += `<br>Asociación ${direccion} ${fuerza}`;
+        let interp;
+        if (Math.abs(d.value) < 0.1) {
+            interp = `No se aprecia una asociación relevante entre ${labels[d.i]} y ${labels[d.j]}.`;
+        } else {
+            interp = `Puntuaciones más elevadas en ${labels[d.i]} tienden a asociarse con puntuaciones más ${d.value >= 0 ? 'elevadas' : 'bajas'} en ${labels[d.j]}`;
+            interp += (p != null && p >= 0.05) ? ', aunque la asociación no alcanza significación estadística (α = .05).' : '.';
+        }
+        return html + `<br><span style="color:#94a3b8;">Interpretación: ${interp}</span>`;
+    }
+    /**
+     * La recta del diagrama de dispersión y su banda de confianza al 95 % sobre una malla de 60 puntos del dominio, del núcleo
+     * único (sin DOM, para poder probarla): la MISMA recta que informa la regresión de la vista principal, con la t crítica
+     * exacta. (2026.12.19) Antes, aquí una copia del ajuste y la t aproximada por 1,96 + 2,4/gl. Con X constante no hay
+     * recta: la media de Y, sin banda.
+     * @private
+     */
+    _rectaDispersion(xData, yData, dominio) {
+        const recta = regresionSimple(xData, yData), conPendiente = Number.isFinite(recta.pendiente);
+        const malla = d3.range(60).map(i => dominio[0] + (i / 59) * (dominio[1] - dominio[0]));
+        const banda = conPendiente ? bandaConfianzaRecta(recta, malla) : [];
+        return {
+            recta, a: conPendiente ? recta.intercepto : d3.mean(yData), b: conPendiente ? recta.pendiente : 0,
+            banda: banda.every(p => Number.isFinite(p.inferior) && Number.isFinite(p.superior)) ? banda : []
+        };
     }
     /** Bandas de Cohen para la fuerza de la correlación. @private */
     _fuerzaCorrelacion(r) {
-        const a = Math.abs(r);
-        const fuerza = a < 0.1 ? 'despreciable' : a < 0.3 ? 'débil' : a < 0.5 ? 'moderada' : 'fuerte';
-        return { fuerza, direccion: r >= 0 ? 'positiva' : 'negativa' };
+        return { fuerza: fuerzaCorrelacionGrafico(r), direccion: r >= 0 ? 'positiva' : 'negativa' };   // (2026.12.24) la banda única
     }
     /** Formato APA del p-valor del tooltip (aproximado). @private */
     _fmtPTooltip(p) {
         if (p == null) return null;
-        return p < 0.001 ? 'p < .001' : 'p ≈ ' + p.toFixed(3).replace(/^0/, '');
+        const f = formatoP(p);
+        return f.startsWith('<') ? `p ${f}` : `p ≈ ${f}`;
     }
     /**
      * Crea gradientes y patrones comunes
@@ -377,7 +417,7 @@ class ScientificCharts {
         
         const gaussianData = xValues.map(x => ({
             x: x,
-            y: (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(-0.5 * Math.pow((x - mu) / sigma, 2))
+            y: densidadNormal((x - mu) / sigma) / sigma   // (2026.12.25) la densidad del núcleo único
         }));
         // Configurar escalas
         const xScale = d3.scaleLinear()
@@ -475,7 +515,7 @@ class ScientificCharts {
         const W = this.config.width - this.config.margin.left - this.config.margin.right;
         const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
         const xScale = d3.scaleLinear().domain([xMin, xMax]).range([0, W]).nice();
-        const pdf = (x, s) => Math.exp(-0.5 * ((x - s.mu) / s.sigma) ** 2) / (s.sigma * Math.sqrt(2 * Math.PI));
+        const pdf = (x, s) => densidadNormal((x - s.mu) / s.sigma) / s.sigma;   // (2026.12.25) la del núcleo único
         // Densidad EMPÍRICA de cada variable (KDE gaussiana, banda de
         // Silverman): permite contrastar visualmente los datos reales contra
         // el modelo normal teórico. Si ambas curvas coinciden, la distribución
@@ -486,8 +526,8 @@ class ScientificCharts {
             const puntos = [];
             for (let x = xMin; x <= xMax; x += paso) {
                 let suma = 0;
-                for (const xi of s.valores) suma += Math.exp(-0.5 * ((x - xi) / h) ** 2);
-                puntos.push({ x, y: suma / (s.n * h * Math.sqrt(2 * Math.PI)) });
+                for (const xi of s.valores) suma += densidadNormal((x - xi) / h);   // núcleo gaussiano: la densidad normal
+                puntos.push({ x, y: suma / (s.n * h) });
             }
             return puntos;
         };
@@ -685,38 +725,8 @@ class ScientificCharts {
             .text(d => d.value.toFixed(2));
         // ---- Tooltip exploratorio por celda: coeficiente, p, N, IC 95% e
         // interpretación en lenguaje natural con los nombres de las variables.
-        const seriesVar = options.seriesPorVariable || null;
-        const normalesVar = options.normalesPorVariable || null;
         cells
-            .on('mousemove', (event, d) => {
-                if (d.i === d.j) {
-                    this._mostrarTooltip(`<b style="color:#fbbf24;">${labels[d.i]}</b><br>Correlación de la variable consigo misma: siempre 1.00 por definición.`, event);
-                    return;
-                }
-                const esPearson = normalesVar ? (normalesVar[d.i] && normalesVar[d.j]) : null;
-                const simbolo = esPearson === null ? 'r' : (esPearson ? 'r' : 'ρ');
-                const metodo = esPearson === null ? 'Coeficiente' : (esPearson ? "Pearson's r" : "Spearman's ρ");
-                const N = seriesVar ? Math.min(seriesVar[d.i].length, seriesVar[d.j].length) : null;
-                const p = this._pCorrelacion(d.value, N);
-                const ic = this._icFisher(d.value, N);
-                const { fuerza, direccion } = this._fuerzaCorrelacion(d.value);
-                const fr = x => (x < 0 ? '-' : '') + Math.abs(x).toFixed(2).replace(/^0/, '');
-                let html = `<b style="color:#fbbf24;">${labels[d.i]} × ${labels[d.j]}</b><br>`;
-                html += `${metodo} = ${fr(d.value)}`;
-                if (p != null) html += `<br>${this._fmtPTooltip(p)}`;
-                if (N != null) html += `<br>N = ${N}`;
-                if (ic) html += `<br>IC 95% [${fr(ic[0])}, ${fr(ic[1])}]`;
-                html += `<br>Asociación ${direccion} ${fuerza}`;
-                let interp;
-                if (Math.abs(d.value) < 0.1) {
-                    interp = `No se aprecia una asociación relevante entre ${labels[d.i]} y ${labels[d.j]}.`;
-                } else {
-                    interp = `Puntuaciones más elevadas en ${labels[d.i]} tienden a asociarse con puntuaciones más ${d.value >= 0 ? 'elevadas' : 'bajas'} en ${labels[d.j]}`;
-                    interp += (p != null && p >= 0.05) ? ', aunque la asociación no alcanza significación estadística (α = .05).' : '.';
-                }
-                html += `<br><span style="color:#94a3b8;">Interpretación: ${interp}</span>`;
-                this._mostrarTooltip(html, event);
-            })
+            .on('mousemove', (event, d) => this._mostrarTooltip(this._htmlTooltipCorrelacion(d, labels, options), event))
             .on('mouseleave', () => this._ocultarTooltip());
         // Etiquetas de filas (ancladas a la derecha, dentro del margen izquierdo)
         const rowLabels = gMatriz.selectAll('.row-label')
@@ -998,11 +1008,11 @@ class ScientificCharts {
             return x.map(xi => {
                 let sum = 0;
                 data.forEach(d => {
-                    sum += Math.exp(-0.5 * Math.pow((xi - d) / bandwidth, 2));
+                    sum += densidadNormal((xi - d) / bandwidth);   // núcleo gaussiano: la densidad normal del núcleo único
                 });
                 return {
                     x: xi,
-                    y: sum / (n * bandwidth * Math.sqrt(2 * Math.PI))
+                    y: sum / (n * bandwidth)
                 };
             });
         };
@@ -1186,20 +1196,8 @@ class ScientificCharts {
     // ----------------------------------------------------------------
     createScatterPlotPro(xData, yData, options = {}) {
         this._validateArrays(xData, yData);
-        const n = xData.length;
         const W = this.config.width - this.config.margin.left - this.config.margin.right;
         const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
-        // Regresión por mínimos cuadrados
-        const xm = d3.mean(xData), ym = d3.mean(yData);
-        let Sxx = 0, Sxy = 0;
-        for (let i = 0; i < n; i++) { const dx = xData[i] - xm; Sxx += dx * dx; Sxy += dx * (yData[i] - ym); }
-        const b = Sxx === 0 ? 0 : Sxy / Sxx;
-        const a = ym - b * xm;
-        let SSE = 0;
-        for (let i = 0; i < n; i++) { const e = yData[i] - (a + b * xData[i]); SSE += e * e; }
-        const gl = Math.max(n - 2, 1);
-        const s = Math.sqrt(SSE / gl);
-        const t = 1.96 + 2.4 / gl; // aprox. t(0.975, gl), suficiente para visualización
         // Escalas con 5% de respiro
         const padX = (d3.max(xData) - d3.min(xData)) * 0.05 || 1;
         const padY = (d3.max(yData) - d3.min(yData)) * 0.05 || 1;
@@ -1218,17 +1216,13 @@ class ScientificCharts {
             .attr('y1', 0).attr('y2', H)
             .attr('x1', d => xScale(d)).attr('x2', d => xScale(d))
             .attr('stroke', '#94a3b8').attr('stroke-opacity', 0.12);
-        // Banda de confianza 95% de la recta (media condicional)
-        const dominio = xScale.domain();
-        const malla = d3.range(60).map(i => dominio[0] + (i / 59) * (dominio[1] - dominio[0]));
-        const banda = malla.map(x => {
-            const half = t * s * Math.sqrt(1 / n + (Sxx === 0 ? 0 : ((x - xm) ** 2) / Sxx));
-            const yc = a + b * x;
-            return { x, lo: yc - half, hi: yc + half };
-        });
-        g.append('path').datum(banda)
-            .attr('fill', this.config.primaryColor).attr('fill-opacity', 0.13).attr('stroke', 'none')
-            .attr('d', d3.area().x(d => xScale(d.x)).y0(d => yScale(d.lo)).y1(d => yScale(d.hi)));
+        // Recta de mínimos cuadrados y banda de confianza 95% de la recta (media condicional)
+        const dominio = xScale.domain(), { a, b, banda } = this._rectaDispersion(xData, yData, dominio);
+        if (banda.length) {
+            g.append('path').datum(banda)
+                .attr('fill', this.config.primaryColor).attr('fill-opacity', 0.13).attr('stroke', 'none')
+                .attr('d', d3.area().x(d => xScale(d.x)).y0(d => yScale(d.inferior)).y1(d => yScale(d.superior)));
+        }
         // Puntos
         g.selectAll('.punto').data(xData).enter().append('circle')
             .attr('cx', (d, i) => xScale(xData[i])).attr('cy', (d, i) => yScale(yData[i]))
@@ -1273,7 +1267,7 @@ class ScientificCharts {
         const W = this.config.width - this.config.margin.left - this.config.margin.right;
         const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
         const xScale = d3.scaleLinear().domain(d3.extent(data)).range([0, W]).nice();
-        const pdf = x => Math.exp(-((x - media) ** 2) / (2 * de * de)) / (de * Math.sqrt(2 * Math.PI));
+        const pdf = x => densidadNormal((x - media) / de) / de;   // (2026.12.25) la densidad del núcleo único
         const maxY = Math.max(d3.max(bins, d => d.length), n * anchoBin * pdf(media)) * 1.08;
         const yScale = d3.scaleLinear().domain([0, maxY]).range([H, 0]);
         const g = this._createChartBase(options.title || 'Histograma con curva normal',
@@ -1354,37 +1348,11 @@ class ScientificCharts {
         return this;
     }
     /**
-     * Inverso de la CDF normal estándar (aproximación racional de Acklam),
-     * usado para los cuantiles teóricos del gráfico Q-Q.
+     * Inverso de la CDF normal estándar, del núcleo único (core/stats/numerico.js), usado para los cuantiles
+     * teóricos del gráfico Q-Q; en los bordes (p ≤ 0, p ≥ 1), ±3,5: el tope de siempre para dibujar.
      * @private
      */
-    _cuantilNormalEstandar(p) {
-        if (p <= 0) return -3.5;
-        if (p >= 1) return 3.5;
-        const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
-            1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00];
-        const b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
-            6.680131188771972e+01, -1.328068155288572e+01];
-        const c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
-            -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00];
-        const d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00,
-            3.754408661907416e+00];
-        const pBajo = 0.02425;
-        const pAlto = 1 - pBajo;
-        if (p < pBajo) {
-            const q = Math.sqrt(-2 * Math.log(p));
-            return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-                ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-        } else if (p <= pAlto) {
-            const q = p - 0.5;
-            const r = q * q;
-            return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-                (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
-        }
-        const q = Math.sqrt(-2 * Math.log(1 - p));
-        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-            ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-    }
+    _cuantilNormalEstandar(p) { return p <= 0 ? -3.5 : p >= 1 ? 3.5 : cuantilNormal(p); }
     /**
      * Crea un histograma con curva de densidad
      * @param {Array} data - Datos numéricos

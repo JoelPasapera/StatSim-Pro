@@ -7,13 +7,14 @@ import { actualizarFilaConcordancia, agregarFilaConcordancia, poblarVariableConc
 import { agregarFilaCorrelacion, exportarConfigCorrelaciones, importarConfigCorrelaciones } from './correlaciones.js';
 import { actualizarFilaDesenlace, agregarFilaCorte, agregarFilaDesenlace, poblarSelectVariables } from './cortes-desenlaces.js';
 import { actualizarFilaDiferencia, agregarFilaDiferencia } from './diferencias.js';
-import { actualizarPanelEstructura, guardarEstructurasJSON, leerMatrizDesdeDOM, leerOpcionesEstructura, poblarSelectorEstructura, proponerCargas, quitarEstructura, renderMatrizCargas } from './estructura.js';
+import { actualizarPanelEstructura, guardarEstructurasJSON, leerMatrizDesdeDOM, leerOpcionesEstructura, poblarSelectorEstructura, proponerCargas, quitarEstructura, renderMatrizCargas, renombrarEnEstructuras } from './estructura.js';
 import { exportarConfigTodo, importarConfigTodo } from './maestro.js';
-import { actualizarEtiquetasModelo, agregarFilaModelo } from './modelos.js';
+import { actualizarEtiquetasModelo, agregarFilaModelo, rellenarCentral } from './modelos.js';
 import { generarBaseDatos } from './motor.js';
-import { FILA_PRUEBA_VACIA, actualizarDicotomicaFila, agregarFilaPrueba, agregarFilaPruebaConDatos, agregarFilaTest, agregarFilaTestConDatos, eliminarFilaPrueba, exportarConfigPruebas, importarConfigPruebas, reconstruirTablaDesdeTests, reflejarFilaEnTests, refrescarSelectoresDePrueba, renombrarVariableEnTablas } from './pruebas.js';
+import { FILA_PRUEBA_VACIA, actualizarDicotomicaFila, agregarFilaPrueba, agregarFilaPruebaConDatos, agregarFilaTest, agregarFilaTestConDatos, eliminarFilaPrueba, exportarConfigPruebas, importarConfigPruebas, reconstruirTablaDesdeTests, reflejarFilaEnTests, refrescarSelectoresDePrueba, renombrarVariableEnTablas, nombreGeneralDeFilaTest } from './pruebas.js';
 import { actualizarFilaRepetida, agregarFilaRepetida } from './repetidas.js';
-import { descargarCSV, descargarCSVInternacional } from './resultado.js';
+import { descargarCSV, descargarCSVInternacional, descargarSAV, descargarXLSX } from './resultado.js';
+import './proyecto.js';   // (2026.12.31) lo que el Simulador guarda en un proyecto (se inscribe al importarse)
 import { agregarFilaSocio, eliminarFilaSocio, exportarConfigSocio, importarConfigSocio, poblarDependeDe, poblarReferenciaMAR } from './sociodemograficos.js';
 import * as _toast from '../../shared/toast.js';
 import * as _descargas from '../../shared/descargas.js';
@@ -43,6 +44,20 @@ export function montarInterfazSimulador() {
             btn.closest('tr').remove();
             refrescarSelectoresDePrueba();
         });
+        // (2026.12.30) Renombrar la variable psicológica de un test (o el test) cambia el nombre de su puntaje general
+        // («IE — EQ-i» → «Inteligencia emocional — EQ-i»): se propaga a las tablas III a IX y a las estructuras, como al
+        // renombrar una escala. Hasta la 2026.12.29 las filas quedaban con el nombre viejo y la generación se bloqueaba.
+        _bodyTests.addEventListener('focusin', e => {
+            const fila = e.target.closest ? e.target.closest('.fila-test') : null;
+            if (fila && e.target.matches && (e.target.matches('[aria-label="Variable psicológica"]') || e.target.matches('[aria-label="Nombre del test"]'))) fila.dataset.generalAnterior = nombreGeneralDeFilaTest(fila) || '';
+        });
+        _bodyTests.addEventListener('change', e => {
+            const fila = e.target.closest ? e.target.closest('.fila-test') : null;
+            if (!fila || !e.target.matches || !(e.target.matches('[aria-label="Variable psicológica"]') || e.target.matches('[aria-label="Nombre del test"]'))) return;
+            const anterior = fila.dataset.generalAnterior || '', nuevo = nombreGeneralDeFilaTest(fila) || '';
+            if (anterior && nuevo && anterior !== nuevo) { renombrarVariableEnTablas(anterior, nuevo); renombrarEnEstructuras(anterior, nuevo); }
+            fila.dataset.generalAnterior = nuevo;
+        });
     }
     document.getElementById('btnAgregarPrueba').addEventListener('click', agregarFilaPrueba);
     // Fila inicial de la tabla de escalas: la misma función que todas las demás
@@ -71,6 +86,10 @@ export function montarInterfazSimulador() {
     document.getElementById('btnDescargarCSV').addEventListener('click', descargarCSV);
     const btnIntl = document.getElementById('btnDescargarCSVIntl');
     if (btnIntl) btnIntl.addEventListener('click', descargarCSVInternacional);
+    const btnSav = document.getElementById('btnDescargarSAV');
+    if (btnSav) btnSav.addEventListener('click', descargarSAV);
+    const btnXlsx = document.getElementById('btnDescargarXLSX');   // (2026.12.31) la base como libro de Excel
+    if (btnXlsx) btnXlsx.addEventListener('click', descargarXLSX);
     // Botones importar/exportar pruebas
     document.getElementById('btnImportarPruebas').addEventListener('click', () => {
         document.getElementById('importPruebasInput').click();
@@ -202,6 +221,11 @@ export function montarInterfazSimulador() {
         bodyModelos.addEventListener('change', function (e) {
             if (e.target.matches('[aria-label="Tipo de modelo"]')) actualizarEtiquetasModelo(e.target.closest('tr'));
         });
+        // (Atlas, Simpson) al abrir la columna central de una fila de Simpson, las binarias actuales (focusin y no focus: este no se
+        // propaga hasta el cuerpo de la tabla)
+        ['focusin', 'mousedown'].forEach(evento => bodyModelos.addEventListener(evento, function (e) {
+            if (e.target.matches && e.target.matches('[aria-label="Mediador o moderador"]')) rellenarCentral(e.target.closest('tr'));
+        }));
     }
     // (C1) Estructura factorial
     const _selEst = document.getElementById('selectorTestEstructura');

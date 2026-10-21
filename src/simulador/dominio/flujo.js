@@ -2,6 +2,10 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { BaseColumnar } from '../../core/data/base-columnar.js';
+import { IMPERFECCIONES } from './constantes.js';
+import { biseccion } from '../../core/stats/optimizacion.js';
+import { cotaInferior, cotaSuperior } from '../../core/stats/orden.js';
+import { media, desviacion } from '../../core/stats/descriptivos.js';
 import { cuantilOrdenado, generarEstados } from './histeresis.js';
 
 export const metodosFlujo = {
@@ -28,7 +32,7 @@ export const metodosFlujo = {
         return `${base.n}:${columnas.length}:${h}`;
     },
 
-    _hayImperfecciones() { const r = (this.configuracion && this.configuracion.realismo) || {}; return ['pctPerdidos', 'pctDescuidados', 'pctAquiescencia', 'pctExtremos', 'pctDigitacion'].some(c => r[c] > 0); },
+    _hayImperfecciones() { const r = (this.configuracion && this.configuracion.realismo) || {}; return IMPERFECCIONES.some(c => r[c] > 0); },
 
     generarBaseDatos(alProgresar = null) {
         if (typeof BaseColumnar === 'undefined') {
@@ -39,8 +43,12 @@ export const metodosFlujo = {
         // Inicializar la fuente de aleatoriedad (sembrada si hay semilla)
         this.inicializarAleatorio(this.configuracion.semilla);
 
+        // (Atlas, Simpson) sus diferencias por grupo, materializadas ANTES de que nada lea la lista (ni la expansión de ondas)
+        this._materializarSimpson(this.configuracion);
         // (C5) dicotómicas: Media (si hay dificultades) y DE derivadas ANTES de clonar ondas
         this._ajustarDicotomicas(this.configuracion);
+        // (2026.12.03) los coeficientes de Hermite dependen de las formas de ESTA generación: se vacían antes de preparar la matriz
+        this._cacheHermite = new Map();
         // (B7) Medidas repetidas: cada onda T2… es un clon de su escala base con
         // media desplazada, estabilidad como correlación y las mismas diferencias
         // por grupo (más el cambio diferencial). La configuración queda
@@ -48,6 +56,7 @@ export const metodosFlujo = {
         this.configuracion = this._expandirConfiguracion(this.configuracion);
         // (Atlas, dimensión B2) techo y suelo: forma censurada de cada escala (y de cada onda), tras expandir
         this._ajustarCensuradas(this.configuracion);
+        this._ajustarAsimetricas(this.configuracion);   // (2026.12.04) la compensación del recorte de la forma asimétrica
 
         // Estado de la generación anterior: nada debe sobrevivir (el panel de
         // diagnóstico lee estos campos y no debe mostrar avisos de otra base).
@@ -141,13 +150,21 @@ export const metodosFlujo = {
             // últimas se generan corrientes y después se reescriben en X e Y (antes, la r de la mayoría salía .121 para .05)
             const k = (this.configuracion.atipicos || []).reduce((m, a) => Math.max(m, a.casos || 0), 0), codigos = this._matrizCodigosGrupo(base);
             matrizDrivers = this.generarMatrizDrivers(n - k, k && Array.isArray(codigos) ? codigos.map(c => c.slice(0, n - k)) : codigos, funcionesValor);
-            for (let j = 0; j < k; j++) { const o = this.generarVectorCorrelacionado(); matrizDrivers.push(this.correlVariables.map(v => o[v.tipo + ':' + v.clave])); }
+            if (matrizDrivers) for (let j = 0; j < k; j++) { const o = this.generarVectorCorrelacionado(); matrizDrivers.push(this.correlVariables.map(v => o[v.tipo + ':' + v.clave])); }
         }
+        // (revisión 2026.12.30) modo exacto pedido, pero sin matriz de drivers (muy pocos casos para las variables): la base
+        // sale por muestreo y el informe la juzga con las tolerancias del muestreo
+        this.exactitudPorMuestreo = exactas && !seleccion && !matrizDrivers;
         const driversSeleccionados = seleccion ? this._driversSeleccionados(n, exactas) : null;
         avisar(0.32, 'Calibrando la fiabilidad');
         // Fiabilidad autocalibrada: una vez por escala (no por participante).
         const indiceFiab = this.configuracion.indiceFiabilidad || 'alfa';
         const objetivoInterno = new Map();
+        // se conserva: lo esperado tras una selección de una escala de acierto/error repite el reparto con este mismo objetivo; y
+        // su caché se vacía en cada generación, porque depende de lo que esta calibra (revisión: con el mismo generador reutilizado,
+        // como en la aplicación, una segunda generación con otra configuración devolvía lo esperado de la primera)
+        this._objetivoInternoFiabilidad = objetivoInterno;
+        this._cacheDicotomicaSel = new Map();
         pruebas.forEach(p => {
             const perfil = this.perfilesItems.get(p);
             if (perfil && perfil.estructura) { this._calibrarCargas(p); objetivoInterno.set(p, p.alfa); return; }   // (C1) las cargas mandan
@@ -300,13 +317,8 @@ export const metodosFlujo = {
                 for (let i = 0; i < n; i++) {
                     const v = origen[i];
                     if (!(v === v) || m === 0) { destino[i] = NaN; continue; }
-                    // búsqueda binaria de límites inferior y superior
-                    let lo = 0, hi = m;
-                    while (lo < hi) { const mid = (lo + hi) >> 1; if (valores[mid] < v) lo = mid + 1; else hi = mid; }
-                    const inferiores = lo;
-                    lo = 0; hi = m;
-                    while (lo < hi) { const mid = (lo + hi) >> 1; if (valores[mid] <= v) lo = mid + 1; else hi = mid; }
-                    const empates = lo - inferiores;
+                    // búsqueda binaria de los límites inferior y superior (2026.12.25: la del núcleo único)
+                    const inferiores = cotaInferior(valores, v), empates = cotaSuperior(valores, v) - inferiores;
                     destino[i] = Math.round(((inferiores + 0.5 * empates) / m) * 1000) / 10;
                 }
             });
@@ -368,10 +380,9 @@ export const metodosFlujo = {
             d.predictores.forEach(pr => {
                 const datos = this._columnaPredictor(base, pr.variable);
                 if (!datos) return;
-                let m = 0, c = 0; for (let i = 0; i < n; i++) if (datos[i] === datos[i]) { m += datos[i]; c++; }
-                m /= Math.max(1, c);
-                let v = 0; for (let i = 0; i < n; i++) if (datos[i] === datos[i]) v += (datos[i] - m) ** 2;
-                const sd = Math.sqrt(v / Math.max(1, c - 1)) || 1;
+                // (2026.12.25) la media y la DE muestral de los valores presentes, del núcleo único (sin ninguno, 0 y 1, como antes)
+                const presentes = []; for (let i = 0; i < n; i++) if (datos[i] === datos[i]) presentes.push(datos[i]);
+                const m = presentes.length ? media(presentes) : 0, sd = desviacion(presentes) || 1;
                 const b = Math.log(pr.efecto);
                 for (let i = 0; i < n; i++) eta[i] += b * ((datos[i] === datos[i] ? datos[i] : m) - m) / sd;
             });
@@ -384,9 +395,8 @@ export const metodosFlujo = {
                 for (let r = 0; r < n; r++) col[orden[r]] = r >= n - unos ? 1 : 0;
                 if (d.etiquetas) base.etiquetar(d.nombre, { 0: d.etiquetas[0], 1: d.etiquetas[1] });
             } else if (d.tipo === 'conteo') {
-                let lo = -10, hi = 10;
-                for (let it = 0; it < 50; it++) { const b0 = (lo + hi) / 2; let s = 0; for (let i = 0; i < n; i++) s += Math.exp(b0 + eta[i]); if (s / n < d.media) lo = b0; else hi = b0; }
-                const b0 = (lo + hi) / 2;
+                // β₀ por bisección (la del núcleo único): la media de e^(β₀ + η) es la pedida
+                const b0 = biseccion(b => { let s = 0; for (let i = 0; i < n; i++) s += Math.exp(b + eta[i]); return s / n; }, d.media, -10, 10, 50);
                 for (let i = 0; i < n; i++) col[i] = this.generarPoisson(Math.exp(b0 + eta[i]));
             } else {
                 const u = new Float64Array(n);
@@ -476,15 +486,18 @@ export const metodosFlujo = {
                 const colV = this._columnaDeVariable(c.variable);
                 if (!colV || !base.tiene(colV)) return;
                 const verdad = base.columna(colV).datos;
-                let m = 0, k = 0; for (let i = 0; i < n; i++) if (verdad[i] === verdad[i]) { m += verdad[i]; k++; }
-                m /= Math.max(1, k); let v = 0; for (let i = 0; i < n; i++) if (verdad[i] === verdad[i]) v += (verdad[i] - m) ** 2;
-                const sd = Math.sqrt(v / Math.max(1, k - 1)) || 1;
+                const presentes = []; for (let i = 0; i < n; i++) if (verdad[i] === verdad[i]) presentes.push(verdad[i]);
+                const sd = desviacion(presentes) || 1;   // (2026.12.25) la DE muestral de los valores presentes, del núcleo único
                 const icc = Math.max(0.05, Math.min(0.98, c.icc));
                 const sdError = sd * Math.sqrt((1 - icc) / icc);
                 const columnas = [];
+                // (2026.12.30) cada puntuación, en el rango y con los decimales de la variable juzgada (un total Likert: entero y
+                // entre k·mín y k·máx): hasta la 2026.12.29, verdadera + error con dos decimales y sin acotar
+                const { minimo, maximo, decimales } = this._formatoDeVariable(c.variable), escala10 = 10 ** decimales;
+                const comoLaVariable = x => Math.min(maximo, Math.max(minimo, Math.round(x * escala10) / escala10));
                 for (let j = 1; j <= c.jueces; j++) {
-                    const col = base.agregar(`Juez${j}_${sigla}`, false).datos;
-                    for (let i = 0; i < n; i++) col[i] = verdad[i] === verdad[i] ? Math.round((verdad[i] + sdError * this.generarNormalEstandar()) * 100) / 100 : NaN;
+                    const col = base.agregar(`Juez${j}_${sigla}`, decimales === 0).datos;
+                    for (let i = 0; i < n; i++) col[i] = verdad[i] === verdad[i] ? comoLaVariable(verdad[i] + sdError * this.generarNormalEstandar()) : NaN;
                     columnas.push(`Juez${j}_${sigla}`);
                 }
                 this.juecesGenerados.push({ tipo: 'juecesContinuo', variable: c.variable, columnaVerdad: colV, columnas, icc: c.icc, sigla });

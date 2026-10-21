@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { cuantilNormal } from '../../src/analizador/psicometria/numerico.js';
+import { cuantilNormal } from '../../src/core/stats/numerico.js';
 import { vAiken, intervaloScore, pExactaAiken, decidir, validarEntrada, analizarValidezContenido } from '../../src/analizador/psicometria/aiken.js';
 import { parsearMatriz } from '../../src/analizador/psicometria/aiken-entrada.js';
 import { redactarParrafo, referencias, documentoWord, csvResultados } from '../../src/analizador/psicometria/aiken-redaccion.js';
@@ -71,6 +71,12 @@ test('ejemplo completo: decisiones esperadas, párrafo, referencias, Word y CSV'
     const dec = c => c.items.map(x => x.decision[0]).join('');   // v = válido, r = revisar, n = no válido
     assert.deepEqual(r.criterios.map(dec), ['vvrnvvvvvv', 'vvrnvvvvvv', 'vvrnvrvvvv']);
     assert.deepEqual([r.resumen.validos, r.resumen.revisar, r.resumen.noValidos], [7, 2, 1]);
+    // (2026.12.25) el resumen de cada criterio: la V media (la del núcleo), la mínima y la máxima de sus ítems
+    for (const c of r.criterios) {
+        const vs = c.items.map((/** @type {{ V: number }} */ x) => x.V);
+        assert.ok(Math.abs(c.resumen.vMedia - vs.reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) / vs.length) < 1e-15, `${c.nombre}: V media`);
+        assert.deepEqual([c.resumen.vMin, c.resumen.vMax], [Math.min(...vs), Math.max(...vs)]);
+    }
     const par = redactarParrafo(r);
     for (const trozo of ['juicio de 5 expertos', 'pertinencia, relevancia y claridad de los 10 ítems en una escala de 1 a 4', 'al 95 % por el método score (Penfield y Giacobbi, 2004)', 'V₀ = .70 (Charter, 2003; Merino-Soto y Livia, 2009)', 'requieren revisión (ítems 3 y 6)', 'revisar los ítems 3 y 6', 'retirar el ítem 4.'])
         assert.ok(par.includes(trozo), `falta «${trozo}» en: ${par}`);
@@ -97,3 +103,49 @@ test('revisión: comillas, numeración de ítems, singulares, CSV seguro y confi
     const mal = analizarValidezContenido({ minimo: 1, maximo: 4, confianza: NaN, v0: 1.5, criterios: [{ nombre: 'A', valoraciones: [[4, 4]] }] });
     assert.ok(!mal.ok && mal.errores.some(e => /nivel de confianza/.test(e)) && mal.errores.some(e => /V₀ debe estar entre 0 y 1/.test(e)));
 });
+
+test('(2026.12.30) jueces numerados en el encabezado: «Ítem;1;2;3;4» es la fila de los jueces, no un ítem con V = .50', () => {
+    const tabla = 'Ítem;1;2;3;4\nÍtem 1;4;4;3;4\nÍtem 2;3;4;4;4\nÍtem 3;4;4;4;4\nÍtem 4;4;3;4;4\n';
+    const P = parsearMatriz(tabla);
+    assert.deepEqual([P.formato.conEncabezado, P.etiquetas, P.jueces, P.errores, P.avisos],
+        [true, ['Ítem 1', 'Ítem 2', 'Ítem 3', 'Ítem 4'], ['Juez 1', 'Juez 2', 'Juez 3', 'Juez 4'], [], []]);
+    const R = analizarValidezContenido({ minimo: 1, maximo: 4, items: P.etiquetas, criterios: [{ nombre: 'Claridad', jueces: P.jueces, valoraciones: P.valoraciones }] });
+    assert.ok(Math.abs(R.resumen.vMedia - 45 / 48) < 1e-12, `la V media de los cuatro ítems reales (11/12, 11/12, 1, 11/12): ${R.resumen.vMedia}`);
+    // la misma tabla con los jueces rotulados da lo mismo
+    assert.deepEqual(parsearMatriz(tabla.replace('Ítem;1;2;3;4', 'Ítem;J1;J2;J3;J4')).valoraciones, P.valoraciones);
+    // esquinas vacías, «Nº» y con tabulador
+    for (const t of [';1;2;3\nP1;4;4;3\nP2;3;4;4\n', 'Nº\t1\t2\t3\nP1\t4\t4\t3\nP2\t3\t4\t4\n', 'Reactivo / Juez;1;2;3\nP1;4;4;3\nP2;3;4;4\n']) {
+        const p = parsearMatriz(t);
+        assert.deepEqual([p.formato.conEncabezado, p.etiquetas, p.valoraciones], [true, ['P1', 'P2'], [[4, 4, 3], [3, 4, 4]]], JSON.stringify(t));
+    }
+    // un ítem de verdad con valoraciones 1, 2, 3, 4 sigue siendo un ítem («Ítem 1» lleva número: no es la esquina)
+    const item = parsearMatriz('Ítem 1;1;2;3;4\nÍtem 2;3;4;4;4\n');
+    assert.deepEqual([item.formato.conEncabezado, item.etiquetas, item.valoraciones[0], item.avisos], [false, ['Ítem 1', 'Ítem 2'], [1, 2, 3, 4], []]);
+    // sin columna de nombres, «1;2;3;4» son datos
+    assert.deepEqual(parsearMatriz('1;2;3;4\n4;4;3;4\n').valoraciones, [[1, 2, 3, 4], [4, 4, 3, 4]]);
+    // jueces 1, 2, 4 (uno retirado): no es un encabezado numerado en orden, se lee como ítem, pero con un aviso
+    const raro = parsearMatriz('Ítem;1;2;4\nA;4;4;3\nB;3;4;4\n');
+    assert.deepEqual([raro.formato.conEncabezado, raro.etiquetas[0]], [false, 'Ítem']);
+    assert.match(raro.avisos.join(' '), /La primera fila \(«Ítem»\) se leyó como un ítem: si es la fila de los jueces, rotúlalos/);
+});
+
+test('(revisión 2026.12.30) esquinas con varias palabras y otros rótulos: «Nº de ítem», «Ítems de la escala», «Dimensión»…', () => {
+    const cuerpo = 'Me siento triste;4;4;3;4\nDuermo mal;3;4;4;4\nPierdo el interés;4;4;4;4\n';
+    for (const esquina of ['Nº de ítem', 'N.º de ítem', 'Número de ítem', 'Ítems de la escala', 'Dimensión', 'Código', 'Afirmación', 'Reactivo / Juez']) {
+        const P = parsearMatriz(`${esquina};1;2;3;4\n` + cuerpo);
+        assert.deepEqual([P.formato.conEncabezado, P.etiquetas, P.avisos], [true, ['Me siento triste', 'Duermo mal', 'Pierdo el interés'], []], esquina);
+    }
+    // un rótulo que no se reconoce, con las valoraciones 1, 2, 3, 4 en orden: se lee como ítem, con un aviso
+    const raro = parsearMatriz('Rótulo raro;1;2;3;4\n' + cuerpo);
+    assert.deepEqual([raro.formato.conEncabezado, raro.etiquetas[0]], [false, 'Rótulo raro']);
+    assert.match(raro.avisos.join(' '), /La primera fila \(«Rótulo raro»\) se leyó como un ítem/);
+    // pero «Ítem 1» con 1, 2, 3, 4 es un ítem (lleva su número): sin aviso
+    assert.deepEqual(parsearMatriz('Ítem 1;1;2;3;4\nÍtem 2;3;4;4;4\n').avisos, []);
+    // (segunda revisión) con tres jueces, un ítem «Me siento triste;1;2;3» es verosímil: sin aviso; y con dos, «Contenido;1;2»
+    // no es un encabezado (sería un ítem perdido sin aviso): se lee como ítem y se avisa de su rótulo
+    assert.deepEqual(parsearMatriz('Me siento triste;1;2;3\nDuermo mal;4;4;3\n').avisos, []);
+    const dos = parsearMatriz('Contenido;1;2\nDuermo mal;4;4\nPierdo el interés;3;4\n');
+    assert.deepEqual([dos.formato.conEncabezado, dos.etiquetas[0]], [false, 'Contenido']);
+    assert.match(dos.avisos.join(' '), /La primera fila \(«Contenido»\) se leyó como un ítem/);
+});
+

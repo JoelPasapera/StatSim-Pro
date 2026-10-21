@@ -1,9 +1,12 @@
 // buscador/protocolo.js — protocolo de búsqueda auto-documentado (registro de ecuaciones y resultados).
 // Origen: protocolo-busqueda.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
 
-import { descargarArchivo } from '../shared/descargas.js';
+import { descargarArchivo, descargarBlob } from '../shared/descargas.js';
+import { asegurarHtmlDocx } from '../shared/vendor.js';
 import { mostrarToast } from '../shared/toast.js';
 import { PrismaDiagrama } from './prisma.js';
+import { escaparHTML } from '../shared/html.js';
+import { sinFormula } from '../shared/csv.js';
 
 /**
  * ProtocoloBusqueda - Protocolo de búsqueda auto-documentado
@@ -91,18 +94,80 @@ function cargar() {
         if (typeof sessionStorage !== 'undefined') {
             const crudo = sessionStorage.getItem(CLAVE_ALMACEN);
             if (crudo) {
-                const obj = JSON.parse(crudo);
-                if (obj && Array.isArray(obj.consultas)) estado = obj;
+                const obj = estadoValido(JSON.parse(crudo));
+                if (obj) estado = obj;
             }
         }
     } catch (e) { /* registro nuevo */ }
 }
 
+// (2026.12.31, revisión) El registro que llega de fuera —el de un proyecto, que puede ser de otra persona, o el del
+// almacenamiento de la sesión— solo se acepta con la forma que escribe registrar(): cada consulta con sus siete campos, los
+// textos como cadenas de un largo razonable y los conteos como números (nada más: un campo de otro tipo o de más se
+// descarta con el registro entero). Y la ficha escapa todo lo que pinta. Antes, un proyecto manipulado metía HTML en la
+// ficha: el párrafo metodológico, con los nombres de las fuentes, iba sin escapar.
+const LARGO_MAXIMO = { fuente: 200, ecuacion: 20000, texto: 4000, fecha: 40, consultas: 10000 };
+
+/** Una fecha del registro: una cadena que se entiende como fecha (o nada: null); undefined si no lo es. @param {unknown} v */
+function fechaValida(v) {
+    if (v === null || v === undefined || v === '') return null;
+    return typeof v === 'string' && v.length <= LARGO_MAXIMO.fecha && !Number.isNaN(Date.parse(v)) ? v : undefined;
+}
+
+/** Un texto opcional del registro (los filtros, la nota): una cadena ('' si falta); null si es otra cosa. @param {unknown} v */
+const textoOpcional = v => (v === null || v === undefined ? '' : typeof v === 'string' && v.length <= LARGO_MAXIMO.texto ? v : null);
+
+/**
+ * Una consulta del registro con su forma, o null.
+ * @param {any} c
+ */
+function consultaValida(c) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return null;
+    const fuente = typeof c.fuente === 'string' ? c.fuente.trim() : '';
+    const ecuacion = typeof c.ecuacion === 'string' ? normalizarEcuacion(c.ecuacion) : '';
+    if (!fuente || fuente.length > LARGO_MAXIMO.fuente || !ecuacion || ecuacion.length > LARGO_MAXIMO.ecuacion) return null;
+    const filtros = textoOpcional(c.filtros), nota = textoOpcional(c.nota), fecha = fechaValida(c.fecha);
+    // los resultados, un conteo (el número de obras que devolvió la fuente), como los del flujo PRISMA
+    const resultados = c.resultados === null || c.resultados === undefined ? null : (Number.isSafeInteger(c.resultados) && c.resultados >= 0 ? c.resultados : undefined);
+    const veces = c.veces === undefined ? 1 : (Number.isSafeInteger(c.veces) && c.veces >= 1 ? c.veces : null);
+    if (filtros === null || nota === null || fecha === undefined || resultados === undefined || veces === null) return null;
+    return { fuente, ecuacion, filtros, resultados, nota, fecha, veces };
+}
+
+/**
+ * El registro con su forma (una copia con solo sus campos), o null.
+ * @param {any} obj
+ */
+function estadoValido(obj) {
+    if (!obj || typeof obj !== 'object' || !Array.isArray(obj.consultas) || obj.consultas.length > LARGO_MAXIMO.consultas) return null;
+    const consultas = [];
+    for (const c of obj.consultas) {
+        const v = consultaValida(c);
+        if (!v) return null;
+        consultas.push(v);
+    }
+    const iniciada = fechaValida(obj.iniciada), ultimaActividad = fechaValida(obj.ultimaActividad);
+    if (iniciada === undefined || ultimaActividad === undefined) return null;
+    return { iniciada, ultimaActividad, consultas };
+}
+
 // ------------------------------ núcleo ------------------------------
 
 /**
+ * La clave de una consulta: la fuente, la ecuación y los filtros. (2026.12.30) Con los filtros: hasta la 2026.12.29, la
+ * misma ecuación con otros filtros («desde 2015» tras «desde 2021») se fundía en la fila anterior, que seguía documentando
+ * los filtros viejos con el número de resultados nuevo.
+ * @param {string} fuente @param {string} ecuacion @param {unknown} filtros
+ */
+function claveConsulta(fuente, ecuacion, filtros) {
+    return [String(fuente).trim(), normalizarEcuacion(ecuacion), filtrosATexto(filtros)].join('\u241f');
+}
+
+const claveDe = c => claveConsulta(c.fuente, c.ecuacion, c.filtros);
+
+/**
  * Registra una consulta ejecutada contra una fuente. Las repeticiones
- * exactas (misma fuente + misma ecuación) no duplican filas: incrementan
+ * exactas (misma fuente, ecuación y filtros) no duplican filas: incrementan
  * el contador `veces` y conservan el mejor dato de resultados disponible.
  */
 function registrar(datos) {
@@ -113,7 +178,8 @@ function registrar(datos) {
 
     const fuente = String(datos.fuente).trim();
     const ecuacion = normalizarEcuacion(datos.ecuacion);
-    const existente = estado.consultas.find(c => c.fuente === fuente && c.ecuacion === ecuacion);
+    const clave = claveConsulta(fuente, ecuacion, datos.filtros);
+    const existente = estado.consultas.find(c => claveDe(c) === clave);
 
     if (existente) {
         existente.veces += 1;
@@ -122,7 +188,6 @@ function registrar(datos) {
             existente.resultados = Math.max(existente.resultados ?? -1, datos.resultados);
             if (existente.resultados < 0) existente.resultados = datos.resultados;
         }
-        if (datos.filtros != null && !existente.filtros) existente.filtros = filtrosATexto(datos.filtros);
         if (datos.nota && !existente.nota) existente.nota = String(datos.nota);
         guardar();
         return existente;
@@ -141,11 +206,17 @@ function registrar(datos) {
     return registro;
 }
 
-/** Completa (o corrige) el nº de resultados de una consulta ya registrada. */
-function actualizarResultados(fuente, ecuacion, resultados) {
+/**
+ * Completa (o corrige) el nº de resultados de una consulta ya registrada: la de esos filtros o, si no se dan, la más
+ * reciente de esa fuente y ecuación.
+ */
+function actualizarResultados(fuente, ecuacion, resultados, filtros) {
     if (!Number.isFinite(resultados)) return false;
-    const ec = normalizarEcuacion(ecuacion);
-    const c = estado.consultas.find(x => x.fuente === String(fuente).trim() && x.ecuacion === ec);
+    const ec = normalizarEcuacion(ecuacion), f = String(fuente).trim();
+    const candidatas = filtros === undefined
+        ? estado.consultas.filter(x => x.fuente === f && x.ecuacion === ec)
+        : estado.consultas.filter(x => claveDe(x) === claveConsulta(f, ec, filtros));
+    const c = candidatas.reduce((ultima, x) => (!ultima || String(x.fecha) >= String(ultima.fecha) ? x : ultima), null);
     if (!c) return false;
     c.resultados = resultados;
     estado.ultimaActividad = ahoraISO();
@@ -172,6 +243,8 @@ function resumen() {
         fechaFin: estado.ultimaActividad,
         nFuentes: fuentes.length,
         nEcuaciones: estado.consultas.length,
+        // (2026.12.30) las ecuaciones distintas (la misma en dos bases, o con otros filtros, es una sola ecuación)
+        nEcuacionesDistintas: new Set(estado.consultas.map(c => c.ecuacion)).size,
         nConsultas: estado.consultas.reduce((s, c) => s + c.veces, 0),
         totalIdentificados: fuentes.reduce((s, f) => s + f.totalResultados, 0),
         fuentes
@@ -195,7 +268,12 @@ function parrafoMetodologico() {
     const desglose = r.fuentes
         .map(f => `${f.nombre} = ${f.totalResultados}${f.algunSinConteo ? '*' : ''}`)
         .join('; ');
-    let p = `La b\u00fasqueda de antecedentes se realiz\u00f3 ${rango} en ${r.nFuentes} ${r.nFuentes === 1 ? 'base de datos' : 'bases de datos'} (${nombres}), mediante ${r.nEcuaciones} ${r.nEcuaciones === 1 ? 'ecuaci\u00f3n de b\u00fasqueda' : 'ecuaciones de b\u00fasqueda'} documentada${r.nEcuaciones === 1 ? '' : 's'} en la ficha t\u00e9cnica de la revisi\u00f3n. `;
+    // (2026.12.30) las ecuaciones distintas y, si hay más filas, en cuántas consultas (base de datos y filtros) se aplicaron:
+    // hasta la 2026.12.29, «3 ecuaciones» para una sola ecuación lanzada en tres bases
+    const nE = r.nEcuacionesDistintas, aplicada = r.nEcuaciones > nE
+        ? `, aplicada${nE === 1 ? '' : 's'} en ${r.nEcuaciones} consultas (combinaciones de base de datos y filtros) documentadas`
+        : ` documentada${nE === 1 ? '' : 's'}`;
+    let p = `La b\u00fasqueda de antecedentes se realiz\u00f3 ${rango} en ${r.nFuentes} ${r.nFuentes === 1 ? 'base de datos' : 'bases de datos'} (${nombres}), mediante ${nE} ${nE === 1 ? 'ecuaci\u00f3n de b\u00fasqueda' : 'ecuaciones de b\u00fasqueda'}${aplicada} en la ficha t\u00e9cnica de la revisi\u00f3n. `;
     p += `El proceso arroj\u00f3 un total de ${r.totalIdentificados} registros identificados (${desglose}).`;
     if (r.fuentes.some(f => f.algunSinConteo)) {
         p += ' *Alguna consulta de esta fuente no report\u00f3 conteo; el total es un m\u00ednimo.';
@@ -207,8 +285,8 @@ function parrafoMetodologico() {
 
 function exportarCSV() {
     const esc = v => {
-        const s = String(v == null ? '' : v);
-        return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        const s = sinFormula(v == null ? '' : v);   // (2026.12.30) una ecuación «=…» o «-x», como texto en la hoja
+        return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
     };
     const filas = ['Fuente;Ecuación de búsqueda;Filtros;Resultados;Fecha;Consultas;Nota'];
     estado.consultas.forEach(c => {
@@ -229,14 +307,14 @@ function fichaHTML() {
     }
     const filas = estado.consultas.map(c => `
         <tr>
-            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; white-space:nowrap;">${c.fuente}</td>
-            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; font-family:monospace; font-size:0.82rem; word-break:break-word;">${c.ecuacion}</td>
-            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b;">${c.filtros || '—'}</td>
-            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; text-align:right;">${c.resultados ?? '—'}</td>
+            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; white-space:nowrap;">${escaparHTML(c.fuente)}</td>
+            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; font-family:monospace; font-size:0.82rem; word-break:break-word;">${escaparHTML(c.ecuacion)}</td>
+            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b;">${escaparHTML(c.filtros) || '—'}</td>
+            <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; text-align:right;">${Number.isFinite(c.resultados) ? c.resultados : '—'}</td>
             <td style="padding:0.35rem 0.5rem; border-bottom:1px solid #1e293b; white-space:nowrap;">${fechaLegible(c.fecha)}</td>
         </tr>`).join('');
     return `
-        <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.6; text-align:justify; margin:0 0 0.8rem;">${parrafoMetodologico()}</p>
+        <p style="color:#cbd5e1; font-size:0.95rem; line-height:1.6; text-align:justify; margin:0 0 0.8rem;">${escaparHTML(parrafoMetodologico())}</p>
         <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; color:#e2e8f0; font-size:0.88rem;">
             <thead>
@@ -251,7 +329,7 @@ function fichaHTML() {
             <tbody>${filas}</tbody>
         </table>
         </div>
-        <p style="color:#64748b; font-size:0.78rem; margin:0.6rem 0 0;">Ficha t\u00e9cnica generada autom\u00e1ticamente por StatSim Pro \u00b7 ${r.nConsultas} consultas \u00b7 total identificados: ${r.totalIdentificados}</p>`;
+        <p style="color:#94a3b8; font-size:0.78rem; margin:0.6rem 0 0;">Ficha t\u00e9cnica generada autom\u00e1ticamente por StatSim Pro \u00b7 ${escaparHTML(r.nConsultas)} consultas \u00b7 total identificados: ${escaparHTML(r.totalIdentificados)}</p>`;
 }
 
 // --------------------- exportación a Word (APA 7) ---------------------
@@ -304,10 +382,10 @@ function wordHTML(nTabla = 1) {
             `</tr>`;
     }).join('');
     const interpretacion = interpretacionAutomatica()
-        .map(x => `<p style="${F} line-height:200%; margin:0 0 6pt; text-align:left;">${x}</p>`).join('');
+        .map(x => `<p style="${F} line-height:200%; margin:0 0 6pt; text-align:left;">${esc(x)}</p>`).join('');
     return `
         <h2 style="${F} font-size:12pt; font-weight:bold; text-align:center; margin:0 0 12pt;">Ficha técnica de la revisión (protocolo de búsqueda)</h2>
-        <p style="${F} line-height:200%; text-align:left; margin:0 0 12pt;">${parrafoMetodologico()}</p>
+        <p style="${F} line-height:200%; text-align:left; margin:0 0 12pt;">${esc(parrafoMetodologico())}</p>
         <p style="${F} font-weight:bold; margin:12pt 0 0;">Tabla ${nTabla}</p>
         <p style="${F} font-style:italic; margin:2pt 0 8pt;">Protocolo de búsqueda por fuente y ecuación</p>
         <table style="border-collapse:collapse; width:100%; ${F} font-size:11pt;">
@@ -326,20 +404,19 @@ function wordHTML(nTabla = 1) {
         ${interpretacion}`;
 }
 
-/** Descarga el protocolo como .docx real (requiere html-docx cargado). */
-function exportarWord() {
-    if (typeof htmlDocx === 'undefined' || typeof htmlDocx.asBlob !== 'function') {
-        if (typeof alert === 'function') alert('El generador de Word aún no está cargado. Recarga la página e inténtalo de nuevo.');
+/**
+ * Descarga el protocolo como .docx real. (2026.12.30) html-docx se carga a demanda (shared/vendor.js), como en el Word del
+ * Analizador: hasta la 2026.12.29 se esperaba ya cargado —nadie lo cargaba— y el botón solo avisaba «aún no está cargado».
+ */
+async function exportarWord() {
+    const motor = await asegurarHtmlDocx();
+    if (!motor || typeof motor.asBlob !== 'function') {
+        if (typeof mostrarToast === 'function') mostrarToast('No se pudo cargar el generador de Word. Revisa tu conexión e inténtalo de nuevo.', 'error');
         return;
     }
     const doc = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${wordHTML()}</body></html>`;
-    const blob = htmlDocx.asBlob(doc);
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'protocolo_busqueda.docx'; a.style.visibility = 'hidden';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    if (typeof window !== 'undefined' && typeof mostrarToast === 'function') mostrarToast('Protocolo exportado a Word', 'success');
+    descargarBlob(motor.asBlob(doc), 'protocolo_busqueda.docx');
+    if (typeof mostrarToast === 'function') mostrarToast('Protocolo exportado a Word', 'success');
 }
 
 function descargar(contenido, nombre, mime) {
@@ -362,9 +439,13 @@ function descargar(contenido, nombre, mime) {
  * Renderiza la ficha técnica dentro del contenedor indicado, con botones
  * de exportación. Idempotente: puede llamarse tras cada búsqueda.
  */
+// (2026.12.31) El contenedor donde se pintó la ficha por última vez: al restaurar un proyecto se vuelve a pintar ahí.
+let ultimoContenedor = null;
+
 function mostrarFicha(idContenedor) {
     const cont = document.getElementById(idContenedor);
     if (!cont) return;
+    ultimoContenedor = idContenedor;
     let caja = cont.querySelector('.protocolo-busqueda-caja');
     if (!caja) {
         caja = document.createElement('div');
@@ -427,6 +508,20 @@ function mostrarFicha(idContenedor) {
     });
 }
 
+// (2026.12.31) Para el archivo de proyecto (buscador/proyecto.js): una copia del registro, y su restauración.
+function estadoActual() {
+    return JSON.parse(JSON.stringify(estado));
+}
+
+/** El registro de un proyecto en lugar del de esta sesión, si tiene la forma de validarEstado(); si no, un error. @param {unknown} obj */
+function restaurarEstado(obj) {
+    const valido = estadoValido(obj);
+    if (!valido) throw new Error('el protocolo de búsqueda guardado no tiene la forma esperada');
+    estado = valido;
+    guardar();
+    if (ultimoContenedor) mostrarFicha(ultimoContenedor);
+}
+
 function limpiar() {
     estado = { iniciada: null, ultimaActividad: null, consultas: [] };
     try { if (typeof sessionStorage !== 'undefined') sessionStorage.removeItem(CLAVE_ALMACEN); } catch (e) { }
@@ -439,6 +534,7 @@ cargar();
 const ProtocoloBusqueda = {
     registrar,
     actualizarResultados,
+    claveConsulta,
     resumen,
     parrafoMetodologico,
     fichaHTML,
@@ -447,7 +543,10 @@ const ProtocoloBusqueda = {
     exportarCSV,
     exportarJSON,
     mostrarFicha,
-    limpiar
+    limpiar,
+    estadoActual,
+    restaurarEstado,
+    validarEstado: estadoValido
 };
 
 export { ProtocoloBusqueda };

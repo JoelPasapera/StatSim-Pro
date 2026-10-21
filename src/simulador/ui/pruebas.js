@@ -2,9 +2,10 @@
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
 import { actualizarLimitesPrueba, actualizarTodasLasPruebas, pistaPara } from './guia-coherencia.js';
-import { escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { descargarArchivo } from '../../shared/descargas.js';
-import { mostrarToast } from '../../shared/toast.js';
+import { mostrarToast, mostrarToastConAvisos } from '../../shared/toast.js';
+import { leerArchivoComoTexto } from '../../shared/archivos.js';
 import { renombrarEnEstructuras } from './estructura.js';
 import { parametrosCensura } from '../dominio/censura.js';
 
@@ -75,28 +76,38 @@ function actualizarDicotomicaFila(fila) {
     if (dificultades && dificultades.length === k && q('Media (M)')) { const m = q('Media (M)'); if (Math.abs(parseFloat(m.value) - imp.media) > 0.005) { if (m.dataset.mediaUsuario === undefined) m.dataset.mediaUsuario = m.value; m.value = (Math.round(imp.media * 100) / 100).toString(); m.title = 'Media = suma de las dificultades'; } }
 }
 
-function agregarFilaPruebaConDatos(datos) {
+/**
+ * Una fila de la tabla de escalas con estos datos.
+ * @param {any} datos
+ * @param {string[] | null} [nombresDeTests] (2026.12.31, revisión) los tests del cuadro superior, si quien llama ya los tiene
+ *   (al importar muchas filas: leerlos del cuadro en cada una hacía cuadrática la importación); se completa con el test
+ *   implícito que añada la fila
+ */
+function agregarFilaPruebaConDatos(datos, nombresDeTests = null) {
     const tbody = document.getElementById('bodyPruebas');
     const nuevaFila = document.createElement('tr');
     nuevaFila.className = 'fila-prueba';
     const dist = datos.distribucion || 'normal';
     const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
+    // (2026.12.30) los valores, escapados: un nombre con comillas («Bienestar "subjetivo"») se cortaba en el atributo y no se
+    // podía elegir en las tablas III y IV; un valor de un CSV importado podía romper la fila
+    const v = (/** @type {unknown} */ x) => escapeAttr(x ?? '');
     nuevaFila.innerHTML = `
         <td><select class="input input-sm" aria-label="Nombre de la prueba"></select></td>
-        <td><input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo" maxlength="100" value="${datos.nombre}" aria-label="Nombre de la escala"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 60" min="1" value="${datos.numItems}" aria-label="Número de ítems"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Memoria de trabajo" maxlength="100" value="${v(datos.nombre)}" aria-label="Nombre de la escala"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 60" min="1" value="${v(datos.numItems)}" aria-label="Número de ítems"></td>
         <td>
             <select class="input input-sm" aria-label="Distribución">
                 ${opcion('normal', 'Normal')}${opcion('uniforme', 'Uniforme')}${opcion('asimetrica', 'Asimétrica')}${opcion('techo', 'Con techo')}${opcion('suelo', 'Con suelo')}
             </select>
             <div class="nota-censura help-text" style="font-size:0.8em;margin-top:2px;max-width:14rem;"></div>
         </td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 100" step="0.01" value="${datos.media}" aria-label="Media (M)"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" min="0.01" value="${datos.de}" aria-label="Desviación estándar (DE)"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 0" step="1" value="${datos.min}" aria-label="Mínimo por ítem"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 5" step="1" value="${datos.max}" aria-label="Máximo por ítem"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 0.85" step="0.01" min="0" max="0.99" value="${datos.alfa || ''}" aria-label="Alfa de Cronbach objetivo"></td>
-        <td><input type="number" class="input input-sm" placeholder="0" step="1" min="0" value="${datos.invertidos || ''}" aria-label="Ítems invertidos" title="Cuántos ítems de esta escala se puntúan al revés (se guardan reflejados, como en una base real: hay que recodificarlos antes de sumar). Son los ÚLTIMOS de la escala."></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 100" step="0.01" value="${v(datos.media)}" aria-label="Media (M)"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" min="0.01" value="${v(datos.de)}" aria-label="Desviación estándar (DE)"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 0" step="1" value="${v(datos.min)}" aria-label="Mínimo por ítem"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 5" step="1" value="${v(datos.max)}" aria-label="Máximo por ítem"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 0.85" step="0.01" min="0" max="0.99" value="${v(datos.alfa || '')}" aria-label="Alfa de Cronbach objetivo"></td>
+        <td><input type="number" class="input input-sm" placeholder="0" step="1" min="0" value="${v(datos.invertidos || '')}" aria-label="Ítems invertidos" title="Cuántos ítems de esta escala se puntúan al revés (se guardan reflejados, como en una base real: hay que recodificarlos antes de sumar). Son los ÚLTIMOS de la escala."></td>
         <td><input type="text" class="input input-sm" placeholder="—" maxlength="600" value="${escapeAttr(datos.dificultades || '')}" aria-label="Dificultades de los ítems" title="Solo en escalas dicotómicas (Mín 0, Máx 1): proporción de unos por ítem, separadas por coma. Vacío = repartidas alrededor de Media/ítems según la heterogeneidad." disabled></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
@@ -112,12 +123,14 @@ function agregarFilaPruebaConDatos(datos) {
     tbody.appendChild(nuevaFila);
     actualizarNotaCensura(nuevaFila);   // también al crearla con datos (importar un CSV, reconstruir la tabla)
     // El desplegable se puebla con los tests del cuadro superior y se
-    // preselecciona el que traiga el dato (importación/restauración).
-    refrescarSelectoresDePrueba();
+    // preselecciona el que traiga el dato (importación/restauración). (2026.12.31, revisión) Solo el de la fila nueva: los
+    // demás no cambian (repoblarlos todos en cada fila hacía cuadrático importar una configuración: 2000 escalas, minutos).
     const sel = nuevaFila.querySelector('[aria-label="Nombre de la prueba"]');
+    if (sel) poblarSelectorDePrueba(/** @type {HTMLSelectElement} */ (sel), nombresDeTests || testsDefinidos().map(t => t.prueba), sel.value);
     if (sel && datos.prueba) {
         if (!Array.from(sel.options).some(o => o.value === datos.prueba)) {
             agregarFilaTestConDatos({ prueba: datos.prueba, variable: '' });   // test implícito de un CSV antiguo
+            if (nombresDeTests && !nombresDeTests.includes(datos.prueba)) nombresDeTests.push(datos.prueba);
             refrescarSelectoresDePrueba();
         }
         sel.value = datos.prueba;
@@ -136,7 +149,7 @@ function agregarFilaPruebaConDatos(datos) {
 // ---- Ayudantes compartidos por los exportadores/importadores (fuente única) ----
 // Generan el MISMO CSV que los botones individuales de cada tabla.
 function csvDeTabla(selectorFilas, tipo) {
-    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     if (tipo === 'pruebas') {
         let csv = 'Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades\n';
         document.querySelectorAll(selectorFilas).forEach(fila => {
@@ -173,6 +186,7 @@ function aplicarCSVPruebas(csv) {
     const tieneDistribucion = enc.includes('distribucion');
     const tbody = document.getElementById('bodyPruebas');
     if (tbody) tbody.innerHTML = '';
+    const nombresDeTests = testsDefinidos().map(t => t.prueba);   // una vez, no en cada fila
     let n = 0;
     for (const linea of lineas.slice(1)) {
         const v = parsearLineaCSV(linea.trim());
@@ -188,13 +202,13 @@ function aplicarCSVPruebas(csv) {
                 media: v[4 + off] || '', de: v[5 + off] || '',
                 min: v[6 + off] || '', max: v[7 + off] || '', alfa: v[8 + off] || '',
                 invertidos: v[9 + off] || '', dificultades: v[10 + off] || ''
-            });
+            }, nombresDeTests);
         } else if (tieneDistribucion) {
             agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
-                distribucion: v[2] || 'normal', media: v[3] || '', de: v[4] || '', min: v[5] || '', max: v[6] || '', alfa: v[7] || '' });
+                distribucion: v[2] || 'normal', media: v[3] || '', de: v[4] || '', min: v[5] || '', max: v[6] || '', alfa: v[7] || '' }, nombresDeTests);
         } else {
             agregarFilaPruebaConDatos({ prueba: v[0] || '', nombre: v[0] || '', numItems: v[1] || '',
-                distribucion: 'normal', media: v[2] || '', de: v[3] || '', min: v[4] || '', max: v[5] || '', alfa: v[6] || '' });
+                distribucion: 'normal', media: v[2] || '', de: v[3] || '', min: v[4] || '', max: v[5] || '', alfa: v[6] || '' }, nombresDeTests);
         }
         n++;
     }
@@ -219,10 +233,9 @@ function exportarConfigPruebas() {
 function importarConfigPruebas(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (event) {
+    // (2026.12.29) con la codificación del archivo (shared/archivos.js)
+    leerArchivoComoTexto(file).then(function ({ texto: csv, aviso }) {
         try {
-            const csv = event.target.result;
             if (!String(csv).trim().split(/\r?\n/)[0].toLowerCase().includes('numitems')) {
                 mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos', 'error');
                 return;
@@ -230,15 +243,13 @@ function importarConfigPruebas(e) {
             const n = aplicarCSVPruebas(csv);   // misma compatibilidad de formatos que el archivo maestro
             sincronizarDimensionesDesdeTests(true);
             actualizarTodasLasPruebas();
-            mostrarToast(`Configuración importada: ${n} pruebas`, 'success');
+            mostrarToastConAvisos(`Configuración importada: ${n} pruebas`, aviso);   // (2026.12.29, revisión) con el de la codificación
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
-    };
-    reader.onerror = function () {
+    }, function () {
         mostrarToast('No se pudo leer el archivo', 'error');
-    };
-    reader.readAsText(file);
+    });
     e.target.value = ''; // Limpiar input
 }
 
@@ -251,10 +262,10 @@ function agregarFilaTestConDatos(datos = {}) {
     const fila = document.createElement('tr');
     fila.className = 'fila-test';
     fila.innerHTML = `
-        <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${datos.prueba || ''}" aria-label="Nombre del test"></td>
-        <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${datos.variable || ''}" aria-label="Variable psicológica"></td>
-        <td><input type="text" class="input input-sm" placeholder="Ej: Intrapersonal, Interpersonal, Adaptabilidad" maxlength="400" value="${(datos.dimensiones || []).join(', ')}" aria-label="Dimensiones del test" title="Separadas por coma. Al salir del campo, la tabla de escalas se completa con una fila por dimensión."></td>
-        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" value="${datos.rIntra !== undefined && datos.rIntra !== '' ? datos.rIntra : '0.40'}" aria-label="Correlación entre dimensiones" title="Correlación esperada entre las dimensiones de este test (las subescalas de un mismo instrumento suelen correlacionar entre 0.30 y 0.60). Una pareja fijada en la tabla III prevalece sobre este valor."></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: EQ-i:YV" maxlength="100" value="${escapeAttr(datos.prueba || '')}" aria-label="Nombre del test"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Inteligencia emocional" maxlength="100" value="${escapeAttr(datos.variable || '')}" aria-label="Variable psicológica"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Intrapersonal, Interpersonal, Adaptabilidad" maxlength="400" value="${escapeAttr(_textoDimensiones(datos.dimensiones))}" aria-label="Dimensiones del test" title="Separadas por coma. Un nombre que lleve coma, entre comillas («&quot;Apoyo social, familia&quot;»). Al salir del campo, la tabla de escalas se completa con una fila por dimensión."></td>
+        <td><input type="number" class="input input-sm" step="0.05" min="-0.99" max="0.99" value="${escapeAttr(datos.rIntra !== undefined && datos.rIntra !== '' ? datos.rIntra : '0.40')}" aria-label="Correlación entre dimensiones" title="Correlación esperada entre las dimensiones de este test (las subescalas de un mismo instrumento suelen correlacionar entre 0.30 y 0.60). Una pareja fijada en la tabla III prevalece sobre este valor."></td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar test">
                 <svg aria-hidden="true" focusable="false" width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -263,7 +274,27 @@ function agregarFilaTestConDatos(datos = {}) {
             </button>
         </td>`;
     tbody.appendChild(fila);
-    fila.querySelector('[aria-label="Nombre del test"]').addEventListener('input', () => { refrescarSelectoresDePrueba(); actualizarEstadoTest(fila); });
+    // (revisión 2026.12.30) al renombrar el test, sus escalas de la tabla I lo siguen (antes, en cuanto el nombre cambiaba,
+    // quedaban sin test: su puntaje general desaparecía y las tablas que lo usaban daban «variable inexistente»). Mientras
+    // el nombre está vacío o coincide con el de otro test (de paso, al teclear «BDI-IIa» con un «BDI-II» en la tabla), las
+    // escalas conservan el nombre anterior, y lo siguen cuando vuelve a ser único; al salir del campo, si no lo es, quedan
+    // sin test, como antes.
+    const inpNombreTest = fila.querySelector('[aria-label="Nombre del test"]');
+    inpNombreTest.dataset.previo = String(datos.prueba || '').trim();
+    const nombresDeOtrosTests = () => new Set([...document.querySelectorAll('#bodyTests .fila-test')].filter(f => f !== fila)
+        .map(f => ((f.querySelector('[aria-label="Nombre del test"]') || {}).value || '').trim()).filter(Boolean));
+    inpNombreTest.addEventListener('input', () => {
+        const previo = inpNombreTest.dataset.previo || '', nuevo = inpNombreTest.value.trim(), otros = nombresDeOtrosTests();
+        const propio = previo && !otros.has(previo);   // las escalas con el nombre anterior son de este test
+        if (nuevo && !otros.has(nuevo)) {
+            refrescarSelectoresDePrueba(propio && previo !== nuevo ? { de: previo, a: nuevo } : null);
+            inpNombreTest.dataset.previo = nuevo;
+        } else {
+            refrescarSelectoresDePrueba(null, propio ? previo : null);
+        }
+        actualizarEstadoTest(fila);
+    });
+    inpNombreTest.addEventListener('change', () => refrescarSelectoresDePrueba());
     fila.querySelector('[aria-label="Dimensiones del test"]').addEventListener('change', () => sincronizarDimensionesDesdeTests());
     fila.querySelector('[aria-label="Dimensiones del test"]').addEventListener('input', () => actualizarEstadoTest(fila));
     fila.querySelector('[aria-label="Dimensiones del test"]').dataset.previo = JSON.stringify(datos.dimensiones || []);
@@ -395,9 +426,32 @@ function sincronizarDimensionesDesdeTests(silencioso = false) {
     return creadas + renombradas;
 }
 
+// La lista de dimensiones de un test, separadas por comas. (2026.12.30) Un nombre con coma va entre comillas («"Apoyo
+// social, familia", Otra»; dentro de ellas, «""» es una comilla): antes se partía en dos dimensiones fantasma y la
+// correlación pedida se perdía. Una comilla en medio de un nombre (Bienestar "subjetivo") es un carácter más.
 function _listaDimensiones(texto) {
-    const dims = String(texto || '').split(',').map(s => s.trim()).filter(Boolean);
-    return dims.filter((d, i) => dims.findIndex(x => x.toLowerCase() === d.toLowerCase()) === i);
+    const s = String(texto || ''), dims = [];
+    let campo = '', dentro = false, alInicio = true;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (dentro) {
+            if (c === '"') { if (s[i + 1] === '"') { campo += '"'; i++; } else dentro = false; }
+            else campo += c;
+            continue;
+        }
+        if (c === '"' && alInicio) { dentro = true; alInicio = false; continue; }
+        if (c === ',') { dims.push(campo.trim()); campo = ''; alInicio = true; continue; }
+        if (!/\s/.test(c)) alInicio = false;
+        campo += c;
+    }
+    dims.push(campo.trim());
+    const limpias = dims.filter(Boolean);
+    return limpias.filter((d, i) => limpias.findIndex(x => x.toLowerCase() === d.toLowerCase()) === i);
+}
+
+// La lista de dimensiones como texto del campo (el inverso de _listaDimensiones).
+function _textoDimensiones(dims) {
+    return (dims || []).map(d => (/[",]/.test(String(d)) ? `"${String(d).replace(/"/g, '""')}"` : String(d))).join(', ');
 }
 
 // «Actualizar desde las pruebas»: la tabla de escalas queda exactamente como
@@ -441,7 +495,7 @@ function reflejarFilaEnTests(fila) {
     if (pruebaAnterior && pruebaAnterior !== prueba && nuevo && !_filaPruebaPor(pruebaAnterior, nuevo)) {
         const filaTestAnt = Array.from(document.querySelectorAll('#bodyTests .fila-test')).find(f => ((f.querySelector('[aria-label="Nombre del test"]') || {}).value || '').trim() === pruebaAnterior);
         const inpAnt = filaTestAnt ? filaTestAnt.querySelector('[aria-label="Dimensiones del test"]') : null;
-        if (inpAnt) { const l = _listaDimensiones(inpAnt.value).filter(d => d.toLowerCase() !== nuevo.toLowerCase()); inpAnt.value = l.join(', '); inpAnt.dataset.previo = JSON.stringify(l); actualizarEstadoTest(filaTestAnt); }
+        if (inpAnt) { const l = _listaDimensiones(inpAnt.value).filter(d => d.toLowerCase() !== nuevo.toLowerCase()); inpAnt.value = _textoDimensiones(l); inpAnt.dataset.previo = JSON.stringify(l); actualizarEstadoTest(filaTestAnt); }
     }
     sel.dataset.anterior = prueba;
     if (!prueba || !nuevo) return;
@@ -455,7 +509,7 @@ function reflejarFilaEnTests(fila) {
     if (iNuevo >= 0) { if (lista[iNuevo] !== nuevo) lista[iNuevo] = nuevo; }
     else if (iAnt >= 0 && !_filaPruebaPor(prueba, anterior)) lista[iAnt] = nuevo;   // renombrado: sustituye
     else lista.push(nuevo);                                                          // alta manual: se anota
-    inpDims.value = lista.join(', ');
+    inpDims.value = _textoDimensiones(lista);
     inpDims.dataset.previo = JSON.stringify(lista);
     actualizarEstadoTest(filaTest);
 }
@@ -465,35 +519,51 @@ function agregarFilaTest() { agregarFilaTestConDatos({}); }
 // Nombres de test definidos arriba (sin vacíos ni repetidos).
 function testsDefinidos() {
     const out = [];
+    const vistos = new Set();   // (2026.12.31, revisión) sin buscar en la lista cada vez: era cuadrático con muchos tests
     document.querySelectorAll('#bodyTests .fila-test').forEach(f => {
         const nombre = (f.querySelector('[aria-label="Nombre del test"]') || {}).value || '';
         const variable = (f.querySelector('[aria-label="Variable psicológica"]') || {}).value || '';
         const rIntra = (f.querySelector('[aria-label="Correlación entre dimensiones"]') || {}).value || '';
-        const dims = ((f.querySelector('[aria-label="Dimensiones del test"]') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
-        const dimensiones = dims.filter((d, i) => dims.findIndex(x => x.toLowerCase() === d.toLowerCase()) === i);
-        if (nombre.trim() && !out.some(x => x.prueba === nombre.trim())) out.push({ prueba: nombre.trim(), variable: variable.trim(), rIntra: rIntra.trim(), dimensiones });
+        const dimensiones = _listaDimensiones((f.querySelector('[aria-label="Dimensiones del test"]') || {}).value || '');
+        const prueba = nombre.trim();
+        if (prueba && !vistos.has(prueba)) { vistos.add(prueba); out.push({ prueba, variable: variable.trim(), rIntra: rIntra.trim(), dimensiones }); }
     });
     return out;
 }
 
 // Repuebla los desplegables de la tabla de escalas conservando la selección.
-function refrescarSelectoresDePrueba() {
+/**
+ * @param {{ de: string, a: string } | null} [renombrado] un test que cambia de nombre: sus escalas pasan al nombre nuevo
+ * @param {string | null} [conservar] un nombre que, aunque ya no lo tenga ningún test, sigue en los selectores (el de un test
+ *   que se está renombrando, mientras su nombre nuevo está vacío o repetido)
+ */
+function refrescarSelectoresDePrueba(renombrado = null, conservar = null) {
     const tests = testsDefinidos();
+    const nombres = tests.map(t => t.prueba);
+    if (conservar && !nombres.includes(conservar)) nombres.push(conservar);
     document.querySelectorAll('#bodyPruebas .fila-prueba [aria-label="Nombre de la prueba"]').forEach(sel => {
         if (!sel || sel.tagName !== 'SELECT') return;
-        const actual = sel.value;
-        sel.innerHTML = '<option value="">— elige un test —</option>'
-            + tests.map(t => `<option value="${t.prueba}"${t.prueba === actual ? ' selected' : ''}>${t.prueba}</option>`).join('');
-        if (actual && !tests.some(t => t.prueba === actual)) sel.value = '';
+        poblarSelectorDePrueba(/** @type {HTMLSelectElement} */ (sel), nombres, renombrado && sel.value === renombrado.de ? renombrado.a : sel.value);
     });
+}
+
+/**
+ * Un desplegable «Nombre de la prueba» con estos tests, y el que tenía (o ninguno, si ya no está).
+ * @param {HTMLSelectElement} sel @param {string[]} nombres @param {string} actual
+ */
+function poblarSelectorDePrueba(sel, nombres, actual) {
+    sel.innerHTML = '<option value="">— elige un test —</option>'
+        + nombres.map(nombre => `<option value="${escapeAttr(nombre)}"${nombre === actual ? ' selected' : ''}>${escapeAttr(nombre)}</option>`).join('');   // (2026.12.29, revisión) escapados
+    if (actual && !nombres.includes(actual)) sel.value = '';
+    else if (actual) sel.value = actual;
 }
 
 // CSV de correlaciones (reutilizado por el exportador maestro).
 function csvDeTests() {
     let csv = 'Prueba,Variable,CorrDimensiones,Dimensiones\n';
     testsDefinidos().forEach(t => {
-        const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
-        csv += `${esc(t.prueba)},${esc(t.variable)},${t.rIntra},${esc((t.dimensiones || []).join(', '))}\n`;
+        const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
+        csv += `${esc(t.prueba)},${esc(t.variable)},${esc(t.rIntra)},${esc(_textoDimensiones(t.dimensiones))}\n`;
     });
     return csv;
 }
@@ -507,7 +577,7 @@ function aplicarCSVTests(csv) {
     for (const linea of lineas.slice(1)) {
         const v = parsearLineaCSV(linea);
         if (!v[0]) continue;
-        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '', rIntra: v[2] !== undefined ? v[2] : '', dimensiones: String(v[3] || '').split(',').map(s => s.trim()).filter(Boolean) });
+        agregarFilaTestConDatos({ prueba: v[0], variable: v[1] || '', rIntra: v[2] !== undefined ? v[2] : '', dimensiones: _listaDimensiones(v[3] || '') });
         n++;
     }
     refrescarSelectoresDePrueba();
@@ -515,16 +585,28 @@ function aplicarCSVTests(csv) {
 }
 
 // Nombres de los puntajes generales derivados tal como aparecen en los desplegables
+// (2026.12.30) El nombre del puntaje general de la fila de un test del cuadro de pruebas («IE — EQ-i»), o null si el test no
+// tiene puntaje general (menos de dos escalas en la tabla): para propagar a las demás tablas el cambio de su variable o de
+// su nombre, como ya se hacía al renombrar una escala.
+function nombreGeneralDeFilaTest(filaTest) {
+    if (!filaTest) return null;
+    const prueba = ((filaTest.querySelector('[aria-label="Nombre del test"]') || {}).value || '').trim();
+    const variable = ((filaTest.querySelector('[aria-label="Variable psicológica"]') || {}).value || '').trim();
+    if (!prueba || _filasPruebaDe(prueba).length < 2) return null;
+    return variable ? `${variable} — ${prueba}` : `Puntaje general — ${prueba}`;
+}
+
 function nombresGeneralesDerivados() {
-    const filasPorTest = {};
+    // (un Map: un test llamado «constructor» no es una propiedad heredada)
+    const filasPorTest = new Map();
     document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
         const sel = fila.querySelector('[aria-label="Nombre de la prueba"]');
         const p = sel ? sel.value.trim() : '';
-        if (p) filasPorTest[p] = (filasPorTest[p] || 0) + 1;
+        if (p) filasPorTest.set(p, (filasPorTest.get(p) || 0) + 1);
     });
     return (typeof testsDefinidos === 'function' ? testsDefinidos() : [])
-        .filter(t => (filasPorTest[t.prueba] || 0) >= 2)
+        .filter(t => (filasPorTest.get(t.prueba) || 0) >= 2)
         .map(t => (t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`));
 }
 
-export { FILA_PRUEBA_VACIA, agregarFilaPrueba, eliminarFilaPrueba, actualizarDicotomicaFila, agregarFilaPruebaConDatos, csvDeTabla, aplicarCSVPruebas, exportarConfigPruebas, importarConfigPruebas, agregarFilaTestConDatos, _claveEscala, _camposFilaPrueba, _filasPruebaDe, _filaPruebaPor, _filaPruebaConDatos, renombrarVariableEnTablas, _renombrarFilaPrueba, sincronizarDimensionesDesdeTests, _listaDimensiones, reconstruirTablaDesdeTests, reflejarFilaEnTests, agregarFilaTest, testsDefinidos, refrescarSelectoresDePrueba, csvDeTests, aplicarCSVTests, nombresGeneralesDerivados };
+export { FILA_PRUEBA_VACIA, agregarFilaPrueba, eliminarFilaPrueba, actualizarDicotomicaFila, agregarFilaPruebaConDatos, csvDeTabla, aplicarCSVPruebas, exportarConfigPruebas, importarConfigPruebas, agregarFilaTestConDatos, _claveEscala, _camposFilaPrueba, _filasPruebaDe, _filaPruebaPor, _filaPruebaConDatos, renombrarVariableEnTablas, _renombrarFilaPrueba, sincronizarDimensionesDesdeTests, _listaDimensiones, reconstruirTablaDesdeTests, reflejarFilaEnTests, agregarFilaTest, testsDefinidos, refrescarSelectoresDePrueba, csvDeTests, aplicarCSVTests, nombresGeneralesDerivados, nombreGeneralDeFilaTest };

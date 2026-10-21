@@ -43,8 +43,12 @@ export const metodosAntecedentesSeleccion = {
         // Procesar las que les falta resumen O tienen enlace dudoso, no intentadas.
         const pendientes = obras.filter(o => (!o.resumen || o.resumen.length < 40) && !o._intentadoEnriquecer);
         const hayMetricas = obras.some(o => o.issn && !o._metricas);
-        if (!pendientes.length && !hayMetricas) return;
-        pendientes.forEach(o => o._intentadoEnriquecer = true);
+        // (2026.12.26) Las obras con el nombre de revista provisional (Web of Science) que YA traen resumen no pasan por
+        // _recuperarDatos: para ellas basta preguntar a OpenAlex por la revista.
+        const soloRevista = obras.filter(o => o._revistaProvisional && !o._intentadoRevista && !pendientes.includes(o) && /doi\.org\//.test(o.doi || ''));
+        if (!pendientes.length && !hayMetricas && !soloRevista.length) return;
+        pendientes.forEach(o => { o._intentadoEnriquecer = true; o._intentadoRevista = true; });
+        soloRevista.forEach(o => { o._intentadoRevista = true; });
         const CONCURRENCIA = 5;
         let idx = 0, cambios = 0;
         const trabajador = async () => {
@@ -61,23 +65,84 @@ export const metodosAntecedentesSeleccion = {
                 }
                 if (datos) {
                     if (datos.abstract) { o.resumen = datos.abstract; o._enriquecido = true; cambios++; }
-                    // Reparar enlace: si el actual falta o no es OA, usar el mejor hallado.
-                    if (datos.link && (!o.link || o.link === o.doi)) { o.link = datos.link; cambios++; }
+                    // (2026.12.27) el ISSN que falta (ScienceDirect, Crossref sin él…): con él, la revista tiene cuartil. No
+                    // cuenta como cambio: no se ve hasta que llegan las métricas de la revista.
+                    this._aplicarIssn(o, datos);
+                    // Reparar enlace: si el actual falta o no es OA, usar el mejor hallado. (2026.12.27) Solo cuenta si cambia:
+                    // el resolvedor DOI de respaldo es el mismo enlace que ya tenía una obra con DOI.
+                    if (datos.link && (!o.link || o.link === o.doi) && datos.link !== o.link) { o.link = datos.link; cambios++; }
+                    if (this._aplicarRevista(o, datos)) cambios++;
                 }
             }
         };
         await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, pendientes.length) }, () => trabajador()));
-        cambios += await this._enriquecerMetricas(obras);
-        const estado = document.getElementById('antEstado');
-        if (estado && cambios) {
+        let iRev = 0;
+        const trabajadorRevista = async () => {
+            while (iRev < soloRevista.length) {
+                const o = soloRevista[iRev++];
+                if (this._aplicarRevista(o, { revista: await this._revistaPorDoi(o.doi) })) cambios++;
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONCURRENCIA, soloRevista.length) }, () => trabajadorRevista()));
+        // (2026.12.27) Primero se pinta lo que ya llegó (resúmenes, enlaces, revistas); las métricas de las revistas, que van
+        // por los proxies y pueden tardar (más ahora que el enriquecimiento pone el ISSN que faltaba), se pintan después.
+        if (cambios) {
             const dbg = (typeof window !== 'undefined' && window.__enrichDebug) ? window.__enrichDebug : {};
             const resumen = Object.entries(dbg).map(([k, v]) => `${k}×${v}`).join(', ');
-            estado.textContent = (estado.textContent || '') + ` · Autocompletado: ${cambios} campos.` + (resumen ? ` [${resumen}]` : '');
+            this._repintarEnriquecido(` · Autocompletado: ${cambios} campos.` + (resumen ? ` [${resumen}]` : ''));
         }
-        if (cambios) {
-            this._renderResultados(this._obras);
-            if (this._seleccion.size) this._renderSeleccion();
-        }
+        const conMetricas = await this._enriquecerMetricas(obras);
+        if (conMetricas) this._repintarEnriquecido(` · Métricas de revista (cuartil) para ${conMetricas} obra(s).`);
+    },
+
+
+    // Añade una nota al estado del Buscador y vuelve a pintar los resultados (y la selección, si la hay).
+    _repintarEnriquecido(nota) {
+        const estado = document.getElementById('antEstado');
+        if (estado) estado.textContent = (estado.textContent || '') + nota;
+        this._renderResultados(this._obras);
+        if (this._seleccion.size) this._renderSeleccion();
+    },
+
+
+    // (2026.12.27) Pone a una obra sin ISSN el que dio OpenAlex por su DOI, solo si es la misma revista (o la obra no
+    // nombra ninguna): si el registro de OpenAlex fuera de otra revista, el cuartil sería de otra. Se comparan los nombres
+    // sin mayúsculas, tildes, signos ni las palabras de unión («Computers & Graphics» = «Computers and Graphics»).
+    // Devuelve si lo puso.
+    _aplicarIssn(o, datos) {
+        if (!o || o.issn || !datos || !datos.issn) return false;
+        const nombre = s => this._norm(s).replace(/\b(?:the|and|of|y|e|de|la|el)\b/g, ' ').replace(/\s+/g, ' ').trim();
+        if (o.fuente && datos.revista && nombre(o.fuente) !== nombre(datos.revista)) return false;
+        if (o.fuente && !datos.revista) return false;
+        o.issn = datos.issn;
+        return true;
+    },
+
+
+    // (2026.12.26) El nombre de revista provisional (Web of Science lo da en mayúsculas y sin tildes, y fuentes/wos.js
+    // lo pasa a mayúsculas iniciales) se cambia por el de OpenAlex solo si es la MISMA revista escrita de otra forma
+    // (iguales sin mayúsculas, tildes ni signos): «Revista Latinoamericana de Psicologia» → «… de Psicología». Nunca
+    // cambia una revista por otra. Devuelve si la cambió.
+    _aplicarRevista(o, datos) {
+        if (!o || !o._revistaProvisional || !datos || !datos.revista) return false;
+        if (this._norm(datos.revista) !== this._norm(o.fuente)) return false;
+        o.fuente = datos.revista;
+        o._revistaProvisional = false;
+        return true;
+    },
+
+
+    // (2026.12.26) El nombre de la revista según OpenAlex (solo si su fuente es una revista), o ''.
+    async _revistaPorDoi(doi) {
+        const limpio = String(doi || '').replace(/^https?:\/\/(?:dx\.)?doi\.org\//, '').trim();
+        if (!limpio) return '';
+        try {
+            const r = await fetch(`https://api.openalex.org/works/doi:${limpio}`);
+            if (!r.ok) return '';
+            const d = await r.json();
+            const fuenteOA = d && d.primary_location && d.primary_location.source;
+            return fuenteOA && fuenteOA.type === 'journal' && typeof fuenteOA.display_name === 'string' ? fuenteOA.display_name.trim() : '';
+        } catch (e) { return ''; }
     },
 
 
@@ -100,7 +165,7 @@ export const metodosAntecedentesSeleccion = {
         if (!doi) return { abstract: '', link: '' };
         const limpio = doi.replace(/^https?:\/\/doi\.org\//, '').trim();
         const limpiar = s => String(s).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        let abstract = '', link = '', autores = [], anio = '';
+        let abstract = '', link = '', autores = [], anio = '', revista = '', issn = '';
 
         // 1) OpenAlex: abstract + ubicación OA. Se usa el filtro doi: (el slash
         // del DOI debe ir LITERAL; encodeURIComponent en el path lo rompía con %2F).
@@ -112,6 +177,16 @@ export const metodosAntecedentesSeleccion = {
                 if (d.abstract_inverted_index) { const t = this.reconstruirAbstract(d.abstract_inverted_index); if (t && t.length > 40) abstract = t; }
                 if (Array.isArray(d.authorships)) autores = d.authorships.map(a => a.author && a.author.display_name).filter(Boolean);
                 if (d.publication_year) anio = String(d.publication_year);
+                // (2026.12.26) el nombre de la revista tal como lo escribe OpenAlex (con sus tildes y mayúsculas)
+                const fuenteOA = d.primary_location && d.primary_location.source;
+                if (fuenteOA && fuenteOA.type === 'journal' && typeof fuenteOA.display_name === 'string') revista = fuenteOA.display_name.trim();
+                // (2026.12.27) y su ISSN (el ISSN-L o, si no es legible, el primero de la lista que lo sea), para el cuartil de
+                // las obras que llegan sin él
+                if (fuenteOA && fuenteOA.type === 'journal') {
+                    const valido = [fuenteOA.issn_l, ...(Array.isArray(fuenteOA.issn) ? fuenteOA.issn : [])]
+                        .find(x => typeof x === 'string' && /^\d{4}-?\d{3}[\dXx]$/.test(x.trim()));
+                    if (valido) issn = valido.trim();
+                }
                 const oa = d.best_oa_location || d.primary_location;
                 if (oa) link = oa.pdf_url || oa.landing_page_url || link;
                 if (!link && d.open_access && d.open_access.oa_url) link = d.open_access.oa_url;
@@ -187,7 +262,7 @@ export const metodosAntecedentesSeleccion = {
 
         // Enlace por defecto: el resolvedor DOI (redirige al editor; no es 404 si el DOI es válido).
         if (!link && limpio) link = `https://doi.org/${limpio}`;
-        return { abstract, link, autores, anio };
+        return { abstract, link, autores, anio, revista, issn };
     },
 
 
@@ -239,6 +314,8 @@ export const metodosAntecedentesSeleccion = {
             const datos = doi ? await this._recuperarDatos(doi) : (await this._resolverPorTitulo(o.titulo)) || { abstract: '', link: '' };
             if (datos.abstract) { o.resumen = datos.abstract; o._enriquecido = true; logrados++; } else { sinAbstract++; }
             if (datos.link && (!o.link || o.link === o.doi)) o.link = datos.link;
+            this._aplicarIssn(o, datos);
+            this._aplicarRevista(o, datos);
             await new Promise(r => setTimeout(r, 200));
         }
         // Mensaje honesto y detallado de qué se logró y qué no.
@@ -247,5 +324,7 @@ export const metodosAntecedentesSeleccion = {
         if (sinDOI) msg += ` ${sinDOI} no tienen DOI (no se pueden enriquecer).`;
         if (estado) estado.textContent = msg;
         this._renderSeleccion(); // re-pintar con los nuevos datos
+        // (2026.12.27) y el cuartil de las revistas cuyo ISSN acaba de llegar (van por los proxies: se pinta después)
+        if (await this._enriquecerMetricas(sel)) this._renderSeleccion();
     },
 };

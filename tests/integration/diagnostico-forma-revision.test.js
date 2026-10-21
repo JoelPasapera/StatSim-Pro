@@ -3,12 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnosticarForma } from '../../src/analizador/relaciones/diagnostico-forma.js';
 import { redactarParrafo } from '../../src/analizador/relaciones/diagnostico-forma-redaccion.js';
+import { soloCompleta } from '../solo-completa.js';
 
 let a = 2030 >>> 0;
 const u01 = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 const nrm = () => Math.sqrt(-2 * Math.log(u01() || 1e-12)) * Math.cos(2 * Math.PI * u01());
 
-test('base grande con puntajes enteros: se decide con la base completa (antes, submuestra de 1 500 y «sin relación» con p = 10⁻²³) y en segundos (antes, 35 s)', () => {
+test('base grande con puntajes enteros: se decide con la base completa (antes, submuestra de 1 500 y «sin relación» con p = 10⁻²³) y en segundos (antes, 35 s)', { skip: soloCompleta }, () => {
     const n = 40000, x = new Float64Array(n), y = new Float64Array(n);
     for (let i = 0; i < n; i++) { x[i] = Math.round(30 + 6 * nrm()); y[i] = (0.05 * (x[i] - 30)) / 6 + nrm(); }
     const t0 = performance.now(), d = diagnosticarForma(x, y, { B: 19 }), s = (performance.now() - t0) / 1000;
@@ -17,7 +18,7 @@ test('base grande con puntajes enteros: se decide con la base completa (antes, s
     assert.ok(s < 20, `${s.toFixed(1)} s`);
 });
 
-test('X continua con más de 2 000 valores distintos: submuestra combinada por Bonferroni con la r completa, sin contradecir a la tabla', () => {
+test('X continua con más de 2 000 valores distintos: submuestra combinada por Bonferroni con la r completa, sin contradecir a la tabla', { skip: soloCompleta }, () => {
     const n = 20000, x = new Float64Array(n), y = new Float64Array(n);
     for (let i = 0; i < n; i++) { x[i] = 30 + 6 * nrm(); y[i] = (0.06 * (x[i] - 30)) / 6 + nrm(); }
     const d = diagnosticarForma(x, y, { B: 19 });

@@ -1,4 +1,5 @@
-// analizador/ui/carga.js — carga de datos (CSV o base generada), columnas y desplegables.
+// analizador/ui/carga.js — carga de datos (CSV, libro de Excel .xlsx, base de SPSS .sav o base generada), columnas y
+// desplegables.
 // Origen: analizador-ui.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
 import { estado, CLAVES } from '../../shared/estado.js';
@@ -11,12 +12,27 @@ import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
 import { obtenerEtiquetaOpcion } from '../../shared/etiquetas.js';
 import { desplazarHacia, renderizarTablaDatos } from '../../shared/tabla-datos.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { esPerdido, esColumnaNumerica, esColumnaTexto } from '../../core/data/celdas.js';
+import { leerSav } from '../../core/data/sav/lector.js';
+import { baseDesdeSav } from '../motor/datos-spss.js';
+import { leerXlsx } from '../../core/data/xlsx/lector.js';
+import { baseDesdeXlsx, hojaPorOmision, hojasConDatos } from '../motor/datos-xlsx.js';
+import { leerCSVDetallado } from '../motor/datos.js';
+import { avisoDeCodificacion, decodificarTexto } from '../../core/data/codificacion.js';
+import { leerBytes } from '../../shared/archivos.js';
+import { escaparHTML } from '../../shared/html.js';
+import { sinMarcadoEnTodo } from '../../core/data/texto.js';
 
 // Ajusta las etiquetas de los selectores según el tipo de análisis elegido.
 function actualizarEtiquetasAnalisis() {
     const seleccionado = document.querySelector('input[name="tipoAnalisis"]:checked');
     const tipo = seleccionado ? seleccionado.value : 'correlacion';
-    if (window.datosGenerados && window.datosGenerados.length) poblarSelectsVariables(window.datosGenerados);   // (F3) las opciones dependen del tipo
+    // (F3) las opciones dependen del tipo. (2026.12.20) Y salen de los datos CARGADOS en el Analizador (del Simulador o de un
+    // CSV): hasta la 2026.12.19 salían de window.datosGenerados, que solo fija la carga desde el Simulador, de modo que con
+    // un CSV, al pasar a «comparación», la variable de agrupación no aparecía (o aparecían las de la base simulada anterior).
+    const cargados = AnalizadorEstadistico.obtenerDatos();
+    const datosActuales = (cargados && cargados.length) ? cargados : window.datosGenerados;
+    if (datosActuales && datosActuales.length) poblarSelectsVariables(datosActuales);
     const label1 = document.getElementById('labelVariable1');
     const label2 = document.getElementById('labelVariable2');
     if (tipo === 'comparacion') {
@@ -48,7 +64,7 @@ function cargarDatosGenerados() {
         //    return;
         //}
         const paquete = estado.get(CLAVES.BASE_SIMULADOR);   // publicado por el Simulador al generar (sin importarlo)
-        const datos = paquete ? paquete.datos : null;
+        let datos = paquete ? paquete.datos : null;
         if (!datos || datos.length === 0) {
             mostrarToast('No hay datos generados. Genera una base de datos primero.', 'warning');
             return;
@@ -57,22 +73,18 @@ function cargarDatosGenerados() {
             mostrarToast('Error: AnalizadorEstadistico indefinido', 'error');
             return;
         }
+        // (2026.12.29, revisión) Los nombres de las columnas y las categorías, sin «<» ni «>» (core/data/texto.js), como los de
+        // un CSV o un .sav: el Simulador puede traer los de un CSV de configuración ajeno, y el Analizador los pinta en sus
+        // informes. Sin copia si no hay nada que cambiar.
+        datos = sinMarcadoEnTodo(datos);
         AnalizadorEstadistico.cargarDatos(datos);
         // Registrar etiquetas humanas y estructura de pruebas (estilo SPSS):
         // la interfaz mostrará "Inteligencia Cognitiva" en vez de "Total_IC".
         // Con datos del simulador NO se ofrece el editor: las etiquetas son las
         // configuradas en la sección Simulador.
-        if (typeof EtiquetasVariables !== 'undefined' && paquete) {
-            EtiquetasVariables.fijar(
-                paquete.etiquetas,
-                paquete.estructura
-            );
-            if (EtiquetasVariables.mostrarVacio) {
-                EtiquetasVariables.mostrarVacio('editorEtiquetas', '🧪 Datos del Simulador: las etiquetas ya vienen configuradas desde la sección Simulador, así que aquí no hay nada que renombrar. Este editor se activa al subir un CSV externo.');
-            } else {
-                EtiquetasVariables.ocultarEditor('editorEtiquetas');
-            }
-        }
+        if (paquete) mostrarEtiquetasDelSimulador(paquete.etiquetas, paquete.estructura);
+        ocultarSelectorDeHojas();
+        origenDatos = { tipo: 'simulador' };
         mostrarDatosCargados(datos);
         mostrarToast('Datos cargados exitosamente', 'success');
         // Almacenar datos generados globalmente para los gráficos
@@ -82,54 +94,218 @@ function cargarDatosGenerados() {
     }
 }
 
-function cargarArchivoCSV(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (!file.name.endsWith('.csv')) {
-        mostrarToast('Por favor selecciona un archivo CSV', 'error');
+// Con datos del Simulador las etiquetas y la estructura de pruebas llegan de él, y el editor no se ofrece.
+function mostrarEtiquetasDelSimulador(etiquetas, estructura) {
+    if (typeof EtiquetasVariables === 'undefined') return;
+    EtiquetasVariables.fijar(etiquetas, estructura);
+    if (EtiquetasVariables.mostrarVacio) {
+        EtiquetasVariables.mostrarVacio('editorEtiquetas', '🧪 Datos del Simulador: las etiquetas ya vienen configuradas desde la sección Simulador, así que aquí no hay nada que renombrar. Este editor se activa al subir un CSV externo.');
+    } else {
+        EtiquetasVariables.ocultarEditor('editorEtiquetas');
+    }
+}
+
+// (2026.12.31) De dónde vienen los datos cargados ({ tipo: 'simulador' | 'csv' | 'sav' | 'xlsx', archivo?, hoja? }): el
+// proyecto lo guarda para restaurarlos igual (motor de las etiquetas, el editor y el resumen).
+let origenDatos = null;
+
+// (2026.12.29) Qué se puede subir: un CSV (o un texto separado por tabuladores: .tsv, .txt) o una base de SPSS (.sav, y
+// .zsav, la comprimida). La extensión, sin distinguir mayúsculas («DATOS.CSV» se rechazaba). (2026.12.31) Y un libro de
+// Excel (.xlsx, .xlsm); los .xls, .xlsb y .ods pasan también por su lector, que dice cómo convertirlos.
+const TIPOS_DE_ARCHIVO = Object.freeze({ csv: 'csv', tsv: 'csv', txt: 'csv', sav: 'sav', zsav: 'sav', xlsx: 'xlsx', xlsm: 'xlsx', xls: 'xlsx', xlsb: 'xlsx', ods: 'xlsx' });
+
+function tipoDeArchivo(nombre) {
+    const m = /\.([a-z0-9]+)$/i.exec(String(nombre || ''));
+    return m ? (TIPOS_DE_ARCHIVO[m[1].toLowerCase()] || null) : null;
+}
+
+// Tras «Aplicar etiquetas»: los desplegables con los nombres nuevos y, si hay un análisis en pantalla con sus dos
+// variables, el reporte de nuevo.
+function alAplicarEtiquetas() {
+    poblarSelectsVariables(AnalizadorEstadistico.obtenerDatos());
+    const marcoVisible = document.getElementById('marcoMetodologicoContainer');
+    const v1 = document.getElementById('variable1').value;
+    const v2 = document.getElementById('variable2').value;
+    if (marcoVisible && marcoVisible.style.display !== 'none' && v1 && v2) {
+        ejecutarAnalisis();
+        mostrarToast('Etiquetas aplicadas: el reporte se regeneró con los nuevos nombres', 'success');
+    } else {
+        mostrarToast('Etiquetas aplicadas: los textos del análisis usarán los nuevos nombres', 'success');
+    }
+}
+
+// Base EXTERNA: las etiquetas anteriores se descartan (las de un .sav llegan en `etiquetas`) y se ofrece el editor para
+// renombrar las columnas de puntaje; sin ninguna, `notaSinPuntajes` (si se da) explica la sección en lugar del aviso.
+function prepararEditorEtiquetas(datos, etiquetas, notaSinPuntajes) {
+    if (typeof EtiquetasVariables === 'undefined') return;
+    EtiquetasVariables.limpiar();
+    if (etiquetas && Object.keys(etiquetas).length) EtiquetasVariables.fijar(etiquetas, []);
+    // Columnas totalmente vacías: el editor avisará si alguna es de puntaje.
+    const numericas = obtenerColumnasNumericas(datos);
+    EtiquetasVariables._columnasVacias = Object.keys(datos[0] || {}).filter(c =>
+        c !== 'ID' && !numericas.includes(c) && datos.every(f => esPerdido(f[c]))
+    );
+    if (notaSinPuntajes && !EtiquetasVariables.columnasRenombrables(numericas).length && !EtiquetasVariables.columnasRenombrables(EtiquetasVariables._columnasVacias).length) {
+        EtiquetasVariables._columnasVacias = [];
+        EtiquetasVariables.mostrarVacio('editorEtiquetas', notaSinPuntajes);
         return;
     }
-    const reader = new FileReader();
-    reader.onload = function (event) {
-        try {
-            const csvText = event.target.result;
-            AnalizadorEstadistico.cargarDesdeCSV(csvText);
-            const datos = AnalizadorEstadistico.obtenerDatos();
-            // Base de datos EXTERNA: no hay etiquetas del simulador. Se limpian
-            // las anteriores y se ofrece el editor para renombrar variables.
-            if (typeof EtiquetasVariables !== 'undefined') {
-                EtiquetasVariables.limpiar();
-                // Columnas totalmente vacías: el editor avisará si alguna es de puntaje.
-                const _numericas = obtenerColumnasNumericas(datos);
-                EtiquetasVariables._columnasVacias = Object.keys(datos[0] || {}).filter(c =>
-                    c !== 'ID' && !_numericas.includes(c) &&
-                    datos.every(f => f[c] === '' || f[c] === null || f[c] === undefined || (typeof f[c] === 'number' && isNaN(f[c])))
-                );
-                EtiquetasVariables.mostrarEditor('editorEtiquetas', _numericas, function () {
-                    poblarSelectsVariables(AnalizadorEstadistico.obtenerDatos());
-                    // Si ya hay un análisis en pantalla y las dos variables siguen
-                    // seleccionadas, se regenera solo con los nuevos nombres.
-                    const marcoVisible = document.getElementById('marcoMetodologicoContainer');
-                    const v1 = document.getElementById('variable1').value;
-                    const v2 = document.getElementById('variable2').value;
-                    if (marcoVisible && marcoVisible.style.display !== 'none' && v1 && v2) {
-                        ejecutarAnalisis();
-                        mostrarToast('Etiquetas aplicadas: el reporte se regeneró con los nuevos nombres', 'success');
-                    } else {
-                        mostrarToast('Etiquetas aplicadas: los textos del análisis usarán los nuevos nombres', 'success');
-                    }
-                });
-            }
-            mostrarDatosCargados(datos);
-            mostrarToast('Archivo CSV cargado exitosamente', 'success');
-        } catch (error) {
-            mostrarToast(error.message, 'error');
-        }
-    };
-    reader.onerror = function () {
+    EtiquetasVariables.mostrarEditor('editorEtiquetas', numericas, alAplicarEtiquetas);
+}
+
+// Un CSV: sus bytes como texto (UTF-8, UTF-16 o el ANSI de Excel en español: core/data/codificacion.js) y sus filas
+// (motor/datos.js: comillas, delimitador, filas descartadas, nombres repetidos y separadores de miles, con avisos).
+// Acepta también el texto ya decodificado.
+function cargarTextoCSV(contenido) {
+    const lecturaTexto = typeof contenido === 'string' ? { texto: contenido, codificacion: /** @type {const} */ ('utf-8'), invalidos: 0 } : decodificarTexto(contenido);
+    const { texto } = lecturaTexto;
+    const lectura = leerCSVDetallado(texto);
+    AnalizadorEstadistico.cargarDatos(lectura.filas);
+    origenDatos = { tipo: 'csv' };
+    const datos = AnalizadorEstadistico.obtenerDatos();
+    prepararEditorEtiquetas(datos, null, null);
+    mostrarDatosCargados(datos);
+    const avisos = [...lectura.avisos];
+    const avisoTexto = avisoDeCodificacion(lecturaTexto);   // ANSI, o UTF-8 con caracteres dañados
+    if (avisoTexto) avisos.unshift(avisoTexto);
+    const resumen = `Archivo CSV cargado: ${datos.length} casos y ${lectura.columnas.length} variables`;
+    if (avisos.length) mostrarToast(`${resumen}. Ten en cuenta: ${avisos.join('; ')}.`, 'warning', 9000);
+    else mostrarToast(resumen, 'success');
+}
+
+// Una base de SPSS: los perdidos como celdas vacías, las fechas como fechas, las categorías con etiqueta de valor como
+// texto (los ítems de un instrumento siguen siendo números) y las etiquetas de variable del archivo como etiquetas
+// (motor/datos-spss.js).
+async function cargarBytesSav(bytes) {
+    const archivo = await leerSav(bytes);
+    if (!archivo.n) throw new Error('El archivo de SPSS no tiene casos: no hay nada que analizar');
+    const base = baseDesdeSav(archivo);
+    AnalizadorEstadistico.cargarDatos(base.filas);
+    origenDatos = { tipo: 'sav' };
+    const datos = AnalizadorEstadistico.obtenerDatos();
+    const conEtiqueta = Object.keys(base.etiquetas).length;
+    prepararEditorEtiquetas(datos, base.etiquetas, `📊 Archivo de SPSS: ${conEtiqueta ? `las etiquetas de variable vienen del archivo (${conEtiqueta} de ${archivo.variables.length} variables tienen una) y los textos del análisis las usan` : 'el archivo no trae etiquetas de variable, así que los textos del análisis usarán los nombres de las columnas'}. Este editor lista solo las columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>), y tu base no tiene ninguna.`);
+    mostrarDatosCargados(datos);
+    const partes = [`${archivo.n} casos y ${archivo.variables.length} variables`];
+    if (base.categoricas.length) partes.push(`${base.categoricas.length} con etiquetas de valor pasan a categorías`);
+    if (base.fechas.length) partes.push(`${base.fechas.length} de fecha`);
+    const resumen = `Archivo de SPSS cargado: ${partes.join('; ')}`;
+    // un solo aviso (el siguiente taparía al anterior): el resumen y, si los hay, los avisos, con más tiempo para leerlos
+    if (base.avisos.length) mostrarToast(`${resumen}. Ten en cuenta: ${base.avisos.join('; ')}.`, 'warning', 9000);
+    else mostrarToast(resumen, 'success', 5000);
+}
+
+// Carga el archivo elegido en el selector (un CSV, un libro de Excel o un .sav). Se exporta también con su nombre
+// anterior, cargarArchivoCSV.
+async function cargarArchivo(e) {
+    const entrada = e.target;
+    const file = entrada && entrada.files ? entrada.files[0] : null;
+    if (!file) return;
+    // Vaciar el selector: así, elegir de nuevo el mismo archivo (tras corregirlo) vuelve a cargarlo.
+    try { entrada.value = ''; } catch (err) { /* algunos navegadores antiguos no lo permiten */ }
+    const tipo = tipoDeArchivo(file.name);
+    if (!tipo) {
+        mostrarToast('Por favor selecciona un archivo CSV, un libro de Excel (.xlsx) o una base de SPSS (.sav)', 'error');
+        return;
+    }
+    let contenido;
+    try {
+        contenido = await leerBytes(file);
+    } catch (error) {
         mostrarToast('No se pudo leer el archivo', 'error');
-    };
-    reader.readAsText(file);
+        return;
+    }
+    try {
+        if (tipo === 'sav') await cargarBytesSav(contenido);
+        else if (tipo === 'xlsx') await cargarBytesXlsx(contenido);
+        else cargarTextoCSV(contenido);
+        if (tipo !== 'xlsx') ocultarSelectorDeHojas();
+        if (origenDatos) origenDatos.archivo = sinMarcadoEnTodo(String(file.name || ''));
+    } catch (error) {
+        mostrarToast(error.message, 'error');
+    }
+}
+
+// (2026.12.31) El último libro de Excel cargado, para cambiar de hoja sin volver a leerlo.
+let libroXlsx = null;
+
+// Un libro de Excel: su hoja de datos (la del Simulador, si es un libro suyo, o la primera visible con datos) y, si tiene
+// más hojas con datos, el selector para cambiar de hoja.
+// Si esa hoja no sirve (solo tiene encabezados, p. ej.), la siguiente con datos.
+async function cargarBytesXlsx(bytes) {
+    if (bytes.length > 2e6) mostrarToast('Leyendo el libro de Excel…', 'info', 4000);   // uno grande tarda unos segundos
+    const libro = await leerXlsx(bytes);
+    const porOmision = hojaPorOmision(libro);
+    if (!porOmision) throw new Error('El libro de Excel no tiene datos: todas sus hojas están vacías');
+    let primerError = null;
+    for (const hoja of [porOmision, ...hojasConDatos(libro).filter(h => h.indice !== porOmision.indice)]) {
+        try {
+            cargarHojaXlsx(libro, hoja.indice);
+            libroXlsx = libro;
+            mostrarSelectorDeHojas(libro, hoja.indice);
+            return;
+        } catch (error) {
+            if (!primerError) primerError = error;
+        }
+    }
+    throw primerError;
+}
+
+// Una hoja del libro como base del Analizador (motor/datos-xlsx.js). Si la hoja no sirve (vacía, o solo con
+// encabezados), un error, y la base anterior sigue cargada.
+function cargarHojaXlsx(libro, indice) {
+    const base = baseDesdeXlsx(libro, indice);
+    const nombre = libro.hojas[indice].nombre;
+    if (!base.filas.length) throw new Error(`La hoja «${sinMarcadoEnTodo(nombre)}» tiene encabezados pero ninguna fila de datos`);
+    AnalizadorEstadistico.cargarDatos(base.filas);
+    origenDatos = { tipo: 'xlsx', hoja: sinMarcadoEnTodo(nombre), archivo: origenDatos && origenDatos.tipo === 'xlsx' ? origenDatos.archivo : undefined };
+    const datos = AnalizadorEstadistico.obtenerDatos();
+    const conEtiqueta = Object.keys(base.etiquetas).length;
+    prepararEditorEtiquetas(datos, base.etiquetas, base.delSimulador
+        ? `📊 Libro de Excel del Simulador: las etiquetas de variable vienen de su hoja «Diccionario» (${conEtiqueta} de ${base.columnas.length} variables tienen una) y los textos del análisis las usan. Este editor lista solo las columnas de puntaje (<code>General_</code>, <code>Dimension_</code> o <code>Total_</code>), y tu base no tiene ninguna.`
+        : null);
+    mostrarDatosCargados(datos);
+    const partes = [`${datos.length} casos y ${base.columnas.length} variables`];
+    if (base.fechas.length) partes.push(`${base.fechas.length} de fecha`);
+    if (conEtiqueta) partes.push(`${conEtiqueta} con su etiqueta del diccionario`);
+    const hojas = hojasConDatos(libro).length;
+    const resumen = `Libro de Excel cargado (hoja «${sinMarcadoEnTodo(nombre)}»${hojas > 1 ? `, una de ${hojas} con datos: elige otra en «Hoja del libro»` : ''}): ${partes.join('; ')}`;
+    if (base.avisos.length) mostrarToast(`${resumen}. Ten en cuenta: ${base.avisos.join('; ')}.`, 'warning', 9000);
+    else mostrarToast(resumen, 'success', 5000);
+}
+
+// El selector de hojas: visible solo si el libro tiene más de una hoja con datos (las ocultas, al final y marcadas).
+function mostrarSelectorDeHojas(libro, indice) {
+    const cont = document.getElementById('selectorHojaXlsx');
+    const select = document.getElementById('hojaXlsx');
+    if (!cont || !select) return;
+    const opciones = hojasConDatos(libro);
+    if (opciones.length < 2) { ocultarSelectorDeHojas(); return; }
+    select.innerHTML = opciones.map(h => `<option value="${h.indice}">${escaparHTML(sinMarcadoEnTodo(h.nombre))}${h.oculta ? ' (oculta)' : ''} · ${h.filas} fila(s)</option>`).join('');
+    select.value = String(indice);
+    select.dataset.cargada = String(indice);
+    cont.style.display = '';
+}
+
+function ocultarSelectorDeHojas() {
+    libroXlsx = null;
+    const cont = document.getElementById('selectorHojaXlsx');
+    if (cont) cont.style.display = 'none';
+}
+
+// Al elegir otra hoja: se carga esa (si no sirve, se avisa y el selector vuelve a la que está cargada).
+function alCambiarHojaXlsx(e) {
+    if (!libroXlsx) return;
+    const select = e.target;
+    const indice = Number(select.value);
+    const anterior = select.dataset.cargada !== undefined ? Number(select.dataset.cargada) : null;
+    try {
+        cargarHojaXlsx(libroXlsx, indice);
+        select.dataset.cargada = String(indice);
+    } catch (error) {
+        mostrarToast(error.message, 'error');
+        if (anterior !== null) select.value = String(anterior);
+    }
 }
 
 function mostrarDatosCargados(datos) {
@@ -156,13 +332,12 @@ function mostrarDatosCargados(datos) {
     desplazarHacia(container);
 }
 
-// Columnas numéricas analizables del dataset (excluye el identificador).
+// Columnas numéricas analizables del dataset (excluye el identificador). (2026.12.18) El tipo, por el primer valor NO
+// perdido y con la conversión del núcleo (core/data/celdas.js): antes, por la primera fila, de modo que una celda vacía en
+// el primer participante sacaba la columna de los desplegables, y una fecha («2024-05-01») contaba como número.
 function obtenerColumnasNumericas(datos) {
     if (!datos || datos.length === 0) return [];
-    return Object.keys(datos[0]).filter(col => {
-        if (col === 'ID') return false;
-        return typeof datos[0][col] === 'number' || !isNaN(parseFloat(datos[0][col]));
-    });
+    return Object.keys(datos[0]).filter(col => col !== 'ID' && esColumnaNumerica(datos, col));
 }
 
 // Puebla los selectores de variables del analizador. Reutilizable: se llama al
@@ -173,7 +348,8 @@ function poblarSelectsVariables(datos) {
     if (bAV) bAV.style.display = (window.__numsDisponibles.length >= 3) ? '' : 'none';
     document.querySelectorAll('#varsExtraCont select, #regPredsCont select').forEach(s => {
         const val = s.value;
-        s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
+        // (2026.12.29) nombres y etiquetas escapados: llegan de un CSV o de un .sav ajeno
+        s.innerHTML = '<option value="">Seleccionar variable…</option>' + window.__numsDisponibles.map(c => `<option value="${escaparHTML(c)}">${escaparHTML(obtenerEtiquetaOpcion(c))}</option>`).join('');
         
         s.value = val;
     });
@@ -185,7 +361,7 @@ function poblarSelectsVariables(datos) {
         ['regDep', 'regInd'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
-                + nums.map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
+                + nums.map(c => `<option value="${escaparHTML(c)}">${escaparHTML(obtenerEtiquetaOpcion(c))}</option>`).join('');
         });
     } catch (e) { /* opcional */ }
     const columnasNumericas = obtenerColumnasNumericas(datos);
@@ -215,7 +391,7 @@ function poblarSelectsVariables(datos) {
     // Antes, con las etiquetas de texto que el Simulador escribe desde B9, «Sexo» no aparecía en el desplegable.
     const tipoActual = (document.querySelector('input[name="tipoAnalisis"]:checked') || { value: 'correlacion' }).value;
     if (tipoActual !== 'correlacion') {
-        const categoricas = Object.keys(datos[0] || {}).filter(col => col !== 'ID' && !columnasNumericas.includes(col) && typeof datos[0][col] === 'string');
+        const categoricas = Object.keys(datos[0] || {}).filter(col => col !== 'ID' && !columnasNumericas.includes(col) && esColumnaTexto(datos, col));
         categoricas.forEach(col => {
             const texto = (typeof EtiquetasVariables !== 'undefined') ? EtiquetasVariables.etiquetaConColumna(col) : col;
             const op2 = document.createElement('option'); op2.value = col; op2.textContent = texto; select2.appendChild(op2);
@@ -252,12 +428,33 @@ function obtenerColumnasCategoricas(maximo) {
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
     if (datos.length === 0) return [];
     return Object.keys(datos[0])
-        .filter(col => col !== 'ID')
-        .filter(col => {
-            const v = datos[0][col];
-            return typeof v === 'string' && isNaN(parseFloat(v));
-        })
+        .filter(col => col !== 'ID' && esColumnaTexto(datos, col))   // (2026.12.18) por el primer valor no perdido
         .slice(0, maximo || 4);
 }
 
-export { actualizarEtiquetasAnalisis, cargarDatosGenerados, cargarArchivoCSV, mostrarDatosCargados, obtenerColumnasNumericas, poblarSelectsVariables, limpiarResultados, obtenerColumnasCategoricas };
+// (2026.12.31) Para el archivo de proyecto (analizador/ui/proyecto.js): los datos cargados, sus etiquetas, su estructura de
+// pruebas y su origen (null si no hay datos), y su restauración, como los dejó la carga.
+function estadoDeLosDatos() {
+    const filas = AnalizadorEstadistico.obtenerDatos();
+    if (!filas || !filas.length) return null;
+    const ev = typeof EtiquetasVariables !== 'undefined' ? EtiquetasVariables : null;
+    return { filas, etiquetas: ev ? { ...ev._mapa } : {}, estructura: ev ? ev.estructura() : [], origen: origenDatos ? { ...origenDatos } : { tipo: 'csv' } };
+}
+
+function restaurarDatos({ filas, etiquetas, estructura, origen }) {
+    AnalizadorEstadistico.cargarDatos(sinMarcadoEnTodo(filas));
+    const datos = AnalizadorEstadistico.obtenerDatos();
+    ocultarSelectorDeHojas();
+    if (origen && origen.tipo === 'simulador') {
+        mostrarEtiquetasDelSimulador(etiquetas, estructura);
+        window.datosGenerados = datos;
+    } else {
+        prepararEditorEtiquetas(datos, etiquetas, null);
+    }
+    origenDatos = origen ? { ...origen } : { tipo: 'csv' };
+    mostrarDatosCargados(datos);
+    return datos;
+}
+
+export { estadoDeLosDatos, restaurarDatos };
+export { actualizarEtiquetasAnalisis, cargarDatosGenerados, cargarArchivo, cargarArchivo as cargarArchivoCSV, cargarBytesSav, cargarBytesXlsx, cargarTextoCSV, alCambiarHojaXlsx, tipoDeArchivo, mostrarDatosCargados, obtenerColumnasNumericas, poblarSelectsVariables, limpiarResultados, obtenerColumnasCategoricas };

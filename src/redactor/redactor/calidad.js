@@ -1,5 +1,6 @@
 // redactor/redactor/calidad.js — RedactorTeorico: control de calidad del texto redactado (muletillas, fantasmas narrativos, citas sospechosas, contradicciones, instrumentos) y autotest.
 // Origen: redactor/redactor/redaccion.js (Fase 6, segunda pasada: partición por responsabilidad).
+import { escaparRegExp } from '../../core/data/texto.js';
 
 export const metodosRedactorTeoricoCalidad = {
 
@@ -136,7 +137,7 @@ export const metodosRedactorTeoricoCalidad = {
     // pegada a un instrumento cuyo constructo real (según la ficha) es A. Las
     // frases comparativas legítimas («se comparó el EQ-i con medidas de CI»)
     // no llevan esa etiqueta y quedan intactas.
-    _escRe(s) { return String(s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); },
+    _escRe(s) { return escaparRegExp(s || ''); },   // (2026.12.31) el de core/data/texto.js: uno solo
 
 
     _detectarContradiccionPosicionamiento(secciones, variables) {

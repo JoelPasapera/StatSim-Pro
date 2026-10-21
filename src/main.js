@@ -12,6 +12,7 @@ import * as redactor from './redactor/index.js';
 import * as explorador from './explorador/index.js';
 import './shared/video-tutoriales.js';
 import { recargarSinCache, autotest } from './shared/mantenimiento.js';
+import { montarProyecto } from './proyecto/ui.js';
 import { d3 } from './shared/statviz.js';
 
 const StatSim = { version: VERSION, secciones: new Map(), autotest };
@@ -25,7 +26,18 @@ montarSimulador(StatSim);
 // (F5) ya no hay puentes de clases en window: cada módulo importa lo que usa. Para la consola, todo cuelga de StatSim.api.
 StatSim.api = { analizador, buscador, redactor, explorador };
 StatSim.secciones.set('simulador', { cargada: true });
-const alCargarDOM = () => { configurarNavegacion(); montarInterfazSimulador(); montarAnalizador(); mejorarTablasDesplazables(); };
+// (revisión 2026.12.30) cada montaje por separado: un fallo en uno (como el de la navegación con una dirección «#100%»,
+// que dejaba la página sin el Simulador ni el Analizador) no impide los demás
+const montarAparte = (/** @type {string} */ nombre, /** @type {() => void} */ montar) => {
+    try { montar(); } catch (e) { console.error(`[StatSim] no se pudo montar ${nombre}:`, e); }
+};
+const alCargarDOM = () => {
+    montarAparte('la navegación', configurarNavegacion);
+    montarAparte('el Simulador', montarInterfazSimulador);
+    montarAparte('el Analizador', montarAnalizador);
+    montarAparte('las tablas desplazables', mejorarTablasDesplazables);
+    montarAparte('el proyecto', montarProyecto);   // (2026.12.31) «Guardar proyecto» y «Abrir proyecto», en Ayuda
+};
 
 // Control de versión en línea: version.json se pide sin caché al arrancar; si el sitio publicado es más nuevo que
 // los módulos que este navegador cargó (caché del hospedaje o del navegador), se recarga sin caché una sola vez.

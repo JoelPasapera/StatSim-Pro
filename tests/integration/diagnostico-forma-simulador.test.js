@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GeneradorDatos } from '../../src/simulador/dominio/generador.js';
 import { diagnosticarForma } from '../../src/analizador/relaciones/diagnostico-forma.js';
+import { soloCompleta } from '../solo-completa.js';
 
 const esc = (nombre, corto, dist = 'normal') => ({ nombre, nombreCorto: corto, prueba: 'T', tipo: 'dimension', numItems: 10, media: 30, desviacion: 6, minimo: 1, maximo: 5, alfa: 0.85, distribucion: dist, invertidos: 0 });
 function base(forma, eta, { distX = 'uniforme', n = 800, semilla = 41 } = {}) {
@@ -24,7 +25,7 @@ const ESPERADO = {
 };
 const COEF = { lineal: 'r', nula: 'ninguno' };
 
-test('el Analizador reconoce las 17 curvas del Simulador, la recta y la ausencia de relación (X uniforme, η = .75)', () => {
+test('el Analizador reconoce las 17 curvas del Simulador, la recta y la ausencia de relación (X uniforme, η = .75)', { skip: soloCompleta }, () => {
     const fallos = [];
     for (const [forma, validas] of Object.entries(ESPERADO)) {
         // la recta y la ausencia de relación, con X normal: con X uniforme e Y normal, una r pedida no puede ser una recta

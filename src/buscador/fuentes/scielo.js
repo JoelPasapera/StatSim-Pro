@@ -2,6 +2,7 @@
 // Origen: scielo-directo.js (Fase 4), sin cambios de comportamiento; dependencias explícitas.
 
 import { ProxiesCORS } from '../../shared/proxies.js';
+import { conPalabrasVacias, terminosClave } from './terminos.js';
 
 // ========================================
 // BÚSQUEDA EN SciELO (vía Crossref) — módulo dedicado.
@@ -47,16 +48,12 @@ const ScieloDirecto = {
 
     _viaProxies: false,
 
-    _VACIAS: new Set(['entre','e','y','o','u','de','del','la','el','los','las','en','con','para','por',
-        'un','una','su','sus','al','a','the','of','and','or','in','on','for','to','with','between','an',
-        'da','do','das','dos','no','na','um','uma','que']),
+    // Las palabras vacías comunes (fuentes/terminos.js) más las del portugués.
+    _VACIAS: conPalabrasVacias(['da', 'do', 'das', 'dos', 'no', 'na', 'um', 'uma', 'que']),
 
+    // (2026.12.26) La implementación es la compartida de fuentes/terminos.js.
     _terminosClave(query) {
-        const toks = String(query).toLowerCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-            .replace(/[^a-z0-9ñ\s]/g, ' ').split(/\s+/)
-            .filter(t => t.length > 2 && !this._VACIAS.has(t));
-        return [...new Set(toks)];
+        return terminosClave(query, this._VACIAS);
     },
 
     // Reconstruye abstract si viene en JATS XML (Crossref a veces lo incluye).

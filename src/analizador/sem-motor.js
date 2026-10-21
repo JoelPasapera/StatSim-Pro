@@ -1,14 +1,18 @@
 // analizador/sem-motor.js — motor de ecuaciones estructurales (SEM).
 // Origen: sem-motor.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
-import { ComparacionGrupos } from './comparacion-grupos.js';
 import { AnalizadorEstadistico } from './estadistica.js';
 import { bfgs } from './psicometria/optimizacion.js';
 import { gradienteFML, erroresInformacion, implicada, aplicarTheta } from './psicometria/ram.js';
 import { validezConstructo } from './psicometria/validez.js';
-import { inversaYLogDet } from './psicometria/algebra.js';
-import { cdfChi2NoCentral, ncpParaProbabilidad } from './psicometria/numerico.js';
+import { inversaYLogDet } from '../core/linalg/cholesky.js';
+import { ceros, identidad, multiplicar, traspuesta } from '../core/linalg/matrices.js';
+import { gaussJordan } from '../core/linalg/gauss.js';
+import { cdfChi2NoCentral, ncpParaProbabilidad } from '../core/stats/numerico.js';
 import { estadisticosOrdinales, ajustarDWLS, inferenciaWLSMV, parametrosWLSMV } from './psicometria/wlsmv.js';
+import { pChiCuadrado, colaSuperiorNormal } from '../core/stats/numerico.js';
+import { aNumero } from '../core/data/celdas.js';
+import { matrizCovarianzas } from '../core/stats/descriptivos.js';
 
 // ============================================================================
 // SEM — MOTOR DE ECUACIONES ESTRUCTURALES · StatSim Pro
@@ -54,45 +58,19 @@ const SEM = {
     _ultimos: [],          // historial de modelos ajustados (para comparación)
 
     // ═════════════════ ÁLGEBRA MATRICIAL BÁSICA ═════════════════
-    _zeros(r, c) { return Array.from({ length: r }, () => new Array(c).fill(0)); },
-    _eye(nn) { return Array.from({ length: nn }, (_, i) => Array.from({ length: nn }, (_, j) => i === j ? 1 : 0)); },
-    _mult(X, Y) {
-        const r = X.length, k = Y.length, c = Y[0].length;
-        const Z = this._zeros(r, c);
-        for (let i = 0; i < r; i++) for (let m = 0; m < k; m++) {
-            const x = X[i][m];
-            if (x === 0) continue;
-            for (let j = 0; j < c; j++) Z[i][j] += x * Y[m][j];
-        }
-        return Z;
-    },
-    _traspuesta(X) { return X[0].map((_, j) => X.map(f => f[j])); },
+    // (2026.12.25) Del núcleo único (core/linalg/): envoltorios de una línea con los nombres de siempre.
+    _zeros(r, c) { return ceros(r, c); },
+    _eye(nn) { return identidad(nn); },
+    _mult(X, Y) { return multiplicar(X, Y); },
+    _traspuesta(X) { return traspuesta(X); },
 
     // Inversa y log-determinante SIMULTÁNEOS por eliminación de Gauss-Jordan con
-    // pivoteo parcial. Devuelve null si la matriz no es definida (|piv| ≈ 0) —
-    // señal que la optimización usa como penalización de región inadmisible.
+    // pivoteo parcial. Devuelve null si la matriz no es definida (|piv| < 10⁻¹² o
+    // determinante negativo) — señal que la optimización usa como penalización de
+    // región inadmisible.
     _invLogDet(M) {
-        const nn = M.length;
-        const A = M.map((f, i) => [...f, ...this._eye(nn)[i]]);
-        let logDet = 0, sign = 1;
-        for (let c = 0; c < nn; c++) {
-            let piv = c;
-            for (let r = c + 1; r < nn; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
-            if (Math.abs(A[piv][c]) < 1e-12) return null;
-            if (piv !== c) { [A[c], A[piv]] = [A[piv], A[c]]; sign = -sign; }
-            logDet += Math.log(Math.abs(A[c][c]));
-            if (A[c][c] < 0) sign = -sign;
-            const d = A[c][c];
-            for (let j = 0; j < 2 * nn; j++) A[c][j] /= d;
-            for (let r = 0; r < nn; r++) {
-                if (r === c) continue;
-                const f = A[r][c];
-                if (f === 0) continue;
-                for (let j = 0; j < 2 * nn; j++) A[r][j] -= f * A[c][j];
-            }
-        }
-        if (sign < 0) return null; // determinante negativo → no definida positiva
-        return { inv: A.map(f => f.slice(nn)), logDet };
+        const r = gaussJordan(M, 1e-12);
+        return r && r.signo > 0 ? { inv: r.inversa, logDet: r.logDetAbs } : null;
     },
 
     // ═════════════════ PARSER DE SINTAXIS (subconjunto lavaan) ═════════════════
@@ -178,26 +156,10 @@ const SEM = {
         return { vars, idx, nObs: nombresObs.length, A, S, libres, latentes };
     },
 
-    // Σ(θ) del modelo RAM: aplica θ a las plantillas y computa la implicada.
-    _sigma(est, theta) {
-        const nv = est.vars.length;
-        const A = est.A.map(f => [...f]);
-        const S = est.S.map(f => [...f]);
-        est.libres.forEach((p, k) => {
-            if (p.mat === 'A') A[p.i][p.j] = theta[k];
-            else { S[p.i][p.j] = theta[k]; S[p.j][p.i] = theta[k]; }
-        });
-        const ImA = this._eye(nv).map((f, i) => f.map((v, j) => v - A[i][j]));
-        const inv = this._invLogDet(ImA);
-        if (!inv) return null;
-        const B = inv.inv;                                    // (I−A)⁻¹
-        const T = this._mult(this._mult(B, S), this._traspuesta(B));
-        // Filtro F: primeras nObs filas/columnas (observadas primero por construcción).
-        const p = est.nObs;
-        const Sig = this._zeros(p, p);
-        for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) Sig[i][j] = T[i][j];
-        return Sig;
-    },
+    // Σ(θ) del modelo RAM (las observadas, primeras por construcción), con la condición de admisibilidad del objetivo: null si
+    // det(I − A) ≤ 0 o si un pivote de (I − A)⁻¹ es menor que 10⁻¹². (2026.12.25) La de psicometria/ram.js, la misma que dan
+    // la solución estandarizada y el gradiente; antes, una copia aquí.
+    _sigma(est, theta) { const m = implicada(est, theta, { admisible: true }); return m ? m.Sigma : null; },
 
     // F_ML(θ) — discrepancia de máxima verosimilitud (Bollen, 1989, ec. 4.60).
     _fml(est, theta, S_obs, logDetS) {
@@ -330,7 +292,7 @@ const SEM = {
         const inf = inferenciaWLSMV(sm, fit);
         if (inf.error) return { error: inf.error };
         const { chi2, gl, CFI, TLI, RMSEA, SRMR } = inf, q = fit.libres.length;
-        const pChi2 = gl > 0 ? ComparacionGrupos._pChi2(chi2, gl) : NaN;
+        const pChi2 = gl > 0 ? pChiCuadrado(Math.max(chi2, 0), gl) : NaN;   // χ² ≤ 0 (ajuste perfecto con redondeo): p = 1, como antes
         let rmseaIC = [NaN, NaN];
         if (gl > 0) {
             const hi = this._ncpPara(chi2, gl, 0.05), lo = this._pChi2NC(chi2, gl, 0) < 0.95 ? 0 : this._ncpPara(chi2, gl, 0.95);
@@ -339,7 +301,7 @@ const SEM = {
         const parametros = fit.libres.map((k, a) => {
             const pl = est.libres[k], estimado = fit.theta[k], se = inf.se[a], z = estimado / se;
             return { nombre: pl.nombre, tipo: pl.mat === 'A' ? 'coeficiente' : 'var/cov', estimado, se, z,
-                     pValor: Number.isFinite(z) ? 2 * (1 - ComparacionGrupos._phi(Math.abs(z))) : NaN };
+                     pValor: Number.isFinite(z) ? 2 * colaSuperiorNormal(Math.abs(z)) : NaN };
         });
         // Admisibilidad: comunalidad de cada ítem ≤ 1 (varianza residual de y* = 1 − comunalidad) y correlaciones latentes ≤ 1
         const avisos = [];
@@ -386,14 +348,11 @@ const SEM = {
         if (!nombresObs.length) return { error: 'El modelo no menciona ninguna variable observada.' };
 
         // Casos completos y matriz de covarianzas muestral (divisor n−1; Bollen, 1989).
-        const filas = datos.map(d => nombresObs.map(c => +d[c])).filter(f => f.every(Number.isFinite));
+        const filas = datos.map(d => nombresObs.map(c => aNumero(d[c]))).filter(f => f.every(Number.isFinite));   // (2026.12.18) antes +valor: la celda vacía contaba como 0
         const n = filas.length, p = nombresObs.length;
         if (n < p + 5) return { error: `Casos insuficientes (${n}) para ${p} variables observadas.` };
         if (opciones.estimador === 'WLSMV') return this._ajustarWLSMV(modelo, sintaxis, etiquetaModelo, nombresObs, filas);
-        const medias = nombresObs.map((_, j) => filas.reduce((s, f) => s + f[j], 0) / n);
-        const S_obs = this._zeros(p, p);
-        filas.forEach(f => { for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) S_obs[i][j] += (f[i] - medias[i]) * (f[j] - medias[j]); });
-        for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) S_obs[i][j] /= (n - 1);
+        const S_obs = matrizCovarianzas(nombresObs.map((_, j) => filas.map(f => f[j])));   // (2026.12.25) la del núcleo único
         const ilS = this._invLogDet(S_obs);
         if (!ilS) return { error: 'La matriz de covarianzas muestral es singular: hay variables redundantes.' };
 
@@ -420,7 +379,7 @@ const SEM = {
 
         // χ², p, índices — con el modelo de independencia como línea base.
         const chi2 = (n - 1) * Fmin;
-        const pChi2 = gl > 0 ? ((typeof ComparacionGrupos !== 'undefined') ? ComparacionGrupos._pChi2(chi2, gl) : NaN) : NaN;
+        const pChi2 = gl > 0 ? pChiCuadrado(Math.max(chi2, 0), gl) : NaN;   // χ² ≤ 0 (ajuste perfecto con redondeo): p = 1, como antes
         // Línea base: solo varianzas (F_b tiene forma cerrada: log|diag(S)|−log|S|).
         let logDiag = 0;
         for (let i = 0; i < p; i++) logDiag += Math.log(S_obs[i][i]);
@@ -432,7 +391,7 @@ const SEM = {
         // IC 90 % del RMSEA (Browne & Cudeck, 1993): ncp tal que la CDF no
         // central deje 0.95 / 0.05 a la izquierda del χ² observado.
         let rmseaIC = [NaN, NaN];
-        if (gl > 0 && typeof ComparacionGrupos !== 'undefined') {
+        if (gl > 0) {
             const ncpHi = this._ncpPara(chi2, gl, 0.05);
             const ncpLo = this._pChi2NC(chi2, gl, 0) < 0.95 ? 0 : this._ncpPara(chi2, gl, 0.95);
             rmseaIC = [Math.sqrt(ncpLo / (gl * (n - 1))), Math.sqrt(ncpHi / (gl * (n - 1)))];
@@ -454,8 +413,8 @@ const SEM = {
             const z = theta[k] / se[k];
             return { nombre: pl.nombre, tipo: pl.mat === 'A' ? 'coeficiente' : 'var/cov',
                      estimado: theta[k], se: se[k], z,
-                     pValor: Number.isFinite(z) && typeof ComparacionGrupos !== 'undefined'
-                         ? 2 * (1 - ComparacionGrupos._phi(Math.abs(z))) : NaN };
+                     pValor: Number.isFinite(z)
+                         ? 2 * colaSuperiorNormal(Math.abs(z)) : NaN };
         });
 
         // (2026.10.14) Soluciones no admisibles (casos Heywood): varianzas negativas o correlaciones entre latentes > 1

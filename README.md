@@ -8,6 +8,8 @@ StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investiga
 
 De la simulación de datos a la redacción del marco teórico: genera bases de datos realistas —con la fiabilidad y las correlaciones que tú pides, verificadas una a una—, ejecuta análisis con rigor de SPSS, explora tus resultados en gráficos interactivos con análisis automático, busca antecedentes en las principales bases académicas, filtra por relevancia con IA y exporta capítulos completos en Word con formato APA 7 e interpretación pedagógica.
 
+Habla el idioma de SPSS y de Excel: la base simulada se descarga como archivo `.sav` (con etiquetas de variable y de valor, niveles de medida y fechas, lista para abrir en SPSS, PSPP, JASP o jamovi) o como libro de Excel `.xlsx` (la base, su diccionario y el informe de la generación, cada uno en su hoja), y el Analizador carga tus `.sav`, `.zsav` y `.xlsx` además de los CSV de Excel (con punto y coma o coma, en UTF-8 o en el ANSI de Excel en español). Los lectores y los escritores de SPSS y de Excel son propios —también el ZIP y el DEFLATE de los .xlsx— y se comprobaron contra ReadStat, la biblioteca que usan haven (R) y pyreadstat (Python), y contra openpyxl. Y todo tu trabajo cabe en un archivo: **Guardar proyecto** (en Ayuda) lo guarda en un `.statsim` y **Abrir proyecto** lo devuelve a su sitio, la base simulada incluida, bit a bit.
+
 > Implementado 100 % en el navegador. Sin frameworks, sin backend, sin instalación — y desde esta versión, **sin librerías de gráficos externas**: la visualización también es motor propio. ¡Pruébalo aquí 👇!
 
 [![GitHub Pages](https://img.shields.io/badge/🌐_Demo_Online-StatSim_Pro-2E5BBA?style=for-the-badge)](https://joelpasapera.github.io/StatSim-Pro)
@@ -70,8 +72,8 @@ Además de la comparación con SPSS, cada módulo estadístico se verifica contr
 El proyecto lleva sus propias pruebas dentro del código, ejecutables desde la consola del navegador (F12):
 
 ```js
-GeneradorDatos.autotest()    // 12 comprobaciones del simulador
-RedactorTeorico.autotest()   // 11 comprobaciones del redactor
+await StatSim.autotest()                          // 102 comprobaciones del simulador
+StatSim.api.redactor.RedactorTeorico.autotest()   // 11 comprobaciones del redactor
 ```
 
 Cada comprobación corresponde a un fallo que ocurrió de verdad durante el desarrollo y que ya no debe repetirse: correlaciones exactas, fiabilidad autocalibrada, puntaje general derivado, matrices de correlación imposibles, ítems invertidos, valores perdidos, exportación limpia, conversión de citas… Con semilla fija, para que el resultado sea reproducible y no dependa del azar.
@@ -84,18 +86,19 @@ Sin librerías estadísticas externas: cada fórmula está escrita y verificada 
 
 - **Shapiro-Wilk** — Algoritmo de Royston (1992, AS R94), el mismo que usan R y SPSS
 - **Kolmogorov-Smirnov** — Corrección de Lilliefors (Dallal-Wilkinson / Khorzad)
-- **Correlación** — Pearson y Spearman con intervalos de confianza (Fisher z; Bonett-Wright para Spearman)
+- **Correlación** — Pearson y Spearman con intervalos de confianza (Fisher z; Bonett-Wright para Spearman), una sola convención en la vista principal, el informe, el mapa de correlaciones y el diagnóstico de forma; matrices con eliminación por pares
 - **Pruebas t** — Student (varianzas agrupadas) y Welch (Satterthwaite)
-- **ANOVA** — Una vía con η²
-- **No paramétricas** — U de Mann-Whitney (empates + corrección de continuidad) y Kruskal-Wallis con corrección de empates y ε²
+- **ANOVA** — De un factor con η², y **de Welch** (sin suponer varianzas iguales; la prueba robusta de SPSS, `oneway.test` de R)
+- **No paramétricas** — U de Mann-Whitney (corrección de empates; sin corrección de continuidad, como SPSS) y Kruskal-Wallis con corrección de empates y ε²
 - **Levene** — Homogeneidad de varianzas (centrado en la media, como SPSS)
 - **Chi-cuadrado** — Independencia con V de Cramér
-- **Regresión** — Lineal simple y **múltiple (OLS matricial)** con B, EE, β estandarizados, t, p, IC 95 %, R², R² ajustado, F del modelo y **VIF** por predictor
+- **Regresión** — Lineal simple y **múltiple (mínimos cuadrados por la QR de Householder, el método de R, con su criterio de colinealidad)** con B, EE, β estandarizados, t, p, IC 95 %, R², R² ajustado, F del modelo y **VIF** por predictor; **logística y de Poisson** (IRLS sobre la misma QR, el algoritmo de `glm` de R) con OR o razones de tasas, IC de Wald, pseudo-R² de McFadden, AIC, aviso de separación y de sobredispersión
 - **Fiabilidad** — **Alfa de Cronbach** (bruto con IC 95 % por el procedimiento de Feldt, y estandarizado), **omega total de McDonald** (solución unifactorial por ejes principales iterados), **lambda 2 de Guttman** y **correlación media inter-ítem** con su rango
-- **Comparaciones múltiples** — Corrección de Holm
-- **Potencia post-hoc** — Aproximación de Fisher para correlaciones
+- **Comparaciones múltiples** — Corrección de Holm; post-hoc con el modelo de error de cada prueba global: t con la media cuadrática del error (DMS de Fisher), t de Welch por pares y z de Dunn
+- **Potencia post-hoc** — Aproximación de Cohen (1988; la de `pwr.r.test`) para correlaciones, con el α y la lateralidad de la prueba
 - **p-valores** — Beta y gamma incompletas regularizadas por fracción continua de Lentz (Numerical Recipes)
-- **Álgebra matricial propia** — Descomposición de **Cholesky** (generación de datos correlacionados), rotación de **Jacobi** para autovalores y autovectores (corrección de matrices no definidas positivas) e inversión triangular
+- **Álgebra matricial propia, una sola implementación** (`src/core/linalg/`) — Descomposición de **Cholesky** (generación de datos correlacionados, inversas y log-determinantes de matrices definidas positivas), rotación de **Jacobi** para autovalores y autovectores (corrección de matrices no definidas positivas), **Gauss-Jordan** con pivoteo parcial, **QR de Householder** e inversión triangular
+- **Azar reproducible** (`src/core/random/`) — Generadores con semilla (**mulberry32** para el Simulador, **sfc32** para los remuestreos), normales por **Box-Muller** y permutaciones uniformes (**Fisher–Yates**): la misma semilla da la misma secuencia de números en cualquier navegador y, con ella, la misma base (salvo que un motor de JavaScript calcule `Math.log`, `Math.cos` o `Math.exp` con otro último dígito: el estándar no los fija, y el redondeo de los valores casi siempre lo absorbe)
 
 ---
 
@@ -143,16 +146,16 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 
 - ✅ **Informe «pedido vs. obtenido»**: tras generar, una tabla contrasta cada parámetro configurado (media, DE, α/ω y todas las correlaciones) con su valor medido en la base, con estado ✓/⚠ y descarga en CSV — la evidencia que respalda la simulación en el anexo metodológico
 - ✅ **Importar / Exportar por tabla** y botones **maestros** que guardan o restauran **toda la configuración del simulador** en un solo archivo (parámetros generales, pruebas, escalas, sociodemográficos y correlaciones)
-- ✅ Exportación a CSV (con BOM, compatible con Excel) y vista previa; los valores perdidos salen como celda vacía
+- ✅ Exportación a CSV (con BOM, compatible con Excel), a SPSS (.sav) y a Excel (.xlsx: la base con sus fechas como fechas, el diccionario de variables y el informe de la generación) y vista previa; los valores perdidos salen como celda vacía
 
 ### 🔬 Analizador estadístico
 
-- ✅ Carga de CSV propio o de los datos generados, con vista previa (N y variables)
+- ✅ Carga de CSV, de libros de Excel (.xlsx, con selector de hoja y, si son del Simulador, sus etiquetas), de bases de SPSS (.sav, .zsav) o de los datos generados, con vista previa (N y variables). Una celda vacía es un **valor perdido** en todos los análisis (nunca un 0), venga del CSV o del Simulador; un número se lee solo si la celda contiene un número completo, con punto o con coma decimal (`3,5`)
 - ✅ **Etiquetas de variables**: renombra puntajes de escala (`General_IE` → “Inteligencia emocional”) y toda la app y el Word usan el nombre legible. Las columnas se reconocen por prefijo (`General_`, `Dimension_`, `Total_`), de modo que una base exportada conserva su estructura aunque vuelva desde un CSV externo
 - ✅ Configuración de la investigación (título, unidad de análisis, contexto) y de dimensiones por variable
 - ✅ **Fiabilidad y consistencia interna**: α de Cronbach con IC 95 %, α estandarizada, **ω total de McDonald**, λ₂ de Guttman y correlación media inter-ítem, con interpretación por umbrales
 - ✅ **Correlación bivariada** (Pearson/Spearman elegido automáticamente según normalidad; bilateral o unilateral) con IC 95 %, interpretación de fuerza y dirección
-- ✅ **Comparación entre grupos con protocolo automático**: la app evalúa normalidad por grupo + Levene y elige sola — t de Student, **t de Welch** o U de Mann-Whitney (2 grupos); ANOVA o Kruskal-Wallis (3+), con **post-hoc por pares y corrección de Holm** — explicando siempre *por qué* eligió esa prueba, con tamaños del efecto (d, r, η², ε²) y su magnitud
+- ✅ **Comparación entre grupos con protocolo automático**: la app evalúa normalidad por grupo + Levene y elige sola — t de Student, **t de Welch** o U de Mann-Whitney (2 grupos); ANOVA, **ANOVA de Welch** o Kruskal-Wallis (3+), con **post-hoc por pares y corrección de Holm**, el mismo protocolo en la vista principal, la pestaña de grupos, el Word y la criba sociodemográfica — explicando siempre *por qué* eligió esa prueba, con tamaños del efecto (d, r, η², ε²) y su magnitud
 - ✅ **Asociación de categóricas** (Chi² con V de Cramér)
 - ✅ **Análisis multivariado**: matriz de correlaciones interactiva para 2+ variables (método por par según normalidad, p corregidos por Holm) y **regresión lineal múltiple** con selector de dependiente + múltiples predictores, tabla completa de coeficientes, VIF, normalidad de residuos y **efecto crudo vs. ajustado** del predictor focal
 - ✅ **Lectura causal honesta**: la sección “De la correlación al control estadístico” explica las tres condiciones causales y por qué un diseño transversal aporta asociación ajustada, necesaria pero no suficiente
@@ -167,7 +170,7 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 - ✅ **Distribución de puntajes: teórica vs. empírica** — para cada variable, la curva normal N(μ, σ) (continua) se contrasta con la **densidad empírica de los datos reales** (KDE de Silverman, punteada): la comparación visual delata asimetrías y bimodalidades antes de las pruebas formales; con líneas de media, cursor en cruz con coordenadas y rejilla tenue
 - ✅ **Matriz de correlaciones exploratoria**: paleta divergente diseñada para tema oscuro (sin celdas blancas), contraste del texto por luminancia real, celdas y tipografía adaptativas, etiquetas de variables completas y **tooltip por celda** con coeficiente (Pearson o Spearman según la normalidad de ese par), p aproximado, N, IC 95 % (Fisher) e interpretación en lenguaje natural
 - ✅ **Diagrama de caja investigable**: lienzo proporcional al número de variables, etiquetas del eje en diagonal, **tooltip con los estadísticos completos de cada caja** (N, mediana, cuartiles, RIC, mínimo, máximo, atípicos) y **ficha por cada punto atípico** (valor, límites de Tukey e identificador del participante)
-- ✅ **Análisis automático bajo cada gráfico** (`analisis-graficos.js`): un párrafo con redacción científica publicable generado desde los datos vigentes — severidad de las desviaciones de normalidad (γ₁, γ₂) con dirección e implicación, dispersión relativa (CV), estructura correlacional (varianza compartida, cautela por comparaciones múltiples), atípicos con dirección, asimetría por mediana y bigotes, y recomendaciones condicionales (paramétricos vs. robustos; media/DE vs. mediana/RIC), con avisos automáticos por N reducido o escalas dispares
+- ✅ **Análisis automático bajo cada gráfico** (`analisis-graficos.js`, con la misma asimetría y curtosis que la tabla de descriptivos): un párrafo con redacción científica publicable generado desde los datos vigentes — severidad de las desviaciones de normalidad (γ₁, γ₂) con dirección e implicación, dispersión relativa (CV), estructura correlacional (varianza compartida, cautela por comparaciones múltiples), atípicos con dirección, asimetría por mediana y bigotes, y recomendaciones condicionales (paramétricos vs. robustos; media/DE vs. mediana/RIC), con avisos automáticos por N reducido o escalas dispares
 - ✅ **Ayudas pedagógicas**: botón «?» junto a cada título abre una explicación en lenguaje coloquial de qué es el gráfico, para qué sirve y qué observar
 - ✅ Todos los gráficos son **responsive de verdad**: el lienzo se ajusta exactamente al contenido y al marco que lo contiene, sin recortes ni superposiciones
 - ✅ En el panel de normalidad: histogramas con curva normal y ejes numéricos, Q-Q plots; en correlación: dispersión con recta de mínimos cuadrados y **banda de confianza al 95 %**
@@ -188,15 +191,16 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 
 ### 🔎 Buscador de antecedentes académicos
 
-- ✅ Búsqueda simultánea en **Scopus** (rotación de múltiples claves API), **PubMed**, **SciELO**, **ALICIA (Concytec)**, **Google Scholar**, **OpenAlex** y **Crossref**
+- ✅ Búsqueda simultánea en **Scopus** (rotación de múltiples claves API), **ScienceDirect** (el texto completo de las revistas y los libros de Elsevier, con las mismas claves; viene desmarcada hasta que Elsevier habilite su ScienceDirect Search API para las claves del sitio), **Web of Science** (Colección Principal, por la API Starter de Clarivate: con tu clave, que no sale de tu navegador salvo hacia Clarivate, o con el relevo propio del sitio; ver [docs/WEB-OF-SCIENCE.md](docs/WEB-OF-SCIENCE.md)), **PubMed**, **SciELO**, **ALICIA (Concytec)**, **Google Scholar**, **OpenAlex** y **Crossref**
+- ✅ **Una obra que encuentran varias bases (mismo DOI) es una sola fila** que las nombra todas en la columna «Base» («Scopus+Web of Science») y en la «Indexación», y toma de las otras el resumen, el ISSN o las citas que le falten
 - ✅ **Búsqueda intensiva con IA**: generación de criterios de inclusión/exclusión, expansión de la consulta en variantes (ES/EN) y paginación profunda
 - ✅ **Variantes propias**: escribe tus propias variantes de búsqueda (una por línea) y se usarán tal cual, sin pasar por la IA; deja la caja vacía y se generan automáticamente
 - ✅ **Tope de búsquedas configurable** (variantes × idiomas): decide cuántas búsquedas se lanzan, con aviso en vivo del coste y advertencia explícita si alguna variante quedaría fuera
 - ✅ **Análisis de relevancia con IA** (escala 1–5 con justificación) vía Cloudflare Worker con **rotación de hasta 10 claves gratuitas de Groq en paralelo**, JSON estricto y reintentos con enfriamiento automático
 - ✅ Filtro por umbral de relevancia que gobierna matriz, exportaciones y redacción
-- ✅ **Enriquecimiento automático por DOI en cascada**: OpenAlex → Crossref → Semantic Scholar → Europe PMC → **Scopus Abstract Retrieval** → Unpaywall (rescata resúmenes que las APIs abiertas no traen, p. ej. Elsevier), con recuperación de autores y año
+- ✅ **Enriquecimiento automático por DOI en cascada**: OpenAlex → Crossref → Semantic Scholar → Europe PMC → **Scopus Abstract Retrieval** → Unpaywall (rescata resúmenes que las APIs abiertas no traen, p. ej. Elsevier, y los de Web of Science y ScienceDirect, que sus APIs no dan), con recuperación de autores y año, el ISSN que falta (para el cuartil) y el nombre de la revista con sus tildes cuando la base lo da en mayúsculas (Web of Science)
 - ✅ **Matriz de revisión bibliográfica de 15 columnas**: Relevancia, Título, **Autor**, Año, Contexto (país), Objetivos, Muestra, Instrumentos, Resultados, Conclusiones, Revista, Cuartil, Indexación, Referencia APA y Link/DOI
-- ✅ Métricas de revista (cuartil SJR e indexación) y detección de país y muestra desde el resumen
+- ✅ Métricas de revista (cuartil por el percentil de CiteScore de Scopus, e indexación) y detección de país y muestra desde el resumen
 - ✅ Exportación a **Excel** (formato APA: Times 12, ajuste de texto, anchos calibrados) y **CSV dual** (ES con `;` y coma decimal / internacional con `,`)
 - ✅ Referencias APA 7 correctas: apellidos e iniciales interpretados desde cualquier formato de las APIs (“Batbayar E.”, “E. Batbayar”, “EB Batbayar”…), “y” en español, cursivas de revista
 
@@ -222,6 +226,9 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 - ✅ Sin backend propio ni base de datos; despliegue estático en GitHub Pages
 - ✅ Vanilla JavaScript modular (sin frameworks) con **motor de visualización propio** (`statviz.js`, sin D3 ni otras librerías de gráficos); ExcelJS, html-docx-js y jsPDF desde CDN solo para exportaciones
 - ✅ Las llamadas a IA (solo en el buscador/redactor) envían únicamente títulos y resúmenes de artículos públicos a través de Workers propios; las claves nunca se exponen en el cliente
+- ✅ La clave de Web of Science, si pegas la tuya, no sale de tu navegador salvo hacia Clarivate (o el relevo propio del sitio), nunca hacia los proxies públicos; puedes recordarla en el navegador o usarla solo mientras la página esté abierta
+- ✅ Lo que llega de las fuentes (títulos, autores, revistas, resúmenes, enlaces) se pinta como texto: sin etiquetas, con las entidades decodificadas y con enlaces solo http(s)
+- ✅ **Proyecto completo en un archivo** (Ayuda → Guardar proyecto): la configuración y la base del Simulador, los datos del Analizador con sus etiquetas, la V de Aiken, la última redacción y el protocolo de búsqueda con su PRISMA viajan en un `.statsim` que tú guardas donde quieras; nada se sube a ningún servidor, y tu clave de Web of Science no entra en él
 
 ---
 
@@ -253,7 +260,7 @@ python -m http.server 8000   # o cualquier servidor estático
 | `generador-datos.js`, `guia-coherencia.js` | Simulación de datos: estructura del instrumento, fiabilidad autocalibrada, correlaciones exactas, imperfecciones realistas, informe pedido vs. obtenido y autotest |
 | `analizador-estadistico.js` | Motor estadístico central (normalidad, correlaciones, Holm…) |
 | `fiabilidad.js` | Consistencia interna: α con IC de Feldt, ω de McDonald, λ₂ de Guttman, inter-ítem |
-| `comparacion-grupos.js` | Protocolo automático t/Welch/U/ANOVA/Kruskal-Wallis + post-hoc |
+| `comparacion-grupos.js` | Pestaña de comparación de grupos (t/Welch/U/ANOVA/ANOVA de Welch/Kruskal-Wallis + post-hoc); el protocolo vive en `core/stats/protocolo-grupos.js` |
 | `regresion-multiple.js` | Matriz multi-variable y regresión múltiple OLS (VIF, crudo vs. ajustado) |
 | `statviz.js` | **Motor de visualización propio** (escalas, ejes, selecciones, curvas, histogramas, pack, geo) — reemplaza a D3 |
 | `graficas.js` | Librería de gráficos científicos: distribución teórica vs. empírica (KDE), matriz de correlaciones, boxplot, Q-Q, dispersión con banda de confianza — responsive, tema oscuro, tooltips exploratorios y cursor de coordenadas |
@@ -262,7 +269,8 @@ python -m http.server 8000   # o cualquier servidor estático
 | `criba-correlaciones.js`, `criba-sociodemografica.js`, `analisis-dimensiones.js` | Objetivos específicos y hallazgos por sociodemográficos |
 | `etiquetas-variables.js`, `matriz-consistencia.js` | Nombres legibles y matriz de consistencia |
 | `exportador-word.js` | Capítulo de resultados .docx APA 7 con pedagogía |
-| `antecedentes.js` + `scopus/pubmed/scielo/alicia/scholar-directo.js`, `proxies-cors.js` | Buscador multi-fuente, variantes propias y enriquecimiento por DOI |
+| `buscador/antecedentes/` + `buscador/fuentes/` (Scopus, ScienceDirect, Web of Science, PubMed, SciELO, ALICIA, Scholar; los términos de búsqueda, en `terminos.js`; las claves de Elsevier, en `claves-elsevier.js`; el DOI validado, en `doi.js`), `proxies.js` | Buscador multi-fuente, variantes propias y enriquecimiento por DOI |
+| `workers/relevo-wos.js` | Relevo de Web of Science (Cloudflare Worker): CORS y claves fuera de la página ([docs/WEB-OF-SCIENCE.md](docs/WEB-OF-SCIENCE.md)) |
 | `ia-asistente.js` | Cliente de los Workers de IA (criterios, relevancia, redacción, pase de coherencia) con respaldo entre proveedores |
 | `redactor-teorico.js` | Marco teórico completo con citas verificadas, pase de coherencia y exportación Word/PDF APA |
 

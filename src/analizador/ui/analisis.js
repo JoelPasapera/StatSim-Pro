@@ -13,10 +13,24 @@ import { inicializarGraficos } from './graficos.js';
 import { mostrarChiCuadrado, mostrarComparacion, mostrarComparacionVarios, mostrarCorrelacion, mostrarDecision, mostrarDiscusion, mostrarDispersion, mostrarFiabilidad, mostrarMarcoMetodologico, mostrarPruebasNormalidad, mostrarRegresion } from './resultados.js';
 import { copiarTexto, formatearPApa, formatearRApa, mostrarDescriptivas, mostrarNiveles, mostrarReferencias, mostrarReporteAPA, mostrarTablaSociodemografica } from './sociodemografica.js';
 import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
+import { formatoMitades, formatoNumero, formatoP } from '../../shared/formato-numero.js';
 import { cribarFormas, paresDelAnalisis } from '../relaciones/cribado-forma.js';
 import { mostrarAvisoForma } from '../relaciones/cribado-forma-ui.js';
 import { obtenerEtiqueta, obtenerEtiquetaOpcion } from '../../shared/etiquetas.js';
+import { escaparHTML } from '../../shared/html.js';
 import { mostrarToast } from '../../shared/toast.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
+import { MAX_GRUPOS } from '../../core/stats/protocolo-grupos.js';
+
+const _esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// (2026.12.23) Por qué no hay resultado, en la página: el aviso emergente con el motivo (una separación en la logística,
+// casos insuficientes…) lo tapaba enseguida el de «Análisis completado exitosamente», y la sección desaparecía sin
+// explicación.
+function _avisoHtml(titulo, mensaje) {
+    return `<div class="result-box"><h4 style="margin:0.6rem 0 0.2rem;">${titulo}</h4>`
+        + `<p style="margin:0.5rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ ${_esc(mensaje)}</p></div>`;
+}
 
 function ejecutarAnalisis() {
     const boton = document.getElementById('btnAnalizar');
@@ -54,11 +68,9 @@ function ejecutarAnalisis() {
                     const cols = [...new Set([var1, var2, ...extras])];
                     const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
                     const RM = RegresionMultiple.renderMatrizFlujo(cols, cols.map(et));
-                    if (RM.error) { mostrarToast(RM.error, 'warning'); }
-                    else {
-                        const cont = document.getElementById('resultadosContainer');
-                        if (cont) { cont.innerHTML = RM.html; cont.style.display = 'block'; }
-                    }
+                    if (RM.error) mostrarToast(RM.error, 'warning');
+                    const cont = document.getElementById('resultadosContainer');
+                    if (cont) { cont.innerHTML = RM.error ? _avisoHtml('🔗 Matriz de correlaciones', RM.error) : RM.html; cont.style.display = 'block'; }
                 } else {
                     ejecutarCorrelacion(var1, var2, tipoPrueba);
                 }
@@ -104,7 +116,7 @@ function _selectExtra(placeholder, modo) {
     sel.className = 'input';
     sel.style.width = '100%';
     sel.innerHTML = '<option value="">Seleccionar variable…</option>'
-        + (window.__numsDisponibles || []).map(c => `<option value="${c}">${obtenerEtiquetaOpcion(c)}</option>`).join('');
+        + (window.__numsDisponibles || []).map(c => `<option value="${escaparHTML(c)}">${escaparHTML(obtenerEtiquetaOpcion(c))}</option>`).join('');   // (2026.12.29) escapados
     fila.appendChild(lab); fila.appendChild(btn);
     wrap.appendChild(fila); wrap.appendChild(sel);
     return wrap;
@@ -183,12 +195,12 @@ function ejecutarRegresionBivariadaOpcional() {
         const RA = RegresionMultiple.regresionAvanzada(colY, preds, et(colY), preds.map(et), opciones);
         R = RA.error ? RA : RegresionMultiple.renderMultiple(RA);
     }
-    if (R.error) { mostrarToast('Regresión: ' + R.error, 'warning'); return; }
+    if (R.error) mostrarToast('Regresión: ' + R.error, 'warning');
     if (container) {
         // Colocación: justo DESPUÉS del análisis de correlación (ancla), nunca
         // al final del contenedor (donde quedan las referencias del capítulo).
         const ancla = document.getElementById('anclaRegBiv');
-        const bloque = `<div style="margin-top:1rem;">${R.html}</div>`;
+        const bloque = `<div style="margin-top:1rem;">${R.error ? _avisoHtml(`📐 Regresión: ${_esc(et(colY))} según ${preds.map(c => _esc(et(c))).join(', ')}`, R.error) : R.html}</div>`;
         if (ancla) ancla.insertAdjacentHTML('afterend', bloque);
         else container.insertAdjacentHTML('beforeend', bloque);
         container.style.display = 'block';
@@ -256,15 +268,15 @@ function ejecutarCorrelacion(var1, var2, tipoPrueba) {
     inicializarGraficos();
 }
 
+// Formato APA de p-valores para tablas: nunca "0.0000"; con el α del estudio, sin que el redondeo cruce el umbral
+// (2026.12.30: p = .0496 se mostraba «.050» junto a «< α = 0.05»).
+/** @param {number} p @param {number} [alfa] */
+function fmtPApp(p, alfa) { return formatoP(p, { alfa }); }
+
 // Construye el marco metodológico con la información más rica disponible:
 // con estructura del simulador usa las dimensiones reales (etiquetas) y las
 // variables sociodemográficas categóricas para los objetivos comparativos;
 // sin estructura, delega en el mecanismo legado del analizador.
-// Formato APA de p-valores para tablas: nunca "0.0000".
-function fmtPApp(p) {
-    if (!Number.isFinite(p)) return '—';
-    return p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.');
-}
 
 function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarContexto, criba) {
     // Instrumentos: si la estructura del simulador conoce la prueba a la que
@@ -305,13 +317,16 @@ function generarMarcoParaAnalisis(var1, var2, et1, et2, unidadAnalisis, lugarCon
 }
 
 // Comparación de una variable cuantitativa (var1) entre los grupos definidos
-// por una variable de agrupación (var2). Solo admite 2 grupos.
+// por una variable de agrupación (var2): de 2 a 10 grupos, con el protocolo único
+// (core/stats/protocolo-grupos.js) a través de compararGrupos / compararVariosGrupos.
 function ejecutarComparacion(varCuantitativa, varAgrupacion) {
     const datos = AnalizadorEstadistico.obtenerDatos() || [];
     // Pares (valor cuantitativo, grupo) con ambos presentes
+    // (2026.12.18) la conversión y los perdidos del núcleo (core/data/celdas.js): un grupo NaN (perdido del Simulador)
+    // ya no forma un grupo «NaN»
     const pares = datos
-        .map(fila => [parseFloat(fila[varCuantitativa]), fila[varAgrupacion]])
-        .filter(([valor, grupo]) => isFinite(valor) && grupo !== undefined && grupo !== null && grupo !== '');
+        .map(fila => [aNumero(fila[varCuantitativa]), fila[varAgrupacion]])
+        .filter(([valor, grupo]) => Number.isFinite(valor) && !esPerdido(grupo));
     const gruposDistintos = [...new Set(pares.map(par => String(par[1])))].sort((a, b) => {
         const na = parseFloat(a), nb = parseFloat(b);
         return (isFinite(na) && isFinite(nb)) ? na - nb : a.localeCompare(b);
@@ -319,7 +334,7 @@ function ejecutarComparacion(varCuantitativa, varAgrupacion) {
     if (gruposDistintos.length < 2) {
         throw new Error(`La variable de agrupación "${varAgrupacion}" no tiene al menos 2 grupos distintos.`);
     }
-    if (gruposDistintos.length > 10) {
+    if (gruposDistintos.length > MAX_GRUPOS) {
         throw new Error(`La variable de agrupación "${varAgrupacion}" tiene demasiados grupos (${gruposDistintos.length}). Elige una variable categórica (p. ej. Sexo, condición).`);
     }
     const grupos = gruposDistintos.map(valor => pares.filter(par => String(par[1]) === valor).map(par => par[0]));
@@ -342,23 +357,20 @@ function ejecutarChiCuadrado(var1, var2) {
     mostrarChiCuadrado(var1, var2, resultado);
 }
 
-// Bandas de la V de Cramér (Cohen) para gl* = 1; sirve como guía general.
-function interpretarCramerV(v) {
-    if (v < 0.1) return 'asociación nula o muy débil';
-    if (v < 0.3) return 'asociación débil';
-    if (v < 0.5) return 'asociación moderada';
-    return 'asociación fuerte';
-}
-
 // Construye la frase en formato APA de una comparación de grupos.
 function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     const prueba = resultado.prueba;
     const pTexto = formatearPApa(prueba.pValor);
     if (prueba.prueba === 'U de Mann-Whitney') {
-        return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la U de Mann-Whitney: U = ${prueba.U.toFixed(0)}, Z = ${prueba.z.toFixed(2)}, ${pTexto}.`;
+        return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la U de Mann-Whitney: U = ${formatoMitades(prueba.U)}, Z = ${formatoNumero(prueba.z, 2)}, ${pTexto}.`;
     }
-    if (prueba.prueba === 'ANOVA de una vía') {
-        return `Una ANOVA de una vía comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${prueba.glDentro}) = ${prueba.F.toFixed(2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}.`;
+    // (2026.12.22) «un ANOVA de un factor», el nombre de SPSS (hasta la 2026.12.21, «una ANOVA de una vía» aquí y «ANOVA de un
+    // factor» en la pestaña de grupos y el Word); con grupos constantes y distintos, F = ∞
+    if (prueba.prueba === 'ANOVA de un factor') {
+        return `Un ANOVA de un factor comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${prueba.glDentro}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}.`;
+    }
+    if (prueba.prueba === 'ANOVA de Welch') {   // (2026.12.20) gl del error fraccionarios, con dos decimales como los de la t de Welch
+        return `Un ANOVA de Welch comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${formatoNumero(prueba.glDentro, 2)}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}.`;
     }
     if (prueba.prueba === 'Kruskal-Wallis') {
         return `La prueba de Kruskal-Wallis comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: H(${prueba.gl}) = ${prueba.H.toFixed(2)}, ${pTexto}, ε² = ${formatearRApa(prueba.epsilonCuadrado)}.`;
@@ -368,7 +380,7 @@ function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     const d = resultado.tamanoEfectoRangos
         ? `, r de rangos = ${formatearRApa(resultado.tamanoEfectoRangos.r)}`
         : (resultado.tamanoEfecto ? `, d de Cohen = ${formatearRApa(resultado.tamanoEfecto.d)}` : '');
-    return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la ${prueba.prueba}: t(${prueba.gl.toFixed(decimalesGl)}) = ${prueba.estadistico.toFixed(2)}, ${pTexto}${d}.`;
+    return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la ${prueba.prueba}: t(${formatoNumero(prueba.gl, decimalesGl)}) = ${formatoNumero(prueba.estadistico, 2)}, ${pTexto}${d}.`;
 }
 
 // HTML de la caja APA (frase citable + botón de copiar) para la comparación.
@@ -394,4 +406,4 @@ function interpretarComparacion(varCuantitativa, varAgrupacion, resultado) {
     return InterpretacionesEstadisticas.generarInterpretacionComparacion(varCuantitativa, varAgrupacion, resultado);
 }
 
-export { ejecutarAnalisis, _selectExtra, _renumerarExtras, agregarVariableExtra, agregarPredictorExtra, _variablesExtra, _predictoresTodos, actualizarTituloRegresion, actualizarHintMultiVars, ejecutarRegresionBivariadaOpcional, ejecutarCorrelacion, fmtPApp, generarMarcoParaAnalisis, ejecutarComparacion, ejecutarChiCuadrado, interpretarCramerV, lineaApaComparacion, bloqueApaComparacionHTML, conectarCopiaComparacion, interpretarComparacion };
+export { ejecutarAnalisis, _selectExtra, _renumerarExtras, agregarVariableExtra, agregarPredictorExtra, _variablesExtra, _predictoresTodos, actualizarTituloRegresion, actualizarHintMultiVars, ejecutarRegresionBivariadaOpcional, ejecutarCorrelacion, fmtPApp, generarMarcoParaAnalisis, ejecutarComparacion, ejecutarChiCuadrado, lineaApaComparacion, bloqueApaComparacionHTML, conectarCopiaComparacion, interpretarComparacion };

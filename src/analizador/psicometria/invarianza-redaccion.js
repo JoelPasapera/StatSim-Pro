@@ -2,12 +2,13 @@
 // sus cambios, tabla de medias latentes, párrafo, referencias citadas y documento Word.
 import { CRITERIOS_CHEN } from './invarianza.js';
 import { REFERENCIAS_WLSMV } from './referencias.js';
+import { formatoP, textoP } from '../../shared/formato-numero.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 export const f2 = x => (Number.isFinite(x) ? x.toFixed(2) : '—');
 export const f3 = x => (Number.isFinite(x) ? (Math.abs(x) < 5e-4 ? 0 : x).toFixed(3).replace(/^(-?)0\./, '$1.') : '—');
-const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
-const pAPA = p => (!Number.isFinite(p) ? '' : p < 0.001 ? 'p < .001' : `p = ${p.toFixed(3).replace(/^0\./, '.')}`);
+const fp = p => formatoP(p);
+const pAPA = p => textoP(p);
 const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
 export const ROTULO_NIVEL = { configural: 'Configural', metrica: 'Métrica (cargas)', escalar: 'Escalar (interceptos)', estricta: 'Estricta (residuos)' };
 const ROTULO_ORDINAL = { configural: 'Configural', umbrales: 'Umbrales', metrica: 'Métrica (umbrales y cargas)', escalar: 'Escalar (umbrales, cargas e interceptos)' };

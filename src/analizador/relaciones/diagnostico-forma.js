@@ -3,43 +3,38 @@
 // de distancias y η por tramos), comparación de formas por AICc (Hurvich y Tsai, 1989) con pesos de Akaike (Burnham y
 // Anderson, 2002), clasificación de la curva ganadora (giros y curvatura en el rango observado) y recomendación del
 // coeficiente y del análisis adecuados.
-import { cdfNormal, betaRegularizada, cdfF } from '../psicometria/numerico.js';
+import { cdfNormal, cdfF, minimizarSeccionAurea } from '../../core/stats/numerico.js';
+import { pCorrelacion, icCorrelacion } from '../../core/stats/correlacion.js';
 import { pruebaDosRectas, pruebaLindMehlum, equivalenciaCorrelacion } from './confirmacion-forma.js';
 import { pruebasPermutacionForma } from './pruebas-permutacion-forma.js';
 import { media, malla, cuantil, cuantilPonderado, aicc, pearson, aleatorio, submuestraPares } from './util-numerico.js';
 export { pearson };
 import { diagnosticarNube } from './nube.js';
+import { rangosPromedio } from '../../core/stats/orden.js';
+import { aNumero } from '../../core/data/celdas.js';
+import { ajustarMco } from '../../core/stats/mco.js';
+import { barajar } from '../../core/random/permutacion.js';
+import { estandarizar } from '../../core/stats/descriptivos.js';
 
 // ---------------------------------------------------------------- utilidades
 function paresCompletos(xs, ys) {
     const x = [], y = [], filas = [];   // filas: número de fila original (desde 1) de cada par completo
     for (let i = 0; i < Math.min(xs.length, ys.length); i++) {
-        const a = Number(xs[i]), b = Number(ys[i]);
-        if (Number.isFinite(a) && Number.isFinite(b) && xs[i] !== '' && ys[i] !== '' && xs[i] !== null && ys[i] !== null) { x.push(a); y.push(b); filas.push(i + 1); }
+        const a = aNumero(xs[i]), b = aNumero(ys[i]);   // (2026.12.18) la conversión del núcleo (antes, Number con sus excepciones)
+        if (Number.isFinite(a) && Number.isFinite(b)) { x.push(a); y.push(b); filas.push(i + 1); }
     }
     return { x: Float64Array.from(x), y: Float64Array.from(y), filas };
 }
-// p bilateral de una correlación con la t de Student (n − 2 gl): P(|T| > t) = I_{gl/(gl+t²)}(gl/2, 1/2)
-export function pDeCorrelacion(r, n) {
-    if (!(n > 2) || !Number.isFinite(r)) return NaN;
-    if (Math.abs(r) >= 1) return 0;
-    const gl = n - 2, t = (r * Math.sqrt(gl)) / Math.sqrt(1 - r * r);
-    return betaRegularizada(gl / (gl + t * t), gl / 2, 0.5);
+// (2026.12.17) p e IC de la correlación, del núcleo único (core/stats/correlacion.js): p bilateral por la t con n − 2 gl,
+// IC por la z de Fisher y, para la ρ de Spearman, el error típico de Bonett y Wright (2000), el de todo el programa (hasta
+// la 2026.12.16 aquí era el de Fieller, Hartley y Pearson, 1957, √(1,06/(n − 3)), y en la vista principal el de Bonett y
+// Wright: la misma ρ tenía dos intervalos).
+export function pDeCorrelacion(r, n) { return n > 2 && Number.isFinite(r) ? pCorrelacion(r, n) : NaN; }
+export function icFisher(r, n, spearman = false) {
+    const ic = icCorrelacion(r, n, { spearman });
+    return ic ? [ic.inferior, ic.superior] : [NaN, NaN];
 }
-// IC por la transformación de Fisher; para ρ de Spearman, EE = √(1,06/(n − 3)) (Fieller, Hartley y Pearson, 1957)
-export function icFisher(r, n, factor = 1) {
-    if (!(n > 3) || !(Math.abs(r) < 1)) return [NaN, NaN];
-    const z = Math.atanh(r), ee = Math.sqrt(factor / (n - 3));
-    return [Math.tanh(z - 1.959963984540054 * ee), Math.tanh(z + 1.959963984540054 * ee)];
-}
-export function rangosMedios(v) {
-    const n = v.length, o = new Uint32Array(n);
-    for (let i = 0; i < n; i++) o[i] = i;
-    o.sort((p, q) => v[p] - v[q]);
-    const r = new Float64Array(n);
-    for (let i = 0; i < n;) { let j = i; while (j + 1 < n && v[o[j + 1]] === v[o[i]]) j++; const m = (i + j) / 2 + 1; for (let k = i; k <= j; k++) r[o[k]] = m; i = j + 1; }
-    return r;
-}
+export const rangosMedios = rangosPromedio;   // (2026.12.12) del núcleo único
 
 // ---------------------------------------------------------------- τ-b de Kendall (Knight, 1966): O(n log n) con empates
 export function kendallTauB(x, y) {
@@ -105,7 +100,7 @@ export function correlacionDistancias(xs, ys, { maximo = 5000, maximoPermutacion
     let mayores = 0; const u01 = aleatorio(semilla);
     for (let r = 0; r < R; r++) {
         for (let i = 0; i < m; i++) perm[i] = i;
-        for (let i = m - 1; i > 0; i--) { const j = Math.floor(u01() * (i + 1)); const t = perm[i]; perm[i] = perm[j]; perm[j] = t; }
+        barajar(perm, u01);
         if (dcov2(px, py, pax, pay, perm) >= obs - 1e-15) mayores++;
     }
     return { dcor, p: (1 + mayores) / (R + 1), B: R, n: x.length, nPermutacion: m };
@@ -136,24 +131,17 @@ export function etaPorTramos(x, y) {
 // valores aunque haya cientos de miles de casos; antes, 157 s con n = 200 000). Con más de 20 000 valores distintos
 // (X continua en una base enorme) se ajusta sobre una submuestra determinista de 20 000 casos.
 const MAXIMO_VALORES_AJUSTE = 20000;
+// (2026.12.21) El MCO ponderado del núcleo único (core/stats/mco.js, por la QR de X, con su criterio de colinealidad; antes,
+// ecuaciones normales con Cholesky propias y un pivote mínimo relativo de 10⁻¹⁰): con los casos de cada valor de X resumidos
+// en su número (w) y la media de su Y centrada (Sc/w), la solución es la de todos los casos, y la suma de cuadrados residual
+// es la de dentro de cada valor más la ponderada de las medias: SCR = SCT − Σ Sc²/w + Σ w·(Sc/w − ŷ)². (En 120 bases de
+// prueba, el criterio de antes y el del núcleo dan las mismas sumas de cuadrados en todos los modelos.)
 function mcoPonderado(cols, w, Sc, tss) {
-    const m = w.length, p = cols.length + 1, A = Array.from({ length: p }, () => new Float64Array(p)), b = new Float64Array(p);
-    const col = a => (a === 0 ? null : cols[a - 1]);
-    for (let a = 0; a < p; a++) {
-        const ca = col(a); let sb = 0;
-        for (let j = 0; j < m; j++) sb += (ca ? ca[j] : 1) * Sc[j];
-        b[a] = sb;
-        for (let c = a; c < p; c++) { const cc = col(c); let s = 0; for (let j = 0; j < m; j++) s += w[j] * (ca ? ca[j] : 1) * (cc ? cc[j] : 1); A[a][c] = A[c][a] = s; }
-    }
-    const L = Array.from({ length: p }, () => new Float64Array(p));
-    for (let r = 0; r < p; r++) for (let c = 0; c <= r; c++) {
-        let s = A[r][c]; for (let k = 0; k < c; k++) s -= L[r][k] * L[c][k];
-        if (r === c) { if (!(s > 1e-10 * (A[r][r] || 1))) return null; L[r][r] = Math.sqrt(s); } else L[r][c] = s / L[c][c];
-    }
-    const v = new Float64Array(p); for (let r = 0; r < p; r++) { let s = b[r]; for (let k = 0; k < r; k++) s -= L[r][k] * v[k]; v[r] = s / L[r][r]; }
-    const beta = new Float64Array(p); for (let r = p - 1; r >= 0; r--) { let s = v[r]; for (let k = r + 1; k < p; k++) s -= L[k][r] * beta[k]; beta[r] = s / L[r][r]; }
-    let expl = 0; for (let a = 0; a < p; a++) expl += beta[a] * b[a];
-    return { beta, rss: Math.max(0, tss - expl) };
+    const m = w.length, yb = new Float64Array(m);
+    let dentro = tss;
+    for (let j = 0; j < m; j++) { yb[j] = Sc[j] / w[j]; dentro -= Sc[j] * yb[j]; }
+    const f = ajustarMco(yb, cols, { pesos: w });
+    return f ? { beta: f.beta, rss: Math.max(0, dentro + f.sce) } : null;
 }
 // valores distintos de z (ordenados) con su número de casos y su suma de y
 function valoresDistintos(z, y) {
@@ -167,13 +155,9 @@ function perfil1D(rssDe, valores) {
     let mejor = { v: NaN, rss: Infinity };
     valores.forEach(v => { const r = rssDe(v); if (r < mejor.rss) mejor = { v, rss: r }; });
     const k = valores.indexOf(mejor.v);
-    let lo = valores[Math.max(0, k - 1)], hi = valores[Math.min(valores.length - 1, k + 1)];
-    const g = (Math.sqrt(5) - 1) / 2;
-    for (let it = 0; it < 40 && hi - lo > 1e-9 * (1 + Math.abs(hi)); it++) {
-        const c = hi - g * (hi - lo), d = lo + g * (hi - lo), rc = rssDe(c), rd = rssDe(d);
-        if (rc < rd) hi = d; else lo = c;
-        const m = (lo + hi) / 2, rm = rssDe(m); if (rm < mejor.rss) mejor = { v: m, rss: rm };
-    }
+    const lo = valores[Math.max(0, k - 1)], hi = valores[Math.min(valores.length - 1, k + 1)];
+    // (2026.12.25) el refinamiento, por la sección áurea del núcleo único entre los vecinos del mejor punto de la malla
+    if (hi - lo > 1e-9 * (1 + Math.abs(hi))) { const m = minimizarSeccionAurea(rssDe, lo, hi, 40), rm = rssDe(m); if (rm < mejor.rss) mejor = { v: m, rss: rm }; }
     return mejor;
 }
 
@@ -185,7 +169,7 @@ export function ajustarModelos(xs, ys) {
         const paso = xs.length / MAXIMO_VALORES_AJUSTE, ix = Array.from({ length: MAXIMO_VALORES_AJUSTE }, (_, k) => Math.floor(k * paso));
         x = Float64Array.from(ix, i => xs[i]); y = Float64Array.from(ix, i => ys[i]);
     }
-    const n = x.length, mx = media(x), sx = Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) / n) || 1, z = Float64Array.from(x, v => (v - mx) / sx);
+    const n = x.length, { z, media: mx, de } = estandarizar(x), sx = de || 1;   // (2026.12.25) las puntuaciones típicas del núcleo único
     const { u, w, S } = valoresDistintos(z, y), m = u.length, my = media(y);
     let tss = 0; for (let i = 0; i < n; i++) tss += (y[i] - my) ** 2;
     const Sc = Float64Array.from(S, (s, j) => s - w[j] * my), zmin = u[0], rango = u[m - 1] - zmin || 1;
@@ -314,7 +298,7 @@ export function diagnosticarForma(xs, ys, opciones = {}) {
     const r = pearson(x, y), rho = pearson(rangosMedios(x), rangosMedios(y)), kt = kendallTauB(x, y);
     const coeficientes = {
         r: { valor: r, p: pDeCorrelacion(r, n), ic: icFisher(r, n) },
-        rho: { valor: rho, p: pDeCorrelacion(rho, n), ic: icFisher(rho, n, 1.06) },
+        rho: { valor: rho, p: pDeCorrelacion(rho, n), ic: icFisher(rho, n, true) },
         tau: { valor: kt.tau, p: kt.p },
         dcor: correlacionDistancias(x, y, opciones),
         eta: etaPorTramos(x, y)

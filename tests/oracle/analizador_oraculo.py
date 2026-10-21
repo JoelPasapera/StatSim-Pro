@@ -25,8 +25,8 @@ def descriptivas(v):
 
 a, b = y_g[g2 == 0], y_g[g2 == 1]
 t_eq = stats.ttest_ind(a, b, equal_var=True); t_w = stats.ttest_ind(a, b, equal_var=False)
-u = stats.mannwhitneyu(a, b, alternative='two-sided')
-lev = stats.levene(a, b, center='median')   # el Analizador usa la variante de Brown–Forsythe (mediana), la más robusta y la predeterminada de SciPy
+u = stats.mannwhitneyu(a, b, alternative='two-sided', use_continuity=False, method='asymptotic')   # como SPSS (y el Analizador): sin continuidad
+lev = stats.levene(a, b, center='mean')   # como SPSS (y el Analizador desde la 2026.12.15): centrada en la media
 grupos3 = [y[g3 == k] for k in (1, 2, 3)]
 f = stats.f_oneway(*grupos3); kw = stats.kruskal(*grupos3)
 sw = stats.shapiro(z); pr = stats.pearsonr(x, y); sp = stats.spearmanr(x, y); reg = stats.linregress(x, y)

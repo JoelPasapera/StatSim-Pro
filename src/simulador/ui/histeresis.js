@@ -2,7 +2,7 @@
 // estado de dos valores por onda que depende del camino de una escala repetida: se entra por encima del umbral de entrada y se sale
 // por debajo del de salida; entre los dos se conserva el estado anterior.
 
-import { parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, parsearLineaCSV } from '../../shared/csv.js';
 import { mostrarToast } from '../../shared/toast.js';
 
 const escapar = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -45,7 +45,7 @@ function agregarFilaHisteresis(datos = null) {
 
 // CSV de la tabla (lo usa el maestro)
 function csvDeHisteresis() {
-    const esc = v => (/[",]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     let csv = 'Escala,Estado,EtiquetaBaja,EtiquetaAlta,PercentilEntrada,PercentilSalida,Nitidez\n';
     document.querySelectorAll('#bodyHisteresis .fila-histeresis').forEach(fila => {
         const v = et => { const el = fila.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };

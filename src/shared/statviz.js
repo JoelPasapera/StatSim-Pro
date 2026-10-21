@@ -20,29 +20,29 @@
 //   · hierarchy + pack (empaquetado de círculos front-chain)
 //   · geoNaturalEarth1 (con fitExtent) + geoPath
 // ============================================================
+import { media, desviacion } from '../core/stats/descriptivos.js';
+import { cuantilOrdenado } from '../core/stats/orden.js';
+
 const d3 = {};
 
 // ---------------- estadísticos ----------------
-const nums = a => Array.from(a, Number).filter(Number.isFinite);
+// los valores numéricos, como en d3: sin null, undefined, NaN ni textos no numéricos (2026.12.25: null contaba como 0)
+const nums = a => Array.from(a, x => (x === null ? NaN : Number(x))).filter(Number.isFinite);
 d3.min = (a, f) => { const v = f ? Array.from(a, f) : a; let m; for (const x of v) if (x != null && x >= x && (m === undefined || x < m)) m = x; return m; };
 d3.max = (a, f) => { const v = f ? Array.from(a, f) : a; let m; for (const x of v) if (x != null && x >= x && (m === undefined || x > m)) m = x; return m; };
 d3.extent = (a, f) => [d3.min(a, f), d3.max(a, f)];
 d3.sum = (a, f) => { let s = 0; let i = -1; for (const x of a) { const v = f ? +f(x, ++i, a) : +x; if (Number.isFinite(v)) s += v; } return s; };
-d3.mean = (a, f) => { const v = nums(f ? Array.from(a, f) : a); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : undefined; };
+// (2026.12.25) la media, el cuantil de tipo 7 y la DE muestral, del núcleo único; aquí, la interfaz de d3 (sin los valores no
+// numéricos; undefined sin datos)
+d3.mean = (a, f) => { const v = nums(f ? Array.from(a, f) : a); return v.length ? media(v) : undefined; };
 d3.median = (a, f) => d3.quantile(f ? Array.from(a, f) : a, 0.5);
 d3.quantile = (a, p, f) => {
     const v = nums(f ? Array.from(a, f) : a).sort((x, y) => x - y);
-    if (!v.length) return undefined;
-    if (p <= 0 || v.length < 2) return v[0];
-    if (p >= 1) return v[v.length - 1];
-    const i = (v.length - 1) * p, lo = Math.floor(i);
-    return v[lo] + (v[lo + 1] - v[lo]) * (i - lo);
+    return v.length ? cuantilOrdenado(v, p) : undefined;
 };
 d3.deviation = (a, f) => {
     const v = nums(f ? Array.from(a, f) : a);
-    if (v.length < 2) return undefined;
-    const m = v.reduce((s, x) => s + x, 0) / v.length;
-    return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1));
+    return v.length < 2 ? undefined : desviacion(v);
 };
 d3.range = (a, b, paso) => {
     if (b === undefined) { b = a; a = 0; }
@@ -85,13 +85,40 @@ d3.format = (espec) => {
 };
 
 // ---------------- escalas ----------------
+// (2026.12.30) Un color «#rgb», «#rrggbb» o «rgb(r, g, b)» como [r, g, b]; null si no lo es.
+function colorRGB(c) {
+    if (typeof c !== 'string') return null;
+    const s = c.trim();
+    let m = /^#([0-9a-f]{3})$/i.exec(s);
+    if (m) return [...m[1]].map(h => parseInt(h + h, 16));
+    m = /^#([0-9a-f]{6})$/i.exec(s);
+    if (m) return [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+    m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i.exec(s);
+    return m ? [+m[1], +m[2], +m[3]] : null;
+}
+// Entre dos valores del rango: números, en línea recta; colores, canal a canal (como d3.interpolateRgb, «rgb(r, g, b)»);
+// otra cosa, el más cercano.
+function interpolarRango(a, b, t) {
+    if (typeof a === 'number' && typeof b === 'number') return a + t * (b - a);
+    const ca = colorRGB(a), cb = colorRGB(b);
+    if (ca && cb) return `rgb(${ca.map((v, i) => Math.round(v + t * (cb[i] - v))).join(', ')})`;
+    return t < 0.5 ? a : b;
+}
 d3.scaleLinear = function () {
     let dominio = [0, 1], rango = [0, 1], sujetar = false;
+    // (2026.12.30) Polilineal, como la de d3: con N puntos de dominio y de rango, cada tramo entre dos puntos seguidos; y
+    // con colores en el rango, los interpola. Antes usaba solo los dos primeros puntos y aplicaba «r0 + t·(r1 − r0)» a
+    // los colores: el mapa del panorama pintaba «#1e3a5fNaN», es decir, todos los países con dato en negro.
     function escala(x) {
-        const [d0, d1] = dominio, [r0, r1] = rango;
+        const k = Math.min(dominio.length, rango.length);
+        if (k < 2) return rango[0];
+        const creciente = dominio[k - 1] >= dominio[0];
+        let i = 0;
+        while (i < k - 2 && (creciente ? x > dominio[i + 1] : x < dominio[i + 1])) i++;
+        const d0 = dominio[i], d1 = dominio[i + 1];
         let t = d1 === d0 ? 0.5 : (x - d0) / (d1 - d0);
         if (sujetar) t = Math.max(0, Math.min(1, t));
-        return r0 + t * (r1 - r0);
+        return interpolarRango(rango[i], rango[i + 1], t);
     }
     escala.domain = d => d === undefined ? dominio.slice() : (dominio = Array.from(d, Number), escala);
     escala.range = r => r === undefined ? rango.slice() : (rango = Array.from(r), escala);
@@ -624,6 +651,50 @@ d3.geoNaturalEarth1 = function () {
     proy.translate = t => t === undefined ? [tx, ty] : (tx = +t[0], ty = +t[1], proy);
     return proy;
 };
+/**
+ * (2026.12.30) Un anillo de un polígono (en grados) cortado en el antimeridiano: los países que lo cruzan (Rusia, Fiyi,
+ * la Antártida) cruzaban el mapa con rayas horizontales, porque dos vértices seguidos, uno en +179° y otro en −179°,
+ * quedaban unidos por una línea de lado a lado. Con un número par de cruces, el anillo se parte en trozos a cada lado,
+ * cerrados por el propio antimeridiano; con uno impar (un anillo que rodea un polo, la Antártida), se cierra por el polo.
+ * @param {Array<[number, number]>} coords
+ * @returns {Array<Array<[number, number]>>}
+ */
+function cortarEnAntimeridiano(coords) {
+    const n = coords.length;
+    const cruza = i => Math.abs(coords[i][0] - coords[i - 1][0]) > 180;
+    let cruces = 0;
+    for (let i = 1; i < n; i++) if (cruza(i)) cruces++;
+    if (!cruces) return [coords];
+    // la latitud del cruce entre a y b, y el lado (±180) de a
+    const cruce = (a, b) => {
+        const lado = a[0] > 0 ? 180 : -180;
+        const lonB = b[0] + (a[0] > 0 ? 360 : -360);
+        const t = lonB === a[0] ? 0 : (lado - a[0]) / (lonB - a[0]);
+        return [lado, a[1] + t * (b[1] - a[1])];
+    };
+    if (cruces % 2 === 1) {
+        // rodea un polo: desde el cruce, una vuelta entera, y de vuelta por el polo de su lado
+        let k = 1; while (!cruza(k)) k++;
+        const vuelta = [...coords.slice(k, n - 1), ...coords.slice(0, k)];
+        const [lado, lat] = cruce(coords[k - 1], coords[k]);
+        const polo = coords.reduce((s, c) => s + c[1], 0) / n < 0 ? -90 : 90;
+        return [[[-lado, lat], ...vuelta, [lado, lat], [lado, polo], [-lado, polo]]];
+    }
+    /** @type {Array<Array<[number, number]>>} */
+    const trozos = [];
+    let actual = [coords[0]];
+    for (let i = 1; i < n; i++) {
+        if (cruza(i)) {
+            const [lado, lat] = cruce(coords[i - 1], coords[i]);
+            actual.push([lado, lat]);
+            trozos.push(actual);
+            actual = [[-lado, lat], coords[i]];
+        } else actual.push(coords[i]);
+    }
+    // el último trozo sigue al primero (el anillo se cierra en su primer punto)
+    trozos[0] = [...actual, ...trozos[0].slice(1)];
+    return trozos;
+}
 d3.geoPath = function (proyeccion) {
     let proy = proyeccion || (c => c);
     function anillo(coords) {
@@ -634,12 +705,13 @@ d3.geoPath = function (proyeccion) {
         });
         return d + 'Z';
     }
+    const poligono = anillos => anillos.map(a => cortarEnAntimeridiano(a).map(anillo).join('')).join('');
     function path(objeto) {
         if (!objeto) return '';
         const g = objeto.type === 'Feature' ? objeto.geometry : objeto;
         if (!g) return '';
-        if (g.type === 'Polygon') return g.coordinates.map(anillo).join('');
-        if (g.type === 'MultiPolygon') return g.coordinates.map(p => p.map(anillo).join('')).join('');
+        if (g.type === 'Polygon') return poligono(g.coordinates);
+        if (g.type === 'MultiPolygon') return g.coordinates.map(poligono).join('');
         if (g.type === 'LineString') return anillo(g.coordinates).replace(/Z$/, '');
         if (g.type === 'MultiLineString') return g.coordinates.map(c => anillo(c).replace(/Z$/, '')).join('');
         if (g.type === 'Sphere') {

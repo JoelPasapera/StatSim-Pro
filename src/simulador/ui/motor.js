@@ -4,7 +4,7 @@
 import { BaseColumnar } from '../../core/data/base-columnar.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { reconciliarEstructurasTodas } from './estructura.js';
-import { habilitarDescargaCSV, habilitarUsarGenerados, mostrarDiagnosticoCorrelaciones, mostrarInformePedidoObtenido, mostrarPreview, publicarDatosGenerados } from './resultado.js';
+import { habilitarDescargaCSV, habilitarUsarGenerados, mostrarAvisosDeValidacion, mostrarDiagnosticoCorrelaciones, mostrarInformePedidoObtenido, mostrarPreview, publicarDatosGenerados } from './resultado.js';
 
 // ========================================
 // MOTOR DE GENERACIÓN (B4): Web Worker con respaldo en el hilo principal
@@ -122,6 +122,27 @@ function ocultarProgresoGeneracion() {
     if (cont) cont.hidden = true;
 }
 
+/**
+ * (2026.12.31) Deja en la página una base generada o restaurada de un proyecto (simulador/ui/proyecto.js): el generador
+ * queda con ella, igual que si la hubiera generado él mismo (descargas, etiquetas, Analizador), y se pintan la vista
+ * previa, el diagnóstico de correlaciones, el informe «pedido vs. obtenido» y los botones de descarga.
+ * @param {{ base: any, informe?: any[], configuracion?: any, diagnosticoCorrelaciones?: any, resumenImperfecciones?: any, diferenciasLimitadas?: any[] }} resultado
+ */
+function mostrarResultadoGeneracion(resultado) {
+    generadorDatos.datosGenerados = resultado.base;
+    // (B7) la configuración vuelve EXPANDIDA (ondas T2… como escalas): etiquetas, estructura y descargas la necesitan así.
+    if (resultado.configuracion) generadorDatos.configuracion = resultado.configuracion;
+    generadorDatos.diagnosticoCorrelaciones = resultado.diagnosticoCorrelaciones;
+    generadorDatos.resumenImperfecciones = resultado.resumenImperfecciones;
+    generadorDatos.diferenciasLimitadas = resultado.diferenciasLimitadas || [];
+    publicarDatosGenerados(resultado.base);
+    mostrarPreview(resultado.base);
+    mostrarDiagnosticoCorrelaciones();
+    mostrarInformePedidoObtenido(resultado.base, resultado.informe);
+    habilitarDescargaCSV();
+    habilitarUsarGenerados();
+}
+
 function generarBaseDatos() {
     try {
         if (typeof BaseColumnar === 'undefined') {
@@ -132,15 +153,17 @@ function generarBaseDatos() {
         generadorDatos.recolectarConfiguracion();
         // Validar
         const validacion = generadorDatos.validarConfiguracion();
+        // (2026.12.30) todos, en la tarjeta bajo «Generar»; el aviso emergente, el primero y cuántos más hay
+        mostrarAvisosDeValidacion(validacion.errores, validacion.advertencias);
+        const mas = (/** @type {string[]} */ l) => (l.length > 1 ? ` (y ${l.length - 1} más, en la lista bajo «Generar»)` : '');
         if (validacion.errores.length > 0) {
-            mostrarToast('Error: ' + validacion.errores[0], 'error');
+            mostrarToast('Error: ' + validacion.errores[0] + mas(validacion.errores), 'error');
             return;
         }
-        if (validacion.advertencias.length > 0) {
+        const nAvisos = validacion.advertencias.length;
+        if (nAvisos > 0) {
             console.warn('Advertencias:', validacion.advertencias);
-            // Mostrar la primera advertencia de forma visible (la más relevante
-            // suele ser la de factibilidad de la Media/DE frente al rango).
-            mostrarToast('⚠ ' + validacion.advertencias[0], 'warning', 9000);
+            mostrarToast('⚠ ' + validacion.advertencias[0] + mas(validacion.advertencias), 'warning', 9000);
         }
         // Generar datos (asíncrono: Worker o respaldo en el hilo)
         const boton = document.getElementById('btnGenerar');
@@ -151,21 +174,7 @@ function generarBaseDatos() {
         const configuracion = generadorDatos.obtenerConfiguracion();
         MotorGeneracion.generar(configuracion, mostrarProgresoGeneracion)
             .then(resultado => {
-                // El generador de la página queda con el resultado, igual que si
-                // hubiera generado él mismo (descargas, etiquetas, Analizador).
-                generadorDatos.datosGenerados = resultado.base;
-                // (B7) la configuración vuelve EXPANDIDA (ondas T2… como escalas):
-                // etiquetas, estructura y descargas la necesitan así.
-                if (resultado.configuracion) generadorDatos.configuracion = resultado.configuracion;
-                generadorDatos.diagnosticoCorrelaciones = resultado.diagnosticoCorrelaciones;
-                generadorDatos.resumenImperfecciones = resultado.resumenImperfecciones;
-                generadorDatos.diferenciasLimitadas = resultado.diferenciasLimitadas;
-                publicarDatosGenerados(resultado.base);
-                mostrarPreview(resultado.base);
-                mostrarDiagnosticoCorrelaciones();
-                mostrarInformePedidoObtenido(resultado.base, resultado.informe);
-                habilitarDescargaCSV();
-                habilitarUsarGenerados();
+                mostrarResultadoGeneracion(resultado);
                 const ri = resultado.resumenImperfecciones || {};
                 const partesRi = [];
                 if (ri.perdidos) partesRi.push(`${ri.perdidos} valores perdidos`);
@@ -176,7 +185,9 @@ function generarBaseDatos() {
                 if (ri.controles) partesRi.push(`${ri.controles} ítem(s) de control (${ri.fallosControl} fallos)`);
                 if (ri.tiempo) partesRi.push('tiempo de respuesta');
                 const tiempo = resultado.ms >= 1000 ? ` (${(resultado.ms / 1000).toFixed(1)} s)` : '';
-                mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}${tiempo}` : `¡Base de datos generada exitosamente!${tiempo}`, 'success', partesRi.length ? 8000 : undefined);
+                // (2026.12.30) con avisos, el de «generada» los recuerda (antes tapaba el único que se mostraba)
+                const conAvisos = nAvisos ? ` · ${nAvisos === 1 ? 'un aviso' : `${nAvisos} avisos`} de la configuración: revísalo${nAvisos === 1 ? '' : 's'} bajo «Generar»` : '';
+                mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}${tiempo}${conAvisos}` : `¡Base de datos generada exitosamente!${tiempo}${conAvisos}`, nAvisos ? 'warning' : 'success', partesRi.length || nAvisos ? 9000 : undefined);
             })
             .catch(error => {
                 mostrarToast(error.message, 'error');
@@ -195,4 +206,4 @@ function generarBaseDatos() {
     }
 }
 
-export { MotorGeneracion, mostrarProgresoGeneracion, ocultarProgresoGeneracion, generarBaseDatos };
+export { MotorGeneracion, mostrarProgresoGeneracion, ocultarProgresoGeneracion, mostrarResultadoGeneracion, generarBaseDatos };

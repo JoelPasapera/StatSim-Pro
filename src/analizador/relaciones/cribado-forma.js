@@ -10,21 +10,20 @@
 // falsa («no es lineal») engaña más que perder una curva sutil, que la tarjeta 7 examina a fondo (con Benjamini y
 // Hochberg, la tasa real de falsos descubrimientos llegó al 10 %). La p de cada par se calibra por bootstrap (abajo), con una semilla estable por par.
 // Es un CRIBADO: la forma exacta la decide el diagnóstico completo de la tarjeta 7.
-import { cdfF } from '../psicometria/numerico.js';
-import { media, cuantilPonderado, aleatorio, submuestraPares } from './util-numerico.js';
+import { cdfF } from '../../core/stats/numerico.js';
+import { ajustarHolm } from '../../core/stats/multiples.js';
+import { cuantilPonderado, aleatorio, submuestraPares } from './util-numerico.js';
+import { estandarizar } from '../../core/stats/descriptivos.js';
 import { pruebaDosRectas } from './confirmacion-forma.js';
+import { aNumero } from '../../core/data/celdas.js';
+import { factorQR, inversaXtX } from '../../core/linalg/qr.js';
+import { TOLERANCIA_COLINEALIDAD } from '../../core/stats/mco.js';
+import { inversaDefinidaPositiva } from '../../core/linalg/cholesky.js';
 
 const MINIMO_CASOS = 20;
-function inversa(A) {   // matriz simétrica definida positiva pequeña (Cholesky); null si es singular
-    const p = A.length, L = Array.from({ length: p }, () => new Float64Array(p));
-    for (let i = 0; i < p; i++) for (let j = 0; j <= i; j++) {
-        let s = A[i][j]; for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
-        if (i === j) { if (!(s > 1e-12 * (Math.abs(A[i][i]) || 1))) return null; L[i][i] = Math.sqrt(s); } else L[i][j] = s / L[j][j];
-    }
-    const Li = Array.from({ length: p }, () => new Float64Array(p));
-    for (let i = 0; i < p; i++) { Li[i][i] = 1 / L[i][i]; for (let j = 0; j < i; j++) { let s = 0; for (let k = j; k < i; k++) s -= L[i][k] * Li[k][j]; Li[i][j] = s / L[i][i]; } }
-    return Array.from({ length: p }, (_, i) => Float64Array.from({ length: p }, (_, j) => { let s = 0; for (let k = Math.max(i, j); k < p; k++) s += Li[k][i] * Li[k][j]; return s; }));
-}
+// la covarianza del Wald: una matriz simétrica definida positiva pequeña, por Cholesky; null si es singular (un pivote
+// menor que 10⁻¹² veces su diagonal). (2026.12.25) La inversa del núcleo único (core/linalg/cholesky.js); antes, una copia.
+const inversa = A => inversaDefinidaPositiva(A, { tolerancia: 1e-12 });
 // RESET robusta de Y sobre X: H0 «X² y X³ no aportan» (solo X² si X tiene 3 valores distintos). El estadístico es el de
 // Wald con HC3 y su p se calibra por bootstrap salvaje con residuos restringidos (Davidson y Flachaire, 2008): datos
 // generados bajo la recta, con la heterocedasticidad y la asimetría de sus residuos. La p asintótica (F) fallaba en la
@@ -33,8 +32,8 @@ export function resetRobusta(xs, ys, { B = 999, semilla = 20261102, maximo = 200
     const [x, y] = submuestraPares(xs, ys, maximo);   // la calibración cuesta B réplicas: con bases enormes basta una submuestra
     const n = x.length, distintos = new Set(x).size;
     if (n < MINIMO_CASOS || distintos < 3) return { evaluable: false, motivo: n < MINIMO_CASOS ? `menos de ${MINIMO_CASOS} casos` : 'menos de 3 valores distintos' };
-    const grado = distintos >= 4 ? 3 : 2, p = grado + 1, mx = media(x), sx = Math.sqrt(x.reduce((s, v) => s + (v - mx) ** 2, 0) / n) || 1;
-    const z = Float64Array.from(x, v => (v - mx) / sx);
+    // (2026.12.25) las puntuaciones típicas del núcleo único (DE poblacional; sin varianza, la escala 1)
+    const grado = distintos >= 4 ? 3 : 2, p = grado + 1, { z, media: mx, de } = estandarizar(x), sx = de || 1;
     // (revisión 2026.11.03) todo lo que depende de X se calcula por VALOR DISTINTO (diseño, (XᵀX)⁻¹, palanca h): cada réplica
     // solo necesita, por valor, la suma de Y y la de Y², con las que el «sándwich» HC3 se reconstruye EXACTAMENTE
     // (Σ e² del grupo = ΣY² − 2ŷΣY + w·ŷ²). Antes cada réplica recorría los n casos con p² productos: 7 s con 20 pares.
@@ -43,8 +42,10 @@ export function resetRobusta(xs, ys, { B = 999, semilla = 20261102, maximo = 200
     const uL = [], wL = [], grupo = new Int32Array(n);
     for (let k = 0; k < n;) { let j = k; while (j < n && z[o[j]] === z[o[k]]) { grupo[o[j]] = uL.length; j++; } uL.push(z[o[k]]); wL.push(j - k); k = j; }
     const u = Float64Array.from(uL), w = Float64Array.from(wL), m = u.length, X = Array.from({ length: p }, (_, k) => Float64Array.from(u, v => v ** k));
-    const A = Array.from({ length: p }, (_, a) => Float64Array.from({ length: p }, (_, c) => { let s = 0; for (let j = 0; j < m; j++) s += w[j] * X[a][j] * X[c][j]; return s; }));
-    const Ai = inversa(A); if (!Ai) return { evaluable: false, motivo: 'diseño singular' };
+    // (2026.12.21) (XᵀWX)⁻¹ por la QR del núcleo de las columnas escaladas por √w (antes, XᵀWX invertida por Cholesky)
+    const qr = factorQR(X.map(col => Float64Array.from(col, (v, j) => v * Math.sqrt(w[j]))), { tolerancia: TOLERANCIA_COLINEALIDAD });
+    if (qr.rango < p) return { evaluable: false, motivo: 'diseño singular' };
+    const Ai = inversaXtX(qr);
     const h = new Float64Array(m); for (let j = 0; j < m; j++) { let s = 0; for (let a = 0; a < p; a++) for (let c = 0; c < p; c++) s += X[a][j] * Ai[a][c] * X[c][j]; h[j] = s; }
     const idx = Array.from({ length: grado - 1 }, (_, k) => k + 2), S = new Float64Array(m), Q = new Float64Array(m);
     const wald = yy => {
@@ -82,21 +83,16 @@ const semillaDelPar = (a, b) => { let hsh = 0x811c9dc5; for (const ch of `${a}\u
 // forma de Y en función de X para un par; si la cúbica sugiere un giro (y hay indicio de curva), las dos rectas deciden
 function formaPar(xs, ys, opciones = {}) {
     const x = [], y = [];
-    // la misma conversión que la correlación principal (parseFloat): las marcas se refieren exactamente a sus datos
-    for (let i = 0; i < Math.min(xs.length, ys.length); i++) { const a = parseFloat(xs[i]), b = parseFloat(ys[i]); if (Number.isFinite(a) && Number.isFinite(b)) { x.push(a); y.push(b); } }
+    // la misma conversión que la correlación principal (core/data/celdas.js): las marcas se refieren exactamente a sus datos
+    for (let i = 0; i < Math.min(xs.length, ys.length); i++) { const a = aNumero(xs[i]), b = aNumero(ys[i]); if (Number.isFinite(a) && Number.isFinite(b)) { x.push(a); y.push(b); } }
     const r = resetRobusta(Float64Array.from(x), Float64Array.from(y), opciones);
     if (!r.evaluable) return { evaluable: false, motivo: r.motivo, n: x.length };
     let giro = null;
     if (r.p < 0.05) for (const g of r.giros) { const dr = pruebaDosRectas(r.x, r.y, g.tipo); if (dr.confirmada) { giro = { x: dr.corte, tipo: g.tipo }; break; } }
     return { evaluable: true, n: x.length, p: r.p, pAsintotica: r.pAsintotica, B: r.B, monotona: !giro, giro };
 }
-// Holm (1979): p ajustados que controlan la probabilidad de alguna marca falsa en la familia, con cualquier dependencia
-export function ajustarHolm(ps) {
-    const m = ps.length, orden = ps.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]), ajust = new Array(m);
-    let maximo = 0;
-    orden.forEach(([p, i], k) => { maximo = Math.max(maximo, Math.min(1, (m - k) * p)); ajust[i] = maximo; });
-    return ajust;
-}
+// (2026.12.17) Holm (1979), del núcleo único (core/stats/multiples.js): controla la probabilidad de alguna marca falsa en
+// la familia con cualquier dependencia entre los pares
 export const claveParForma = (a, b) => [a, b].sort().join('\u0001');
 // cribado de una familia de pares {a, b} (nombres de columna) sobre filas de objetos; devuelve un Map clave → resultado
 export function cribarFormas(filasTodas, pares, { alfa = 0.05 } = {}) {

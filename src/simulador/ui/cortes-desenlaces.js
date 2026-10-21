@@ -1,7 +1,7 @@
 // simulador/ui/cortes-desenlaces.js — tarjeta VIII (puntos de corte y desenlaces).
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
-import { escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { obtenerVariablesCorrelacionables } from './correlaciones.js';
 import { nombresGeneralesDerivados } from './pruebas.js';
 
@@ -83,7 +83,7 @@ function actualizarFilaDesenlace(fila) {
 
 function csvDeCortes() {
     let csv = 'Variable,CategoriasCortes\n';
-    const esc = v => (String(v).includes(',') || String(v).includes('"') ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyCortes .fila-corte').forEach(f => { csv += `${esc((f.querySelector('select') || {}).value || '')},${esc((f.querySelector('input') || {}).value || '')}\n`; });
     return csv;
 }
@@ -93,7 +93,9 @@ function aplicarCSVCortes(csv) {
     const tbody = document.getElementById('bodyCortes'); if (tbody) tbody.innerHTML = '';
     let aplicadas = 0;
     for (const linea of lineas.slice(1)) {
-        const [variable, texto] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const [variable, texto] = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!variable) continue;
         const fila = agregarFilaCorte({ variable, texto });
         if (fila && fila.querySelector('select').value === '') { fila.remove(); continue; }
@@ -104,7 +106,7 @@ function aplicarCSVCortes(csv) {
 
 function csvDeDesenlaces() {
     let csv = 'Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3\n';
-    const esc = v => (String(v).includes(',') || String(v).includes('"') ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyDesenlaces .fila-desenlace').forEach(f => {
         const v = et => { const el = f.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
         csv += [v('Nombre del desenlace'), v('Tipo de desenlace'), v('Parámetro del desenlace'), v('Predictor 1'), v('Efecto del predictor 1'), v('Predictor 2'), v('Efecto del predictor 2'), v('Predictor 3'), v('Efecto del predictor 3')].map(esc).join(',') + '\n';
@@ -117,7 +119,9 @@ function aplicarCSVDesenlaces(csv) {
     const tbody = document.getElementById('bodyDesenlaces'); if (tbody) tbody.innerHTML = '';
     let aplicadas = 0;
     for (const linea of lineas.slice(1)) {
-        const v = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, '').replace(/""/g, '"'));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const v = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!v[0]) continue;
         const predictores = [];
         for (let j = 0; j < 3; j++) if (v[3 + 2 * j]) predictores.push({ variable: v[3 + 2 * j], efecto: v[4 + 2 * j] });

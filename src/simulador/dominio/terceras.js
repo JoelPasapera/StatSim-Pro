@@ -1,3 +1,4 @@
+// @ts-check
 // simulador/dominio/terceras.js — terceras variables (Atlas de relaciones, fase C; sin DOM ni estado).
 // Tres fenómenos en los que una tercera variable Z cambia lo que se ve de la relación entre X e Y:
 //   confusión:    Z causa X e Y. La r de orden cero incluye lo que pasa por Z; la relación VERDADERA es la parcial.
@@ -15,18 +16,50 @@ export const TIPOS_TERCERA = Object.freeze({
     colisionador: Object.freeze({ etiqueta: 'Colisionador', verdadera: 'cero' })
 });
 
+/** @typedef {keyof typeof TIPOS_TERCERA} TipoTercera  'confusion', 'supresion' o 'colisionador' */
+/**
+ * Las tres correlaciones y la parcial que implica una fila de tercera variable.
+ * @typedef {object} EstructuraTercera
+ * @property {number} rXZ  r de Z con X
+ * @property {number} rYZ  r de Z con Y
+ * @property {number} rXY  r de X con Y de orden cero
+ * @property {number} parcial  r parcial de X e Y controlando Z
+ * @property {boolean} posible  la matriz es definida positiva (en el colisionador, |parcial| < .99)
+ */
+
+/**
+ * ¿Es un tipo de tercera variable?
+ * @param {string} tipo
+ * @returns {boolean}
+ */
 export const esTerceraVariable = tipo => Object.prototype.hasOwnProperty.call(TIPOS_TERCERA, tipo);
 
 // r parcial de X e Y controlando Z
+/**
+ * @param {number} rXY
+ * @param {number} rXZ
+ * @param {number} rYZ
+ * @returns {number}  NaN si |r(X,Z)| o |r(Y,Z)| es 1
+ */
 export function parcialDe(rXY, rXZ, rYZ) {
     const k = Math.sqrt((1 - rXZ * rXZ) * (1 - rYZ * rYZ));
     return k > 0 ? (rXY - rXZ * rYZ) / k : NaN;
 }
 
 // β estandarizado de X en la regresión de Y sobre X y Z
+/**
+ * @param {number} rXY
+ * @param {number} rXZ
+ * @param {number} rYZ
+ * @returns {number}
+ */
 export const betaControlado = (rXY, rXZ, rYZ) => (rXY - rYZ * rXZ) / (1 - rXZ * rXZ);
 
 // Las tres correlaciones y la parcial que implica una fila: { rXZ, rYZ, rXY, parcial, posible }
+/**
+ * @param {{ tipo: TipoTercera, c1: number, c2: number, c3: number }} fila  c1 = r(Z,X), c2 = r(Z,Y), c3 = la relación verdadera
+ * @returns {EstructuraTercera}
+ */
 export function estructuraTercera({ tipo, c1, c2, c3 }) {
     const k = Math.sqrt((1 - c1 * c1) * (1 - c2 * c2));
     if (TIPOS_TERCERA[tipo].verdadera === 'parcial') return { rXZ: c1, rYZ: c2, rXY: c3 * k + c1 * c2, parcial: c3, posible: true };
@@ -36,6 +69,12 @@ export function estructuraTercera({ tipo, c1, c2, c3 }) {
 
 // ¿Muestran las dos r el fenómeno? Confusión: la relación se reduce al controlar Z; supresión: crece; colisionador: cambia
 // (aparece) al controlar Z. Umbral de .05 en valor absoluto. Devuelve { hay, texto } (el texto, sin las cifras).
+/**
+ * @param {string} tipo
+ * @param {number} rXY  r de orden cero
+ * @param {number} parcial  r parcial controlando Z
+ * @returns {{ hay: boolean, texto: string }}
+ */
 export function fenomenoTercera(tipo, rXY, parcial) {
     const a = Math.abs(rXY), b = Math.abs(parcial), invierte = a >= 0.05 && b >= 0.05 && Math.sign(rXY) !== Math.sign(parcial);
     if (tipo === 'confusion') {

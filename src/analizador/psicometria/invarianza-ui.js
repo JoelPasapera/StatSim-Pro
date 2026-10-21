@@ -6,6 +6,7 @@ import { CABECERA_AJUSTE, filasAjuste, notaAjuste, CABECERA_COMPARACIONES, filas
 import { mostrarToast } from '../../shared/toast.js';
 import { descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
+import { esPerdido } from '../../core/data/celdas.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -20,7 +21,7 @@ export function variablesDeGrupo(filas, excluir = []) {
     const esItem = c => { const m = /^(.*?)\d+$/.exec(c); return !!m && prefijos.get(m[1]) >= 3; };   // PE1, PE2, PE3… son ítems
     return columnas.filter(c => !fuera.has(c) && !esItem(c)).filter(c => {
         const cuenta = new Map();
-        for (const f of filas) { const v = f[c]; if (v === '' || v === null || v === undefined) continue; cuenta.set(String(v), (cuenta.get(String(v)) || 0) + 1); if (cuenta.size > 8) return false; }
+        for (const f of filas) { const v = f[c]; if (esPerdido(v)) continue; cuenta.set(String(v), (cuenta.get(String(v)) || 0) + 1); if (cuenta.size > 8) return false; }   // (2026.12.18) un NaN no es una categoría
         return cuenta.size >= 2 && [...cuenta.values()].every(n => n >= 10);
     });
 }

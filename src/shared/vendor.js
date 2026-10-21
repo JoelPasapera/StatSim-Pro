@@ -21,3 +21,14 @@ export function asegurarHtmlDocx() {
     return cargarScript('assets/vendor/html-docx.min.js', () => typeof htmlDocx !== 'undefined' && !!htmlDocx.asBlob).then(() => (typeof htmlDocx !== 'undefined' ? htmlDocx : null)).catch(() => null);
 }
 
+
+// ExcelJS (leer y escribir .xlsx) solo cuando se exporta o importa una hoja: el Buscador, el Ranking de revistas y las
+// fuentes del Redactor, todos con la copia local (2026.12.30: hasta entonces, un cargador por módulo —el del Redactor,
+// desde dos CDN— y el «⬇ Excel» del Ranking sin ninguno, que avisaba «ExcelJS no está cargado» y no descargaba nada).
+// Rechaza con un mensaje para el usuario si no se pudo descargar; se puede reintentar.
+export function asegurarExcelJS() {
+    const lista = () => typeof ExcelJS !== 'undefined';
+    return cargarScript('assets/vendor/exceljs.min.js', lista).then(
+        () => { if (!lista()) throw new Error('El módulo de Excel se descargó, pero no se pudo iniciar. Recarga la página e inténtalo de nuevo.'); },
+        () => { throw new Error('No se pudo descargar el módulo de Excel. Revisa tu conexión e inténtalo de nuevo.'); });
+}

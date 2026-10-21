@@ -7,6 +7,7 @@ import { CABECERA_NUBE, filasNube, notaNube, parrafoNube } from './nube-redaccio
 import { mostrarToast } from '../../shared/toast.js';
 import { descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -18,11 +19,11 @@ function columnasCuantitativas(filas) {
     if (!filas.length) return [];
     return Object.keys(filas[0]).filter(c => {
         let num = 0, total = 0; const vistos = new Set();
-        for (const f of filas) { const v = f[c]; if (v === '' || v === null || v === undefined) continue; total++; const x = typeof v === 'number' ? v : Number(String(v).replace(',', '.')); if (Number.isFinite(x)) { num++; if (vistos.size < 3) vistos.add(x); } }
+        // (2026.12.18) los perdidos y la conversión del núcleo: antes, el NaN del Simulador contaba como valor no numérico
+        for (const f of filas) { const v = f[c]; if (esPerdido(v)) continue; total++; const x = aNumero(v); if (Number.isFinite(x)) { num++; if (vistos.size < 3) vistos.add(x); } }
         return total > 0 && num / total >= 0.8 && vistos.size >= 3;
     });
 }
-const aNumero = v => (v === '' || v === null || v === undefined ? NaN : typeof v === 'number' ? v : Number(String(v).replace(',', '.')));
 
 const PLANTILLA = () => `
     <h3 class="card-title">7. Diagnóstico de la forma de una relación <span class="help-text" style="display:inline;">— opcional</span></h3>

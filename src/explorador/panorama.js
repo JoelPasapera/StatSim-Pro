@@ -5,6 +5,8 @@ import { ProxiesCORS } from '../shared/proxies.js';
 import { Explorar } from './explorar.js';
 import { topojson } from './topo-lite.js';
 import { d3 } from '../shared/statviz.js';
+import { escaparHTML } from '../shared/html.js';
+import { mediana as medianaNucleo } from '../core/stats/orden.js';
 
 // ========================================
 // PANORAMA MUNDIAL DE SALUD MENTAL — F1 (módulo del Explorador).
@@ -47,7 +49,7 @@ const PanoramaMundial = {
                   <option value="ylds" disabled data-gbd>Discapacidad (YLDs)</option>
                 </select>
               </label>
-              <span id="panEstado" class="help-text" style="margin:0;"></span>
+              <span id="panEstado" class="help-text" role="status" aria-live="polite" style="margin:0;"></span>
             </div>
             <div id="panMapa" style="overflow:auto;"></div>
             <div id="panLeyenda" class="help-text" style="margin-top:0.4rem;"></div>
@@ -57,6 +59,11 @@ const PanoramaMundial = {
         slot.appendChild(card);
         document.getElementById('panAbrir').addEventListener('click', () => this._abrir());
         // UNA delegación para todo el panorama (mapa + capas del panel).
+        // (2026.12.30) cada país se enfoca con el teclado (Tab) y se elige con Intro o Espacio, como con el ratón
+        card.addEventListener('keydown', (e) => {
+            const pais = e.target && e.target.closest ? e.target.closest('path[data-num]') : null;
+            if (pais && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); this._elegirPais(pais.dataset.num); }
+        });
         card.addEventListener('click', (e) => {
             const pais = e.target.closest('path[data-num]');
             if (pais) { this._elegirPais(pais.dataset.num); return; }
@@ -67,17 +74,6 @@ const PanoramaMundial = {
             else if (b.dataset.cap === 'ir') this._explorar();
         });
     },
-    _cargarTopojson() {
-        // (F5) el decodificador viene importado como módulo; ya no se carga por etiqueta
-        return new Promise((res, rej) => {
-            if (typeof topojson !== 'undefined' || window.topojson) return res();
-            const s = document.createElement('script');
-            s.src = 'src/explorador/topo-lite.js';
-            s.onload = () => res();
-            s.onerror = () => rej(new Error('No se pudo cargar el decodificador TopoJSON (src/explorador/topo-lite.js)'));
-            document.head.appendChild(s);
-        });
-    },
     async _abrir() {
         const est = document.getElementById('panEstado');
         document.getElementById('panPortada').style.display = 'none';
@@ -86,13 +82,14 @@ const PanoramaMundial = {
         try {
             const [mundo, iso] = await Promise.all([
                 fetch('assets/data/countries-110m.json').then(r => r.json()),
-                fetch('assets/data/iso-codigos.json').then(r => r.json()),
-                this._cargarTopojson()
+                fetch('assets/data/iso-codigos.json').then(r => r.json())
             ]);
             this._iso = iso;
             this._num2info = {};
             for (const [iso3, v] of Object.entries(iso)) this._num2info[v.n] = { iso3, es: v.es };
-            this._paises = window.topojson.feature(mundo, mundo.objects.countries).features;
+            // (2026.12.30) el decodificador importado (topo-lite.js): «window.topojson» no existe desde que es un módulo, y el
+            // panorama no cargaba nunca («Cannot read properties of undefined (reading 'feature')»)
+            this._paises = topojson.feature(mundo, mundo.objects.countries).features;
             // Los indicadores OMS pueden fallar (red, proxies): el mapa se
             // pinta SIEMPRE — con datos si llegan, en gris con aviso si no.
             this._datos = {};
@@ -144,14 +141,19 @@ const PanoramaMundial = {
         return Object.keys(mejor).length > 30 ? { datos: mejor, anio: anioMax } : null;
     },
     async _cargarGBD() {
-        // 1º: dataset local (si algún día existe, manda).
-        try {
-            const r = await fetch('gbd-datos.json');
-            if (r.ok) {
-                const g = await r.json();
-                if (g && g.indicadores) { this._gbd = g; this._activarGBD(); return; }
-            }
-        } catch (e) { /* seguimos a OWID */ }
+        // 1º: dataset local (si algún día existe, manda). (2026.12.30) Solo si index.html lo declara con
+        // <meta name="statsim-gbd" content="gbd-datos.json">: pedirlo a ciegas dejaba en cada visita un 404 en la consola.
+        const declarado = typeof document !== 'undefined' && document.querySelector('meta[name="statsim-gbd"]');
+        const ruta = declarado ? (declarado.getAttribute('content') || '').trim() : '';
+        if (ruta) {
+            try {
+                const r = await fetch(ruta);
+                if (r.ok) {
+                    const g = await r.json();
+                    if (g && g.indicadores) { this._gbd = g; this._activarGBD(); return; }
+                }
+            } catch (e) { /* sin el dataset: las opciones siguen dormidas */ }
+        }
         // Sin dataset local no hay más vías: el IHME (GBD 2023) publica bajo
         // una licencia que prohíbe la redistribución, y Our World in Data
         // desactivó la descarga abierta de estos datos. Antes de inventar
@@ -214,8 +216,7 @@ const PanoramaMundial = {
             if (!p || anio > p.anio) porPais[iso3] = { anio, vals: [val] };
             else if (anio === p.anio) p.vals.push(val);
         }
-        const mediana = a => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1;
-            return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+        const mediana = medianaNucleo;;   // del núcleo único
         const porNum = {};
         for (const [iso3, p] of Object.entries(porPais))
             porNum[this._iso[iso3].n] = { anio: p.anio, val: mediana(p.vals), n: p.vals.length, iso3 };
@@ -303,7 +304,7 @@ const PanoramaMundial = {
             const nombre = info ? info.es : (f.properties.name || '');
             const fill = dato ? color(dato.val) : '#26314a';
             const titulo = dato ? `${nombre} — ${dato.val.toFixed(1)} ${act.unidad}${dato.anio ? ` (${dato.anio}` + ', ' + act.fuente + ')' : ''}` : `${nombre} — sin dato`;
-            return `<path d="${path(f)}" data-num="${num}" fill="${fill}" stroke="#0b0f19" stroke-width="0.5" style="cursor:pointer;"><title>${titulo}</title></path>`;
+            return `<path d="${path(f)}" data-num="${num}" fill="${fill}" stroke="#0b0f19" stroke-width="0.5" style="cursor:pointer;"${info ? ` tabindex="0" role="button" aria-label="${escaparHTML(titulo)}"` : ''}><title>${escaparHTML(titulo)}</title></path>`;
         }).join('');
         cont.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px; display:block; margin:0 auto;" class="pan-svg" font-family="inherit">${trazos}</svg>`;
         document.getElementById('panLeyenda').innerHTML =
@@ -311,7 +312,7 @@ const PanoramaMundial = {
         if (!document.getElementById('panEstilos')) {
             const st = document.createElement('style');
             st.id = 'panEstilos';
-            st.textContent = `.pan-svg path{transition:fill-opacity .12s;}.pan-svg path:hover{fill-opacity:.75;stroke:#e6b93f;stroke-width:1.2;}
+            st.textContent = `.pan-svg path{transition:fill-opacity .12s;}.pan-svg path:hover,.pan-svg path:focus-visible{fill-opacity:.75;stroke:#e6b93f;stroke-width:1.2;outline:none;}
             #panPanel .pan-chip{display:inline-block;margin:0.15rem;padding:0.3rem 0.75rem;border-radius:999px;border:1px solid var(--color-border,#2a3b52);background:transparent;color:inherit;cursor:pointer;font-size:0.85em;transition:background-color .12s,color .12s,border-color .12s;}
             #panPanel .pan-chip:hover{border-color:#e6b93f;color:#f3d787;}
             #panPanel .pan-chip.act{background:rgba(230,185,63,.14);border-color:#e6b93f;color:#f3d787;font-weight:600;}`;

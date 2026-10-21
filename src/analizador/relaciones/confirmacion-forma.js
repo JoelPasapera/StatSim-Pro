@@ -5,32 +5,22 @@
 //  · prueba de Lind y Mehlum (2010) sobre las pendientes del modelo cuadrático en los extremos de los datos (Sasabuchi,
 //    1980) e IC de Fieller (1954) para la ubicación del vértice;
 //  · prueba de equivalencia TOST para la correlación (Lakens, 2017).
-import { cdfNormal, cuantilNormal, betaRegularizada, cuantilF } from '../psicometria/numerico.js';
+import { cdfNormal, cuantilNormal, betaRegularizada, cuantilF } from '../../core/stats/numerico.js';
 import { cuantil } from './util-numerico.js';
+import { ajustarMco } from '../../core/stats/mco.js';
+import { inversaDefinidaPositiva } from '../../core/linalg/cholesky.js';
+import { media } from '../../core/stats/descriptivos.js';
 
 // ---------------------------------------------------------------- álgebra pequeña
-function inversaSimetrica(A) {
-    const p = A.length, L = Array.from({ length: p }, () => new Float64Array(p));
-    for (let i = 0; i < p; i++) for (let j = 0; j <= i; j++) {
-        let s = A[i][j]; for (let k = 0; k < j; k++) s -= L[i][k] * L[j][k];
-        if (i === j) { if (!(s > 1e-12 * (Math.abs(A[i][i]) || 1))) return null; L[i][i] = Math.sqrt(s); } else L[i][j] = s / L[j][j];
-    }
-    const Li = Array.from({ length: p }, () => new Float64Array(p));
-    for (let i = 0; i < p; i++) { Li[i][i] = 1 / L[i][i]; for (let j = 0; j < i; j++) { let s = 0; for (let k = j; k < i; k++) s -= L[i][k] * Li[k][j]; Li[i][j] = s / L[i][i]; } }
-    const inv = Array.from({ length: p }, () => new Float64Array(p));
-    for (let i = 0; i < p; i++) for (let j = 0; j <= i; j++) { let s = 0; for (let k = i; k < p; k++) s += Li[k][i] * Li[k][j]; inv[i][j] = inv[j][i] = s; }
-    return inv;
-}
-// MCO con constante: β, residuos, (XᵀX)⁻¹ y las filas de X (para HC3)
+// la inversa de una matriz simétrica definida positiva (los sistemas del P-spline y la covarianza HC3), por Cholesky;
+// null si es singular (un pivote menor que 10⁻¹² veces su diagonal). (2026.12.25) La del núcleo único; antes, una copia.
+const inversaSimetrica = A => inversaDefinidaPositiva(A, { tolerancia: 1e-12 });
+// MCO con constante: β, residuos, (XᵀX)⁻¹ y las filas de X (para HC3). (2026.12.21) Del núcleo único (core/stats/mco.js, por
+// la QR de X, con su criterio de colinealidad); antes, ecuaciones normales invertidas por Cholesky
 function mcoCompleto(cols, y) {
-    const n = y.length, p = cols.length + 1, fila = i => [1, ...cols.map(c => c[i])];
-    const A = Array.from({ length: p }, () => new Float64Array(p)), b = new Float64Array(p);
-    for (let i = 0; i < n; i++) { const f = fila(i); for (let a = 0; a < p; a++) { b[a] += f[a] * y[i]; for (let c = a; c < p; c++) A[a][c] += f[a] * f[c]; } }
-    for (let a = 0; a < p; a++) for (let c = 0; c < a; c++) A[a][c] = A[c][a];
-    const inv = inversaSimetrica(A); if (!inv) return null;
-    const beta = Array.from({ length: p }, (_, a) => inv[a].reduce((s, v, c) => s + v * b[c], 0)), resid = new Float64Array(n);
-    let rss = 0; for (let i = 0; i < n; i++) { const f = fila(i); resid[i] = y[i] - f.reduce((s, v, a) => s + v * beta[a], 0); rss += resid[i] ** 2; }
-    return { beta, inv, resid, rss, n, p, fila };
+    const f = ajustarMco(y, cols, { conInversa: true }); if (!f) return null;
+    const fila = i => [1, ...cols.map(c => c[i])];
+    return { beta: Array.from(f.beta), inv: f.inversa, resid: f.residuos, rss: f.sce, n: y.length, p: cols.length + 1, fila };
 }
 const pBilateralT = (t, gl) => (Number.isFinite(t) ? betaRegularizada(gl / (gl + t * t), gl / 2, 0.5) : NaN);
 const pSuperiorT = (t, gl) => (t >= 0 ? pBilateralT(t, gl) / 2 : 1 - pBilateralT(t, gl) / 2);   // P(T > t)
@@ -125,8 +115,7 @@ export function pruebaDosRectas(x, y, extremo) {
 // ---------------------------------------------------------------- Lind y Mehlum (2010) + Fieller (1954)
 export function pruebaLindMehlum(x, y, extremo) {
     const n = x.length; if (n < 10) return { error: 'Hacen falta al menos 10 casos.' };
-    let m = 0; for (const v of x) m += v; m /= n;
-    const u = Float64Array.from(x, v => v - m), f = mcoCompleto([u, Float64Array.from(u, v => v * v)], y);
+    const m = media(x), u = Float64Array.from(x, v => v - m), f = mcoCompleto([u, Float64Array.from(u, v => v * v)], y);
     if (!f) return { error: 'El modelo cuadrático no se pudo estimar.' };
     const [, b, c] = f.beta, gl = n - 3, s2 = f.rss / gl, Vbb = s2 * f.inv[1][1], Vcc = s2 * f.inv[2][2], Vbc = s2 * f.inv[1][2];
     let uL = Infinity, uH = -Infinity; for (const v of u) { if (v < uL) uL = v; if (v > uH) uH = v; }

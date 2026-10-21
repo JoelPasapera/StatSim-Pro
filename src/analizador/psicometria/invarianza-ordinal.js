@@ -11,8 +11,9 @@
 import { estadisticosOrdinales } from './wlsmv.js';
 import { multiplicar, traspuesta, inversaDefinidaPositiva } from './algebra.js';
 import { bfgs } from './optimizacion.js';
-import { gammaRegularizadaQ, ncpParaProbabilidad, cdfNormal } from './numerico.js';
+import { gammaRegularizadaQ, ncpParaProbabilidad, cdfNormal } from '../../core/stats/numerico.js';
 import { CRITERIOS_CHEN, validarModeloDeMedida } from './invarianza.js';
+import { aNumero, esPerdido } from '../../core/data/celdas.js';
 
 export const NIVELES_ORDINALES = [
     { clave: 'configural', nombre: 'Configural', umbrales: false, cargas: false, interceptos: false },
@@ -203,8 +204,8 @@ export function estadisticosOrdinalesPorGrupo(filas, items, variableGrupo, { min
     const porGrupo = new Map();
     let excluidos = 0;
     for (const f of filas) {
-        const gv = f[variableGrupo], x = items.map(c => { const v = f[c]; return v === '' || v === null || v === undefined ? NaN : Number(typeof v === 'string' ? v.trim().replace(',', '.') : v); });
-        if (gv === '' || gv === null || gv === undefined || x.some(v => !Number.isFinite(v))) { excluidos++; continue; }
+        const gv = f[variableGrupo], x = items.map(c => aNumero(f[c]));   // (2026.12.18) la conversión y los perdidos del núcleo
+        if (esPerdido(gv) || x.some(v => !Number.isFinite(v))) { excluidos++; continue; }
         const k = String(gv);
         (porGrupo.get(k) || porGrupo.set(k, []).get(k)).push(x);
     }

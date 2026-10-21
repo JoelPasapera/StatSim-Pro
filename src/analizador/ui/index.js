@@ -3,7 +3,8 @@
 
 import { ExportadorWord } from '../exportador-word.js';
 import { actualizarTituloRegresion, agregarPredictorExtra, agregarVariableExtra, ejecutarAnalisis } from './analisis.js';
-import { actualizarEtiquetasAnalisis, cargarArchivoCSV, cargarDatosGenerados } from './carga.js';
+import { actualizarEtiquetasAnalisis, alCambiarHojaXlsx, cargarArchivo, cargarDatosGenerados } from './carga.js';
+import './proyecto.js';   // (2026.12.31) lo que el Analizador guarda en un proyecto (se inscribe al importarse)
 import { descargarResultados } from './sociodemografica.js';
 import { parsearLineaCSV } from '../../shared/csv.js';
 import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
@@ -29,7 +30,9 @@ export function montarAnalizador() {
     // Botón usar datos generados
     document.getElementById('btnUsarGenerados').addEventListener('click', cargarDatosGenerados);
     // Input file CSV
-    document.getElementById('fileInput').addEventListener('change', cargarArchivoCSV);
+    document.getElementById('fileInput').addEventListener('change', cargarArchivo);   // (2026.12.29) un CSV o un .sav; (2026.12.31) o un .xlsx
+    const hojaXlsx = document.getElementById('hojaXlsx');   // (2026.12.31) otra hoja del libro de Excel cargado
+    if (hojaXlsx) hojaXlsx.addEventListener('change', alCambiarHojaXlsx);
     // Editor de etiquetas SIEMPRE visible: antes de cargar datos muestra su
     // versión de espera para que la función sea descubrible.
     if (typeof EtiquetasVariables !== 'undefined' && EtiquetasVariables.mostrarVacio) {

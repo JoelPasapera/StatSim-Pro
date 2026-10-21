@@ -7,7 +7,7 @@ central de SciPy. Escribe sem_fixture.json; lo compara tests/unit/sem-ml.test.js
 import json
 import numpy as np
 from scipy.optimize import minimize, brentq
-from scipy.stats import chi2, ncx2
+from scipy.stats import chi2, ncx2, norm
 
 fx = json.load(open('afe_fixture.json', encoding='utf-8'))
 X = np.array(fx['cols'], dtype=float).T                     # los 12 ítems del oráculo del AFE (3 factores)
@@ -56,7 +56,7 @@ ncp_hi = brentq(lambda l: ncx2.cdf(x2, gl, l) - 0.05, 1e-9, 10 * x2 + 100)
 ncp_lo = 0.0 if chi2.cdf(x2, gl) < 0.95 else brentq(lambda l: ncx2.cdf(x2, gl, l) - 0.95, 1e-9, 10 * x2 + 100)
 d = np.sqrt(np.diag(S)); dm = np.sqrt(np.diag(Sg)); Ro = S / np.outer(d, d); Rm = Sg / np.outer(dm, dm)
 il = np.tril_indices(p); srmr = float(np.sqrt(((Ro - Rm)[il] ** 2).mean()))
-salida = {'n': n, 'parametros': {nm: [float(v), float(e)] for (_, _, _, nm), v, e in zip(libres, th, se)}, 'F': F, 'chi2': float(x2), 'gl': gl,
+salida = {'n': n, 'parametros': {nm: [float(v), float(e), float(2 * norm.sf(abs(v / e)))] for (_, _, _, nm), v, e in zip(libres, th, se)}, 'F': F, 'chi2': float(x2), 'gl': gl,
           'pChi2': float(chi2.sf(x2, gl)), 'CFI': float(cfi), 'TLI': float(tli), 'RMSEA': float(rmsea),
           'rmseaIC': [float(np.sqrt(ncp_lo / (gl * (n - 1)))), float(np.sqrt(ncp_hi / (gl * (n - 1))))], 'SRMR': srmr}
 # validez convergente y discriminante (solución estandarizada implicada; HTMT con la matriz de correlaciones muestral)

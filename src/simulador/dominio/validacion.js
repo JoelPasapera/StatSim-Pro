@@ -2,13 +2,34 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { ReglasCoherencia } from './reglas-coherencia.js';
+import { mulberry32 } from '../../core/random/mulberry32.js';
+import { normalBoxMuller } from '../../core/random/normal.js';
 import { deParaProporcion, formaCensurada } from './censura.js';
 import { distanciaNecesaria, recorridoMaximo, casosNecesarios, limitesEscala } from './atipicos.js';
 import { esFormaCompuesta, nombreEnFrase, recorteEsperado, etaMaximaSinRecorte } from './formas-relacion.js';
 import { esNubeCompuesta, nubePorId, gNube, momentosNube, etaNaturalTriangulo, razonBordesTriangulo } from './nubes-relacion.js';
-import { NIVELES_DESAJUSTE, TAMANO_MUESTRAL_MAXIMO } from './constantes.js';
+import { NIVELES_DESAJUSTE, TAMANO_MUESTRAL_MAXIMO, IMPERFECCIONES } from './constantes.js';
 import { esTerceraVariable, estructuraTercera, TIPOS_TERCERA } from './terceras.js';
-import { estructuraPanel } from './paneles.js';
+import { estructuraPanel, correlacionEntreOndas } from './paneles.js';
+import { rTotalSimpson } from './simpson.js';
+import { cdfNormal } from '../../core/stats/normal.js';
+
+/** (2026.12.30) ¿Hay un límite (un número, no una celda vacía)? @param {unknown} v */
+const limite = v => v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v));
+/**
+ * (revisión 2026.12.30) La parte de una log-normal con esa media y esa DE (la asimétrica del generador) que cae por debajo
+ * de `minimo` o por encima de `maximo` (null: sin ese límite).
+ * @param {number} media @param {number} de @param {number | null} minimo @param {number | null} maximo
+ */
+function colasLogNormal(media, de, minimo, maximo) {
+    if (!(media > 0) || !(de > 0)) return 0;
+    const sigma2 = Math.log(1 + (de * de) / (media * media)), sigma = Math.sqrt(sigma2), mu = Math.log(media) - sigma2 / 2;
+    const bajo = minimo === null || minimo <= 0 ? 0 : cdfNormal((Math.log(minimo) - mu) / sigma);
+    const alto = maximo === null ? 0 : maximo <= 0 ? 1 : 1 - cdfNormal((Math.log(maximo) - mu) / sigma);
+    return bajo + alto;
+}
+/** Un número con dos decimales como mucho. @param {number} x */
+const redondear = x => String(Math.round(x * 100) / 100);
 
 export const metodosValidacion = {
     // ========================================
@@ -33,7 +54,7 @@ export const metodosValidacion = {
         const afectadas = new Set([at.x, at.y, ...generales]), usos = [];
         if ((cfg.correlaciones || []).some(c => (afectadas.has(c.a) || afectadas.has(c.b)) && !((c.a === at.x && c.b === at.y) || (c.a === at.y && c.b === at.x)))) usos.push(`otras correlaciones de la tabla III${generales.length ? ` (también las de ${generales.map(g => `«${g}»`).join(', ')})` : ''}`);
         if ((cfg.modelos || []).some(md => [md.x, md.m, md.y].some(v => afectadas.has(v)))) usos.push('modelos o relaciones con forma');
-        if ((cfg.diferenciasGrupo || []).some(d => d.cuantitativa === at.x || d.cuantitativa === at.y)) usos.push('diferencias por grupo');
+        if ((cfg.diferenciasGrupo || []).some(d => d.origen !== 'simpson' && (d.cuantitativa === at.x || d.cuantitativa === at.y))) usos.push('diferencias por grupo');   // las de Simpson: su fila ya cuenta entre los modelos
         if ((cfg.medidasRepetidas || []).some(m => m.variable === at.x || m.variable === at.y)) usos.push('medidas repetidas');
         if (cfg.seleccion) usos.push('la selección por rango');
         if (['estructuras', 'desenlaces', 'cortes', 'concordancias'].some(k => JSON.stringify(cfg[k] || []).includes(`"${at.x}"`) || JSON.stringify(cfg[k] || []).includes(`"${at.y}"`))) usos.push('estructura, desenlaces, puntos de corte o concordancia');
@@ -49,7 +70,7 @@ export const metodosValidacion = {
         } else if (d < 2) advertencias.push(`${et}: los casos quedarían a solo ${d.toFixed(1)} DE de la mayoría y no parecerán atípicos; usa menos casos o una muestra mayor.`);
         // las imperfecciones se aplican después y también alcanzan a las filas atípicas (un perdido o una respuesta al azar en una
         // de ellas cambia la r con los atípicos: .098 para .05 con un 10 % de perdidos y de descuidados)
-        if (['pctPerdidos', 'pctDescuidados', 'pctAquiescencia', 'pctExtremos', 'pctDigitacion'].some(c => (cfg.realismo || {})[c] > 0)) advertencias.push(`${et}: los datos perdidos, los respondientes descuidados, los estilos de respuesta y los errores de digitación se aplican después y también alcanzan a las filas atípicas; el informe verifica la base antes de aplicarlos y muestra aparte su efecto.`);
+        if (IMPERFECCIONES.some(c => (cfg.realismo || {})[c] > 0)) advertencias.push(`${et}: los datos perdidos, los respondientes descuidados, los estilos de respuesta y los errores de digitación se aplican después y también alcanzan a las filas atípicas; el informe verifica la base antes de aplicarlos y muestra aparte su efecto.`);
     },
 
     // (Atlas, dimensión B3) selección por rango: variable cuantitativa relacionada en la tabla III, proporción razonable,
@@ -62,25 +83,24 @@ export const metodosValidacion = {
         if (p && p.tipo === 'general') { errores.push(`${et}: es un puntaje general, que se deriva del promedio de sus dimensiones; elige una de sus dimensiones.`); return; }
         if (!(sel.proporcion >= 0.05 && sel.proporcion <= 0.95)) errores.push(`${et}: el porcentaje seleccionado debe estar entre el 5 % y el 95 %.`);
         // (Atlas, fase C) las terceras variables son estructuras de correlaciones de la misma matriz: cuentan como la tabla III
-        const correlacionesSel = (cfg.correlaciones || []).concat(this._correlacionesImplicadasPorTerceras());
+        // la fuente única de correlaciones implicadas (antes, solo las terceras: con Simpson, la variable «no se relacionaba» aunque
+        // su fila fijara su r)
+        const correlacionesSel = (cfg.correlaciones || []).concat(this._correlacionesImplicadasDirectas());
         if (!correlacionesSel.some(c => (c.a === sel.variable || c.b === sel.variable) && c.r !== 0)) errores.push(`${et}: la variable no se relaciona con ninguna otra en la tabla III, así que la selección solo recortaría su distribución; añade sus correlaciones.`);
         const N = Math.ceil(cfg.tamanoMuestra / sel.proporcion);
         if (N > TAMANO_MUESTRAL_MAXIMO) errores.push(`${et}: para quedarse con ${cfg.tamanoMuestra} casos hay que generar una población de ${N}, más que el máximo (${TAMANO_MUESTRAL_MAXIMO}); sube el porcentaje o baja el N.`);
-        const incompatibles = [['diferencias por grupo', cfg.diferenciasGrupo], ['modelos o relaciones con forma o nube', (cfg.modelos || []).filter(md => !esTerceraVariable(md.tipo))], ['medidas repetidas', cfg.medidasRepetidas], ['estructura factorial', cfg.estructuras], ['desenlaces', cfg.desenlaces], ['puntos de corte', cfg.cortes], ['concordancia', cfg.concordancias]].filter(([, lista]) => (lista || []).length).map(([t]) => t);
+        const incompatibles = [['diferencias por grupo', (cfg.diferenciasGrupo || []).filter(d => d.origen !== 'simpson')], ['modelos o relaciones con forma o nube', (cfg.modelos || []).filter(md => !esTerceraVariable(md.tipo))], ['medidas repetidas', cfg.medidasRepetidas], ['estructura factorial', cfg.estructuras], ['desenlaces', cfg.desenlaces], ['puntos de corte', cfg.cortes], ['concordancia', cfg.concordancias]].filter(([, lista]) => (lista || []).length).map(([t]) => t);
         if (incompatibles.length) errores.push(`${et}: aún no se combina con ${incompatibles.join(', ')}; en esta versión actúa sobre escalas, sociodemográficos continuos y las correlaciones de la tabla III.`);
-        // (revisión 2026.11.09) una escala de acierto/error relacionada: sus dificultades y su KR-20 cambian con la selección, y lo
-        // esperado aún no modela su forma beta-binomial (preveía una DE MAYOR que la poblacional)
-        const dicotomicas = [...new Set(correlacionesSel.flatMap(c => [c.a, c.b]))].filter(nombre => { const q = (cfg.pruebas || []).find(x => x.nombre === nombre); return q && this._esDicotomica(q); });
-        if (dicotomicas.length) errores.push(`${et}: aún no se combina con escalas de acierto/error relacionadas en la tabla III (${dicotomicas.map(d => `«${d}»`).join(', ')}): con la selección cambian sus dificultades y su KR-20.`);
         // las imperfecciones se aplican tras la selección y, en una muestra con poco rango, inflan su dispersión
-        if (['pctDescuidados', 'pctAquiescencia', 'pctExtremos', 'pctDigitacion'].some(c => (cfg.realismo || {})[c] > 0)) advertencias.push(`${et}: los respondientes descuidados, los estilos de respuesta y los errores de digitación se aplican después de la selección y, como la muestra seleccionada tiene poco rango, inflan mucho su dispersión; el informe verifica la base antes de aplicarlos y muestra aparte su efecto.`);
+        if (IMPERFECCIONES.filter(c => c !== 'pctPerdidos').some(c => (cfg.realismo || {})[c] > 0)) advertencias.push(`${et}: los respondientes descuidados, los estilos de respuesta y los errores de digitación se aplican después de la selección y, como la muestra seleccionada tiene poco rango, inflan mucho su dispersión; el informe verifica la base antes de aplicarlos y muestra aparte su efecto.`);
     },
 
     // (Atlas, dimensión B2) techo o suelo de una escala: la proporción en el límite no es libre, la fijan la media, la DE y el
     // límite; se avisa si no llega al 15 % de Terwee et al. (2007), si pasa de la mitad o si la latente choca con el otro límite
     _validarCensura(prueba, totalMin, totalMax, errores, advertencias) {
         const cfg = this.configuracion, lado = prueba.distribucion, et = `Escala "${prueba.nombre}" (con ${lado})`;
-        if ((cfg.diferenciasGrupo || []).some(d => d.cuantitativa === prueba.nombre)) { errores.push(`${et}: el techo o el suelo aún no se combina con diferencias por grupo en la misma escala; quita una de las dos.`); return; }
+        const difEscala = (cfg.diferenciasGrupo || []).filter(d => d.cuantitativa === prueba.nombre);
+        if (difEscala.length) { errores.push(`${et}: el techo o el suelo aún no se combina con ${difEscala.every(d => d.origen === 'simpson') ? 'la paradoja de Simpson (sus diferencias por grupo)' : 'diferencias por grupo'} en la misma escala; quita una de las dos.`); return; }
         // (revisión 2026.11.07) ninguna distribución en [mín, máx] tiene DE² > (máx − M)(M − mín) (Bhatia y Davis, 2000); al
         // omitir para estas escalas el aviso de la DE, esta cota era la única barrera que faltaba
         const cota = Math.sqrt(Math.max(0, (totalMax - prueba.media) * (prueba.media - totalMin)));
@@ -99,8 +119,8 @@ export const metodosValidacion = {
         // simulación que calibra el α, en su objetivo interno más bajo, y con una fuente aleatoria propia: la base no cambia
         const indice = cfg.indiceFiabilidad === 'omega' ? 'omega' : 'alfa';
         if (prueba.alfa > 0 && typeof this._simularIndice === 'function') {
-            const previa = this.aleatorio; let estado = 20261105 >>> 0;
-            this.aleatorio = () => { estado = (estado + 0x6D2B79F5) >>> 0; let t = estado; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+            const previa = this.aleatorio;
+            this.aleatorio = mulberry32(20261105);   // (2026.12.25) el generador del núcleo único
             try {
                 const minimo = this._simularIndice(Object.assign({}, prueba, { formaTotal: formaCensurada(par) }), 0.01, indice, 1000);
                 if (minimo !== null && isFinite(minimo) && prueba.alfa < minimo - 0.01) advertencias.push(`${et}: con ≈ ${pct(par.pRedondeo)} de los casos en el ${limite}, el ${indice === 'omega' ? 'ω' : 'α'} no podrá bajar de ≈ ${minimo.toFixed(2)} (esos casos tienen todos sus ítems en el extremo); pide al menos ${minimo.toFixed(2)} o reduce la DE.`);
@@ -160,8 +180,26 @@ export const metodosValidacion = {
             if (pn.tipo === 'rezagada' && pn.cYX) { errores.push(`${et}: en la relación rezagada el efecto Y → X es 0; para que Y también prediga a X, usa la recíproca`); return; }
             if (![pn.r, pn.cXY, cYX].every(v => Math.abs(v) <= 0.95)) { errores.push(`${et}: la r en la misma onda y los efectos cruzados deben estar entre −0,95 y 0,95`); return; }
             [pn.x, pn.y].forEach(v => { if (usadas.has(v)) errores.push(`${et}: «${v}» ya está en otra relación en el tiempo (una escala tiene una sola dinámica)`); usadas.add(v); });
-            if (!estructuraPanel({ estabX: mx.estabilidad, estabY: my.estabilidad, r: pn.r, cXY: pn.cXY, cYX }).posible) { errores.push(`${et}: con estabilidades ${mx.estabilidad} y ${my.estabilidad}, r ${pn.r} en la misma onda y esos efectos cruzados, lo nuevo de cada onda tendría varianza negativa: la dinámica es imposible. Reduce los efectos cruzados o las estabilidades`); return; }
-            if ((cfg.correlaciones || []).some(c => [c.a, c.b].sort().join('|') === [pn.x, pn.y].sort().join('|'))) advertencias.push(`${et}: la correlación de la tabla III se sustituye por la r en la misma onda de la relación en el tiempo`);
+            // (RI-CLPM, 2026.12.07) interceptos aleatorios: ICC en [0, 0,9], r entre interceptos en ±0,95 y la estabilidad observada por
+            // encima de su ICC al menos lo justo (la de dentro, (s − ICC)/(1 − ICC), en (−1, 1)); y, en esta versión, X e Y no se relacionan
+            // con otras variables: sería ambiguo si la relación es con su nivel estable o con su parte cambiante en T1
+            const iccX = pn.iccX || 0, iccY = pn.iccY || 0, rRI = pn.rRI || 0, conRI = iccX > 0 || iccY > 0;
+            if (conRI) {
+                if (![iccX, iccY].every(v => v >= 0 && v <= 0.9)) { errores.push(`${et}: las ICC (la parte de la varianza que es nivel estable de la persona) deben estar entre 0 y 0,9`); return; }
+                if (!(Math.abs(rRI) <= 0.95)) { errores.push(`${et}: la r entre los interceptos debe estar entre −0,95 y 0,95`); return; }
+                const fuera = [[pn.x, mx.estabilidad, iccX], [pn.y, my.estabilidad, iccY]].filter(([, s, icc]) => !(Math.abs((s - icc) / (1 - icc)) < 1));
+                if (fuera.length) { errores.push(`${et}: con interceptos aleatorios, la estabilidad observada de ${fuera.map(([v, s, icc]) => `«${v}» (${s}) debe estar entre ${(2 * icc - 1).toFixed(2)} y 1 con su ICC de ${icc}`).join(' y la de ')}`); return; }
+                // la tabla III y los modelos (fuente única de las correlaciones implicadas), sin la del propio panel
+                const otras = (cfg.correlaciones || []).concat(this._correlacionesImplicadasDirectas()).filter(c => c.origen !== 'paneles' && !String(c.origen || '').startsWith('Relación en el tiempo') && (c.a === pn.x || c.b === pn.x || c.a === pn.y || c.b === pn.y) && [c.a, c.b].sort().join('|') !== [pn.x, pn.y].sort().join('|'));
+                if (otras.length) { errores.push(`${et}: con interceptos aleatorios, en esta versión X e Y no se relacionan con otras variables (${otras.map(c => `${c.a} ↔ ${c.b}`).join(', ')}): sería ambiguo si la relación es con su nivel estable o con su parte cambiante`); return; }
+            }
+            if (!estructuraPanel({ estabX: mx.estabilidad, estabY: my.estabilidad, r: pn.r, cXY: pn.cXY, cYX, iccX, iccY, rRI }).posible) { errores.push(`${et}: con estabilidades ${mx.estabilidad} y ${my.estabilidad}, r ${pn.r} en la misma onda y esos efectos cruzados, lo nuevo de cada onda tendría varianza negativa: la dinámica es imposible. Reduce los efectos cruzados o las estabilidades`); return; }
+            // (revisión de la 2026.12.08) con interceptos, la r de la fila es la de dentro: manda la observada que implica el modelo
+            if ((cfg.correlaciones || []).some(c => [c.a, c.b].sort().join('|') === [pn.x, pn.y].sort().join('|'))) {
+                const rObs = conRI ? correlacionEntreOndas(estructuraPanel({ estabX: mx.estabilidad, estabY: my.estabilidad, r: pn.r, cXY: pn.cXY, cYX, iccX, iccY, rRI }), 1, 1)[0][1] : pn.r;
+                advertencias.push(conRI ? `${et}: la correlación de la tabla III se sustituye por la observada que implica el modelo (≈ ${rObs.toFixed(2)}: la de dentro de la persona, ${pn.r}, más la de los rasgos estables)` : `${et}: la correlación de la tabla III se sustituye por la r en la misma onda de la relación en el tiempo`);
+            }
+            if (!conRI && rRI) advertencias.push(`${et}: la r entre interceptos (${rRI}) no se usa sin ICC: para un RI-CLPM, indica también la ICC de X o la de Y`);
         });
     },
 
@@ -192,9 +230,33 @@ export const metodosValidacion = {
         });
     },
 
+    // (Atlas, Simpson) G binaria; X e Y cuantitativas y distintas; la r dentro de los grupos y las dos d en rango; una diferencia del
+    // usuario sobre la misma pareja (variable, G) es un conflicto; aviso si los valores no producen el fenómeno
+    _validarSimpson(errores, advertencias) {
+        const cfg = this.configuracion, cuantitativas = new Set((cfg.pruebas || []).filter(p => !p.sufijo).map(p => p.nombre).concat((cfg.sociodemograficos || []).filter(s => !this._esSocioDiscreto(s)).map(s => s.categoria)));
+        (cfg.modelos || []).filter(md => md.tipo === 'simpson').forEach(md => {
+            const et = `Simpson ${md.x || '?'} ↔ ${md.y || '?'} (grupos de ${md.m || '?'})`, agrup = (cfg.sociodemograficos || []).find(s => s.categoria === md.m);
+            if (!agrup || !['binaria', 'categorica'].includes(agrup.distribucion) || !(this._varianzaCodigo(agrup) > 0)) { errores.push(`${et}: los grupos deben ser una variable binaria o categórica (con al menos dos niveles) de la tabla de sociodemográficos`); return; }
+            // (verificación de la 2026.11.29) un puntaje general se ofrece en los selectores pero no tiene latente propio: error propio
+            // (antes, el genérico decía que no era cuantitativo)
+            const general = [md.x, md.y].find(v => v && this._esNombreGeneral(v));
+            if (general) { errores.push(`${et}: «${general}» es un puntaje general (se deriva de sus dimensiones); la paradoja de Simpson necesita escalas o sociodemográficos continuos: usa una de sus dimensiones`); return; }
+            if (!md.x || !md.y || md.x === md.y || ![md.x, md.y].every(v => cuantitativas.has(v))) { errores.push(`${et}: X e Y deben ser dos variables cuantitativas distintas (escalas o sociodemográficos continuos)`); return; }
+            if (!(Math.abs(md.c1) <= 0.95)) { errores.push(`${et}: la r dentro de los grupos debe estar entre −0,95 y 0,95`); return; }
+            if (![md.c2, md.c3].every(d => typeof d === 'number' && Math.abs(d) <= 3)) { errores.push(`${et}: las dos diferencias entre grupos (d de Cohen) deben estar entre −3 y 3`); return; }
+            (cfg.diferenciasGrupo || []).filter(d => d.origen !== 'simpson' && d.agrupacion === md.m && (!d.tipo || d.tipo === 'd') && (d.cuantitativa === md.x || d.cuantitativa === md.y)).forEach(d => {
+                errores.push(`${et}: la diferencia por grupo de «${d.cuantitativa}» según «${md.m}» ya está en la tabla de diferencias; en la paradoja de Simpson la fija su fila (quítala de una de las dos)`);
+            });
+            if ((cfg.correlaciones || []).some(c => [c.a, c.b].sort().join('|') === [md.x, md.y].sort().join('|'))) advertencias.push(`${et}: la correlación de la tabla III se sustituye por la de toda la base que implica la paradoja`);
+            const rTot = rTotalSimpson({ rDentro: md.c1, dX: md.c2, dY: md.c3, varianzaCodigo: this._varianzaCodigo(agrup) });
+            if (!(Math.abs(md.c1) >= 0.05 && Math.abs(rTot) >= 0.05 && Math.sign(rTot) !== Math.sign(md.c1))) advertencias.push(`${et}: con estos valores la relación no se invierte al juntar los grupos (dentro, ${md.c1}; en toda la base, ${rTot.toFixed(2)}); para la paradoja, las dos d deben ir en sentidos que contradigan la r dentro de los grupos y ser grandes`);
+        });
+    },
+
     validarConfiguracion() {
         const errores = [];
         const advertencias = [];
+        this._materializarSimpson();   // (Atlas, Simpson) sus diferencias por grupo, visibles para toda la validación
         // (revisión 2026.11.14) dos siglas que darían columnas con el mismo nombre: error de validación, antes de generar. Antes
         // solo se detectaba al generar, ya dentro del Worker; allí se sigue comprobando como red de seguridad (con las ondas)
         try { this._comprobarNombresDeColumna(); } catch (e) { errores.push(e.message); }
@@ -202,10 +264,23 @@ export const metodosValidacion = {
         this._validarNiveles(errores, advertencias);
         this._validarPaneles(errores, advertencias);
         this._validarHisteresis(errores, advertencias);
+        this._validarSimpson(errores, advertencias);
 
         // Validar tamaño muestral
         if (this.configuracion.tamanoMuestra < 30) {
             advertencias.push('Tamaño muestral < 30: Los análisis estadísticos pueden tener bajo poder');
+        }
+        // (revisión 2026.12.30) con muy pocos casos para las variables continuas, el modo exacto no se puede aplicar (la
+        // correlación muestral de los drivers sería singular): la base sale por muestreo. Las variables, como las cuenta la
+        // generación (prepararCorrelaciones sobre la configuración expandida: las escalas, sus ondas T2… y sus informantes, y
+        // las sociodemográficas normales y asimétricas); hacen falta al menos tantos casos como variables más uno.
+        if (this.configuracion.correlacionesExactas !== false && this.configuracion.tamanoMuestra >= 2) {
+            let expandida = this.configuracion;
+            try { expandida = this._expandirConfiguracion(this.configuracion); } catch (e) { /* la validación de las ondas lo dirá */ }
+            const continuas = (expandida.pruebas || []).length + (expandida.sociodemograficos || []).filter(s => s.distribucion === 'normal' || s.distribucion === 'asimetrica').length;
+            if (continuas > 0 && this.configuracion.tamanoMuestra < continuas + 1) {
+                advertencias.unshift(`Con N=${this.configuracion.tamanoMuestra} y ${continuas} variables continuas, la media, la DE y las correlaciones no pueden hacerse exactas (hacen falta al menos ${continuas + 1} casos): saldrán por muestreo`);
+            }
         }
 
         // (Revisión transversal, F-7) tope duro: por encima de 1 000 000 de filas la
@@ -221,8 +296,11 @@ export const metodosValidacion = {
 
         // Validar pruebas
         this.configuracion.pruebas.forEach(prueba => {
-            // Validar que la media sea positiva
-            if (prueba.media < 0) {
+            // Validar que la media sea positiva. (2026.12.30) Salvo en una escala de ítems con mínimo negativo (un diferencial
+            // semántico de −3 a +3): su total va de k·mín a k·máx, y la factibilidad de abajo lo comprueba; hasta la
+            // 2026.12.29 se rechazaba cualquier media negativa
+            const conRangoNegativo = Number.isFinite(prueba.minimo) && prueba.minimo < 0;
+            if (prueba.media < 0 && !conRangoNegativo) {
                 errores.push(`Escala "${prueba.nombre}": La media no puede ser negativa`);
             }
 
@@ -232,6 +310,22 @@ export const metodosValidacion = {
             //    (para que quepan ±3 DE sin recortar la campana).
             // (revisión 2026.11.07) el techo o el suelo necesita el rango de la escala: sin él se ignoraba en silencio
             if ((prueba.distribucion === 'techo' || prueba.distribucion === 'suelo') && (prueba.minimo === null || prueba.maximo === null)) errores.push(`Escala "${prueba.nombre}": el ${prueba.distribucion} necesita el rango de la escala (mínimo y máximo por ítem), que es donde se amontonan los casos.`);
+            // (2026.12.30) un solo límite por ítem: sin los dos, la escala es continua (sin rango) y el límite indicado no se
+            // aplica; antes, en silencio (con «Mínimo 1» y sin máximo salían ítems de 0.6 o 2.31)
+            else if (limite(prueba.minimo) !== limite(prueba.maximo)) {
+                advertencias.push(`Escala "${prueba.nombre}": tiene ${limite(prueba.minimo) ? `mínimo por ítem (${prueba.minimo}) pero no máximo` : `máximo por ítem (${prueba.maximo}) pero no mínimo`}: sin los dos límites se genera como escala continua (puntuaciones con decimales y sin rango) y el límite indicado no se aplica. Para ítems Likert, indica el mínimo y el máximo.`);
+            }
+            // (revisión 2026.12.30) una escala continua (sin rango por ítem) cuya media está cerca del 0 respecto de su DE da
+            // totales e ítems negativos, como una sociodemográfica sin mínimo: se avisa igual. La DE de un ítem, la que deja
+            // el α pedido (σ²ᵢ = σ²·(1 − α(k − 1)/k)/k, ítems paralelos)
+            if (!limite(prueba.minimo) && !limite(prueba.maximo) && prueba.media > 0 && prueba.desviacion > 0 && prueba.numItems >= 1) {
+                const k = prueba.numItems, a = prueba.alfa > 0 && prueba.alfa < 1 ? prueba.alfa : 0;
+                const deItem = k === 1 ? prueba.desviacion : prueba.desviacion * Math.sqrt(Math.max(0, 1 - a * (k - 1) / k) / k);
+                const pTotal = cdfNormal(-prueba.media / prueba.desviacion), pItem = deItem > 0 ? cdfNormal(-(prueba.media / k) / deItem) : 0;
+                if (pTotal > 0.05 || pItem > 0.05) {
+                    advertencias.push(`Escala "${prueba.nombre}": es continua (sin rango por ítem) y, con media ${prueba.media} y DE ${prueba.desviacion}, ≈ ${Math.round(100 * pTotal)} % de los totales${k > 1 ? ` y ≈ ${Math.round(100 * pItem)} % de las puntuaciones de los ítems` : ''} serían negativos; si no pueden serlo (un tiempo, un conteo), sube la media o reduce la DE, o fija el rango por ítem (mínimo y máximo).`);
+                }
+            }
             if (prueba.minimo !== null && prueba.maximo !== null) {
                 const k = prueba.numItems;
                 const totalMin = k * prueba.minimo;
@@ -331,30 +425,17 @@ export const metodosValidacion = {
         this._validarDicotomicas(errores, advertencias);
         // (B9) dependencias, fechas de nacimiento y referencia del MAR
         this._validarSociodemograficosB9(errores, advertencias);
-        // Validar sociodemográficos
+        // Validar sociodemográficos. (2026.12.30) Solo las continuas (normal y asimétrica) y solo lo que no comprueba ya
+        // _validarBasicos (la media dentro del rango, un error, y cuánto se recorta contra él, un aviso con su porcentaje):
+        // los negativos que saldrían sin mínimo. Antes se avisaba también de las binarias, las categóricas y los conteos,
+        // cuyo «promedio» y «DE» de la tabla no son una media y una DE («Variable "Grado": La media (0) está fuera del rango
+        // [1, 3]» en cada categórica; «Desviación estándar muy alta (1) comparada con la media (0.45)» en cada binaria).
+        // (revisión 2026.12.30) La asimétrica es log-normal (generador.js, generarAsimetrico): nunca es negativa.
         this.configuracion.sociodemograficos.forEach(socio => {
-            // Validar desviación razonable
-            if (socio.desviacion > Math.abs(socio.promedio) * 2) {
-                advertencias.push(
-                    `Variable "${socio.categoria}": Desviación estándar muy alta (${socio.desviacion}) comparada con la media (${socio.promedio})`
-                );
-            }
-            
-            // Validar coherencia de límites con la media
-            if (socio.minimo !== null && socio.maximo !== null) {
-                if (socio.promedio < socio.minimo || socio.promedio > socio.maximo) {
-                    advertencias.push(
-                        `Variable "${socio.categoria}": La media (${socio.promedio}) está fuera del rango [${socio.minimo}, ${socio.maximo}]`
-                    );
-                }
-                
-                // Validar que el rango sea razonable para la desviación
-                const rango = socio.maximo - socio.minimo;
-                if (socio.desviacion > rango / 2) {
-                    advertencias.push(
-                        `Variable "${socio.categoria}": La desviación estándar (${socio.desviacion}) es muy alta para el rango [${socio.minimo}, ${socio.maximo}]`
-                    );
-                }
+            if (socio.distribucion !== 'normal' || limite(socio.minimo) || !(socio.desviacion > 0) || !(socio.promedio > 0)) return;
+            const negativos = cdfNormal(-socio.promedio / socio.desviacion);
+            if (negativos > 0.05) {
+                advertencias.push(`Variable «${socio.categoria}»: con media ${socio.promedio}, DE ${socio.desviacion} y sin mínimo, ≈ ${Math.round(100 * negativos)} % de los casos tendría un valor negativo; si la variable no puede serlo (una edad, unas horas, unos ingresos), indica el mínimo (0)`);
             }
         });
 
@@ -387,9 +468,34 @@ export const metodosValidacion = {
             if (s.distribucion === 'binaria' && !(s.promedio >= 0 && s.promedio <= 1)) errores.push(`${et}: en una binaria el promedio es la proporción de unos, entre 0 y 1 (tiene ${s.promedio})`);
             if (['normal', 'asimetrica', 'uniforme'].includes(s.distribucion)) {
                 if (!(s.desviacion > 0)) errores.push(`${et}: la DE debe ser mayor que 0`);
-                if (s.minimo !== null && s.maximo !== null && isFinite(s.minimo) && isFinite(s.maximo)) {
+                const hayMin = limite(s.minimo), hayMax = limite(s.maximo);
+                if (hayMin && hayMax) {
                     if (s.minimo >= s.maximo) errores.push(`${et}: el mínimo (${s.minimo}) debe ser menor que el máximo (${s.maximo})`);
                     else if (s.promedio < s.minimo || s.promedio > s.maximo) errores.push(`${et}: la media ${s.promedio} está fuera del rango ${s.minimo}–${s.maximo}`);
+                } else if (hayMin && s.promedio < s.minimo) errores.push(`${et}: la media ${s.promedio} está por debajo del mínimo ${s.minimo}`);
+                else if (hayMax && s.promedio > s.maximo) errores.push(`${et}: la media ${s.promedio} está por encima del máximo ${s.maximo}`);
+                // (2026.12.30) la uniforme necesita los dos límites y su media es el centro del rango (el promedio y la DE pedidos no
+                // se usan: antes se ignoraban en silencio)
+                if (s.distribucion === 'uniforme') {
+                    if (!(hayMin && hayMax)) errores.push(`${et}: una uniforme necesita el mínimo y el máximo`);
+                    else if (s.minimo < s.maximo) {
+                        const centro = (Number(s.minimo) + Number(s.maximo)) / 2, de = (s.maximo - s.minimo) / Math.sqrt(12);
+                        if (Number.isFinite(Number(s.promedio)) && Math.abs(s.promedio - centro) > 0.05 * (s.maximo - s.minimo)) advertencias.push(`${et}: en una uniforme la media es el centro del rango (${redondear(centro)}) y la DE, ${redondear(de)}: el promedio pedido (${s.promedio}) no se usa; para otra media, elige la distribución normal o la asimétrica`);
+                    }
+                } else if (s.distribucion === 'asimetrica' && !(s.promedio > 0)) {
+                    // (revisión 2026.12.30) la asimétrica es una log-normal: con una media de 0 o negativa no existe (se
+                    // generaba con una media de 10⁻⁶ y una cola descomunal)
+                    errores.push(`${et}: la distribución asimétrica (log-normal) necesita una media mayor que 0 (tiene ${s.promedio}); para una variable que puede ser negativa, elige la normal`);
+                } else if (s.desviacion > 0 && (hayMin || hayMax)) {
+                    // (2026.12.30) cuánto se recorta contra el rango (la media y la DE obtenidas se apartan de las pedidas).
+                    // (revisión 2026.12.30) Con la asimétrica, sus colas de log-normal (con la normal avisaba de un recorte que
+                    // no ocurría: con mínimo 0, «≈ 16 % se recortará» y ningún caso en el límite)
+                    const pCola = s.distribucion === 'asimetrica'
+                        ? colasLogNormal(Number(s.promedio), Number(s.desviacion), hayMin ? Number(s.minimo) : null, hayMax ? Number(s.maximo) : null)
+                        : (hayMin ? cdfNormal((s.minimo - s.promedio) / s.desviacion) : 0) + (hayMax ? 1 - cdfNormal((s.maximo - s.promedio) / s.desviacion) : 0);
+                    const rango = hayMin && hayMax ? `${s.minimo}–${s.maximo}` : hayMin ? `≥ ${s.minimo}` : `≤ ${s.maximo}`;
+                    const hacia = hayMin && hayMax ? 'hacia el centro del rango' : hayMin ? 'hacia arriba' : 'hacia abajo';
+                    if (pCola > 0.05) advertencias.push(`${et}: con media ${s.promedio} y DE ${s.desviacion}, ≈ ${Math.round(100 * pCola)} % de los casos caería fuera del rango (${rango}) y se recortará al límite: la DE obtenida será menor que la pedida y la media se moverá ${hacia}; reduce la DE o amplía el rango`);
                 }
             }
             if (s.distribucion === 'categorica' && !s.niveles && !(s.maximo > s.minimo)) errores.push(`${et}: una categórica necesita mín < máx (códigos 1…K)`);
@@ -576,7 +682,9 @@ export const metodosValidacion = {
             }
             // (revisión de la fase C) las terceras variables tienen su validación propia (_validarTerceras); aquí, como en los demás
             // tipos, solo que sus variables existan. Antes caían en la rama de la moderación: se les calculaba una varianza explicada
-            // que no les corresponde (un colisionador válido con .75 y .70 se rechazaba) y bloqueaban su Y como «criterio»
+            // que no les corresponde (una confusión siempre posible, con .70, .70 y parcial .30, se rechazaba) y bloqueaban su Y como
+            // «criterio»
+            if (md.tipo === 'simpson') return;   // (Atlas, Simpson) su validación propia está en _validarSimpson
             if (esTerceraVariable(md.tipo)) {
                 const et = `${TIPOS_TERCERA[md.tipo].etiqueta} ${md.x} ↔ ${md.y}`;
                 [md.x, md.m, md.y].forEach(v => { if (v && !nombres.has(v)) errores.push(`${et}: la variable «${v}» no existe entre las cuantitativas del estudio`); });
@@ -629,9 +737,7 @@ export const metodosValidacion = {
     // Varianza poblacional de x̃² para una forma dada (x̃ estandarizada); PRNG propio
     _varianzaCuadradoForma(distribucion) {
         if (!distribucion || distribucion === 'normal') return 2;
-        let semilla = 0x2545F491 ^ (String(distribucion).length * 977);
-        const u = () => { semilla = (semilla + 0x6D2B79F5) | 0; let x = Math.imul(semilla ^ (semilla >>> 15), 1 | semilla); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
-        const normal = () => { const u1 = Math.max(1e-12, u()), u2 = u(); return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2); };
+        const u = mulberry32(0x2545F491 ^ (String(distribucion).length * 977)), normal = () => normalBoxMuller(u);   // (2026.12.25) del núcleo
         const nS = 6000; let s1 = 0, s2 = 0;
         for (let i = 0; i < nS; i++) { const x = this.transformarFormaZ(normal(), distribucion); const q = x * x; s1 += q; s2 += q * q; }
         const m = s1 / nS;

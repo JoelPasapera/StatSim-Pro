@@ -82,11 +82,75 @@ export const metodosAntecedentesConsultas = {
     },
 
 
+    // (2026.12.30) El DOI como clave: sin el resolvedor («https://doi.org/», «http://dx.doi.org/», «doi:»), en minúsculas y
+    // sin la puntuación final. Hasta la 2026.12.29 «https://doi.org/10.1/x» (Scopus) y «10.1/x» (OMS) eran dos obras.
+    _doiNorm(doi) {
+        return String(doi || '').trim().toLowerCase()
+            .replace(/^(?:https?:\/\/)?(?:dx\.)?doi\.org\//, '').replace(/^doi:\s*/, '').replace(/[.,;]+$/, '').trim();
+    },
+
+    // (2026.12.26) Suma las obras de una consulta a las ya reunidas sin repetir ninguna y devuelve cuántas eran nuevas. Si la
+    // repetida coincide por DOI (la misma obra, sin duda), ya no se descarta sin más: la que se queda suma sus bases (la
+    // «Base» y la «Indexación» nombran Scopus y Web of Science cuando las dos la encontraron; antes, solo la primera en el
+    // orden de las fuentes) y toma el ISSN, las citas o el resumen que le faltaban (el resumen, salvo el de Google
+    // Académico, que es un fragmento: con él la obra ya no se enriquecería). Si solo coinciden por el título, la repetida
+    // se descarta como antes, sin sumar nada: dos obras distintas pueden llamarse igual («Editorial», «Depression»). La
+    // primera vez que una obra suma algo se copia, para no tocar el objeto de la fuente (los proxies comparten sus
+    // respuestas diez minutos).
+    // (2026.12.30) Índice doble, por DOI normalizado y por título, como en fusionar: la obra con DOI (Scopus) y la misma sin
+    // él (Google Académico) ya no son dos filas. El título solo une obras cuando a una de las dos le falta el DOI (con dos
+    // DOI distintos son obras distintas), el título es largo (al menos tres palabras y veinte letras; «Editorial» no) y los
+    // años, si los dos lo tienen, no se separan más de uno. Si la que llega trae el DOI que le faltaba a la reunida, esta
+    // lo toma (y suma la base); si la que llega no lo trae, se descarta como cualquier coincidencia por título.
+    //   indice: Map clave → posición en acumuladas · acumuladas: la lista en orden de llegada (se amplía aquí)
+    _incorporarObras(indice, acumuladas, obras) {
+        let nuevas = 0;
+        const anioDe = o => { const a = parseInt(o && o.anio, 10); return Number.isFinite(a) ? a : null; };
+        for (const o of obras) {
+            const doi = this._doiNorm(o.doi), titulo = this._norm(o.titulo);
+            const kd = doi ? 'd:' + doi : '', kt = titulo ? 't:' + titulo : '';
+            let pos = kd ? indice.get(kd) : undefined, porTitulo = false;
+            if (pos === undefined && kt && indice.has(kt)) {
+                const candidata = acumuladas[indice.get(kt)];
+                const doiCandidata = this._doiNorm(candidata.doi);
+                const ambosSinDoi = !doi && !doiCandidata, unoSinDoi = !doi !== !doiCandidata;
+                const tituloLargo = titulo.split(' ').length >= 3 && titulo.length >= 20;
+                const a1 = anioDe(o), a2 = anioDe(candidata), aniosCompatibles = a1 === null || a2 === null || Math.abs(a1 - a2) <= 1;
+                if (ambosSinDoi || (unoSinDoi && tituloLargo && aniosCompatibles)) { pos = indice.get(kt); porTitulo = true; }
+            }
+            if (pos === undefined) {
+                const nueva = acumuladas.length;
+                if (kd) indice.set(kd, nueva);
+                if (kt && !indice.has(kt)) indice.set(kt, nueva);
+                acumuladas.push(o); nuevas++; continue;
+            }
+            let previa = acumuladas[pos];
+            if (previa === o || !doi) continue;
+            // por título, con el DOI que le faltaba a la reunida: la misma obra, que ahora se reconoce también por el DOI
+            const doiNuevo = porTitulo && !this._doiNorm(previa.doi) ? o.doi : '';
+            const bases = [...new Set([...(previa.fuentesAPI || []), ...(o.fuentesAPI || [])])];
+            const issn = !previa.issn && o.issn ? o.issn : '';
+            const citas = !(previa.citas > 0) && o.citas > 0 ? o.citas : 0;
+            const fragmento = (o.fuentesAPI || []).includes('Scholar');
+            const resumen = (!previa.resumen || previa.resumen.length < 40) && !fragmento && o.resumen && o.resumen.length >= 40 ? o.resumen : '';
+            if (doiNuevo) indice.set(kd, pos);
+            if (!doiNuevo && bases.length === (previa.fuentesAPI || []).length && !issn && !citas && !resumen) continue;
+            if (!previa._fusionada) { previa = acumuladas[pos] = { ...previa, _fusionada: true }; }
+            if (doiNuevo) previa.doi = doiNuevo;
+            previa.fuentesAPI = bases;
+            if (issn) previa.issn = issn;
+            if (citas) previa.citas = citas;
+            if (resumen) previa.resumen = resumen;
+        }
+        return nuevas;
+    },
+
+
     fusionar(listas, query, idiomaPref) {
         // Índice DOBLE (por DOI y por título normalizado): así se reconoce la
         // misma obra aunque una fuente traiga DOI y otra no.
         const vistos = new Map();
-        const kDoi = o => o.doi ? o.doi.replace(/^https?:\/\/doi\.org\//, '').toLowerCase() : '';
+        const kDoi = o => this._doiNorm(o.doi);   // (2026.12.30) el mismo DOI normalizado de _incorporarObras
         listas.flat().forEach(o => {
             const kd = kDoi(o), kt = this._norm(o.titulo);
             const previo = (kd && vistos.get('d:' + kd)) || vistos.get('t:' + kt);

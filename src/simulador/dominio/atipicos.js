@@ -6,6 +6,7 @@
 // La posición no se elige: se resuelve para que la r con los atípicos sea la pedida. Las escalas están acotadas y la
 // distancia necesaria puede no caber en el rango (un solo caso que lleve r de .05 a .50 con N = 50 tendría que estar a
 // 6,7 DE): la validación lo anuncia y dice cuántos casos harían falta.
+import { biseccion } from '../../core/stats/optimizacion.js';
 
 // límites de los totales de una escala; sin rango (mínimo o máximo por ítem vacíos) no está acotada: se usan ±8 DE como tope
 // práctico (revisión 2026.11.11: antes salían [0, 0] y los atípicos se fijaban en 0, a 5 DE, por accidente)
@@ -48,7 +49,7 @@ export function resolverAtipicos({ mayoria, k, rObjetivo, limitesX, limitesY }) 
     const puntosEn = d => desp.map(o => [dentro(mx + gx * d * dx + o, limitesX), dentro(my + gy * d * dy - s * o, limitesY)]);
     const f = d => rConPuntos(mayoria, puntosEn(d)) - rObjetivo;
     let d = dMax, alcanzable = s * f(dMax) >= 0;
-    if (alcanzable) { let lo = 0, hi = dMax; for (let it = 0; it < 60; it++) { const mid = (lo + hi) / 2; if (s * f(mid) < 0) lo = mid; else hi = mid; } d = (lo + hi) / 2; }
+    if (alcanzable) d = biseccion(x => s * f(x), 0, 0, dMax, 60);   // (2026.12.25) la bisección del núcleo único
     const centro = puntosEn(d).map(([x, y]) => [Math.round(x), Math.round(y)]);
     let mejor = null;
     for (let ax = -2; ax <= 2; ax++) for (let ay = -2; ay <= 2; ay++) {

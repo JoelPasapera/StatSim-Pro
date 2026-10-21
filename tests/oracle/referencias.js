@@ -65,7 +65,12 @@ Object.entries(REFERENCIAS).forEach(([id, cfg]) => {
     const b = g.generarBaseDatos();
     // (2026.11.13) con imperfecciones, el informe verifica la base limpia y anota aparte el valor final: el oráculo recalcula sobre
     // la base exportada (la final), así que compara con ese valor anotado
-    const inf = g.informePedidoObtenido(b).map(f => (f.conImperfecciones !== undefined ? { ...f, obtenido: f.conImperfecciones } : f));
+    // (2026.12.03) el oráculo recalcula sobre el CSV, que es la base FINAL: recibe el informe calculado sobre esa misma base, sin la
+    // combinación con la limpia. Antes se tomaba el combinado sustituyendo las filas anotadas, y las que la base final calcula de otro
+    // modo o no calcula quedaban con el valor de la limpia (el KMO de 24 ítems con un 10 % de perdidos: 0,73 de la limpia frente a
+    // 0,26 del oráculo con los ≈ 5 casos completos de la final)
+    const limpio = g._informeLimpio; g._informeLimpio = null;
+    let inf; try { inf = g.informePedidoObtenido(b); } finally { g._informeLimpio = limpio; }
     const cfgE = g.configuracion;
     const esquema = {
         n: b.n, exactas: cfgE.correlacionesExactas !== false, indice: cfgE.indiceFiabilidad,

@@ -1,7 +1,7 @@
 // simulador/ui/niveles.js — relación entre personas y dentro de la persona (Atlas de relaciones, fase D), dentro de la
 // tarjeta VI. Cada fila relaciona dos escalas repetidas (con el modelo «Interceptos aleatorios») en los dos niveles.
 
-import { parsearLineaCSV } from '../../shared/csv.js';
+import { campoCSV, parsearLineaCSV } from '../../shared/csv.js';
 import { mostrarToast } from '../../shared/toast.js';
 
 const escapar = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -40,7 +40,7 @@ function agregarFilaNivel(datos = null) {
 
 // CSV de la tabla (lo usa el maestro)
 function csvDeNiveles() {
-    const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+    const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     let csv = 'X,Y,rEntre,rDentro\n';
     document.querySelectorAll('#bodyNiveles .fila-nivel').forEach(fila => {
         const v = et => { const el = fila.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
@@ -55,7 +55,9 @@ function aplicarCSVNiveles(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const [x, y, rEntre, rDentro] = parsearLineaCSV(linea.trim()).map(p => String(p).trim().replace(/^"|"$/g, ''));
+        // (revisión 2026.12.30) sin quitar más comillas: parsearLineaCSV ya las quita y las desdobla (un nombre que
+        // termina en comilla, «Bienestar "subjetivo"», perdía la última y su fila no encontraba la variable)
+        const [x, y, rEntre, rDentro] = parsearLineaCSV(linea.trim()).map(p => String(p).trim());
         if (!x || !y) { omitidas++; continue; }
         const fila = agregarFilaNivel({ x, y, rEntre, rDentro });
         if (fila) aplicadas++; else omitidas++;

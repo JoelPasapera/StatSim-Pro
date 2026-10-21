@@ -1,10 +1,11 @@
 // analizador/relaciones/confirmacion-forma-redaccion.js — APA 7 de las confirmaciones de la forma (sin DOM): tabla, nota
 // y párrafo de la prueba de las dos rectas y de Lind–Mehlum con el vértice de Fieller (relaciones en U), o de la prueba
 // de equivalencia (sin relación). Las referencias se listan solo si el texto las cita.
+import { formatoP, textoP } from '../../shared/formato-numero.js';
 const f2 = x => (Number.isFinite(x) ? (Math.abs(x) < 0.005 ? 0 : x).toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const fx = (x, d = 2) => (Number.isFinite(x) ? x.toFixed(d) : '—');
-const fp = p => (!Number.isFinite(p) ? '—' : p < 0.001 ? '< .001' : p.toFixed(3).replace(/^0\./, '.'));
-const pAPA = p => (!Number.isFinite(p) ? '' : p < 0.001 ? 'p < .001' : `p = ${p.toFixed(3).replace(/^0\./, '.')}`);
+const fp = p => formatoP(p);
+const pAPA = p => textoP(p);
 const fb = x => (Number.isFinite(x) ? (Math.abs(x) >= 0.1 ? x.toFixed(2) : x.toFixed(3)) : '—');
 
 export const REF_CONFIRMACION = {

@@ -4,7 +4,8 @@
 import { actualizarBloqueoSocio } from './guia-coherencia.js';
 import { escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
 import { descargarArchivo } from '../../shared/descargas.js';
-import { mostrarToast } from '../../shared/toast.js';
+import { mostrarToast, mostrarToastConAvisos } from '../../shared/toast.js';
+import { leerArchivoComoTexto } from '../../shared/archivos.js';
 import { csvDeTabla } from './pruebas.js';
 
 function agregarFilaSocio() {
@@ -72,22 +73,23 @@ function agregarFilaSocioConDatos(datos) {
     nuevaFila.className = 'fila-socio';
     const dist = datos.distribucion || 'normal';
     const opcion = (valor, etiqueta) => `<option value="${valor}"${dist === valor ? ' selected' : ''}>${etiqueta}</option>`;
+    const v = (/** @type {unknown} */ x) => escapeAttr(x ?? '');   // (2026.12.30) los valores, escapados (comillas en un nombre)
     nuevaFila.innerHTML = `
-        <td><input type="text" class="input input-sm" placeholder="Ej: Edad" value="${datos.categoria}" aria-label="Categoría"></td>
+        <td><input type="text" class="input input-sm" placeholder="Ej: Edad" value="${v(datos.categoria)}" aria-label="Categoría"></td>
         <td>
             <select class="input input-sm" aria-label="Distribución">
                 ${opcion('normal', 'Normal')}${opcion('uniforme', 'Uniforme')}${opcion('asimetrica', 'Asimétrica')}${opcion('conteo', 'Conteo (Poisson)')}${opcion('binaria', 'Binaria (0/1)')}${opcion('categorica', 'Categórica')}
             </select>
         </td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 20" step="0.01" value="${datos.promedio}" aria-label="Promedio"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 2.5" step="0.01" min="0.01" value="${datos.de}" aria-label="Desviación estándar"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" value="${datos.min}" aria-label="Mínimo"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 25" step="0.01" value="${datos.max}" aria-label="Máximo"></td>
-        <td><input type="number" class="input input-sm" placeholder="Ej: 2" min="0" max="4" value="${datos.decimales}" aria-label="Número de decimales"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 20" step="0.01" value="${v(datos.promedio)}" aria-label="Promedio"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 2.5" step="0.01" min="0.01" value="${v(datos.de)}" aria-label="Desviación estándar"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 15" step="0.01" value="${v(datos.min)}" aria-label="Mínimo"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 25" step="0.01" value="${v(datos.max)}" aria-label="Máximo"></td>
+        <td><input type="number" class="input input-sm" placeholder="Ej: 2" min="0" max="4" value="${v(datos.decimales)}" aria-label="Número de decimales"></td>
         <td><input type="text" class="input input-sm" placeholder="Ej: Femenino, Masculino" maxlength="400" value="${escapeAttr(datos.opciones || '')}" aria-label="Categorías u opciones" title="Binaria/categórica: «Femenino, Masculino», «Soltero:60, Casado:40» (proporciones) o «Primaria < Secundaria < Superior» (ordinal). Continua (edad): «fecha» o «fecha:AAAA-MM-DD» para añadir la fecha de nacimiento."></td>
         <td>
             <select class="input input-sm" aria-label="Depende de" title="Otra variable binaria o categórica de la que depende esta (asociación)."><option value="">Ninguna</option>${datos.dependeDe ? `<option value="${escapeAttr(datos.dependeDe)}" selected>${escapeAttr(datos.dependeDe)}</option>` : ''}</select>
-            <input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.05" min="0" max="0.95" value="${datos.fuerza !== undefined && datos.fuerza !== '' ? datos.fuerza : '0.4'}" placeholder="fuerza 0–0.95" aria-label="Fuerza de la asociación" title="Fuerza de la asociación (r latente): 0.2 leve, 0.4 moderada, 0.6 fuerte.">
+            <input type="number" class="input input-sm" style="margin-top:0.3rem;" step="0.05" min="0" max="0.95" value="${v(datos.fuerza !== undefined && datos.fuerza !== '' ? datos.fuerza : '0.4')}" placeholder="fuerza 0–0.95" aria-label="Fuerza de la asociación" title="Fuerza de la asociación (r latente): 0.2 leve, 0.4 moderada, 0.6 fuerte.">
         </td>
         <td>
             <button type="button" class="btn-icon btn-delete" title="Eliminar" aria-label="Eliminar fila">
@@ -142,25 +144,22 @@ function exportarConfigSocio() {
 function importarConfigSocio(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (event) {
+    // (2026.12.29) con la codificación del archivo (shared/archivos.js)
+    leerArchivoComoTexto(file).then(function ({ texto: csv, aviso }) {
         try {
-            const csv = event.target.result;
             const enc = String(csv).trim().split(/\r?\n/)[0].toLowerCase();
             if (!enc.includes('categoria') || !enc.includes('promedio')) {
                 mostrarToast('El archivo CSV no tiene el formato correcto. Encabezados esperados: Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza', 'error');
                 return;
             }
             const n = aplicarCSVSocio(csv);   // misma compatibilidad de formatos que el archivo maestro
-            mostrarToast(`Configuración importada: ${n} variables`, 'success');
+            mostrarToastConAvisos(`Configuración importada: ${n} variables`, aviso);   // (2026.12.29, revisión) con el de la codificación
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
-    };
-    reader.onerror = function () {
+    }, function () {
         mostrarToast('No se pudo leer el archivo', 'error');
-    };
-    reader.readAsText(file);
+    });
     e.target.value = ''; // Limpiar input
 }
 

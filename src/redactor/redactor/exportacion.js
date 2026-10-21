@@ -1,5 +1,8 @@
 // redactor/redactor/exportacion.js — RedactorTeorico: copiar, PDF y Word.
 // Origen: redactor/redactor.js (Fase 6: partición por responsabilidad, sin cambios de comportamiento).
+import { temporizadorCosmetico } from '../../shared/temporizador.js';
+import { descargarBlob } from '../../shared/descargas.js';
+import { asegurarHtmlDocx } from '../../shared/vendor.js';
 
 export const metodosRedactorTeoricoExportacion = {
     // Copia al portapapeles el documento mostrado (con fallback clásico).
@@ -29,7 +32,7 @@ export const metodosRedactorTeoricoExportacion = {
         if (btn) {
             const t = btn.textContent;
             btn.textContent = ok ? '✓ Copiado' : '❌ No se pudo copiar';
-            setTimeout(() => { btn.textContent = t; }, 2000);
+            temporizadorCosmetico(() => { btn.textContent = t; }, 2000);
         }
     },
 
@@ -126,21 +129,13 @@ export const metodosRedactorTeoricoExportacion = {
         pdf.save('marco_teorico_APA.pdf');
     },
 
-    _onDescargarWord() {
+    // (2026.12.30) html-docx a demanda (shared/vendor.js): hasta la 2026.12.29 se esperaba ya cargado —nadie lo cargaba— y
+    // siempre salía el .doc de respaldo (HTML con otra extensión), no el .docx. El respaldo queda para cuando no se descarga.
+    async _onDescargarWord() {
         if (!this._documento) return;
         const html = this._htmlAPA(this._documento);
-        let blob, nombre;
-        if (typeof htmlDocx !== 'undefined' && htmlDocx.asBlob) {
-            blob = htmlDocx.asBlob('<!DOCTYPE html>' + html);
-            nombre = 'marco_teorico_APA.docx';
-        } else {
-            blob = new Blob(['\ufeff' + html], { type: 'application/msword' });
-            nombre = 'marco_teorico_APA.doc';
-        }
-        const a = document.createElement('a');
-        a.href = URL.createObjectURL(blob);
-        a.download = nombre;
-        a.click();
-        setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+        const motor = await asegurarHtmlDocx();
+        if (motor && typeof motor.asBlob === 'function') descargarBlob(motor.asBlob('<!DOCTYPE html>' + html), 'marco_teorico_APA.docx');
+        else descargarBlob(new Blob(['\ufeff' + html], { type: 'application/msword' }), 'marco_teorico_APA.doc');
     },
 };

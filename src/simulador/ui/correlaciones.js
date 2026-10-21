@@ -38,7 +38,9 @@ function actualizarTipoBase(tipo, inp, nota) {
         if (nota) nota.textContent = '';
     }
 }
-import { mostrarToast } from '../../shared/toast.js';
+import { mostrarToast, mostrarToastConAvisos } from '../../shared/toast.js';
+import { campoCSV, escapeAttr, parsearLineaCSV } from '../../shared/csv.js';
+import { leerArchivoComoTexto } from '../../shared/archivos.js';
 import { testsDefinidos } from './pruebas.js';
 
 // Lista de variables que pueden correlacionarse: nombres de las escalas y de
@@ -53,14 +55,15 @@ function obtenerVariablesCorrelacionables({ generales = true } = {}) {
     });
     // Puntajes GENERALES derivados (tests con ≥2 dimensiones): correlacionables
     // porque el generador reparte la correlación pedida entre sus dimensiones.
-    const filasPorTest = {};
+    // (un Map: un test llamado «constructor» no es una propiedad heredada)
+    const filasPorTest = new Map();
     document.querySelectorAll('#bodyPruebas .fila-prueba').forEach(fila => {
         const sel = fila.querySelector('[aria-label="Nombre de la prueba"]');
         const p = sel ? sel.value.trim() : '';
-        if (p) filasPorTest[p] = (filasPorTest[p] || 0) + 1;
+        if (p) filasPorTest.set(p, (filasPorTest.get(p) || 0) + 1);
     });
     (generales && typeof testsDefinidos === 'function' ? testsDefinidos() : []).forEach(t => {
-        if ((filasPorTest[t.prueba] || 0) >= 2)
+        if ((filasPorTest.get(t.prueba) || 0) >= 2)
             nombres.push(t.variable ? `${t.variable} — ${t.prueba}` : `Puntaje general — ${t.prueba}`);
     });
     document.querySelectorAll('#bodySocio .fila-socio').forEach(fila => {
@@ -83,7 +86,7 @@ function agregarFilaCorrelacion() {
     const tbody = document.getElementById('bodyCorrelaciones');
     const fila = document.createElement('tr');
     fila.className = 'fila-correlacion';
-    const opciones = nombres.map(n => `<option value="${n}">${n}</option>`).join('');
+    const opciones = nombres.map(n => `<option value="${escapeAttr(n)}">${escapeAttr(n)}</option>`).join('');   // (2026.12.29, revisión) escapados: un nombre de un CSV de configuración ajeno no abre etiquetas
     fila.innerHTML = `
         <td><select class="input input-sm" aria-label="Variable A"><option value="">Variable A...</option>${opciones}</select></td>
         <td><select class="input input-sm" aria-label="Variable B"><option value="">Variable B...</option>${opciones}</select></td>
@@ -127,7 +130,7 @@ function csvDeCorrelaciones() {
         const selA = fila.querySelector('[aria-label="Variable A"]');
         const selB = fila.querySelector('[aria-label="Variable B"]');
         const inpR = fila.querySelector('[aria-label="Correlación objetivo"]');
-        const esc = v => (String(v).includes(',') ? `"${v}"` : String(v));
+        const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
         const selT = fila.querySelector('[aria-label="Tipo de relación"]');
         const selN = fila.querySelector('[aria-label="Nube"]');
         const atip = selN && selN.value === 'atipico', rA = fila.querySelector('[aria-label="r con los atípicos"]'), kA = fila.querySelector('[aria-label="Casos atípicos"]');
@@ -146,7 +149,9 @@ function aplicarCSVCorrelaciones(csv) {
     if (tbody) tbody.innerHTML = '';
     let aplicadas = 0, omitidas = 0;
     for (const linea of lineas.slice(1)) {
-        const partes = linea.split(',').map(p => p.trim().replace(/^"|"$/g, ''));
+        // (2026.12.30) con las comillas del CSV: un nombre con coma («Apoyo social, familia») partía la fila y la correlación
+        // se perdía (o se aplicaba a otras variables) sin error
+        const partes = parsearLineaCSV(linea);
         const [varA, varB, r, tipo, nube, rAtip, kAtip] = partes;   // sin columna Tipo (CSV anteriores): lineal; sin Nube: homogénea
         if (!varA || !varB) { omitidas++; continue; }
         agregarFilaCorrelacion();
@@ -174,25 +179,26 @@ function aplicarCSVCorrelaciones(csv) {
 function importarConfigCorrelaciones(e) {
     const file = e.target.files[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function (event) {
+    // (2026.12.29) con la codificación del archivo (shared/archivos.js)
+    leerArchivoComoTexto(file).then(function ({ texto, aviso }) {
         try {
-            const encabezado = String(event.target.result).split(/\r?\n/)[0].toLowerCase();
+            const encabezado = texto.split(/\r?\n/)[0].toLowerCase();
             if (!encabezado.includes('variablea') || !encabezado.includes('correlacion')) {
                 mostrarToast('Formato incorrecto. Encabezados esperados: VariableA,VariableB,Correlacion', 'error');
                 return;
             }
-            const res = aplicarCSVCorrelaciones(event.target.result);
+            const res = aplicarCSVCorrelaciones(texto);
             if (res.aplicadas === 0) {
                 mostrarToast('Ninguna correlación se pudo aplicar: define primero esas variables en las tablas I y II', 'warning');
             } else {
-                mostrarToast(`${res.aplicadas} correlación(es) importada(s)` + (res.omitidas ? ` · ${res.omitidas} omitida(s): variables inexistentes` : ''), res.omitidas ? 'warning' : 'success');
+                mostrarToastConAvisos(`${res.aplicadas} correlación(es) importada(s)`, [res.omitidas ? `${res.omitidas} omitida(s): variables inexistentes` : '', aviso]);
             }
         } catch (error) {
             mostrarToast('Error al importar: ' + error.message, 'error');
         }
-    };
-    reader.readAsText(file);
+    }, function () {
+        mostrarToast('No se pudo leer el archivo', 'error');
+    });
     e.target.value = '';
 }
 

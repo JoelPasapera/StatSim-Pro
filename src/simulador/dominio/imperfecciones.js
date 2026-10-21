@@ -2,6 +2,7 @@
 // Métodos de GeneradorDatos: se componen en generador.js (Object.assign sobre el prototipo).
 
 import { ESTILOS_RESPUESTA } from './constantes.js';
+import { totalConProrrateo } from '../../core/data/celdas.js';
 
 export const metodosImperfecciones = {
     aplicarImperfecciones(base) {
@@ -11,7 +12,9 @@ export const metodosImperfecciones = {
         this.controlesGenerados = [];
         const vacio = { perdidos: 0, descuidados: 0, digitacion: 0, aquiescentes: 0, extremos: 0, controles: 0, fallosControl: 0, tiempo: false };
         if (!n || !(r.pctPerdidos > 0 || r.pctDescuidados > 0 || r.pctDigitacion > 0 || r.pctAquiescencia > 0 || r.pctExtrema > 0 || r.tiempoMinutos > 0 || r.itemsControl > 0)) return vacio;
-        const pruebasConItems = (cfg.pruebas || []).filter(p => p.numItems >= 2);
+        // (2026.12.30) también las escalas de un solo ítem («Satisfacción global», 1–10): hasta la 2026.12.29 no recibían
+        // perdidos, respuestas descuidadas ni errores de digitación, y el descuidado conservaba ahí su respuesta verdadera
+        const pruebasConItems = (cfg.pruebas || []).filter(p => p.numItems >= 1);
         const columnasItems = p => this._itemsDe(p).map(k => base.columna(k).datos);
         const tocados = new Set();
         let nPerdidos = 0, nDescuidados = 0, nDigitacion = 0;
@@ -31,8 +34,10 @@ export const metodosImperfecciones = {
             ordenDesc.forEach(i => {
                 const tipo = tipoDescuidado[i];
                 pruebasConItems.forEach(p => {
-                    const min = isFinite(p.minimo) ? p.minimo : Math.floor(p.media / p.numItems - p.desviacion);
-                    const max = isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + p.desviacion);
+                    // (2026.12.30) Number.isFinite: con isFinite, el null de una escala continua valía 0 y sus descuidados
+                    // respondían 0 en todos los ítems
+                    const min = Number.isFinite(p.minimo) ? p.minimo : Math.floor(p.media / p.numItems - p.desviacion);
+                    const max = Number.isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + p.desviacion);
                     const fijo = min + Math.floor(this.aleatorio() * (max - min + 1));
                     if (tipo === 'linea' && !valorLinea.has(i)) valorLinea.set(i, fijo);
                     columnasItems(p).forEach(col => {
@@ -50,10 +55,12 @@ export const metodosImperfecciones = {
                 const i = Math.floor(this.aleatorio() * n);
                 const p = pruebasConItems[Math.floor(this.aleatorio() * pruebasConItems.length)];
                 const cols = columnasItems(p), col = cols[Math.floor(this.aleatorio() * cols.length)];
-                const max = isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + 2 * p.desviacion);
+                const max = Number.isFinite(p.maximo) ? p.maximo : Math.ceil(p.media / p.numItems + 2 * p.desviacion);   // (2026.12.30) ídem
                 const v = col[i];
-                // dígito repetido («44» por «4») o un cero de más («50» por «5»)
-                col[i] = (isFinite(v) && this.aleatorio() < 0.5) ? Number(String(Math.round(v)) + String(Math.round(v))) : max * 10;
+                // dígito repetido («44» por «4»; «−22» por «−2») o un cero de más («50» por «5»). (2026.12.30) Con el signo
+                // aparte: Number('-2-2') es NaN, y un error de digitación en un ítem negativo pasaba a ser un perdido
+                const r = Math.round(v), repetido = Number(String(Math.abs(r)).repeat(2)) * Math.sign(r);
+                col[i] = (isFinite(v) && r !== 0 && this.aleatorio() < 0.5) ? repetido : max * 10;
                 tocados.add(i); nDigitacion++;
             }
         }
@@ -251,14 +258,9 @@ export const metodosImperfecciones = {
                 if (typeof v === 'number' && isFinite(v)) items.push(v);
             });
             const col = base.columna(this.columnaDeEscala(p)).datos;
-            if (items.length === 0) { col[i] = NaN; return; }
-            if (items.length < p.numItems) {
-                if (items.length < 0.8 * p.numItems) { col[i] = NaN; return; }
-                const prorrateo = items.reduce((s, v) => s + v, 0) / items.length * p.numItems;   // regla del 80 %
-                col[i] = Math.round(prorrateo * 100) / 100;
-            } else {
-                col[i] = Math.round(items.reduce((s, v) => s + v, 0) * 100) / 100;
-            }
+            // regla del 80 % (core/data/celdas.js, la misma con la que el Analizador suma las dimensiones desde la 2026.12.18)
+            const total = totalConProrrateo(items, p.numItems);
+            col[i] = Number.isFinite(total) ? Math.round(total * 100) / 100 : NaN;
         });
         (grupos || []).forEach(g => {
             if (g.escalas.length < 2) return;
