@@ -1,12 +1,29 @@
 // @ts-check
 // tests/unit/formato-p.test.js — (2026.12.30) el p de una prueba, el mismo en todas las vistas (shared/formato-numero.js): tres
 // decimales, sin el cero inicial, «< .001», y sin que el redondeo lo lleve a un umbral de decisión (α, .01, .05 y .10)
-// que no alcanza; «p = .034» en las frases (antes, «p .034»); la U de Mann-Whitney con su medio.
+// que no alcanza; «p = .034» en las frases (antes, «p .034»); la U de Mann-Whitney con su medio. (2027.01.01) Y el término
+// de una ecuación con su signo («− 0.114·x», no «+ -0.114·x»).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatoP, pConSigno, textoP, formatoMitades } from '../../src/shared/formato-numero.js';
+import { formatoP, pConSigno, textoP, formatoMitades, numeroConMenos, terminoConSigno } from '../../src/shared/formato-numero.js';
 
 const lado = (/** @type {number} */ x, /** @type {number} */ t) => (Math.abs(x - t) <= 1e-9 * t ? 0 : Math.sign(x - t));
+
+test('(2027.01.01) el término de una ecuación lleva su signo delante, el del número redondeado', () => {
+    assert.equal(terminoConSigno(0.1144, '·x'), '+ 0.114·x');
+    assert.equal(terminoConSigno(-0.1144, '·x'), '− 0.114·x', 'no «+ -0.114·x»');
+    assert.equal(terminoConSigno(-0.0001, '·x²'), '+ 0.000·x²', 'redondeado a cero, sin «−»');
+    assert.equal(terminoConSigno(-3.2, '', 1), '− 3.2');
+    assert.equal(terminoConSigno(NaN, '·x'), '+ —·x');
+    assert.equal(terminoConSigno(-Infinity, '·x'), '− ∞·x');
+    // (revisión) el primer término, con el mismo «−» y sin «-0.000»
+    assert.equal(numeroConMenos(-2.7), '−2.700');
+    assert.equal(numeroConMenos(2.7, 1), '2.7');
+    assert.equal(numeroConMenos(-0.0001), '0.000');
+    assert.equal(numeroConMenos(-0), '0.000');
+    assert.equal(numeroConMenos(NaN), '—');
+    assert.equal(numeroConMenos(-Infinity), '−∞');
+});
 
 test('tres decimales, sin el cero inicial, «< .001» y «—»', () => {
     assert.equal(formatoP(0.0346), '.035'); assert.equal(formatoP(0.5), '.500'); assert.equal(formatoP(1), '1.000');

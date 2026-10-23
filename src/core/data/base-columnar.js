@@ -91,6 +91,24 @@ export class BaseColumnar {
         c.etiquetas = etiquetas && Object.keys(etiquetas).length ? Object.assign({}, etiquetas) : null;
         this._objetos = null;
     }
+    /**
+     * (2027.01.01) Los códigos de las categorías de cada columna con etiquetas de valor, en orden de código:
+     * { columna: [[código, etiqueta], …] }. El Analizador los recibe con la base: con ellos sabe qué categoría de una
+     * dependiente binaria es el 1 (la de código mayor, como en SPSS), en lugar de deducirlo de los nombres.
+     * @returns {Record<string, Array<[number, string]>>}
+     */
+    codigosDeCategorias() {
+        /** @type {Record<string, Array<[number, string]>>} */
+        const salida = {};
+        for (const c of this.columnas) {
+            if (!c.etiquetas) continue;
+            /** @type {Array<[number, string]>} */
+            const pares = [];
+            for (const [k, e] of Object.entries(c.etiquetas)) { const codigo = Number(k); if (Number.isFinite(codigo)) pares.push([codigo, String(e)]); }
+            if (pares.length) Object.defineProperty(salida, c.nombre, { value: pares.sort((x, y) => x[0] - y[0]), enumerable: true, writable: true, configurable: true });
+        }
+        return salida;
+    }
     /** (B9) Formato de presentación: 'fecha' = días desde 1970-01-01 → 'AAAA-MM-DD'. */
     formatear(nombre, formato) {
         const c = this._indice.get(nombre);

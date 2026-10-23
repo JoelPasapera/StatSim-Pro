@@ -57,7 +57,11 @@ function ejecutarAnalisis() {
         // catch externo no los vería y el toast nunca aparecería.
         try {
             limpiarResultados();
-            if (typeof RegresionMultiple !== 'undefined') { RegresionMultiple._ultimaBivariada = null; RegresionMultiple._ultimoGrafico = null; RegresionMultiple._ultimaMultiple = null; RegresionMultiple._ultimaMatrizFlujo = null; RegresionMultiple._ultimaAncova = null; RegresionMultiple._ultimaManova = null; }
+            // (2027.01.01) el capítulo de Word es el de la última correlación de dos variables: cualquier otro análisis lo
+            // deja sin contexto. Hasta la 2026.12.31, tras una comparación, una asociación o una matriz, el botón exportaba la
+            // correlación anterior (que ya no estaba en pantalla) o decía «Primero ejecuta un análisis» (analizador/ui/index.js)
+            olvidarAnalisisAnterior();
+            window.ultimoTipoAnalisis = tipoAnalisis === 'correlacion' && _variablesExtra().some(v => v !== var1 && v !== var2) ? 'matriz' : tipoAnalisis;
             if (tipoAnalisis === 'comparacion') {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {
@@ -84,6 +88,20 @@ function ejecutarAnalisis() {
             boton.disabled = false;
         }
     }, 300);
+}
+
+/**
+ * (2027.01.01) Olvida el análisis anterior: lo que el capítulo de Word toma de él (window.ultimoAnalisis, el tipo y lo último
+ * de la regresión, también las dos que leía el Word aunque ya no tengan tarjeta). Al ejecutar otro análisis y (revisión) al
+ * cargar otros datos: hasta la revisión, tras cargar otra base, «Exportar capítulo a Word» mezclaba la correlación anterior
+ * con la muestra nueva («una muestra de 60 participantes» y «el perfil de los 25»).
+ */
+function olvidarAnalisisAnterior() {
+    window.ultimoAnalisis = null;
+    window.ultimoTipoAnalisis = null;
+    if (typeof RegresionMultiple !== 'undefined') {
+        for (const k of ['_ultimaBivariada', '_ultimoGrafico', '_ultimaMultiple', '_ultimaMatrizFlujo', '_ultimaAncova', '_ultimaManova', '_ultimaRegresion', '_ultimaMatriz']) RegresionMultiple[k] = null;
+    }
 }
 
 // Regresión bivariada (Y ~ X): direccional, con concurso de formas y gráfico.
@@ -184,14 +202,17 @@ function ejecutarRegresionBivariadaOpcional() {
     const et = c => (typeof obtenerEtiqueta === 'function' ? obtenerEtiqueta(c) : c);
     const container = document.getElementById('resultadosContainer');
     let R;
-    if (preds.length === 1) {
+    const opciones = {
+        interaccion: !!(document.getElementById('regInter') || {}).checked,
+        cuadratico: !!(document.getElementById('regCuad') || {}).checked,
+        poisson: !!(document.getElementById('regPoisson') || {}).checked
+    };
+    // (2027.01.01, revisión) con un predictor, el cuadrado y Poisson (casillas que se ven también con uno solo) los aplica el
+    // modelo avanzado; la bivariada, con su comparación de formas, es la de sin ellos. Hasta la revisión, con un predictor la
+    // regresión bivariada los ignoraba sin decirlo
+    if (preds.length === 1 && !opciones.cuadratico && !opciones.poisson) {
         R = RegresionMultiple.renderRegresionBivariada(colY, preds[0], et(colY), et(preds[0]));
     } else {
-        const opciones = {
-            interaccion: !!(document.getElementById('regInter') || {}).checked,
-            cuadratico: !!(document.getElementById('regCuad') || {}).checked,
-            poisson: !!(document.getElementById('regPoisson') || {}).checked
-        };
         const RA = RegresionMultiple.regresionAvanzada(colY, preds, et(colY), preds.map(et), opciones);
         R = RA.error ? RA : RegresionMultiple.renderMultiple(RA);
     }
@@ -406,4 +427,4 @@ function interpretarComparacion(varCuantitativa, varAgrupacion, resultado) {
     return InterpretacionesEstadisticas.generarInterpretacionComparacion(varCuantitativa, varAgrupacion, resultado);
 }
 
-export { ejecutarAnalisis, _selectExtra, _renumerarExtras, agregarVariableExtra, agregarPredictorExtra, _variablesExtra, _predictoresTodos, actualizarTituloRegresion, actualizarHintMultiVars, ejecutarRegresionBivariadaOpcional, ejecutarCorrelacion, fmtPApp, generarMarcoParaAnalisis, ejecutarComparacion, ejecutarChiCuadrado, lineaApaComparacion, bloqueApaComparacionHTML, conectarCopiaComparacion, interpretarComparacion };
+export { ejecutarAnalisis, olvidarAnalisisAnterior, _selectExtra, _renumerarExtras, agregarVariableExtra, agregarPredictorExtra, _variablesExtra, _predictoresTodos, actualizarTituloRegresion, actualizarHintMultiVars, ejecutarRegresionBivariadaOpcional, ejecutarCorrelacion, fmtPApp, generarMarcoParaAnalisis, ejecutarComparacion, ejecutarChiCuadrado, lineaApaComparacion, bloqueApaComparacionHTML, conectarCopiaComparacion, interpretarComparacion };

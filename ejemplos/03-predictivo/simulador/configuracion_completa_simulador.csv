@@ -1,0 +1,84 @@
+###GENERAL###
+Campo,Valor
+TamanoMuestra,400
+Semilla,4040
+SeleccionVariable,
+SeleccionLado,superior
+SeleccionProporcion,30
+GenerarPercentiles,no
+CorrelacionesExactas,si
+IndiceFiabilidad,alfa
+HeterogeneidadItems,leve
+PctPerdidos,0
+MecanismoPerdidos,MCAR
+PctDescuidados,0
+TipoDescuidado,mixto
+MarcarDescuidados,no
+PctDigitacion,0
+ReferenciaMAR,
+SentidoMAR,bajos
+PctAquiescencia,0
+PctExtrema,0
+IntensidadEstilos,moderada
+ItemsControl,0
+TiempoMinutos,0
+
+###TESTS###
+Prueba,Variable,CorrDimensiones,Dimensiones
+EAA,Autoeficacia académica,0.40,Autoeficacia académica
+EPA,Procrastinación académica,0.40,Procrastinación académica
+EAS,Apoyo social percibido,0.5,"Familia, Amigos, Otros significativos"
+
+###PRUEBAS###
+Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades
+EAA,Autoeficacia académica,10,normal,33,5.5,1,5,0.88,0,
+EPA,Procrastinación académica,12,normal,32,6.4,1,5,0.85,0,
+EAS,Familia,4,normal,18,3.2,1,7,0.85,0,
+EAS,Amigos,4,normal,18,3.2,1,7,0.85,0,
+EAS,Otros significativos,4,normal,19,2.9,1,7,0.83,0,
+
+###SOCIODEMOGRAFICOS###
+Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza
+Sexo,binaria,0.45,,,,0,"Mujer, Hombre",,0.4
+Edad,normal,20.5,2,17,30,0,,,0.4
+Promedio ponderado,normal,13.8,1.9,0,20,2,,,0.4
+
+###CORRELACIONES###
+VariableA,VariableB,Correlacion,Tipo,Nube,RAtipicos,CasosAtipicos
+Autoeficacia académica,Promedio ponderado,0.45,lineal,homogenea,,
+Procrastinación académica,Promedio ponderado,-0.38,lineal,homogenea,,
+Apoyo social percibido — EAS,Promedio ponderado,0.22,lineal,homogenea,,
+Autoeficacia académica,Procrastinación académica,-0.4,lineal,homogenea,,
+Autoeficacia académica,Apoyo social percibido — EAS,0.3,lineal,homogenea,,
+Procrastinación académica,Apoyo social percibido — EAS,-0.18,lineal,homogenea,,
+
+###DIFERENCIAS###
+Cuantitativa,Agrupacion,d,Tipo,Agrupacion2
+
+###MODELOS###
+Tipo,X,MediadorModerador,Y,Coef1,Coef2,Coef3
+
+###REPETIDAS###
+Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente
+
+###NIVELES###
+X,Y,rEntre,rDentro
+
+###PANELES###
+Tipo,X,Y,rMismaOnda,EfectoXY,EfectoYX,ICCX,ICCY,rInterceptos
+
+###HISTERESIS###
+Escala,Estado,EtiquetaBaja,EtiquetaAlta,PercentilEntrada,PercentilSalida,Nitidez
+
+###ESTRUCTURA###
+Prueba,EstructuraJSON
+
+###CORTES###
+Variable,CategoriasCortes
+
+###DESENLACES###
+Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3
+Riesgo de deserción,binario,"No, Sí: 18 %",Autoeficacia académica,0.55,Procrastinación académica,1.7,Promedio ponderado,0.6
+
+###CONCORDANCIA###
+Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo

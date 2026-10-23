@@ -16,7 +16,7 @@ import { leerJsonAcotado } from '../../core/data/json-acotado.js';
 import { TOPES_JSON_GENERACION, comprobarGeneracionGuardada, generacionParaGuardar } from '../dominio/generacion-guardada.js';
 import { TAMANO_MUESTRAL_MAXIMO } from '../dominio/constantes.js';
 import { aplicarMaestro, textoMaestro } from './maestro.js';
-import { mostrarResultadoGeneracion } from './motor.js';
+import { descartarGeneracionEnCurso, mostrarResultadoGeneracion } from './motor.js';
 import { ocultarResultadoGeneracion, ultimoInforme } from './resultado.js';
 
 /** El texto UTF-8 de un archivo del proyecto. @param {Uint8Array | undefined} b */
@@ -65,7 +65,8 @@ function restaurar(archivos) {
         const guardada = leerJsonAcotado(crudo, TOPES_JSON_GENERACION, { forma: 'la generación guardada no tiene la forma esperada («generacion.json»)', invalido: 'la configuración con que se generó la base no es JSON válido («generacion.json»)' }, deJsonFiel);
         generacion = comprobarGeneracionGuardada(guardada, generadorDatos, base.columnas.length);
     }
-    // después, en la página
+    // después, en la página. (2027.01.01, revisión) Lo que se estuviera generando es de la configuración anterior: no entra
+    descartarGeneracionEnCurso();
     /** @type {string[]} */
     const partes = [];
     const maestro = texto(archivos.get('configuracion.csv'));

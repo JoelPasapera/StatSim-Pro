@@ -164,15 +164,18 @@ test('el mejor modelo con X = años: los polinomios centrados dan la SCE exacta 
 test('las vistas usan el núcleo: la regresión de la vista principal, la avanzada (su VIF) y el MCO agregado de las formas', () => {
     const d = D.mco.disenos.normal, e = E.mco.normal;
     A.cargarDatos(d.y.map((/** @type {number} */ y, /** @type {number} */ i) => ({ y, a: d.cols[0][i], b: d.cols[1][i], c: d.cols[2][i] })));
+    const ultimaAntes = RM._ultimaRegresion;
     const R = RM.regresion('y', ['a', 'b', 'c']);
     R.coefs.forEach((/** @type {any} */ c, /** @type {number} */ j) => { cerca(c.b, e.beta[j], 1e-10, `b${j}`); cerca(c.se, e.ee[j], 1e-10, `EE${j}`); cerca(c.pValor, e.p[j], 1e-7, `p${j}`); });
     cercaV(R.vifs, e.vif, 1e-10, 'VIF de la vista principal'); cerca(R.R2, e.r2, 1e-11, 'R²');
     // «De la correlación al control estadístico»: el efecto crudo es la pendiente de la recta simple (la forma cerrada) y el
-    // ajustado, el coeficiente del modelo completo; el modelo completo queda como el último (hasta ahora, sin prueba)
+    // ajustado, el coeficiente del modelo completo. (2027.01.01, revisión) Ninguno de los dos cálculos fija la regresión que
+    // el Word presenta como «Análisis multivariado» (_ultimaRegresion, la de la tarjeta de regresión): hasta la revisión, lo
+    // hacía cualquier llamada a regresion(), y el Word repetía la bivariada como «regresión múltiple»
     const cva = RM.crudoVsAjustado(R), S = regresionSimple(d.cols[0], d.y);
     cerca(cva.crudo.b, S.pendiente, 1e-12, 'efecto crudo'); cerca(cva.crudo.p, S.pPendiente, 1e-9, 'p del crudo'); cerca(cva.ajustado.b, e.beta[1], 1e-11, 'efecto ajustado');
     cerca(cva.cambioPct, 100 * (e.beta[1] - S.pendiente) / Math.abs(S.pendiente), 1e-10, 'cambio porcentual'); assert.equal(cva.sobrevive, e.p[1] < 0.05);
-    assert.equal(RM._ultimaRegresion, R, 'el modelo completo sigue siendo el último');
+    assert.equal(RM._ultimaRegresion, ultimaAntes, 'sin efecto sobre la regresión del Word');
     const V = RM.regresionAvanzada('y', ['a', 'b', 'c'], 'y', ['a', 'b', 'c']);
     cercaV(V.vifs, e.vif, 1e-10, 'VIF de la avanzada'); cerca(V.jerarquica.R2b2, e.r2, 1e-11, 'R² del bloque completo');
     // una dependiente constante: el aviso claro en las cuatro vistas (antes, una F negativa y p salidos del redondeo)

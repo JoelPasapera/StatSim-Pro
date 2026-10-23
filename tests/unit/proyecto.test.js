@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { aJsonFiel, deJsonFiel } from '../../src/core/data/json-fiel.js';
 import { baseAArchivos, baseDesdeArchivos } from '../../src/core/data/base-archivos.js';
 import { BaseColumnar } from '../../src/core/data/base-columnar.js';
-import { celdaAJson, celdaDeJson, columnasAFilas, columnasAJson, datosDeJson, estructuraValida, etiquetasValidas, filasAColumnas, LARGO_COLUMNA_ESTRUCTURA, LARGO_SIGLA_ESTRUCTURA, MAXIMO_CASOS_ANALIZADOR, MAXIMO_CELDAS_ANALIZADOR, MAXIMO_DIMENSIONES_ESTRUCTURA, MAXIMO_PRUEBAS_ESTRUCTURA, TOPES_JSON_ETIQUETAS } from '../../src/analizador/motor/datos-proyecto.js';
+import { celdaAJson, celdaDeJson, codigosValidos, columnasAFilas, columnasAJson, datosDeJson, estructuraValida, etiquetasValidas, filasAColumnas, LARGO_COLUMNA_ESTRUCTURA, LARGO_SIGLA_ESTRUCTURA, MAXIMO_CASOS_ANALIZADOR, MAXIMO_CELDAS_ANALIZADOR, MAXIMO_CODIGOS_CATEGORIAS, MAXIMO_DIMENSIONES_ESTRUCTURA, MAXIMO_PRUEBAS_ESTRUCTURA, TOPES_JSON_ETIQUETAS } from '../../src/analizador/motor/datos-proyecto.js';
 import { excesoDeJson, leerJsonAcotado, medirJson } from '../../src/core/data/json-acotado.js';
 import { escaparRegExp, sinMarcadoEnTodo } from '../../src/core/data/texto.js';
 import { prefijoYNumero } from '../../src/analizador/motor/nombres-items.js';
@@ -203,16 +203,21 @@ test('lo que un proyecto ajeno no puede hacer con el Analizador: datos desmedido
     assert.equal(datosDeJson('{"columnas":["a","b,c"],"valores":[["x,y",1],["z",2]]}').length, 2, 'las comas de los textos no cuentan');
     assert.throws(() => datosDeJson('{"columnas":'), /no son JSON válido/);
     assert.ok(Date.now() - t0 < 3000, `${Date.now() - t0} ms`);
-    // «etiquetas.json»: lo más que puede traer, también antes de leerlo (25 millones de dimensiones vacías: ni se construyen)
-    const estructuraEnorme = '{"etiquetas":{},"estructura":[{"dimensiones":[' + '{},'.repeat(100000) + '{}]}]}';
+    // «etiquetas.json»: lo más que puede traer, también antes de leerlo (25 millones de dimensiones vacías: ni se construyen).
+    // (2027.01.01) Con los códigos de las categorías, el tope de contenedores sube (cada lista de códigos y cada par lo son):
+    // una lista de dimensiones más larga que todo lo admitido junto sigue sin leerse
+    const estructuraEnorme = '{"etiquetas":{},"estructura":[{"dimensiones":[' + '{},'.repeat(TOPES_JSON_ETIQUETAS.contenedores) + '{}]}]}';
     t0 = Date.now();
     assert.equal(excesoDeJson(estructuraEnorme, TOPES_JSON_ETIQUETAS), 'contenedores');
     assert.equal(excesoDeJson('{"etiquetas":' + '['.repeat(100) + ']'.repeat(100) + '}', TOPES_JSON_ETIQUETAS), 'profundidad');
     assert.ok(Date.now() - t0 < 1000, `${Date.now() - t0} ms`);
     const legitima = JSON.stringify({ etiquetas: Object.fromEntries(Array.from({ length: 200000 }, (_, i) => [`c${i}`, `Etiqueta, ${i}`])),
         estructura: Array.from({ length: 5000 }, (_, i) => ({ prueba: `P${i}`, variable: 'V', columnaGeneral: `General_P${i}`, etiquetaGeneral: 'G', siglaGeneral: null, unidimensional: false, dimensiones: [{ columna: `Dimension_D${i}`, etiqueta: 'D', sigla: `D${i}` }] })),
-        origen: { tipo: 'simulador' } });
-    assert.equal(excesoDeJson(legitima, TOPES_JSON_ETIQUETAS), null, 'lo más que admiten etiquetasValidas y estructuraValida cabe');
+        origen: { tipo: 'simulador' },
+        // (2027.01.01) y lo más que admite codigosValidos: todos los códigos, de dos en dos
+        codigosDeCategorias: Object.fromEntries(Array.from({ length: MAXIMO_CODIGOS_CATEGORIAS / 2 }, (_, i) => [`c${i}`, [[0, `No, ${i}`], [1, 'Sí']]])) });
+    assert.ok(codigosValidos(JSON.parse(legitima).codigosDeCategorias));
+    assert.equal(excesoDeJson(legitima, TOPES_JSON_ETIQUETAS), null, 'lo más que admiten etiquetasValidas, estructuraValida y codigosValidos cabe');
     const base = { columnas: ['a', 'b', 'c'], valores: [[1, 2, 3, 4], [1, 2, 3, 4], [1, 2, 3, 4]] };
     assert.equal(columnasAFilas(base, { celdas: 12 }).length, 4);
     assert.throws(() => columnasAFilas(base, { celdas: 11 }), /^Error: los datos guardados \(4 casos y 3 variables\) son más de lo que el Analizador abre aquí/);

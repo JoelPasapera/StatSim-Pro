@@ -7,7 +7,8 @@ import { SEM } from './sem-motor.js';
 import { obtenerColumnasNumericas } from './ui/carga.js';
 import { pChiCuadrado } from '../core/stats/numerico.js';
 import { aNumero } from '../core/data/celdas.js';
-import { formatoP, pConSigno } from '../shared/formato-numero.js';   // (revisión 2026.12.30) también los p del χ² y del Δχ²
+import { formatoP, pConSigno } from '../shared/formato-numero.js';
+import { bus, EVENTOS } from '../shared/eventos.js';   // (revisión 2026.12.30) también los p del χ² y del Δχ²
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -236,12 +237,14 @@ const SEMUI = {
         return s;
     },
 
-    // Rasteriza el SVG a PNG (solo navegador) y lo guarda para el Word.
-    _rasterizar(svg) {
+    // Rasteriza el SVG a PNG (solo navegador) y lo guarda para el Word. (2027.01.01, revisión) Solo si su modelo sigue siendo
+    // el último cuando la imagen termina de cargarse: con otros datos (u otro modelo) entretanto, la imagen ya no es la suya
+    _rasterizar(svg, modelo = null) {
         try {
             const img = new Image();
             const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
             img.onload = () => {
+                if (modelo && SEM._ultimos[SEM._ultimos.length - 1] !== modelo) return;
                 const cv = document.createElement('canvas');
                 cv.width = img.width * 1.5 || 960; cv.height = img.height * 1.5 || 480;
                 const g = cv.getContext('2d');
@@ -341,6 +344,7 @@ const SEMUI = {
           <div id="semDecision" style="margin-top:0.7rem;"></div>
           <div id="semOut" style="margin-top:0.7rem;"></div>`;
         slot.appendChild(card);
+        bus.on(EVENTOS.DATOS_CARGADOS, () => this.olvidar());
         card.querySelectorAll('[data-sem-ej]').forEach(b => b.addEventListener('click', () => {
             const e = this._ejemplos()[+b.dataset.semEj];
             const ta = document.getElementById('semSintaxis');
@@ -409,7 +413,19 @@ const SEMUI = {
         h += this.htmlComparacion();
         if (out) out.innerHTML = h;
         SEM._ultimoDiagramaSVG = svg;
-        this._rasterizar(svg);
+        this._rasterizar(svg, R);
+    },
+
+    /**
+     * (2027.01.01, revisión) Con otros datos en el Analizador, los modelos ajustados eran de los de antes: se olvidan, con su
+     * comparación y su diagrama (el capítulo de Word los incluye: hasta la revisión, el de la base nueva llevaba los modelos de
+     * la anterior), y lo que mostraba la tarjeta.
+     */
+    olvidar() {
+        SEM._ultimos.length = 0;
+        SEM._ultimoDiagramaPNG = null;
+        SEM._ultimoDiagramaSVG = null;
+        for (const id of ['semOut', 'semDecision']) { const el = document.getElementById(id); if (el) el.innerHTML = ''; }
     }
 };
 

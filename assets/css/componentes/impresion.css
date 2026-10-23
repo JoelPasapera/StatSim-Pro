@@ -1,0 +1,133 @@
+/* ========================================
+   IMPRESIÓN (2027.01.01): la página en papel o en PDF («Imprimir → Guardar como PDF», o el botón «Imprimir o guardar
+   en PDF» de los resultados). Tinta oscura sobre blanco; sin la cáscara (cabecera, menú, pie, avisos, portada, efectos);
+   en el Analizador, solo los resultados (las tarjetas de la V de Aiken, el AFE, la concordancia, la invarianza, la forma
+   y el SEM, solo con resultados y sin sus controles), y en el Simulador, solo la verificación de la base. Lo que la
+   pantalla anima, quieto: al imprimir, Chromium volvía a empezar la entrada de las tarjetas y las imprimía en su primer
+   cuadro, transparentes (el PDF salía en blanco). Todo va dentro de @media print: la pantalla no cambia.
+   ======================================== */
+@media print {
+    @page {
+        size: A4;
+        margin: 16mm 14mm 18mm;
+        @bottom-left { content: "StatSim Pro"; font: 8pt Calibri, Carlito, Arial, sans-serif; color: #6b7280; }
+        @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt Calibri, Carlito, Arial, sans-serif; color: #6b7280; }
+    }
+    :root {
+        color-scheme: light;
+        --color-bg: #ffffff; --color-bg-secondary: #ffffff; --color-bg-tertiary: #f6f7f9;
+        --surface: #ffffff; --surface-2: #ffffff;
+        --color-border: #c4c9d2; --border-soft: #dadde3; --edge-light: none;
+        --color-text: #15171c; --color-text-secondary: #3b414c; --color-text-tertiary: #5a616d;
+        --color-primary: #101217; --color-secondary: #2a2f38;
+        --color-accent: #8a6300; --accent-soft: #fbf2d8; --accent-ring: #e2c26a;
+        --color-success: #1c6b39; --color-error: #a51c1c; --color-warning: #875800;
+        --shadow-sm: none; --shadow-md: none; --shadow-lg: none;
+        /* una letra de documento (Calibri, o su gemela métrica Carlito) en lugar de la de la interfaz: se lee como un
+           informe y el PDF pesa la décima parte (Inter, una OpenType CFF, Chromium la incrusta glifo por glifo) */
+        --font-primary: Calibri, Carlito, "Segoe UI", Arial, "Liberation Sans", sans-serif;
+        --font-display: Calibri, Carlito, "Segoe UI", Arial, "Liberation Sans", sans-serif;
+    }
+    *, *::before, *::after { animation: none !important; transition: none !important; box-shadow: none !important; text-shadow: none !important; }
+    html, body { background: #ffffff !important; color: var(--color-text); }
+    body { font-family: var(--font-primary); font-size: 10pt; line-height: 1.45; }
+    body::before, body::after { display: none !important; }
+
+    /* La cáscara y lo que solo sirve en pantalla */
+    .header, .footer, .toast, .hero-portada, .red-viva, .nodo-linterna, .ana-hero, .section:not(.active), .solo-pantalla,
+    button, .btn, input, select, progress, .upload-area, .acciones-fila, .boot-progreso, .progreso-generacion,
+    .orden-guia { display: none !important; }
+    .main { padding: 0 !important; min-height: 0 !important; }
+    .container { padding: 0 !important; }
+    .section.active { display: block !important; }
+    a { color: inherit !important; text-decoration: none !important; }
+
+    /* El encabezado que pone shared/impresion.js al imprimir: qué es, de qué datos y cuándo */
+    .encabezado-impresion { margin: 0 0 10pt; padding: 0 0 6pt; border-bottom: 1.5pt solid #101217; }
+    .encabezado-impresion h1 { font-family: var(--font-display); font-size: 15pt; font-weight: 600; margin: 0 0 2pt; color: #101217; }
+    .encabezado-impresion p { margin: 0; font-size: 9pt; color: #3b414c; }
+
+    /* Superficies: papel blanco con filetes finos */
+    .card { background: #ffffff !important; border: 0.75pt solid var(--border-soft) !important; border-radius: 4pt; padding: 9pt 11pt !important; margin-bottom: 9pt !important; transform: none !important; }
+    .card-title { font-size: 12pt; margin-bottom: 5pt; }
+    .card-title::before, .section-title::after { display: none !important; }
+    .card-title .help-text { display: none !important; }
+    .result-box, .discussion-box { background: #f6f7f9 !important; }
+    .interpretation-box { background: #f6f7f9 !important; }
+    .interpretation-box--normalidad { --ib-titulo: #1d4ed8; }
+    .interpretation-box--correlacion { --ib-titulo: #15803d; }
+    .interpretation-box--hipotesis { --ib-titulo: #92400e; }
+    .stat-card { background: #ffffff !important; }
+    .stat-value { background: none !important; color: var(--color-primary) !important; -webkit-text-fill-color: currentColor; font-size: 16pt; }
+    code { background: #eef0f3; color: #1f2430; }
+    .highlight { background: #faefcd; color: #15171c; }
+
+    /* Tablas: enteras (sin la altura de la vista previa con barra), encabezados que no flotan, letra un punto menor */
+    .table, table { background: #ffffff !important; font-size: 8.5pt; }
+    .table th { position: static !important; background: #eef0f3 !important; color: #1f2430 !important; letter-spacing: 0.03em; }
+    .table th, .table td { padding: 3pt 6pt !important; }
+    .table tbody tr:nth-child(even) { background: #fafbfc !important; }
+    /* la fila bajo el ratón no se tiñe al imprimir (salía resaltada en el PDF, y el PDF cambiaba según dónde quedara el ratón) */
+    .table tbody tr:hover { background-color: transparent !important; }
+    .table tbody tr:nth-child(even):hover { background: #fafbfc !important; }
+    .tabla-desplazable .table tbody tr:hover { --tinte-fila: transparent !important; }
+    .tabla-desplazable .table tbody tr:nth-child(even):hover { --tinte-fila: rgba(148, 163, 197, 0.03) !important; }
+    .table-scroll, .table-container { max-height: none !important; overflow: visible !important; }
+    th, td { color: inherit; }
+
+    /* Gráficos: a lo ancho del papel, uno por fila, sin cortarse entre páginas; los vacíos, fuera */
+    .chart-grid { display: block !important; }
+    .chart-container { padding: 6pt !important; margin: 0 0 9pt !important; border: 0.75pt solid var(--border-soft); }
+    .chart-container:has(.chart-wrapper:empty) { display: none !important; }
+    svg, img, canvas { max-width: 100% !important; height: auto !important; }
+    /* los textos de los gráficos y de sus análisis vienen en tonos claros, pensados para el fondo oscuro: en papel, tinta */
+    .chart-wrapper svg text[fill="#e2e8f0"], .chart-wrapper svg text[fill="#cbd5e1"], .chart-wrapper svg text[fill="#94a3b8"] { fill: #2a2f38 !important; }
+    .chart-wrapper svg [stroke="#e2e8f0"] { stroke: #9aa1ac !important; }
+    .chart-desc { color: #3b414c !important; }
+    .analisis-grafico { border-top-color: var(--color-border) !important; }
+    .analisis-grafico h5 { color: #8a6300 !important; }
+    .analisis-grafico p { color: #15171c !important; }
+    /* y los colores claros escritos en el estilo de cada elemento: el ámbar, más oscuro; los grises claros, de tinta */
+    [style*="color:#fbbf24"], [style*="color: #fbbf24"], [style*="color:#d4a72c"], [style*="color: #d4a72c"] { color: #8a6300 !important; }
+    [style*="color:#94a3b8"], [style*="color: #94a3b8"], [style*="color:#9aa0a6"], [style*="color: #9aa0a6"],
+    [style*="color:#cbd5e1"], [style*="color: #cbd5e1"], [style*="color:#e2e8f0"], [style*="color: #e2e8f0"] { color: #3b414c !important; }
+
+    /* Lo que no se parte entre páginas (las tablas sí, por filas y repitiendo su encabezado: una larga dejaba media página
+       en blanco), y los títulos que no se quedan solos al pie */
+    figure, svg, img, canvas, .chart-container, .result-box, .interpretation-box, .apa-box, .stat-card { break-inside: avoid; }
+    tr, th, td { break-inside: avoid; }
+    thead { display: table-header-group; }
+    h1, h2, h3, h4, h5, .card-title, .result-title { break-after: avoid; }
+    p { orphans: 3; widows: 3; }
+
+    /* Analizador: las tarjetas con resultados propios (V de Aiken, AFE, concordancia, invarianza, forma), solo si los
+       tienen, y solo su título, sus resultados y (2027.01.01) sus avisos («Ten en cuenta: … casos con datos incompletos se
+       excluyeron», la no convergencia de la invarianza…), que no salían en el papel */
+    #analizador .card:has(> [id$="Resultados"][hidden]),
+    #analizador .card:has(> [id$="Resultados"]:empty) { display: none !important; }
+    #analizador .card:has(> [id$="Resultados"]) > :not(.card-title):not([id$="Resultados"]):not([id$="Mensajes"]) { display: none !important; }
+    /* la comparación de grupos y el SEM (en #cgSlot): lo que dieron, con el modelo del SEM (su sintaxis, como texto); sin
+       resultado, fuera. Y el selector de las variables de los gráficos, que solo sirve en pantalla */
+    #selectorVarsGraficos { display: none !important; }
+    #cgCard:not(:has(#cgResultado:not(:empty))) { display: none !important; }
+    #cgCard > :not(h3):not(#cgResultado) { display: none !important; }
+    #semCard:not(:has(#semOut:not(:empty))) { display: none !important; }
+    #semCard > :not(h3):not(#semSintaxis):not(#semDecision):not(#semOut) { display: none !important; }
+    #semSintaxis { display: block !important; width: 100% !important; field-sizing: content; resize: none; border: 0.75pt solid var(--border-soft); background: #f6f7f9; color: #15171c; font: 9pt ui-monospace, Consolas, monospace; padding: 4pt 6pt; }
+    /* (2027.01.01) lo que en pantalla se desplaza dentro de su caja (el resumen de la fiabilidad, de doce columnas, lleva el
+       desplazamiento en su estilo), entero en el papel: se cortaba a la derecha. Sus tablas, a lo ancho y con los textos
+       partidos en varias líneas */
+    #analizador [style*="overflow"] { overflow: visible !important; max-height: none !important; }
+    .result-table { width: 100% !important; font-size: 8pt; }
+    .result-table th, .result-table td { padding: 2pt 4pt !important; white-space: normal !important; }
+    /* el bootstrap de la fiabilidad: sin sus controles y, si no se calculó, fuera (salían sus etiquetas sin valores) */
+    #bootstrapFiabilidad:has(#bootResultados:empty) { display: none !important; }
+    #bootstrapFiabilidad .rejilla-psico { display: none !important; }
+
+    /* Simulador: la verificación de la base (avisos, ajustes, pedido vs. obtenido y el resumen), sin la configuración */
+    #simulador > .container > :not(.imprimible):not(.encabezado-impresion) { display: none !important; }
+    #previewContainer .table-scroll { display: none !important; }
+}
+@media screen {
+    .encabezado-impresion { display: none; }
+}

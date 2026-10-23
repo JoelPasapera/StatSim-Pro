@@ -1,0 +1,78 @@
+###GENERAL###
+Campo,Valor
+TamanoMuestra,320
+Semilla,2027
+SeleccionVariable,
+SeleccionLado,superior
+SeleccionProporcion,30
+GenerarPercentiles,no
+CorrelacionesExactas,si
+IndiceFiabilidad,alfa
+HeterogeneidadItems,leve
+PctPerdidos,0
+MecanismoPerdidos,MCAR
+PctDescuidados,0
+TipoDescuidado,mixto
+MarcarDescuidados,no
+PctDigitacion,0
+ReferenciaMAR,
+SentidoMAR,bajos
+PctAquiescencia,0
+PctExtrema,0
+IntensidadEstilos,moderada
+ItemsControl,0
+TiempoMinutos,0
+
+###TESTS###
+Prueba,Variable,CorrDimensiones,Dimensiones
+EEA,Estrés académico,0.5,"Estresores, Reacciones físicas, Reacciones psicológicas"
+EBP,Bienestar psicológico,0.45,"Autoaceptación, Vínculos positivos, Propósito vital"
+
+###PRUEBAS###
+Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades
+EEA,Estresores,8,normal,25,4.6,1,5,0.84,0,
+EEA,Reacciones físicas,6,normal,16,3.2,1,5,0.8,0,
+EEA,Reacciones psicológicas,6,normal,17,3.4,1,5,0.82,0,
+EBP,Autoaceptación,6,normal,24,3.8,1,6,0.81,0,
+EBP,Vínculos positivos,6,normal,23,4,1,6,0.8,0,
+EBP,Propósito vital,6,normal,25,3.6,1,6,0.83,0,
+
+###SOCIODEMOGRAFICOS###
+Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza
+Sexo,binaria,0.4,,,,0,"Mujer, Hombre",,0.4
+Edad,normal,21.4,2.4,17,35,0,,,0.4
+Universidad,binaria,0.45,,,,0,"Pública, Privada",,0.4
+
+###CORRELACIONES###
+VariableA,VariableB,Correlacion,Tipo,Nube,RAtipicos,CasosAtipicos
+Estrés académico — EEA,Bienestar psicológico — EBP,-0.42,lineal,homogenea,,
+
+###DIFERENCIAS###
+Cuantitativa,Agrupacion,d,Tipo,Agrupacion2
+
+###MODELOS###
+Tipo,X,MediadorModerador,Y,Coef1,Coef2,Coef3
+
+###REPETIDAS###
+Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente
+
+###NIVELES###
+X,Y,rEntre,rDentro
+
+###PANELES###
+Tipo,X,Y,rMismaOnda,EfectoXY,EfectoYX,ICCX,ICCY,rInterceptos
+
+###HISTERESIS###
+Escala,Estado,EtiquetaBaja,EtiquetaAlta,PercentilEntrada,PercentilSalida,Nitidez
+
+###ESTRUCTURA###
+Prueba,EstructuraJSON
+
+###CORTES###
+Variable,CategoriasCortes
+
+###DESENLACES###
+Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3
+
+###CONCORDANCIA###
+Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo

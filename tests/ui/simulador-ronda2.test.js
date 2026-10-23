@@ -176,8 +176,15 @@ test('la referencia del MAR sobrevive al maestro abierto en una página nueva (a
     await importarMaestro(texto);
     assert.equal(q('#referenciaMAR').value, 'Ansiedad');
     assert.equal(G.generadorDatos.recolectarConfiguracion().realismo.referenciaMAR, 'Ansiedad');
-    await generarYEsperar();
-    assert.equal(G.generadorDatos.referenciaMARUsada, G.generadorDatos.columnaDeEscala(G.generadorDatos.configuracion.pruebas[0]), 'los perdidos dependen del total de la Ansiedad');
+    // (2027.01.01) la base la genera un generador aparte (el del Worker o, aquí, el del respaldo en el hilo), no el de la
+    // página: la referencia que se usó se lee del que generó
+    const { GeneradorDatos } = await import(new URL('src/simulador/dominio/generador.js', raiz).href);
+    const original = GeneradorDatos.prototype.generarBaseDatos;
+    /** @type {any} */ let generador = null;
+    GeneradorDatos.prototype.generarBaseDatos = function (/** @type {any[]} */ ...args) { generador = this; return original.apply(this, args); };
+    try { await generarYEsperar(); } finally { GeneradorDatos.prototype.generarBaseDatos = original; }
+    assert.ok(generador && generador !== G.generadorDatos, 'un generador aparte');
+    assert.equal(generador.referenciaMARUsada, generador.columnaDeEscala(generador.configuracion.pruebas[0]), 'los perdidos dependen del total de la Ansiedad');
     q('#pctPerdidos').value = '0';
 });
 

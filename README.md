@@ -78,6 +78,10 @@ StatSim.api.redactor.RedactorTeorico.autotest()   // 11 comprobaciones del redac
 
 Cada comprobación corresponde a un fallo que ocurrió de verdad durante el desarrollo y que ya no debe repetirse: correlaciones exactas, fiabilidad autocalibrada, puntaje general derivado, matrices de correlación imposibles, ítems invertidos, valores perdidos, exportación limpia, conversión de citas… Con semilla fija, para que el resultado sea reproducible y no dependa del azar.
 
+### 📂 Ejemplos hechos por la propia página
+
+La carpeta [`ejemplos/`](ejemplos/README.md) trae cinco casos de uso completos —un estudio correlacional, uno comparativo, uno predictivo, uno instrumental y uno estructural— recorridos en un navegador de verdad como lo haría una persona. Cada uno guarda lo que descargó la página, sin retocar: la configuración del Simulador, la base en CSV, SPSS y Excel, el informe «pedido vs. obtenido» y su verificación en PDF, el capítulo de Word, los resultados en texto y en PDF, los informes de psicometría y el proyecto `.statsim` para abrirlo y seguir. Su README explica la pregunta, qué se pulsó y qué dio cada análisis. Son datos simulados, y son también una prueba: `npm test` comprueba que cada proyecto regenera la misma base y que el Analizador vuelve a dar las mismas cifras.
+
 ---
 
 ## 📚 Motor estadístico implementado desde cero
@@ -271,6 +275,8 @@ python -m http.server 8000   # o cualquier servidor estático
 | `exportador-word.js` | Capítulo de resultados .docx APA 7 con pedagogía |
 | `buscador/antecedentes/` + `buscador/fuentes/` (Scopus, ScienceDirect, Web of Science, PubMed, SciELO, ALICIA, Scholar; los términos de búsqueda, en `terminos.js`; las claves de Elsevier, en `claves-elsevier.js`; el DOI validado, en `doi.js`), `proxies.js` | Buscador multi-fuente, variantes propias y enriquecimiento por DOI |
 | `workers/relevo-wos.js` | Relevo de Web of Science (Cloudflare Worker): CORS y claves fuera de la página ([docs/WEB-OF-SCIENCE.md](docs/WEB-OF-SCIENCE.md)) |
+| `shared/impresion.js`, `assets/css/componentes/impresion.css` | «Imprimir o guardar en PDF»: el encabezado de lo impreso y los estilos de impresión (solo los resultados, en papel blanco) |
+| `ejemplos/`, `tests/navegador/` | Cinco casos de uso hechos por la página en Chromium, con todo lo que descargó, y las recetas que los rehacen y los comparan |
 | `ia-asistente.js` | Cliente de los Workers de IA (criterios, relevancia, redacción, pase de coherencia) con respaldo entre proveedores |
 | `redactor-teorico.js` | Marco teórico completo con citas verificadas, pase de coherencia y exportación Word/PDF APA |
 

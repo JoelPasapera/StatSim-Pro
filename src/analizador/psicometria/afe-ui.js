@@ -10,6 +10,7 @@ import { mostrarToast } from '../../shared/toast.js';
 import { descargarArchivo, descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
 import { aNumero } from '../../core/data/celdas.js';
+import { bus, EVENTOS } from '../../shared/eventos.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -173,10 +174,20 @@ function pintar(r, etiqueta, de) {
     });
 }
 
+/** (2027.01.01, revisión) Con otros datos en el Analizador, el resultado anterior era de los de antes: se olvida (y con él, su Word, su CSV y lo impreso), y un cálculo en curso se descarta. */
+export function olvidarAFE() {
+    if (tarea) tarea.cancelar();
+    ultimo = null;
+    if (!contenedor) return;
+    contenedor.querySelector('#afeResultados').hidden = true;
+    mensajes([], []);
+}
+
 export function montarAFE() {
     contenedor = typeof document !== 'undefined' ? document.getElementById('afeContainer') : null;
     if (!contenedor || contenedor.dataset.montado === '1') return;
     contenedor.dataset.montado = '1';
+    bus.on(EVENTOS.DATOS_CARGADOS, olvidarAFE);
     contenedor.innerHTML = PLANTILLA();
     const sel = contenedor.querySelector('#afeConjunto');
     sel.addEventListener('focus', actualizarConjuntos);

@@ -1,0 +1,75 @@
+###GENERAL###
+Campo,Valor
+TamanoMuestra,380
+Semilla,6060
+SeleccionVariable,
+SeleccionLado,superior
+SeleccionProporcion,30
+GenerarPercentiles,no
+CorrelacionesExactas,si
+IndiceFiabilidad,alfa
+HeterogeneidadItems,leve
+PctPerdidos,0
+MecanismoPerdidos,MCAR
+PctDescuidados,0
+TipoDescuidado,mixto
+MarcarDescuidados,no
+PctDigitacion,0
+ReferenciaMAR,
+SentidoMAR,bajos
+PctAquiescencia,0
+PctExtrema,0
+IntensidadEstilos,moderada
+ItemsControl,0
+TiempoMinutos,0
+
+###TESTS###
+Prueba,Variable,CorrDimensiones,Dimensiones
+EAS,Apoyo social percibido,0.40,Apoyo social percibido
+EAA,Autoeficacia académica,0.40,Autoeficacia académica
+UWES,Engagement académico,0.40,Engagement académico
+
+###PRUEBAS###
+Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades
+EAS,Apoyo social percibido,6,normal,27,4.8,1,7,0.88,0,
+EAA,Autoeficacia académica,6,normal,20,3.3,1,5,0.85,0,
+UWES,Engagement académico,6,normal,22,4.4,0,6,0.9,0,
+
+###SOCIODEMOGRAFICOS###
+Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza
+Sexo,binaria,0.42,,,,0,"Mujer, Hombre",,0.4
+Edad,normal,21,2.2,17,30,0,,,0.4
+
+###CORRELACIONES###
+VariableA,VariableB,Correlacion,Tipo,Nube,RAtipicos,CasosAtipicos
+
+###DIFERENCIAS###
+Cuantitativa,Agrupacion,d,Tipo,Agrupacion2
+
+###MODELOS###
+Tipo,X,MediadorModerador,Y,Coef1,Coef2,Coef3
+mediacion,Apoyo social percibido,Autoeficacia académica,Engagement académico,0.4,0.45,0.15
+
+###REPETIDAS###
+Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente
+
+###NIVELES###
+X,Y,rEntre,rDentro
+
+###PANELES###
+Tipo,X,Y,rMismaOnda,EfectoXY,EfectoYX,ICCX,ICCY,rInterceptos
+
+###HISTERESIS###
+Escala,Estado,EtiquetaBaja,EtiquetaAlta,PercentilEntrada,PercentilSalida,Nitidez
+
+###ESTRUCTURA###
+Prueba,EstructuraJSON
+
+###CORTES###
+Variable,CategoriasCortes
+
+###DESENLACES###
+Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3
+
+###CONCORDANCIA###
+Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo

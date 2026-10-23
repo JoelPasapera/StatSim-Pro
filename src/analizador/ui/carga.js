@@ -7,10 +7,12 @@ import { ComparacionGrupos } from '../comparacion-grupos.js';
 import { AnalizadorEstadistico } from '../estadistica.js';
 import { Fiabilidad } from '../fiabilidad.js';
 import { RegresionMultiple } from '../regresion.js';
-import { ejecutarAnalisis } from './analisis.js';
+import { ejecutarAnalisis, olvidarAnalisisAnterior } from './analisis.js';
+import { bus, EVENTOS } from '../../shared/eventos.js';
 import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
 import { obtenerEtiquetaOpcion } from '../../shared/etiquetas.js';
 import { desplazarHacia, renderizarTablaDatos } from '../../shared/tabla-datos.js';
+import { codificacionBinaria } from '../motor/dependiente-binaria.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { esPerdido, esColumnaNumerica, esColumnaTexto } from '../../core/data/celdas.js';
 import { leerSav } from '../../core/data/sav/lector.js';
@@ -77,7 +79,8 @@ function cargarDatosGenerados() {
         // un CSV o un .sav: el Simulador puede traer los de un CSV de configuración ajeno, y el Analizador los pinta en sus
         // informes. Sin copia si no hay nada que cambiar.
         datos = sinMarcadoEnTodo(datos);
-        AnalizadorEstadistico.cargarDatos(datos);
+        // (2027.01.01) con los códigos de sus categorías (los del Simulador: «0 = No, 1 = Sí»), sin marcado como los datos
+        AnalizadorEstadistico.cargarDatos(datos, { codigosDeCategorias: paquete && paquete.codigosDeCategorias ? sinMarcadoEnTodo(paquete.codigosDeCategorias) : null });
         // Registrar etiquetas humanas y estructura de pruebas (estilo SPSS):
         // la interfaz mostrará "Inteligencia Cognitiva" en vez de "Total_IC".
         // Con datos del simulador NO se ofrece el editor: las etiquetas son las
@@ -180,7 +183,7 @@ async function cargarBytesSav(bytes) {
     const archivo = await leerSav(bytes);
     if (!archivo.n) throw new Error('El archivo de SPSS no tiene casos: no hay nada que analizar');
     const base = baseDesdeSav(archivo);
-    AnalizadorEstadistico.cargarDatos(base.filas);
+    AnalizadorEstadistico.cargarDatos(base.filas, { codigosDeCategorias: base.codigosDeCategorias });   // (2027.01.01) sus etiquetas de valor
     origenDatos = { tipo: 'sav' };
     const datos = AnalizadorEstadistico.obtenerDatos();
     const conEtiqueta = Object.keys(base.etiquetas).length;
@@ -257,7 +260,7 @@ function cargarHojaXlsx(libro, indice) {
     const base = baseDesdeXlsx(libro, indice);
     const nombre = libro.hojas[indice].nombre;
     if (!base.filas.length) throw new Error(`La hoja «${sinMarcadoEnTodo(nombre)}» tiene encabezados pero ninguna fila de datos`);
-    AnalizadorEstadistico.cargarDatos(base.filas);
+    AnalizadorEstadistico.cargarDatos(base.filas, { codigosDeCategorias: base.codigosDeCategorias });   // (2027.01.01) los del diccionario del Simulador
     origenDatos = { tipo: 'xlsx', hoja: sinMarcadoEnTodo(nombre), archivo: origenDatos && origenDatos.tipo === 'xlsx' ? origenDatos.archivo : undefined };
     const datos = AnalizadorEstadistico.obtenerDatos();
     const conEtiqueta = Object.keys(base.etiquetas).length;
@@ -309,6 +312,12 @@ function alCambiarHojaXlsx(e) {
 }
 
 function mostrarDatosCargados(datos) {
+    // (2027.01.01, revisión) otros datos: lo calculado con los anteriores ya no vale. Los resultados de la pantalla, el
+    // análisis que lee el Word y lo de cada tarjeta y del SEM (que lo olvidan al oír el aviso) se van; hasta la revisión
+    // seguían ahí, y el Word, lo descargado y lo impreso mezclaban la base anterior con la nueva
+    limpiarResultados();
+    olvidarAnalisisAnterior();
+    bus.emit(EVENTOS.DATOS_CARGADOS);
     const container = document.getElementById('datosContainer');
     const seleccionContainer = document.getElementById('seleccionContainer');
     // Actualizar estadísticas
@@ -358,10 +367,21 @@ function poblarSelectsVariables(datos) {
     // Selects opcionales de la regresión bivariada (con opción en blanco).
     try {
         const nums = (typeof obtenerColumnasNumericas === 'function') ? obtenerColumnasNumericas(datos) : [];
+        // (2027.01.01) la dependiente puede ser también una variable de dos categorías con nombre (el desenlace «No / Sí»
+        // del Simulador): la regresión la modela con la logística, con el evento en el 1 (motor/dependiente-binaria.js)
+        const enNumeros = new Set(nums);
+        const binarias = Object.keys(datos[0] || {}).filter(c => c !== 'ID' && !enNumeros.has(c))
+            .map(c => ({ c, b: codificacionBinaria(datos.map(d => d[c]), AnalizadorEstadistico.codigosDe(c)) })).filter(x => x.b);
         ['regDep', 'regInd'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = '<option value="">Seleccionar variable…</option>'
-                + nums.map(c => `<option value="${escaparHTML(c)}">${escaparHTML(obtenerEtiquetaOpcion(c))}</option>`).join('');
+            if (!el) return;
+            // (2027.01.01, revisión) la elección se conserva, como la de los predictores adicionales: cambiar el tipo de
+            // análisis vuelve a poblar estas listas, y hasta ahora borraba la regresión que ya se había elegido
+            const previo = el.value;
+            el.innerHTML = '<option value="">Seleccionar variable…</option>'
+                + nums.map(c => `<option value="${escaparHTML(c)}">${escaparHTML(obtenerEtiquetaOpcion(c))}</option>`).join('')
+                + (id === 'regDep' ? binarias.map(({ c, b }) => `<option value="${escaparHTML(c)}">${escaparHTML(`${obtenerEtiquetaOpcion(c)} (dos categorías: ${b.referencia} = 0, ${b.evento} = 1)`)}</option>`).join('') : '');
+            if (previo && [...el.options].some(o => o.value === previo)) el.value = previo;
         });
     } catch (e) { /* opcional */ }
     const columnasNumericas = obtenerColumnasNumericas(datos);
@@ -433,16 +453,17 @@ function obtenerColumnasCategoricas(maximo) {
 }
 
 // (2026.12.31) Para el archivo de proyecto (analizador/ui/proyecto.js): los datos cargados, sus etiquetas, su estructura de
-// pruebas y su origen (null si no hay datos), y su restauración, como los dejó la carga.
+// pruebas, su origen y (2027.01.01) los códigos de sus categorías (null si no hay datos), y su restauración, como los dejó
+// la carga.
 function estadoDeLosDatos() {
     const filas = AnalizadorEstadistico.obtenerDatos();
     if (!filas || !filas.length) return null;
     const ev = typeof EtiquetasVariables !== 'undefined' ? EtiquetasVariables : null;
-    return { filas, etiquetas: ev ? { ...ev._mapa } : {}, estructura: ev ? ev.estructura() : [], origen: origenDatos ? { ...origenDatos } : { tipo: 'csv' } };
+    return { filas, etiquetas: ev ? { ...ev._mapa } : {}, estructura: ev ? ev.estructura() : [], origen: origenDatos ? { ...origenDatos } : { tipo: 'csv' }, codigosDeCategorias: AnalizadorEstadistico.todosLosCodigos() };
 }
 
-function restaurarDatos({ filas, etiquetas, estructura, origen }) {
-    AnalizadorEstadistico.cargarDatos(sinMarcadoEnTodo(filas));
+function restaurarDatos({ filas, etiquetas, estructura, origen, codigosDeCategorias = null }) {
+    AnalizadorEstadistico.cargarDatos(sinMarcadoEnTodo(filas), { codigosDeCategorias: codigosDeCategorias ? sinMarcadoEnTodo(codigosDeCategorias) : null });
     const datos = AnalizadorEstadistico.obtenerDatos();
     ocultarSelectorDeHojas();
     if (origen && origen.tipo === 'simulador') {

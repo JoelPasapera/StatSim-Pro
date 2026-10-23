@@ -1,0 +1,4 @@
+# (2027.01.01) Los archivos de ejemplos/ son lo que descargó la página, byte a byte (tests/integration/ejemplos.test.js
+# comprueba su huella): Git no debe cambiar sus saltos de línea al guardarlos ni al descargarlos. Este archivo va con
+# saltos LF, como lo lee Git.
+ejemplos/** -text

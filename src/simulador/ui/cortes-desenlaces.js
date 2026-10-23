@@ -109,7 +109,7 @@ function csvDeDesenlaces() {
     const esc = campoCSV;   // (2026.12.30) RFC 4180: comillas dobladas y también saltos de línea
     document.querySelectorAll('#bodyDesenlaces .fila-desenlace').forEach(f => {
         const v = et => { const el = f.querySelector(`[aria-label="${et}"]`); return el ? el.value : ''; };
-        csv += [v('Nombre del desenlace'), v('Tipo de desenlace'), v('Parámetro del desenlace'), v('Predictor 1'), v('Efecto del predictor 1'), v('Predictor 2'), v('Efecto del predictor 2'), v('Predictor 3'), v('Efecto del predictor 3')].map(esc).join(',') + '\n';
+        csv += [v('Nombre del desenlace'), v('Tipo de desenlace'), v('Parámetro del desenlace'), v('Predictor 1'), v('Efecto del predictor 1'), v('Predictor 2'), v('Efecto del predictor 2'), v('Predictor 3'), v('Efecto del predictor 3')].map(x => esc(x)).join(',') + '\n';   // (2027.01.01) con .map(esc), el índice era el delimitador: «No, Sí: 18 %» salía sin comillas y el maestro no se podía volver a importar
     });
     return csv;
 }

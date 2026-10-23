@@ -42,6 +42,8 @@ class AnalizadorEstadisticoProfesional {
         this.configuracionInvestigacion = marcoInicial();
         /** @type {Record<string, Dimensiones>} variable → sus dimensiones con sus ítems */
         this.dimensiones = {};
+        /** @type {Map<string, Array<[number, string]>>} (2027.01.01) columna → los códigos de sus categorías, si la base los trae */
+        this.codigosDeCategorias = new Map();
     }
 
     // ========================================
@@ -99,9 +101,13 @@ class AnalizadorEstadisticoProfesional {
      * Carga una base (una fila por caso). Una base nueva invalida las dimensiones y los resultados anteriores: sus ítems
      * podrían no existir en ella.
      * @param {Fila[]} datos
+     * @param {{ codigosDeCategorias?: Record<string, Array<[number, string]>> | null }} [opciones] (2027.01.01) los códigos de
+     *   las categorías de las columnas que los traen (del Simulador, de un .sav, del libro de Excel del Simulador o de un
+     *   proyecto): con ellos, la regresión logística sabe qué categoría de una dependiente binaria es el 1. Sin ellos (un
+     *   CSV), lo deduce de los nombres (motor/dependiente-binaria.js)
      * @returns {true}
      */
-    cargarDatos(datos) {
+    cargarDatos(datos, opciones = {}) {
         if (!datos || datos.length === 0) {
             throw new Error('No hay datos para analizar');
         }
@@ -109,8 +115,15 @@ class AnalizadorEstadisticoProfesional {
         this.columnas = Object.keys(/** @type {Fila} */ (datos[0]));
         this.dimensiones = {};
         this.resultados = {};
+        this.codigosDeCategorias = new Map(Object.entries(opciones.codigosDeCategorias || {}));
         return true;
     }
+
+    /** (2027.01.01) Los códigos de las categorías de una columna, si la base los trae; si no, null. @param {string} columna */
+    codigosDe(columna) { return this.codigosDeCategorias.get(columna) || null; }
+
+    /** (2027.01.01) Los de todas las columnas que los traen (para guardarlos en un proyecto). @returns {Record<string, Array<[number, string]>>} */
+    todosLosCodigos() { return Object.fromEntries(this.codigosDeCategorias); }
 
     /** Carga un CSV con encabezados (motor/datos.js: delimitador «;» o «,», celdas numéricas solo si lo son completas). @param {string} csvText */
     cargarDesdeCSV(csvText) { return this.cargarDatos(leerCSV(csvText)); }

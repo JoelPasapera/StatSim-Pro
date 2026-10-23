@@ -23,7 +23,8 @@ import { mostrarToast } from '../shared/toast.js';
 import { pCorrelacion } from '../core/stats/correlacion.js';
 import { aNumero, esPerdido, esColumnaNumerica } from '../core/data/celdas.js';
 import { fuerzaCorrelacionDispersion } from './motor/magnitudes.js';
-import { formatoP, pConSigno, textoP } from '../shared/formato-numero.js';
+import { formatoP, numeroConMenos, pConSigno, terminoConSigno, textoP } from '../shared/formato-numero.js';
+import { escaparHTML } from '../shared/html.js';
 
 // ========================================
 // EXPORTADOR DEL CAPÍTULO DE RESULTADOS A WORD (APA 7)
@@ -156,7 +157,7 @@ const ExportadorWord = {
             : '';
         return `<div style="text-align:center;">
             <p style="margin:60pt 0 30pt;">${logo}</p>
-            <p style="margin:0 0 60pt;line-height:200%;font-size:16pt;"><b>${ctx.tituloTesis || 'Título de la investigación'}</b></p>
+            <p style="margin:0 0 60pt;line-height:200%;font-size:16pt;"><b>${ctx.tituloTesis ? escaparHTML(ctx.tituloTesis) : 'Título de la investigación'}</b></p>
             <p style="margin:0;line-height:200%;font-size:13pt;"><b>Autor:</b> Joel Pasapera</p>
             <p style="margin:120pt 0 0;line-height:200%;font-size:12pt;">Lima, Perú</p>
             <p style="margin:0;line-height:200%;font-size:12pt;">${anio}</p>
@@ -424,14 +425,23 @@ const ExportadorWord = {
             const BV = RegresionMultiple._ultimaBivariada, RMf = RegresionMultiple;
             const Rb = BV.R, c1 = Rb.coefs[1];
             h += this._seccion('Análisis de regresión bivariada');
-            h += this._p(`Mientras la correlación cuantifica la asociación de forma simétrica, la regresión es direccional: estima el cambio esperado en ${BV.etY} por cada unidad de ${BV.etX} y permite la predicción. Se ajustó el modelo por mínimos cuadrados y, adicionalmente, se compararon formas funcionales alternativas para verificar que la especificación elegida sea la que mejor describe los datos.`);
-            h += this._tablaAPA(`Regresión lineal de ${BV.etY} sobre ${BV.etX}`,
-                ['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', 'F', 'gl', 'p modelo'],
-                [[RMf._fx(c1.b), RMf._fx(c1.se), RMf._fx(c1.t, 2), RMf._fp(c1.pValor),
-                  `[${RMf._fx(c1.ic[0], 2)}, ${RMf._fx(c1.ic[1], 2)}]`, RMf._fx(Rb.R2), RMf._fx(Rb.F, 2),
-                  `(${Rb.glR}, ${Rb.glE})`, RMf._fp(Rb.pF)]],
-                `Ecuación ajustada: ŷ = ${RMf._fx(Rb.coefs[0].b)} + ${RMf._fx(c1.b)}·x. n = ${Rb.n} casos completos.`);
-            h += this._p(RMf._pedagogiaBivariada(Rb, BV.etX).replace(/<[^>]+>/g, ''));
+            // (2027.01.01) con una dependiente binaria, solo la logística (antes, también la recta, en «puntos», y una
+            // comparación de formas que no se hace)
+            if (BV.binaria) {
+                h += this._p(`Mientras la correlación cuantifica la asociación de forma simétrica, la regresión es direccional. Como ${BV.etY} tiene dos valores, el modelo es la regresión logística, que estima cómo cambia la probabilidad del evento por cada unidad de ${BV.etX}.`);
+                // (revisión) si no se pudo estimar (una separación perfecta), el motivo, como en la pantalla: antes, la sección
+                // quedaba con ese párrafo solo
+                if (!BV.MM && BV.errorModelo) h += this._p(`Nota metodológica: la regresión logística no se pudo estimar. ${BV.errorModelo}`);
+            } else {
+                h += this._p(`Mientras la correlación cuantifica la asociación de forma simétrica, la regresión es direccional: estima el cambio esperado en ${BV.etY} por cada unidad de ${BV.etX} y permite la predicción. Se ajustó el modelo por mínimos cuadrados y, adicionalmente, se compararon formas funcionales alternativas para verificar que la especificación elegida sea la que mejor describe los datos.`);
+                h += this._tablaAPA(`Regresión lineal de ${BV.etY} sobre ${BV.etX}`,
+                    ['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', 'F', 'gl', 'p modelo'],
+                    [[RMf._fx(c1.b), RMf._fx(c1.se), RMf._fx(c1.t, 2), RMf._fp(c1.pValor),
+                      `[${RMf._fx(c1.ic[0], 2)}, ${RMf._fx(c1.ic[1], 2)}]`, RMf._fx(Rb.R2), RMf._fx(Rb.F, 2),
+                      `(${Rb.glR}, ${Rb.glE})`, RMf._fp(Rb.pF)]],
+                    `Ecuación ajustada: ŷ = ${numeroConMenos(Rb.coefs[0].b)} ${terminoConSigno(c1.b, '·x')}. n = ${Rb.n} casos completos.`);
+                h += this._p(RMf._pedagogiaBivariada(Rb, BV.etX).replace(/<[^>]+>/g, ''));
+            }
             if (BV.MM && BV.MM.candidatos) {
                 h += this._tablaAPA(`Comparación de formas funcionales para la relación entre ${BV.etX} y ${BV.etY}`,
                     ['Modelo', 'Ecuación ajustada', 'R²', 'AIC', 'ΔAIC'],
@@ -446,6 +456,7 @@ const ExportadorWord = {
                     ['Ecuación', 'OR (e^b)', 'z', 'p', 'Pseudo-R² (McFadden)'],
                     [[g.ec || '—', RMf._fx(g.OR, 3), RMf._fx(g.z, 2), RMf._fp(g.pValor), RMf._fx(g.mcFadden, 3)]],
                     `${BV.etY} es binaria (dos valores): el modelo apropiado es la regresión logística. OR: razón de probabilidades por cada unidad de ${BV.etX}.`);
+                if (BV.MM.eventoY) h += this._p(RMf._fraseEvento(BV.MM.eventoY, BV.etY));   // (2027.01.01) qué categoría es el evento
                 h += this._p(`Por cada unidad adicional de ${BV.etX}, la razón de probabilidades de ${BV.etY} se multiplica por ${RMf._fx(g.OR, 2)}, de modo que la probabilidad del evento ${g.OR > 1 ? 'aumenta' : 'disminuye'} con ${BV.etX}${g.pValor < 0.05 ? ', un efecto estadísticamente significativo' : ', sin alcanzar significancia estadística'} (z = ${RMf._fx(g.z, 2)}, p ${RMf._pTxt(g.pValor)}).`);
                 // los avisos del ajuste (separación casi completa, probabilidades numéricamente 0 o 1), como en la vista
                 (g.avisos || []).forEach(aviso => { h += this._p(`Nota metodológica: ${aviso}`); });

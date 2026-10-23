@@ -14,7 +14,8 @@ import { aNumero, esPerdido } from '../core/data/celdas.js';
 import { ajustarMco, regresionMco } from '../core/stats/mco.js';
 import { determinante } from '../core/linalg/gauss.js';
 import { ajustarMlg } from '../core/stats/mlg.js';
-import { formatoP, pConSigno } from '../shared/formato-numero.js';
+import { formatoP, numeroConMenos, pConSigno, terminoConSigno } from '../shared/formato-numero.js';
+import { codificacionBinaria } from './motor/dependiente-binaria.js';
 
 // ========================================
 // ANÁLISIS MULTIVARIADO — StatSim Pro
@@ -74,8 +75,27 @@ const RegresionMultiple = {
         const holm = (A && A.ajustarPValoresHolm) ? A.ajustarPValoresHolm(pares.map(p => p.pValor)) : pares.map(p => p.pValor);
         pares.forEach((p, k) => { p.pHolm = holm[k]; p.sig = p.pHolm < 0.05; });
         const R = { n, cols, etiquetas: etiquetas || cols, normal, pares };
-        this._ultimaMatriz = R;
         return R;
+    },
+
+    // (2027.01.01) Cómo se lee la variable dependiente: como número o, si es de dos categorías con nombre («No» y «Sí», el
+    // desenlace binario del Simulador), como 0/1 con el evento en el 1 (motor/dependiente-binaria.js). Lo usan las cuatro
+    // regresiones que leen Y, para que la vista, el Word y el gráfico hablen del mismo evento.
+    _lectorY(datos, colY) {
+        // con los códigos de sus categorías, si la base los trae (del Simulador, de un .sav): el 1 es la de código mayor
+        const codigos = typeof AnalizadorEstadistico !== 'undefined' && AnalizadorEstadistico.codigosDe ? AnalizadorEstadistico.codigosDe(colY) : null;
+        const binaria = codificacionBinaria(datos.map(d => d[colY]), codigos);
+        return { leer: binaria ? binaria.codigo : aNumero, binaria: binaria ? { evento: binaria.evento, referencia: binaria.referencia, segun: binaria.segun } : null };
+    },
+
+    // La frase que dice qué se modela con una dependiente de dos categorías con nombre (HTML: las categorías, escapadas) y de
+    // dónde salió qué categoría es el 1: de los códigos de la variable o, en un CSV, de los nombres (y cómo cambiarlo).
+    _fraseEvento(evento, etY) {
+        if (!evento) return '';
+        const base = `Se modela la probabilidad de «${escaparHTML(evento.evento)}» (codificada 1) frente a «${escaparHTML(evento.referencia)}» (0) en ${escaparHTML(etY)}`;
+        if (evento.segun === 'codigos') return `${base}, según los códigos de la variable (la de código mayor, como en SPSS).`;
+        if (evento.segun === 'nombres') return `${base}, según los nombres de sus categorías (para modelar la otra, codifícala como 0 y 1 en el archivo).`;
+        return `${base}.`;
     },
 
     // ---------- (2) Regresión lineal múltiple (OLS) ----------
@@ -86,7 +106,8 @@ const RegresionMultiple = {
         if (!colY || !colsX || !colsX.length) return { error: 'Elige la variable dependiente y al menos un predictor.' };
         if (colsX.includes(colY)) return { error: 'La variable dependiente no puede ser también predictor.' };
         // Casos completos (listwise).
-        const filas = datos.map(d => [ aNumero(d[colY]), ...colsX.map(c => aNumero(d[c])) ]).filter(f => f.every(Number.isFinite));
+        const LY = this._lectorY(datos, colY);
+        const filas = datos.map(d => [ LY.leer(d[colY]), ...colsX.map(c => aNumero(d[c])) ]).filter(f => f.every(Number.isFinite));
         const n = filas.length, k = colsX.length;
         if (n < k + 3) return { error: `Casos insuficientes: se requieren al menos ${k + 3} completos (hay ${n}).` };
 
@@ -106,11 +127,14 @@ const RegresionMultiple = {
         const normResid = { prueba: rNorm.abreviatura, pValor: rNorm.pValor, normal: rNorm.normal };
 
         const R = {
-            n, k, etY: etY || colY, colY, colsX, etsX: etsX || colsX,
+            n, k, etY: etY || colY, colY, colsX, etsX: etsX || colsX, eventoY: LY.binaria,
             coefs, R2, R2aj, F, glR, glE, pF, errorTipico: Math.sqrt(sigma2),
             vifs, normResid, significativo: pF < 0.05
         };
-        this._ultimaRegresion = R;
+        // (2027.01.01) sin dejar rastro: _ultimaRegresion es el modelo que el investigador ajustó en la tarjeta de regresión
+        // (_onRegresion), el que el capítulo de Word presenta como «Análisis multivariado». Lo fijaba cualquier llamada (la
+        // regresión bivariada, el efecto crudo), y el capítulo repetía como «regresión múltiple» el modelo bivariado, o el de
+        // un análisis anterior
         return R;
     },
 
@@ -127,8 +151,6 @@ const RegresionMultiple = {
         if (!R || R.error || !R.colsX.length) return null;
         const focal = R.colsX[0], etFocal = R.etsX[0];
         const crudo = this.regresion(R.colY, [focal], R.etY, [etFocal]);   // (2026.12.21) sin la comprobación de regresionInterna, que se retiró (el VIF sale del ajuste)
-        // regresion() sobreescribe _ultimaRegresion: restaurar el modelo completo.
-        this._ultimaRegresion = R;
         if (!crudo || crudo.error) return null;
         const bC = crudo.coefs[1], bA = R.coefs[1];
         return {
@@ -157,7 +179,8 @@ const RegresionMultiple = {
     mejorModelo(colX, colY, etX, etY) {
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
         const datos = A ? (A.obtenerDatos() || []) : [];
-        const filas = datos.map(d => [aNumero(d[colX]), aNumero(d[colY])]).filter(f => f.every(Number.isFinite));
+        const LY = this._lectorY(datos, colY);
+        const filas = datos.map(d => [aNumero(d[colX]), LY.leer(d[colY])]).filter(f => f.every(Number.isFinite));
         const n = filas.length;
         if (n < 10) return { error: 'Se requieren al menos 10 casos completos.' };
         if (this._esConstante(filas.map(f => f[1]))) return { error: this._SIN_VARIACION };
@@ -170,7 +193,7 @@ const RegresionMultiple = {
             const y01 = y.map(v => v === lo ? 0 : 1);
             const log = this._logistica(x, y01);
             if (log.error) return log;
-            return { tipoY: 'binaria', etX: etX || colX, etY: etY || colY, n,
+            return { tipoY: 'binaria', etX: etX || colX, etY: etY || colY, n, eventoY: LY.binaria,
                      ganador: { nombre: 'Regresión logística', ...log }, candidatos: null };
         }
 
@@ -192,11 +215,13 @@ const RegresionMultiple = {
             cands.push({ nombre, ec: ec(B), R2: r.R2, k: grado, AIC: this._aicGauss(r.SSE, n, grado), B, Bc: r.B, centro: mx });
         };
         const f3 = v => this._fx(v, 3);
-        addPolinomio('Lineal', 1, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x`);
-        addPolinomio('Cuadrática', 2, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x²`);
-        addPolinomio('Cúbica', 3, B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·x + ${f3(B[2])}·x² + ${f3(B[3])}·x³`);
+        // (2027.01.01) cada término con su signo («− 0.114·x», no «+ -0.114·x»), y el primero con el mismo «−»
+        const t3 = (v, sufijo) => terminoConSigno(v, sufijo, 3), c3 = v => numeroConMenos(v, 3);
+        addPolinomio('Lineal', 1, B => `ŷ = ${c3(B[0])} ${t3(B[1], '·x')}`);
+        addPolinomio('Cuadrática', 2, B => `ŷ = ${c3(B[0])} ${t3(B[1], '·x')} ${t3(B[2], '·x²')}`);
+        addPolinomio('Cúbica', 3, B => `ŷ = ${c3(B[0])} ${t3(B[1], '·x')} ${t3(B[2], '·x²')} ${t3(B[3], '·x³')}`);
         if (Math.min(...x) > 0) {
-            addOLS('Logarítmica', B => `ŷ = ${f3(B[0])} + ${f3(B[1])}·ln(x)`, [x.map(Math.log)], 1);
+            addOLS('Logarítmica', B => `ŷ = ${c3(B[0])} ${t3(B[1], '·ln(x)')}`, [x.map(Math.log)], 1);
         }
         if (Math.min(...y) > 0) {
             // Exponencial: ln(y) = a + b·x; R² y AIC evaluados EN LA ESCALA ORIGINAL
@@ -207,7 +232,7 @@ const RegresionMultiple = {
                 const my = this._media(y);
                 let SSE = 0, SST = 0;
                 y.forEach((v, i) => { SSE += (v - yHat[i]) ** 2; SST += (v - my) ** 2; });
-                cands.push({ nombre: 'Exponencial', ec: `ŷ = ${f3(Math.exp(rl.B[0]))}·e^(${f3(rl.B[1])}·x)`,
+                cands.push({ nombre: 'Exponencial', ec: `ŷ = ${f3(Math.exp(rl.B[0]))}·e^(${c3(rl.B[1])}·x)`,
                     R2: SST > 0 ? 1 - SSE / SST : 0, k: 1, AIC: this._aicGauss(SSE, n, 1), B: rl.B });
             }
         }
@@ -238,7 +263,7 @@ const RegresionMultiple = {
         const b0 = M.beta[0], b1 = M.beta[1];
         return { b0, b1, se: M.ee[1], z: M.z[1], pValor: M.pValores[1], OR: Math.exp(b1),
                  mcFadden: M.mcFadden, AIC: M.aic, avisos: M.avisos,
-                 ec: `logit(p) = ${this._fx(b0, 3)} + ${this._fx(b1, 3)}·x` };
+                 ec: `logit(p) = ${numeroConMenos(b0, 3)} ${terminoConSigno(b1, '·x', 3)}` };
     },
 
     // ================= ANCOVA Y MANOVA =================
@@ -472,6 +497,7 @@ const RegresionMultiple = {
         if (cols.length < 2) { if (out) out.innerHTML = '<p class="help-text">⚠️ Selecciona al menos 2 variables (Ctrl/Cmd + clic).</p>'; return; }
         const M = this.matrizCorrelaciones(cols);
         if (M.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${M.error}</p>`; return; }
+        this._ultimaMatriz = M;   // (2027.01.01) la de la tarjeta, para el Word (matrizCorrelaciones ya no la fija)
         const idx = (i, j) => M.pares.find(p => (p.i === i && p.j === j) || (p.i === j && p.j === i));
         let html = this._tab(
             this._tr(['Variable', ...M.cols.map((_, i) => String(i + 1))], true)
@@ -497,6 +523,7 @@ const RegresionMultiple = {
         const R = this.regresion(dep, preds);
         if (R.error) { if (estado) estado.textContent = '⚠️ ' + R.error; if (out) out.innerHTML = ''; return; }
         if (estado) estado.textContent = '';
+        this._ultimaRegresion = R;   // (2027.01.01) el de la tarjeta, para el Word (regresion() ya no lo fija)
 
         let html = `<h4 style="margin:0.4rem 0 0.2rem;">Resumen del modelo</h4>`
             + this._tab(this._tr(['R²', 'R² ajustado', 'Error típico', `F(${R.glR}, ${R.glE})`, 'p', 'Decisión'], true)
@@ -612,22 +639,31 @@ const RegresionMultiple = {
         const MM = this.mejorModelo(colX, colY, etX, etY);
         // Datos para el gráfico (mismos casos completos del concurso).
         const A = (typeof AnalizadorEstadistico !== 'undefined') ? AnalizadorEstadistico : null;
-        const filas = (A ? A.obtenerDatos() : []).map(d => [aNumero(d[colX]), aNumero(d[colY])]).filter(f => f.every(Number.isFinite));
+        const datosG = A ? (A.obtenerDatos() || []) : [], LY = this._lectorY(datosG, colY);
+        const filas = datosG.map(d => [aNumero(d[colX]), LY.leer(d[colY])]).filter(f => f.every(Number.isFinite));
         const x = filas.map(f => f[0]), y = filas.map(f => f[1]);
         let img = null;
-        if (!MM.error) { try { img = this.graficoModelo(x, y, MM, etX || colX, etY || colY); } catch (e) { img = null; } }
-        this._ultimaBivariada = { R, MM: MM.error ? null : MM, etX: etX || colX, etY: etY || colY };
+        // (2027.01.01) con una dependiente de dos categorías con nombre, el eje dice cuál es el 1
+        const etYGrafico = !MM.error && MM.eventoY ? `${etY || colY} (1 = ${MM.eventoY.evento})` : (etY || colY);
+        if (!MM.error) { try { img = this.graficoModelo(x, y, MM, etX || colX, etYGrafico); } catch (e) { img = null; } }
+        // (2027.01.01) ¿dependiente binaria (dos valores, con nombre o 0/1)? Su modelo es la logística (mejorModelo): sin la
+        // recta de mínimos cuadrados, que la describía en «puntos» («Sexo aumenta en promedio 0.03 puntos»)
+        const binaria = new Set(y).size === 2;
+        // (revisión) sin modelo, su motivo (una separación en la logística): el Word lo dice, como la pantalla
+        this._ultimaBivariada = { R, MM: MM.error ? null : MM, errorModelo: MM.error || null, etX: etX || colX, etY: etY || colY, binaria };
 
         const c1 = R.coefs[1];
         let html = `<div class="result-section">
           <h3 class="section-title">Regresión Bivariada</h3>
-          <p class="result-subtitle">Modelo de <strong>${R.etY}</strong> según <strong>${etX || colX}</strong>. A diferencia de la correlación (simétrica), la regresión es <b>direccional</b>: estima cuánto cambia la variable dependiente por cada unidad de la independiente y permite predecir.</p>
-          <div class="result-box">`;
-        html += `<h5 style="margin-bottom: 0.5rem; font-weight: 600;">Modelo lineal (mínimos cuadrados)</h5>`
+          <p class="result-subtitle">Modelo de <strong>${R.etY}</strong> según <strong>${etX || colX}</strong>. A diferencia de la correlación (simétrica), la regresión es <b>direccional</b>: ${binaria
+              ? `con una variable dependiente de dos valores, el modelo es la regresión logística, que estima cómo cambia la probabilidad del evento por cada unidad de la independiente.</p>`
+              : `estima cuánto cambia la variable dependiente por cada unidad de la independiente y permite predecir.</p>`}`;
+        if (!binaria) html += `<div class="result-box">`
+            + `<h5 style="margin-bottom: 0.5rem; font-weight: 600;">Modelo lineal (mínimos cuadrados)</h5>`
             + this._tab(this._tr(['B (pendiente)', 'EE', 't', 'p', 'IC 95%', 'R²', `F(${R.glR}, ${R.glE})`, 'p modelo'], true)
                 + this._tr([this._fx(c1.b), this._fx(c1.se), this._fx(c1.t, 2), this._fp(c1.pValor),
                     `[${this._fx(c1.ic[0], 2)}, ${this._fx(c1.ic[1], 2)}]`, this._fx(R.R2), this._fx(R.F, 2), this._fp(R.pF)]))
-            + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${this._fx(R.coefs[0].b)} + ${this._fx(c1.b)}·x.</p>`
+            + `<p class="help-text" style="font-size:0.85em;">Ecuación: ŷ = ${numeroConMenos(R.coefs[0].b)} ${terminoConSigno(c1.b, '·x')}.</p>`
             + `</div>`
             + `<div class="result-box interpretation-box interpretation-box--correlacion">
                 <h5 class="interpretation-title">
@@ -688,7 +724,8 @@ const RegresionMultiple = {
         const datos = A ? (A.obtenerDatos() || []) : [];
         if (!colY || !colsX || !colsX.length) return { error: 'Elige la dependiente y al menos un predictor.' };
         if (colsX.includes(colY)) return { error: 'La dependiente no puede ser también predictor.' };
-        const filas = datos.map(d => [aNumero(d[colY]), ...colsX.map(c => aNumero(d[c]))]).filter(f => f.every(Number.isFinite));
+        const LY = this._lectorY(datos, colY);
+        const filas = datos.map(d => [LY.leer(d[colY]), ...colsX.map(c => aNumero(d[c]))]).filter(f => f.every(Number.isFinite));
         const n = filas.length, k0 = colsX.length;
         if (n < k0 + 5) return { error: `Casos insuficientes (${n}) para ${k0} predictores.` };
         const y = filas.map(f => f[0]);
@@ -701,8 +738,13 @@ const RegresionMultiple = {
             const lo = Math.min(...unicos);
             const R = this._logisticaK(y.map(v => v === lo ? 0 : 1), colsX.map((_, j) => filas.map(f => f[j + 1])), ets);
             if (R.error) return R;
+            // (2027.01.01) lo que se pidió y esta familia no aplica, dicho (antes se ignoraba en silencio)
+            const sinAplicar = [opciones.interaccion && 'la interacción', opciones.cuadratico && 'el término cuadrático', opciones.poisson && 'el modelo de Poisson'].filter(Boolean);
+            if (sinAplicar.length) avisos.push(`Con una variable dependiente de dos valores se ajustó la regresión logística con los efectos principales: ${sinAplicar.length > 1 ? `${sinAplicar.slice(0, -1).join(', ')} y ${sinAplicar[sinAplicar.length - 1]}` : sinAplicar[0]} no se ${sinAplicar.length > 1 ? 'aplican' : 'aplica'} a esta familia.`);
             R.etY = etY || colY; R.etsX = ets; R.avisos = [...avisos, ...(R.avisosAjuste || [])];   // (2026.12.22) con los del ajuste (separación casi completa)
-            R.notaFamilia = 'La variable dependiente es binaria: se ajustó una regresión logística múltiple (los coeficientes se interpretan como razones de probabilidades, OR).';
+            R.notaFamilia = 'La variable dependiente es binaria: se ajustó una regresión logística múltiple (los coeficientes se interpretan como razones de probabilidades, OR).'
+                + (LY.binaria ? ' ' + this._fraseEvento(LY.binaria, etY || colY) : '');
+            R.eventoY = LY.binaria;
             this._ultimaMultiple = R;
             return R;
         }
@@ -801,6 +843,7 @@ const RegresionMultiple = {
         let h = `<h4 style="margin:0.6rem 0 0.2rem;">🔍 ¿Qué modelo explica mejor esta relación?</h4>`;
         if (MM.tipoY === 'binaria') {
             const g = MM.ganador;
+            if (MM.eventoY) h += `<p class="help-text" style="font-size:0.88em;">${this._fraseEvento(MM.eventoY, MM.etY)}</p>`;   // (2027.01.01) las categorías, 1 y 0
             h += `<p class="help-text" style="font-size:0.88em;">La variable dependiente es <b>binaria</b> (dos valores), por lo que el modelo apropiado no es la recta sino la <b>regresión logística</b> (probit es su gemela; en psicología se reporta logística).</p>`
                 + this._tab(this._tr(['Modelo', 'Ecuación', 'OR (e^b)', 'z', 'p', 'Pseudo-R² (McFadden)'], true)
                 + this._tr([g.nombre, g.ec, this._fx(g.OR, 3), this._fx(g.z, 2), this._fp(g.pValor), this._fx(g.mcFadden, 3)]))

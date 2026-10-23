@@ -1,0 +1,77 @@
+###GENERAL###
+Campo,Valor
+TamanoMuestra,300
+Semilla,3030
+SeleccionVariable,
+SeleccionLado,superior
+SeleccionProporcion,30
+GenerarPercentiles,no
+CorrelacionesExactas,si
+IndiceFiabilidad,alfa
+HeterogeneidadItems,leve
+PctPerdidos,2
+MecanismoPerdidos,MCAR
+PctDescuidados,0
+TipoDescuidado,mixto
+MarcarDescuidados,no
+PctDigitacion,0
+ReferenciaMAR,
+SentidoMAR,bajos
+PctAquiescencia,0
+PctExtrema,0
+IntensidadEstilos,moderada
+ItemsControl,0
+TiempoMinutos,0
+
+###TESTS###
+Prueba,Variable,CorrDimensiones,Dimensiones
+IAE,Ansiedad ante los exámenes,0.55,"Preocupación, Emocionalidad"
+
+###PRUEBAS###
+Prueba,Escala,NumItems,Distribucion,Media,DE,MinItem,MaxItem,Alfa,Invertidos,Dificultades
+IAE,Preocupación,8,normal,25,4.8,1,5,0.85,0,
+IAE,Emocionalidad,8,normal,23,4.6,1,5,0.83,0,
+
+###SOCIODEMOGRAFICOS###
+Categoria,Distribucion,Promedio,DE,Minimo,Maximo,Decimales,Opciones,DependeDe,Fuerza
+Sexo,binaria,0.48,,,,0,"Mujer, Hombre",,0.4
+Grado,categorica,,,,,0,3.º de secundaria:34 < 4.º de secundaria:33 < 5.º de secundaria:33,,0.4
+Gestión,binaria,0.35,,,,0,"Pública, Privada",,0.4
+Promedio de notas,normal,14.2,1.8,0,20,1,,,0.4
+
+###CORRELACIONES###
+VariableA,VariableB,Correlacion,Tipo,Nube,RAtipicos,CasosAtipicos
+Ansiedad ante los exámenes — IAE,Promedio de notas,-0.3,lineal,homogenea,,
+
+###DIFERENCIAS###
+Cuantitativa,Agrupacion,d,Tipo,Agrupacion2
+Ansiedad ante los exámenes — IAE,Sexo,-0.5,d,
+Ansiedad ante los exámenes — IAE,Grado,0.3,d,
+
+###MODELOS###
+Tipo,X,MediadorModerador,Y,Coef1,Coef2,Coef3
+
+###REPETIDAS###
+Escala,Ondas,Estabilidad,Cambio,Agrupacion,CambioGrupo1,Modelo,DEPendientes,rInterceptoPendiente
+
+###NIVELES###
+X,Y,rEntre,rDentro
+
+###PANELES###
+Tipo,X,Y,rMismaOnda,EfectoXY,EfectoYX,ICCX,ICCY,rInterceptos
+
+###HISTERESIS###
+Escala,Estado,EtiquetaBaja,EtiquetaAlta,PercentilEntrada,PercentilSalida,Nitidez
+
+###ESTRUCTURA###
+Prueba,EstructuraJSON
+
+###CORTES###
+Variable,CategoriasCortes
+Ansiedad ante los exámenes — IAE,"Baja, Moderada, Alta @ P25, P75"
+
+###DESENLACES###
+Nombre,Tipo,Parametro,Predictor1,Efecto1,Predictor2,Efecto2,Predictor3,Efecto3
+
+###CONCORDANCIA###
+Tipo,Variable,EtiquetaOJueces,Concordancia,Sesgo

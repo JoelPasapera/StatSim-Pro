@@ -7,10 +7,11 @@ import { mostrarToast } from '../../shared/toast.js';
 import { descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
 import { esPerdido } from '../../core/data/celdas.js';
+import { bus, EVENTOS } from '../../shared/eventos.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
-let contenedor = null, ultimo = null;
+let contenedor = null, ultimo = null, tareaEnCurso = null;
 function datos() { try { return AnalizadorEstadistico.obtenerDatos() || []; } catch (e) { return []; } }
 
 // Variables de agrupación: columnas con 2 a 8 valores distintos y al menos 10 casos en cada uno
@@ -103,7 +104,8 @@ export function calcular() {
         q('#invEstado').textContent = k < total ? `Estimando el modelo ${nombres[k]}… (${k + 1} de ${total})` : 'Terminando…';
     });
     q('#invCancelar').onclick = () => tarea.cancelar();
-    const terminar = () => { q('#invCalcular').disabled = false; q('#invCancelar').hidden = true; q('#invProgresoFila').hidden = true; };
+    tareaEnCurso = tarea;
+    const terminar = () => { q('#invCalcular').disabled = false; q('#invCancelar').hidden = true; q('#invProgresoFila').hidden = true; if (tareaEnCurso === tarea) tareaEnCurso = null; };
     return tarea.promesa.then(lista => { terminar(); return pintar(lista[0].resultado, grupo); }, e => { terminar(); return error(e && e.cancelado ? 'Cálculo cancelado.' : String(e && e.message || e)); });
 }
 
@@ -135,10 +137,20 @@ function pintar(r, grupo) {
     return r;
 }
 
+/** (2027.01.01, revisión) Con otros datos en el Analizador, el resultado anterior era de los de antes: se olvida (y con él, su Word, su CSV y lo impreso), y un cálculo en curso se descarta. */
+export function olvidarInvarianza() {
+    if (tareaEnCurso) tareaEnCurso.cancelar();
+    ultimo = null;
+    if (!contenedor) return;
+    contenedor.querySelector('#invResultados').hidden = true;
+    contenedor.querySelector('#invMensajes').innerHTML = '';
+}
+
 export function montarInvarianza() {
     contenedor = typeof document !== 'undefined' ? document.getElementById('invarianzaContainer') : null;
     if (!contenedor || contenedor.dataset.montado === '1') return;
     contenedor.dataset.montado = '1';
+    bus.on(EVENTOS.DATOS_CARGADOS, olvidarInvarianza);
     contenedor.innerHTML = PLANTILLA();
     const sel = contenedor.querySelector('#invGrupo');
     sel.addEventListener('focus', actualizarGrupos);

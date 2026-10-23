@@ -22,6 +22,7 @@ import * as _csv from '../../shared/csv.js';
 import * as _etiquetas from '../../shared/etiquetas.js';
 import * as _tablaDatos from '../../shared/tabla-datos.js';
 import { montarSeleccion } from './seleccion.js';
+import { montarImpresionSimulador } from './impresion.js';
 import { montarNiveles } from './niveles.js';
 import { montarPaneles } from './paneles.js';
 import { montarHisteresis } from './histeresis.js';
@@ -31,6 +32,7 @@ import { montarHisteresis } from './histeresis.js';
 // ========================================
 export function montarInterfazSimulador() {
     montarSeleccion();   // (Atlas, dimensión B3) selección de la muestra por rango
+    montarImpresionSimulador();   // (2027.01.01) «Imprimir o guardar en PDF» de la verificación y el encabezado de lo impreso
     // Botón agregar prueba
     const _btnTest = document.getElementById('btnAgregarTest');
     if (_btnTest) _btnTest.addEventListener('click', agregarFilaTest);

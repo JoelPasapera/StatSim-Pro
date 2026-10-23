@@ -37,7 +37,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#0b0f19">
     <!-- Styles -->
-    <link rel="stylesheet" href="assets/css/styles.css?v=15">
+    <link rel="stylesheet" href="assets/css/styles.css?v=16">
     <style>
         .chart-grid {
             display: grid;
@@ -1347,19 +1347,23 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
 
                 <!-- (2026.12.30) Los errores y avisos de la validación de la última generación, todos y a la vista: el aviso
                      emergente solo mostraba el primero, y el de «base generada» lo tapaba enseguida -->
-                <div id="avisosGeneracion" class="card" style="display: none; border-left: 4px solid #d4a72c;" role="status" aria-live="polite"></div>
+                <div id="avisosGeneracion" class="card imprimible" style="display: none; border-left: 4px solid #d4a72c;" role="status" aria-live="polite"></div>
 
                 <!-- Diagnóstico de correlaciones incompatibles (solo aparece si hubo ajuste) -->
-                <div id="diagnosticoCorrelaciones" class="card" style="display: none; border-left: 4px solid #d4a72c;"></div>
+                <div id="diagnosticoCorrelaciones" class="card imprimible" style="display: none; border-left: 4px solid #d4a72c;"></div>
 
                 <!-- Informe pedido vs obtenido: cierra el ciclo «lo que se pide es lo que se entrega» -->
-                <div id="informePedidoObtenido" class="card" style="display: none;">
+                <div id="informePedidoObtenido" class="card imprimible" style="display: none;">
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:0.8rem; flex-wrap:wrap;">
                         <div>
                             <h3 class="card-title" style="margin:0;">Verificación: pedido vs. obtenido</h3>
                             <span class="help-text">Cada parámetro configurado, medido sobre la base recién generada. Útil como evidencia en el anexo metodológico.</span>
                         </div>
-                        <button id="btnDescargarInforme" type="button" class="btn btn-outline">⬇ Descargar informe (CSV)</button>
+                        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                            <button id="btnDescargarInforme" type="button" class="btn btn-outline">⬇ Descargar informe (CSV)</button>
+                            <!-- (2027.01.01) el informe, con los avisos y el resumen de la base, en papel o en PDF (impresion.css) -->
+                            <button id="btnImprimirSimulador" type="button" class="btn btn-outline" title="Imprime la verificación de la base (los avisos, el informe «pedido vs. obtenido» y el resumen), sin la configuración. En el diálogo, elige «Guardar como PDF» para tener el PDF.">🖨 Imprimir o guardar en PDF</button>
+                        </div>
                     </div>
                     <div class="table-container" style="margin-top:0.8rem;">
                         <table class="table" id="tablaInforme">
@@ -1370,7 +1374,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
 
                 <!-- Preview de Datos Generados -->
-                <div id="previewContainer" class="card" style="display: none;">
+                <div id="previewContainer" class="card imprimible" style="display: none;">
                     <h3 class="card-title">Vista Previa de Datos Generados</h3>
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -1421,7 +1425,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
 
                 <!-- Cargar Datos -->
-                <div class="card" id="cardCargarDatos">
+                <div class="card solo-pantalla" id="cardCargarDatos">
                     <h3 class="card-title">Cargar Datos</h3>
                     <div class="upload-area">
                         <div class="upload-options">
@@ -1456,7 +1460,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
 
                 <!-- Datos Cargados -->
-                <div id="datosContainer" class="card" style="display: none;">
+                <div id="datosContainer" class="card solo-pantalla" style="display: none;">
                     <h3 class="card-title">Datos Cargados</h3>
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -1484,7 +1488,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
                 
                 <!-- Configuración de Investigación -->
-                <div class="card">
+                <div class="card solo-pantalla">
                     <h3 class="card-title">1. Configuración de la Investigación</h3>
                     <div class="form-row">
                         <div class="form-group">
@@ -1509,12 +1513,12 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
 
                 <!-- Configuración de Dimensiones -->
-                <div class="card">
+                <div class="card solo-pantalla">
                     <h3 class="card-title">2. Configuración de Dimensiones (Opcional)</h3>
                     <div id="configuradorDimensiones"></div>
                 </div> 
  
-                <div id="editorEtiquetas" style="display: none;"></div>
+                <div id="editorEtiquetas" class="solo-pantalla" style="display: none;"></div>
 
                 <!-- Validez de contenido por juicio de expertos (V de Aiken): la monta src/analizador/psicometria/aiken-ui.js -->
                 <div id="validezContenidoContainer" class="card"></div>
@@ -1531,7 +1535,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 <!-- Diagnóstico de la forma de una relación: lo monta src/analizador/relaciones/diagnostico-forma-ui.js -->
                 <div id="diagnosticoFormaContainer" class="card"></div>
 
-                <div id="seleccionContainer" class="card">
+                <div id="seleccionContainer" class="card solo-pantalla">
                     <h3 class="card-title">Análisis Estadístico</h3>
                     
                     <div class="form-group">
@@ -1690,6 +1694,11 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
                     </svg>
                     Descargar Resultados
+                </button>
+
+                <!-- (2027.01.01) Los resultados en papel o en PDF: solo lo que dio el análisis, sin los controles (impresion.css) -->
+                <button id="btnImprimirAnalizador" type="button" class="btn btn-outline" title="Imprime los resultados que ves (gráficos, tablas, textos y las tarjetas de psicometría que hayas calculado), sin los controles. En el diálogo, elige «Guardar como PDF» para tener el PDF.">
+                    🖨 Imprimir o guardar en PDF
                 </button>
 
                 <!-- Sección de referencias bibliográficas: citar a sampieri por ejemplo  -->
@@ -1946,7 +1955,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: src/main.js?v=2026.12.31). Eso obliga a navegadores y CDN
+         (ej: src/main.js?v=2027.01.01). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1955,7 +1964,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
          mismas versiones) -->
     <!-- Arranque modular: src/main.js carga todo el código propio (módulos ES bajo src/). Al publicar cambios:
          sube VERSION en src/version.js y este ?v=. -->
-    <script type="module" src="src/main.js?v=2026.12.31"></script>
+    <script type="module" src="src/main.js?v=2027.01.01"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
 

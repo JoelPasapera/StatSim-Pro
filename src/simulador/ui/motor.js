@@ -2,6 +2,7 @@
 // Extraído de app.js (Fase 2) sin cambiar comportamiento; importaciones explícitas entre módulos.
 
 import { BaseColumnar } from '../../core/data/base-columnar.js';
+import { GeneradorDatos } from '../dominio/generador.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { reconciliarEstructurasTodas } from './estructura.js';
 import { habilitarDescargaCSV, habilitarUsarGenerados, mostrarAvisosDeValidacion, mostrarDiagnosticoCorrelaciones, mostrarInformePedidoObtenido, mostrarPreview, publicarDatosGenerados } from './resultado.js';
@@ -74,16 +75,20 @@ const MotorGeneracion = (() => {
             // de bloquear el hilo.
             setTimeout(() => {
                 try {
-                    generadorDatos.configuracion = configuracion;
+                    // (2027.01.01) en un generador aparte, como el Worker (worker/generador.worker.js): si la generación
+                    // falla, el de la página conserva su base y su configuración (antes, generarBaseDatos vaciaba la base
+                    // del generador de la página al empezar, y un fallo la dejaba sin base y con la vista previa de la anterior)
+                    const generador = new GeneradorDatos();
+                    generador.configuracion = configuracion;
                     const inicio = Date.now();
-                    const base = generadorDatos.generarBaseDatos(alProgresar);
+                    const base = generador.generarBaseDatos(alProgresar);
                     resolver({
                         base,
-                        informe: generadorDatos.informePedidoObtenido(base) || [],
-                        configuracion: generadorDatos.configuracion,
-                        diagnosticoCorrelaciones: generadorDatos.diagnosticoCorrelaciones,
-                        resumenImperfecciones: generadorDatos.resumenImperfecciones,
-                        diferenciasLimitadas: generadorDatos.diferenciasLimitadas || [],
+                        informe: generador.informePedidoObtenido(base) || [],
+                        configuracion: generador.configuracion,
+                        diagnosticoCorrelaciones: generador.diagnosticoCorrelaciones,
+                        resumenImperfecciones: generador.resumenImperfecciones,
+                        diferenciasLimitadas: generador.diferenciasLimitadas || [],
                         ms: Date.now() - inicio
                     });
                 } catch (error) { rechazar(error); }
@@ -143,16 +148,42 @@ function mostrarResultadoGeneracion(resultado) {
     habilitarUsarGenerados();
 }
 
+/**
+ * (2027.01.01, revisión) El número de la generación vigente: cada «Generar» toma uno, y abrir un proyecto o importar una
+ * configuración completa lo adelanta. Una base que llega cuando su número ya no es el vigente no entra: hasta la revisión,
+ * una generación que terminaba después de abrir un proyecto reemplazaba su base y su configuración por las de antes.
+ */
+let generacionVigente = 0;
+
+/** Descarta la base que se esté generando: lo que llegue después es de la configuración anterior. */
+function descartarGeneracionEnCurso() {
+    generacionVigente++;
+}
+
 function generarBaseDatos() {
+    // (2027.01.01) El generador de la página guarda la configuración de la base que está a la vista: la nueva se recolecta
+    // y se valida en una copia, y el generador vuelve enseguida a la de la base; la nueva solo entra con la base que genera
+    // (mostrarResultadoGeneracion). Hasta la 2026.12.31 se recolectaba sobre la de la base: tras un intento fallido (un
+    // error de validación, una tabla incompleta, un fallo al generar) y mientras se generaba, la base seguía siendo la
+    // anterior pero su configuración era la nueva, y con ella se etiquetaban sus descargas, se guardaba el proyecto (que
+    // ya no regeneraba su base) y se imprimía su encabezado (con otra semilla). recolectarConfiguracion y la validación
+    // solo asignan propiedades de primer nivel: la copia superficial basta.
+    const deLaBase = generadorDatos.configuracion;
     try {
         if (typeof BaseColumnar === 'undefined') {
             throw new Error('Falta el dominio del Simulador: src/main.js debe cargarse antes de app.js');
         }
-        // Recolectar configuración
+        // Recolectar y validar la configuración nueva, en una copia
         reconciliarEstructurasTodas();   // (C1) la matriz sigue a la tabla I
-        generadorDatos.recolectarConfiguracion();
-        // Validar
-        const validacion = generadorDatos.validarConfiguracion();
+        /** @type {any} */
+        let configuracion, validacion;
+        generadorDatos.configuracion = { ...deLaBase };
+        try {
+            configuracion = generadorDatos.recolectarConfiguracion();
+            validacion = generadorDatos.validarConfiguracion();
+        } finally {
+            generadorDatos.configuracion = deLaBase;
+        }
         // (2026.12.30) todos, en la tarjeta bajo «Generar»; el aviso emergente, el primero y cuántos más hay
         mostrarAvisosDeValidacion(validacion.errores, validacion.advertencias);
         const mas = (/** @type {string[]} */ l) => (l.length > 1 ? ` (y ${l.length - 1} más, en la lista bajo «Generar»)` : '');
@@ -171,10 +202,15 @@ function generarBaseDatos() {
         mostrarProgresoGeneracion(0, 'Preparando');
         // La configuración viaja tal cual: postMessage la clona (clon estructurado,
         // que conserva NaN y null) y el respaldo en el hilo la usa directamente.
-        const configuracion = generadorDatos.obtenerConfiguracion();
+        const esta = ++generacionVigente;
         MotorGeneracion.generar(configuracion, mostrarProgresoGeneracion)
             .then(resultado => {
-                mostrarResultadoGeneracion(resultado);
+                if (esta !== generacionVigente) {
+                    mostrarToast('Se descartó la base que se estaba generando: mientras tanto se abrió otra configuración. Pulsa «Generar» si quieres una base con la nueva.', 'warning', 9000);
+                    return;
+                }
+                // la base nueva entra con su configuración (la expandida que devuelve el motor o, si no la trae, la recolectada)
+                mostrarResultadoGeneracion(resultado.configuracion ? resultado : { ...resultado, configuracion });
                 const ri = resultado.resumenImperfecciones || {};
                 const partesRi = [];
                 if (ri.perdidos) partesRi.push(`${ri.perdidos} valores perdidos`);
@@ -190,6 +226,7 @@ function generarBaseDatos() {
                 mostrarToast(partesRi.length ? `Base generada con imperfecciones realistas: ${partesRi.join(' · ')}${tiempo}${conAvisos}` : `¡Base de datos generada exitosamente!${tiempo}${conAvisos}`, nAvisos ? 'warning' : 'success', partesRi.length || nAvisos ? 9000 : undefined);
             })
             .catch(error => {
+                if (esta !== generacionVigente) return;   // (revisión) el fallo de una generación descartada no importa ya
                 mostrarToast(error.message, 'error');
                 console.error(error);
             })
@@ -198,6 +235,7 @@ function generarBaseDatos() {
                 ocultarProgresoGeneracion();
             });
     } catch (error) {
+        generadorDatos.configuracion = deLaBase;
         mostrarToast(error.message, 'error');
         console.error(error);
         const boton = document.getElementById('btnGenerar');
@@ -206,4 +244,4 @@ function generarBaseDatos() {
     }
 }
 
-export { MotorGeneracion, mostrarProgresoGeneracion, ocultarProgresoGeneracion, mostrarResultadoGeneracion, generarBaseDatos };
+export { MotorGeneracion, mostrarProgresoGeneracion, ocultarProgresoGeneracion, mostrarResultadoGeneracion, generarBaseDatos, descartarGeneracionEnCurso };

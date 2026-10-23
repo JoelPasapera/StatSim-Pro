@@ -5,6 +5,7 @@ import { ExportadorWord } from '../exportador-word.js';
 import { actualizarTituloRegresion, agregarPredictorExtra, agregarVariableExtra, ejecutarAnalisis } from './analisis.js';
 import { actualizarEtiquetasAnalisis, alCambiarHojaXlsx, cargarArchivo, cargarDatosGenerados } from './carga.js';
 import './proyecto.js';   // (2026.12.31) lo que el Analizador guarda en un proyecto (se inscribe al importarse)
+import { montarImpresionAnalizador } from './impresion.js';
 import { descargarResultados } from './sociodemografica.js';
 import { parsearLineaCSV } from '../../shared/csv.js';
 import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
@@ -22,6 +23,21 @@ import { mostrarToast } from '../../shared/toast.js';
 // ============================================================================
 
 
+
+// (2027.01.01) Por qué no hay capítulo de Word tras un análisis que no es una correlación de dos variables (el capítulo se
+// redacta sobre ella; sus secciones ya comparan esas variables según cada variable sociodemográfica)
+const SIN_CAPITULO = {
+    comparacion: 'El capítulo de Word se redacta sobre una correlación entre dos variables cuantitativas, y ya incluye su comparación según cada variable sociodemográfica. Esta comparación de grupos está en «Descargar resultados» y en «Imprimir o guardar en PDF».',
+    asociacion: 'El capítulo de Word se redacta sobre una correlación entre dos variables cuantitativas. Esta asociación (χ²) está en «Descargar resultados» y en «Imprimir o guardar en PDF».',
+    matriz: 'Con tres o más variables el análisis es una matriz de correlaciones, y el capítulo de Word se redacta sobre la correlación de dos: quita las variables adicionales, ejecuta el análisis y vuelve a exportar. La matriz está en «Imprimir o guardar en PDF».'
+};
+
+/** «Exportar capítulo a Word»: el de la última correlación, o el motivo por el que el último análisis no lo tiene. */
+function exportarCapituloWord() {
+    const motivo = !window.ultimoAnalisis && SIN_CAPITULO[window.ultimoTipoAnalisis];
+    if (motivo) { mostrarToast(motivo, 'warning', 10000); return; }
+    ExportadorWord.descargar(window.ultimoAnalisis);
+}
 
 // ========================================
 // CONFIGURACIÓN DEL ANALIZADOR
@@ -53,5 +69,6 @@ export function montarAnalizador() {
     // Botón descargar resultados
     document.getElementById('btnDescargarResultados').addEventListener('click', descargarResultados);
     const btnWord = document.getElementById('btnExportarWord');
-    if (btnWord) btnWord.addEventListener('click', () => ExportadorWord.descargar(window.ultimoAnalisis));
+    if (btnWord) btnWord.addEventListener('click', exportarCapituloWord);
+    montarImpresionAnalizador();   // (2027.01.01) «Imprimir o guardar en PDF» y el encabezado de lo impreso
 }

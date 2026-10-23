@@ -13,6 +13,7 @@ import * as explorador from './explorador/index.js';
 import './shared/video-tutoriales.js';
 import { recargarSinCache, autotest } from './shared/mantenimiento.js';
 import { montarProyecto } from './proyecto/ui.js';
+import { montarImpresion } from './shared/impresion.js';
 import { d3 } from './shared/statviz.js';
 
 const StatSim = { version: VERSION, secciones: new Map(), autotest };
@@ -37,6 +38,7 @@ const alCargarDOM = () => {
     montarAparte('el Analizador', montarAnalizador);
     montarAparte('las tablas desplazables', mejorarTablasDesplazables);
     montarAparte('el proyecto', montarProyecto);   // (2026.12.31) «Guardar proyecto» y «Abrir proyecto», en Ayuda
+    montarAparte('la impresión', montarImpresion);   // (2027.01.01) el encabezado de lo que se imprime o se guarda en PDF
 };
 
 // Control de versión en línea: version.json se pide sin caché al arrancar; si el sitio publicado es más nuevo que

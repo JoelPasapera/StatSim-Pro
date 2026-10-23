@@ -28,9 +28,10 @@ import { ENCABEZADO_DICCIONARIO, HOJAS_LIBRO } from '../../shared/diccionario-xl
  *   indice: su posición en libro.hojas; filas y columnas: las de la hoja (con los encabezados)
  * @typedef {{
  *   filas: FilaXlsx[], columnas: string[], etiquetas: Record<string, string>, fechas: string[],
- *   delSimulador: boolean, avisos: string[]
+ *   delSimulador: boolean, avisos: string[], codigosDeCategorias: Record<string, Array<[number, string]>>
  * }} BaseDesdeXlsx
- *   fechas: las columnas de fechas; delSimulador: el libro trae el diccionario del Simulador (las etiquetas salen de él)
+ *   fechas: las columnas de fechas; delSimulador: el libro trae el diccionario del Simulador (las etiquetas salen de él);
+ *   codigosDeCategorias: (2027.01.01) los códigos de las categorías que dice el diccionario («0 = No; 1 = Sí»)
  */
 
 /** ¿Tiene valor la celda? @param {CeldaXlsx | undefined} v */
@@ -76,23 +77,48 @@ export function hojaPorOmision(libro) {
 }
 
 /**
- * Las etiquetas de variable del diccionario de un libro del Simulador (la hoja «Diccionario», con «Variable» y «Etiqueta»
- * como primeros encabezados): nombre → etiqueta. null si el libro no lo trae.
+ * (2027.01.01) Los códigos de una categórica como los escribe el diccionario del Simulador («0 = Mujer; 1 = Hombre»,
+ * simulador/dominio/exportacion-xlsx.js): [[0, 'Mujer'], [1, 'Hombre']]. Se corta solo ante «; código = » (una etiqueta
+ * puede llevar un punto y coma). null si el texto no tiene esa forma.
+ * @param {unknown} texto
+ * @returns {Array<[number, string]> | null}
+ */
+export function codigosDeLaLista(texto) {
+    if (typeof texto !== 'string' || !texto.trim()) return null;
+    /** @type {Array<[number, string]>} */
+    const pares = [];
+    for (const parte of texto.trim().split(/; (?=-?\d+(?:\.\d+)? = )/)) {
+        const m = /^(-?\d+(?:\.\d+)?) = ([\s\S]*)$/.exec(parte);
+        if (!m) return null;
+        pares.push([Number(m[1]), sinMarcado(/** @type {string} */ (m[2]).trim())]);
+    }
+    return pares;
+}
+
+/**
+ * El diccionario de un libro del Simulador (la hoja «Diccionario», con «Variable» y «Etiqueta» como primeros encabezados):
+ * la etiqueta de cada variable y, si trae la columna «Valores», los códigos de cada categórica. null si el libro no lo trae.
  * @param {LibroXlsx} libro
- * @returns {Map<string, string> | null}
+ * @returns {{ etiquetas: Map<string, string>, codigos: Map<string, Array<[number, string]>> } | null}
  */
 function diccionarioDelSimulador(libro) {
     const hoja = libro.hojas.find(h => h.nombre === HOJAS_LIBRO.DICCIONARIO);
     const encabezado = hoja && hoja.filas[0];
     if (!hoja || !encabezado || encabezado[0] !== ENCABEZADO_DICCIONARIO[0] || encabezado[1] !== ENCABEZADO_DICCIONARIO[1]) return null;
+    const conValores = encabezado[4] === ENCABEZADO_DICCIONARIO[4];
     /** @type {Map<string, string>} */
     const etiquetas = new Map();
+    /** @type {Map<string, Array<[number, string]>>} */
+    const codigos = new Map();
     for (const fila of hoja.filas.slice(1)) {
         if (!fila || typeof fila[0] !== 'string') continue;
+        const variable = sinMarcado(fila[0].trim());
         const e = typeof fila[1] === 'string' ? fila[1].trim() : '';
-        if (e) etiquetas.set(sinMarcado(fila[0].trim()), sinMarcado(e));
+        if (e) etiquetas.set(variable, sinMarcado(e));
+        const pares = conValores ? codigosDeLaLista(fila[4]) : null;
+        if (pares) codigos.set(variable, pares);
     }
-    return etiquetas;
+    return { etiquetas, codigos };
 }
 
 const ES_FECHA = /^(\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?|\d{2}:\d{2}:\d{2})$/;
@@ -198,7 +224,14 @@ export function baseDesdeXlsx(libro, indice) {
     const diccionario = hoja.nombre !== HOJAS_LIBRO.DICCIONARIO ? diccionarioDelSimulador(libro) : null;
     /** @type {Record<string, string>} */
     const etiquetas = {};
-    if (diccionario) for (const c of columnas) { const e = diccionario.get(c); if (e && e !== c) Object.defineProperty(etiquetas, c, { value: e, enumerable: true, writable: true, configurable: true }); }
+    /** @type {Record<string, Array<[number, string]>>} */
+    const codigosDeCategorias = {};
+    const propia = (/** @type {object} */ o, /** @type {string} */ k, /** @type {unknown} */ v) => Object.defineProperty(o, k, { value: v, enumerable: true, writable: true, configurable: true });
+    if (diccionario) for (const c of columnas) {
+        const e = diccionario.etiquetas.get(c), pares = diccionario.codigos.get(c);
+        if (e && e !== c) propia(etiquetas, c, e);
+        if (pares) propia(codigosDeCategorias, c, pares);
+    }
 
     if (hoja.oculta) avisos.push(`la hoja «${sinMarcado(hoja.nombre)}» está oculta en el libro`);
     titulos.forEach(t => avisos.push(`se saltó la fila ${t.fila} («${t.texto.length > 60 ? t.texto.slice(0, 57) + '…' : t.texto}»), que parece un título: los encabezados son los de la fila ${k + 1}`));
@@ -209,5 +242,5 @@ export function baseDesdeXlsx(libro, indice) {
     renombradas.forEach(([a, b]) => avisos.push(`la columna «${sinMarcado(a)}» se llama «${b}» (${a !== sinMarcado(a) ? 'sin < ni >' : 'el nombre estaba repetido'})`));
     const conNumerosDeTexto = columnas.filter((_, c) => comoTexto[c] > 0);
     if (conNumerosDeTexto.length) avisos.push(`en ${listaBreve(conNumerosDeTexto)}, números guardados como texto en Excel se leyeron como números`);
-    return { filas: base, columnas, etiquetas, fechas, delSimulador: !!diccionario, avisos };
+    return { filas: base, columnas, etiquetas, fechas, delSimulador: !!diccionario, avisos, codigosDeCategorias };
 }

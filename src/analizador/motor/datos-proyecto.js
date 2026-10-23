@@ -158,6 +158,8 @@ export const LARGO_SIGLA_ESTRUCTURA = 32;
 export const LARGO_COLUMNA_ESTRUCTURA = 64;
 /** Las etiquetas de variable de un proyecto: hasta 200 000. */
 export const MAXIMO_ETIQUETAS = 200000;
+/** (2027.01.01) Los códigos de las categorías de un proyecto: hasta 100 000 entre todas las columnas. */
+export const MAXIMO_CODIGOS_CATEGORIAS = 100000;
 
 /**
  * ¿Tiene la estructura de pruebas de un proyecto la forma que escriben el Simulador (obtenerEstructuraEscalas) y las
@@ -190,12 +192,29 @@ export function etiquetasValidas(etiquetas) {
 }
 
 /**
- * Lo más que puede traer un «etiquetas.json» (las etiquetas, la estructura y el origen), para medirlo antes de leerlo: cada
- * prueba, un objeto con su lista de dimensiones y siete campos; cada dimensión, un objeto con tres; con holgura.
+ * (2027.01.01) ¿Son los códigos de las categorías de un proyecto los que escribe el Analizador (columna → [[código,
+ * etiqueta], …], con números finitos y textos de un largo razonable), sin pasar de MAXIMO_ETIQUETAS columnas ni de
+ * MAXIMO_CODIGOS_CATEGORIAS códigos entre todas?
+ * @param {unknown} codigos
+ * @returns {boolean}
+ */
+export function codigosValidos(codigos) {
+    if (!esObjeto(codigos)) return false;
+    const columnas = Object.keys(codigos);
+    if (columnas.length > MAXIMO_ETIQUETAS) return false;
+    let total = 0;
+    return columnas.every(k => k.length <= 1000 && Array.isArray(codigos[k]) && (total += codigos[k].length) <= MAXIMO_CODIGOS_CATEGORIAS
+        && codigos[k].every((/** @type {unknown} */ par) => Array.isArray(par) && par.length === 2 && typeof par[0] === 'number' && Number.isFinite(par[0]) && typeof par[1] === 'string' && par[1].length <= 10000));
+}
+
+/**
+ * Lo más que puede traer un «etiquetas.json» (las etiquetas, la estructura, el origen y, desde la 2027.01.01, los códigos
+ * de las categorías), para medirlo antes de leerlo: cada prueba, un objeto con su lista de dimensiones y siete campos;
+ * cada dimensión, un objeto con tres; cada código, una lista de dos; con holgura.
  * @type {TopesJson}
  */
 export const TOPES_JSON_ETIQUETAS = {
     profundidad: 8,
-    contenedores: 3 * MAXIMO_PRUEBAS_ESTRUCTURA + 2 * MAXIMO_DIMENSIONES_ESTRUCTURA + 100,
-    elementos: 2 * MAXIMO_ETIQUETAS + 10 * MAXIMO_PRUEBAS_ESTRUCTURA + 5 * MAXIMO_DIMENSIONES_ESTRUCTURA + 1000
+    contenedores: 3 * MAXIMO_PRUEBAS_ESTRUCTURA + 2 * MAXIMO_DIMENSIONES_ESTRUCTURA + MAXIMO_ETIQUETAS + MAXIMO_CODIGOS_CATEGORIAS + 100,
+    elementos: 2 * MAXIMO_ETIQUETAS + 10 * MAXIMO_PRUEBAS_ESTRUCTURA + 5 * MAXIMO_DIMENSIONES_ESTRUCTURA + MAXIMO_ETIQUETAS + 3 * MAXIMO_CODIGOS_CATEGORIAS + 1000
 };

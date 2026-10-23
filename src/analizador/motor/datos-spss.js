@@ -29,9 +29,13 @@ import { sinMarcado } from '../../core/data/texto.js';
  * @typedef {Record<string, number | string | null>} FilaSav
  * @typedef {{
  *   filas: FilaSav[], etiquetas: Record<string, string>,
- *   categoricas: string[], numericas: string[], textos: string[], fechas: string[], avisos: string[]
+ *   categoricas: string[], numericas: string[], textos: string[], fechas: string[], avisos: string[],
+ *   codigosDeCategorias: Record<string, Array<[number, string]>>
  * }} BaseDesdeSav
- *   categoricas: las numéricas con etiquetas que pasan a texto; textos: las cadenas; avisos: lo que conviene saber
+ *   categoricas: las numéricas con etiquetas que pasan a texto; textos: las cadenas; avisos: lo que conviene saber;
+ *   codigosDeCategorias: (2027.01.01) de cada categórica, sus códigos y sus etiquetas (la regresión logística toma de ellos
+ *   qué categoría de una dependiente binaria es el 1: la de código mayor, como en SPSS); de una cadena de dos valores, el
+ *   orden de sus valores (0 y 1), que es el que sigue SPSS con una dependiente de cadena
  */
 
 /** @param {Array<[number | string, string]>} etiquetas La clave de un conjunto de etiquetas de valor numéricas: «código→etiqueta», ordenado. */
@@ -101,6 +105,7 @@ export function baseDesdeSav(archivo) {
     /** @type {string[]} */ const numericas = [];
     /** @type {string[]} */ const textos = [];
     /** @type {string[]} */ const fechas = [];
+    /** @type {Record<string, Array<[number, string]>>} */ const codigosDeCategorias = {};
     // Cómo se presenta cada celda de cada variable.
     const presentar = variables.map((v, k) => {
         const col = datos[k];
@@ -109,9 +114,20 @@ export function baseDesdeSav(archivo) {
             /** @type {Map<string, string>} */
             const mapa = new Map();
             v.etiquetasValor.forEach(([valor, etiqueta]) => { if (typeof valor === 'string' && etiqueta.trim()) mapa.set(valor, sinMarcado(etiqueta.trim())); });
+            const cadenas = /** @type {string[]} */ (col), comoSeMuestra = (/** @type {string} */ t) => mapa.get(t) ?? sinMarcado(t);
+            // (2027.01.01, revisión) una cadena de dos valores lleva sus «códigos»: el orden de sus valores, que es el que sigue
+            // SPSS al codificar una dependiente de cadena (el mayor es el 1). Sin ellos, la regresión logística elegía el evento
+            // por lo que se muestra (las etiquetas o los nombres), al revés que SPSS con «1» = Sí y «2» = No
+            /** @type {Set<string>} */
+            const valores = new Set();
+            for (let i = 0; i < n && valores.size <= 2; i++) { const t = cadenas[i]; if (!esPerdidoSav(v, t)) valores.add(t); }
+            if (valores.size === 2) {
+                const [a, b] = /** @type {[string, string]} */ ([...valores].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0)));
+                Object.defineProperty(codigosDeCategorias, /** @type {string} */ (nombres[k]), { value: [[0, comoSeMuestra(a)], [1, comoSeMuestra(b)]], enumerable: true, writable: true, configurable: true });
+            }
             return (/** @type {number} */ i) => {
-                const t = /** @type {string[]} */ (col)[i];
-                return esPerdidoSav(v, t) ? null : (mapa.get(t) ?? sinMarcado(t));
+                const t = cadenas[i];
+                return esPerdidoSav(v, t) ? null : comoSeMuestra(t);
             };
         }
         const nums = /** @type {Float64Array} */ (col);
@@ -127,6 +143,7 @@ export function baseDesdeSav(archivo) {
             for (let i = 0; i < n && todos; i++) { const x = nums[i]; if (!esPerdidoSav(v, x) && !mapa.has(x)) todos = false; }
             if (todos) {
                 categoricas.push(nombres[k]);
+                Object.defineProperty(codigosDeCategorias, /** @type {string} */ (nombres[k]), { value: [...mapa].sort((x, y) => x[0] - y[0]), enumerable: true, writable: true, configurable: true });
                 return (/** @type {number} */ i) => (esPerdidoSav(v, nums[i]) ? null : /** @type {string} */ (mapa.get(nums[i])));
             }
         }
@@ -145,5 +162,5 @@ export function baseDesdeSav(archivo) {
     const etiquetas = {};
     variables.forEach((v, k) => { const e = sinMarcado(v.etiqueta.trim()), nombre = /** @type {string} */ (nombres[k]); if (e && e !== nombre) etiquetas[nombre] = e; });
     if (archivo.ponderacion) avisos.push(`el archivo pondera los casos por «${sinMarcado(archivo.ponderacion)}», y el Analizador no pondera: cada fila cuenta una vez`);
-    return { filas, etiquetas, categoricas, numericas, textos, fechas, avisos };
+    return { filas, etiquetas, categoricas, numericas, textos, fechas, avisos, codigosDeCategorias };
 }

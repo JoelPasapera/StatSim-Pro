@@ -11,12 +11,13 @@ import { aplicarCSVCortes, aplicarCSVDesenlaces, csvDeCortes, csvDeDesenlaces } 
 import { aplicarCSVDiferencias, csvDeDiferencias } from './diferencias.js';
 import { aplicarCSVEstructuras, cargarEstructurasDesdeJSON, csvDeEstructuras, reconciliarEstructurasTodas } from './estructura.js';
 import { aplicarCSVModelos, csvDeModelos } from './modelos.js';
-import { aplicarCSVPruebas, aplicarCSVTests, csvDeTabla, csvDeTests, sincronizarDimensionesDesdeTests } from './pruebas.js';
+import { aplicarCSVPruebas, aplicarCSVTests, csvDeTabla, csvDeTests, refrescarSelectoresDePrueba, sincronizarDimensionesDesdeTests } from './pruebas.js';
 import { aplicarCSVRepetidas, csvDeRepetidas } from './repetidas.js';
 import { aplicarCSVSocio, poblarReferenciaMAR } from './sociodemograficos.js';
 import { aplicarCSVNiveles, csvDeNiveles } from './niveles.js';
 import { aplicarCSVPaneles, csvDePaneles } from './paneles.js';
 import { aplicarCSVHisteresis, csvDeHisteresis } from './histeresis.js';
+import { descartarGeneracionEnCurso } from './motor.js';
 
 // ============================================================================
 // MAESTRO: las TRES configuraciones en un solo archivo
@@ -172,20 +173,11 @@ function aplicarMaestro(original) {
     if (!texto.includes(MARCA_TODO.pruebas)) {
         throw new Error('Este archivo no es una configuración completa. Usa el botón «Importar CSV» de cada tabla, o exporta primero con «Exportar TODO».');
     }
-    const bloque = (ini, fin) => {
-        const a = texto.indexOf(ini);
-        if (a < 0) return '';
-        const desde = a + ini.length;
-        const b = fin ? texto.indexOf(fin, desde) : -1;
-        return texto.slice(desde, b < 0 ? undefined : b).trim();
-    };
-    // Archivos antiguos SIN ###GENERAL### siguen funcionando: el bloque sale vacío.
-    const csvG = bloque(MARCA_TODO.general, texto.includes(MARCA_TODO.tests) ? MARCA_TODO.tests : MARCA_TODO.pruebas);
-    const csvT = bloque(MARCA_TODO.tests, MARCA_TODO.pruebas);
-    const csvP = bloque(MARCA_TODO.pruebas, MARCA_TODO.socio);
-    const csvS = bloque(MARCA_TODO.socio, MARCA_TODO.corr);
-    // Cada bloque termina en la siguiente marca ###…### (o al final):
-    // así los archivos antiguos, sin DIFERENCIAS/MODELOS, siguen funcionando.
+    // Cada bloque termina en la siguiente marca ###…### (o al final): así los archivos antiguos, sin DIFERENCIAS/MODELOS
+    // (o sin ###GENERAL###: el bloque sale vacío), siguen funcionando. (2027.01.01) También los cuatro primeros: hasta la
+    // 2026.12.31 terminaban en una marca fija (los sociodemográficos, en ###CORRELACIONES###), y un maestro escrito a mano
+    // sin las tablas vacías metía en los sociodemográficos todo lo que seguía («Categoría "Cuantitativa": falta el
+    // promedio», al generar, por la cabecera de las diferencias).
     const bloqueHastaSiguiente = (ini) => {
         const a = texto.indexOf(ini);
         if (a < 0) return '';
@@ -195,6 +187,10 @@ function aplicarMaestro(original) {
         const sig = re.exec(texto);
         return texto.slice(desde, sig ? sig.index : undefined).trim();
     };
+    const csvG = bloqueHastaSiguiente(MARCA_TODO.general);
+    const csvT = bloqueHastaSiguiente(MARCA_TODO.tests);
+    const csvP = bloqueHastaSiguiente(MARCA_TODO.pruebas);
+    const csvS = bloqueHastaSiguiente(MARCA_TODO.socio);
     const csvC = bloqueHastaSiguiente(MARCA_TODO.corr);
     const csvD = bloqueHastaSiguiente(MARCA_TODO.dif);
     const csvM = bloqueHastaSiguiente(MARCA_TODO.modelos);
@@ -208,16 +204,27 @@ function aplicarMaestro(original) {
         const filas = csv ? csv.split('\n').length - 1 : 0;
         if (filas > MAXIMO_FILAS_MAESTRO) throw new Error(`La configuración trae ${filas.toLocaleString('es')} filas de ${tabla}: el Simulador admite hasta ${MAXIMO_FILAS_MAESTRO.toLocaleString('es')} por tabla`);
     }
+    // (2027.01.01, revisión) Un bloque que está pero no trae filas (solo su encabezado: así escribe «Exportar TODO» una tabla
+    // vacía) vacía su tabla. Hasta ahora la conservaba: aplicar un maestro, o abrir un proyecto, sobre la configuración de
+    // otro estudio dejaba en las tablas vacías del nuevo las filas del anterior (sus tests, escalas, sociodemográficas,
+    // correlaciones, diferencias, modelos o medidas repetidas): al generar, «la variable no existe», o, con los mismos
+    // nombres, en la base nueva y sin aviso. Un bloque ausente (un maestro anterior a esa tabla) sigue como antes.
+    const sinFilas = (/** @type {string} */ csv) => csv.split('\n').filter(l => l.trim()).length < 2;
+    const vaciar = (/** @type {string} */ id) => { const b = document.getElementById(id); if (b) b.innerHTML = ''; };
+    const traeSinFilas = (/** @type {string} */ marca, /** @type {string} */ csv) => texto.includes(marca) && sinFilas(csv);
     // ORDEN OBLIGATORIO: primero I y II (definen las variables), luego III
     // (sus desplegables se llenan a partir de las anteriores).
     const rG = csvG ? aplicarCSVGeneral(csvG) : 0;
+    if (traeSinFilas(MARCA_TODO.tests, csvT)) { vaciar('bodyTests'); refrescarSelectoresDePrueba(); }
     const rT = csvT ? aplicarCSVTests(csvT) : 0;   // los tests van ANTES que las escalas
+    if (traeSinFilas(MARCA_TODO.pruebas, csvP)) vaciar('bodyPruebas');
     const rP = csvP ? aplicarCSVPruebas(csvP) : 0;
     sincronizarDimensionesDesdeTests(true);
+    if (traeSinFilas(MARCA_TODO.socio, csvS)) vaciar('bodySocio');
     const rS = csvS ? aplicarCSVSocio(csvS) : 0;
     // (F2) un maestro es la configuración COMPLETA: las secciones que no trae vacían su tabla
-    //      (antes, un maestro antiguo sin MODELOS dejaba los modelos del estudio anterior)
-    for (const [csvX, id] of [[csvC, 'bodyCorrelaciones'], [csvD, 'bodyDiferencias'], [csvM, 'bodyModelos'], [csvR, 'bodyRepetidas'], [csvN, 'bodyNiveles'], [csvPa, 'bodyPaneles'], [csvHi, 'bodyHisteresis']]) if (!csvX) { const b = document.getElementById(id); if (b) b.innerHTML = ''; }
+    //      (antes, un maestro antiguo sin MODELOS dejaba los modelos del estudio anterior); y las que trae sin filas, también
+    for (const [csvX, id] of [[csvC, 'bodyCorrelaciones'], [csvD, 'bodyDiferencias'], [csvM, 'bodyModelos'], [csvR, 'bodyRepetidas'], [csvN, 'bodyNiveles'], [csvPa, 'bodyPaneles'], [csvHi, 'bodyHisteresis']]) if (!csvX || sinFilas(csvX)) vaciar(id);
     const rC = csvC ? aplicarCSVCorrelaciones(csvC) : { aplicadas: 0, omitidas: 0 };
     const rD = csvD ? aplicarCSVDiferencias(csvD) : { aplicadas: 0, omitidas: 0 };
     const rM = csvM ? aplicarCSVModelos(csvM) : { aplicadas: 0, omitidas: 0 };
@@ -248,6 +255,7 @@ function importarConfigTodo(e) {
     leerArchivoComoTexto(file).then(function ({ texto: original, aviso }) {
         try {
             const { mensaje, avisos } = aplicarMaestro(original);
+            descartarGeneracionEnCurso();   // (2027.01.01, revisión) lo que se estuviera generando es de la configuración anterior
             mostrarToastConAvisos(mensaje, [...avisos, aviso]);
         } catch (error) {
             mostrarToast(/no es una configuración completa/.test(error.message) ? error.message : 'Error al importar: ' + error.message, 'error');

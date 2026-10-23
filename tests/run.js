@@ -13,8 +13,9 @@ const raiz = path.join(aqui, '..');
 const completo = process.argv.includes('completo') || process.env.STATSIM_TEST === 'completo';
 // los procesos hijos heredan el modo: en la completa corren también las pruebas lentas (tests/solo-completa.js)
 if (completo) process.env.STATSIM_TEST = 'completo';
-// solo=node,escenarios,extra,oraculos: ejecuta solo esos bloques. La batería completa roza el límite de tiempo de algunos
-// entornos (272 s en la 2026.11.09); en dos llamadas («solo=node» y «solo=escenarios,extra,oraculos») cubre lo mismo.
+// solo=node,escenarios,extra,oraculos,navegador: ejecuta solo esos bloques. La batería completa roza el límite de tiempo de
+// algunos entornos (272 s en la 2026.11.09); en dos llamadas («solo=node» y «solo=escenarios,extra,oraculos,navegador») cubre
+// lo mismo. (2027.01.01) «navegador»: los ejemplos de ejemplos/ rehechos en Chromium, si está Playwright.
 // Sin «solo=», todos, como siempre
 const solo = (process.argv.find(a => a.startsWith('solo=')) || '').slice(5).split(',').filter(Boolean);
 const incluye = bloque => !solo.length || solo.includes(bloque);
@@ -29,7 +30,8 @@ function correr(cmd, args, cwd) {
         let out = '';
         p.stdout.on('data', d => { out += d; }); p.stderr.on('data', d => { out += d; });
         p.on('error', e => resolver({ ok: false, out: String(e), ms: Date.now() - inicio }));
-        p.on('close', codigo => resolver({ ok: codigo === 0, out, ms: Date.now() - inicio }));
+        // (2027.01.01) un proceso que muere por una señal (el sistema sin memoria lo mata) no escribe nada: se dice
+        p.on('close', (codigo, senal) => resolver({ ok: codigo === 0, out: senal ? `${out}\nFALLO: el proceso terminó por la señal ${senal} (¿sin memoria?)` : out, ms: Date.now() - inicio }));
     });
 }
 // el script de TypeScript (typescript/bin/tsc): en el proyecto, en el PATH (resolviendo el enlace) o en la carpeta global de npm
@@ -107,6 +109,20 @@ if (completo) {
     if (incluye('extra')) tareas.push(correr(process.execPath, ['montecarlo/wlsmv.mjs', '600'], aqui).then(rM => {
         registrar('Monte Carlo del WLSMV (600 réplicas: Γ, EE robustos, tasa de rechazo, sesgo)', rM, (() => { try { const r = JSON.parse(rM.out.trim().split('\n')[0]); return `rechazo ${(100 * r.tasaRechazo).toFixed(1)} %, Γ ×${r.razonGammaMedia.toFixed(3)}, EE ×[${r.razonEE.map(v => v.toFixed(2)).join(', ')}]`; } catch (e) { return ''; } })());
     }));
+    // (2027.01.01) los ejemplos de ejemplos/, rehechos en Chromium pulsando los botones y comparados con su carpeta
+    // (tests/navegador/ejemplos.mjs). Sin Playwright se omite y se dice: las pruebas de Node (integration/ejemplos.test.js)
+    // comprueban siempre, sin navegador, sus archivos, sus bases y sus cifras
+    if (incluye('navegador')) tareas.push((async () => {
+        const { prepararChromium } = await import('./navegador/entorno.mjs');
+        const { pw, motivo } = await prepararChromium();
+        if (!pw) { filas.push(`· ejemplos en el navegador omitidos: ${motivo}; las pruebas de Node ya comprueban sus archivos, sus bases y sus cifras`); return; }
+        const r = await correr(process.execPath, [path.join('navegador', 'ejemplos.mjs'), 'comprobar'], aqui);
+        const iguales = (r.out.match(/^✓/gm) || []).length, distintos = (r.out.match(/^✗/gm) || []).length, sinDibujo = /salvo el dibujo/.test(r.out);
+        const ok = r.ok && distintos === 0 && iguales > 0;
+        // (2027.01.01) si falla, las últimas líneas de su salida (un error de Playwright no siempre dice «Error»)
+        const cola = ok ? '' : '\n' + r.out.trim().split('\n').slice(-6).map(l => `✗ ${l}`).join('\n');
+        registrar('ejemplos rehechos en Chromium (los cinco casos de ejemplos/, comparados con su carpeta)', { ...r, out: r.out + cola, ok }, `${iguales} iguales${distintos ? ` · ${distintos} distintos` : ''}${sinDibujo ? ' · PDF y figuras del Word sin comparar byte a byte (otro dibujo: otras fuentes u otro Chromium)' : ''}`);
+    })());
     if (incluye('oraculos')) tareas.push((async () => {
         const py = await python();
         if (!py) { filas.push('· oráculos omitidos (hace falta Python 3 con NumPy y SciPy)'); return; }

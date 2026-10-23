@@ -1,0 +1,24 @@
+RESULTADOS DEL ANÁLISIS ESTADÍSTICO
+====================================
+1. ASOCIACIÓN (CHI-CUADRADO)
+Asociación de Variables Categóricas (Chi-cuadrado)
+
+Prueba de independencia entre Nivel_I y Sexo. Evalúa si las dos variables categóricas están asociadas; la V de Cramér mide la fuerza de la asociación.
+
+Tabla de contingencia (frecuencias observadas)
+Nivel_I \ Sexo	Hombre	Mujer	Total
+Alta	27	56	83
+Baja	42	30	72
+Moderada	73	62	135
+Total	142	148	290
+Chi-cuadrado de Pearson:	χ²(2) = 12.910
+p-valor:	.002
+V de Cramér (tamaño del efecto):	0.211 (asociación débil)
+N:	290
+Decisión sobre H₀:	SE RECHAZA H₀
+Interpretación
+
+Existe una asociación estadísticamente significativa entre Nivel_I y Sexo (χ²(2) = 12.91, p = .002). La V de Cramér (0.211) indica una asociación débil. Las dos variables no son independientes.
+----
+Generado por StatSim Pro
+Fecha: 21/10/2026

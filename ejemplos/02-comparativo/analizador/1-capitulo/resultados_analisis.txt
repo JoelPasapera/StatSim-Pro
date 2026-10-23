@@ -1,0 +1,288 @@
+RESULTADOS DEL ANÁLISIS ESTADÍSTICO
+====================================
+1. ESTADÍSTICOS DESCRIPTIVOS
+Estadísticos Descriptivos
+
+Resumen numérico de cada variable, base para interpretar la correlación. La asimetría y la curtosis describen la forma de la distribución: valores próximos a 0 sugieren simetría y una forma mesocúrtica (cercana a la normal).
+
+Estadístico	Ansiedad ante los exámenes — IAE	Promedio de notas (sociodemográfica continua, 0–20)
+N	290	290
+Media (M)	24.19	14.20
+Desviación estándar (DE)	4.12	1.81
+Error estándar	0.24	0.11
+Mínimo	12.00	8.20
+Máximo	35.00	18.40
+Mediana	25.00	14.10
+Q1 / Q3	22.00 / 27.00	13.03 / 15.40
+Asimetría	-0.24	-0.17
+Curtosis	0.03	0.09
+
+2. ANÁLISIS DE FIABILIDAD (ALFA DE CRONBACH)
+Fiabilidad y Consistencia Interna
+
+Consistencia interna de las escalas detectadas en la base de datos. El alfa de Cronbach se reporta en su forma bruta (con intervalo de confianza del 95 % según el procedimiento de Feldt) y estandarizada; el omega total de McDonald se estima a partir de una solución unifactorial y la lambda 2 de Guttman constituye una cota inferior alternativa de la fiabilidad. Según George y Mallery (2003), valores de α ≥ .70 indican una fiabilidad aceptable, ≥ .80 buena y ≥ .90 excelente.
+
+Escala	k	n	ω total	ω jerárquico	α [IC 95 %]	α estand.	α ordinal	ω ordinal	λ₂	r inter-ítem M [mín, máx]	Interpretación
+Preocupación (IAE)	8	262	0.861	—	0.852
+[0.824, 0.878]	0.849	0.878	0.881	0.859	0.413
+[0.199, 0.569]	buena (ω)
+Emocionalidad (IAE)	8	259	0.842	—	0.834
+[0.801, 0.863]	0.831	0.859	0.862	0.840	0.380
+[0.231, 0.544]	buena (ω)
+Escala total (IAE)	16	226	0.889	0.696	0.886
+[0.863, 0.906]	0.884	0.903	0.904	0.891	0.322
+[0.120, 0.596]	buena (ω)
+
+α y ω ordinales: calculados sobre la matriz de correlaciones policóricas (tetracóricas con ítems 0/1), que no subestima la relación entre ítems con pocas categorías como sí lo hace Pearson (Zumbo et al., 2007; Gadermann et al., 2012). Se muestran cuando los ítems son enteros con 7 categorías o menos.
+
+Intervalos de confianza por bootstrap
+Para qué sirve:
+Acota cada coeficiente con un intervalo de confianza: se remuestrean los participantes con reposición y en cada remuestra se recalculan α, ω y los coeficientes ordinales. La semilla hace el resultado reproducible: la misma semilla da siempre el mismo intervalo.
+Remuestras (B)
+500 (rápido)
+1000 (recomendado)
+2000 (más estable)
+Más remuestras estabilizan los límites; el tiempo crece en proporción.
+Método
+Percentil
+BCa (corrige sesgo y asimetría)
+BCa es más exacto con coeficientes cerca de 1, pero añade un jackknife: tarda más.
+Nivel de confianza
+90 %
+95 %
+99 %
+El 95 % es el estándar en tesis.
+Semilla
+Anótala en el informe para que el cálculo sea replicable.
+Calcular intervalos
+Cancelar
+
+En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El omega total de McDonald (ω) se reporta como coeficiente principal de fiabilidad, en consonancia con las recomendaciones psicométricas actuales: se estima a partir de las cargas de un modelo factorial congenérico, que admite que cada ítem mida el constructo con distinta precisión y pondera su contribución en consecuencia, sin exigir el supuesto de tau-equivalencia que el alfa presupone. El omega jerárquico, disponible para las escalas totales con partición conocida en dimensiones, cuantifica la proporción de varianza atribuible exclusivamente al factor general (aproximación de Schmid-Leiman): valores elevados respaldan la interpretación unidimensional de la puntuación total, y la diferencia entre el ω total y el ω jerárquico expresa la varianza aportada por las dimensiones específicas. El alfa de Cronbach (α) se conserva como referencia comparativa por su tradición en la literatura; su intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango plausible del parámetro poblacional, y el α estandarizado coincide con el bruto cuando las varianzas de los ítems son homogéneas. Discrepancias acusadas entre ω y α sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa, sistemáticamente igual o superior al α. La correlación inter-ítem media, con su mínimo y máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados. La columna de interpretación aplica los criterios convencionales (≥ .70 aceptable, ≥ .80 buena, ≥ .90 excelente; George y Mallery, 2003) al coeficiente principal disponible, señalado entre paréntesis.
+
+Análisis de ítems: guía de lectura
+
+En las tablas de análisis de ítems, M y DE corresponden a la media y la desviación estándar de cada ítem, que permiten identificar elementos con distribuciones extremas o escasa variabilidad. La correlación ítem-total corregida expresa la relación entre el ítem y la suma de los ítems restantes (excluido el propio, para evitar la contaminación de la correlación por su pertenencia al total); valores iguales o superiores a .30 indican una contribución adecuada al constructo, en tanto que valores inferiores señalan ítems cuya pertinencia debe revisarse. La columna «α si se elimina» informa el valor que adoptaría el coeficiente al suprimir el ítem correspondiente: cuando dicho valor supera al α global de la escala, el ítem reduce la consistencia interna y constituye un candidato a revisión, reformulación o eliminación.
+
+Análisis de ítems: Preocupación (IAE)
+Ítem	M	DE	r ítem-total corregida	α si se elimina
+P1	3.29	0.76	0.409	0.854
+P2	2.94	0.91	0.678	0.824
+P3	2.56	1.03	0.729	0.817
+P4	3.17	0.77	0.449	0.850
+P5	2.71	0.90	0.628	0.830
+P6	3.01	0.86	0.640	0.829
+P7	3.68	0.78	0.556	0.839
+P8	3.46	0.80	0.642	0.829
+
+38 caso(s) excluido(s) por datos incompletos en los ítems (n efectivo = 262).
+
+En la escala Preocupación (IAE), las correlaciones ítem-total corregidas oscilaron entre .409 (P1) y .729 (P3). La totalidad de los ítems supera el criterio de .30, lo que indica que cada elemento contribuye de manera adecuada a la medición del constructo; el ítem P3 presenta la asociación más estrecha con la puntuación total y constituye el indicador más representativo del conjunto. La supresión del ítem P1 elevaría el coeficiente de .852 a .854, por lo que constituye el principal candidato a revisión, reformulación o eliminación. En conjunto, el patrón observado resulta coherente con el alfa de .852 de la escala, de interpretación buena (con el omega de .861, buena).
+
+Análisis de ítems: Emocionalidad (IAE)
+Ítem	M	DE	r ítem-total corregida	α si se elimina
+E1	3.01	0.92	0.658	0.801
+E2	2.83	0.96	0.693	0.795
+E3	3.30	0.83	0.514	0.820
+E4	3.11	0.95	0.606	0.808
+E5	2.37	0.68	0.438	0.829
+E6	2.65	0.84	0.591	0.811
+E7	2.46	0.78	0.515	0.820
+E8	3.49	0.77	0.462	0.826
+
+41 caso(s) excluido(s) por datos incompletos en los ítems (n efectivo = 259).
+
+En la escala Emocionalidad (IAE), las correlaciones ítem-total corregidas oscilaron entre .438 (E5) y .693 (E2). La totalidad de los ítems supera el criterio de .30, lo que indica que cada elemento contribuye de manera adecuada a la medición del constructo; el ítem E2 presenta la asociación más estrecha con la puntuación total y constituye el indicador más representativo del conjunto. Ningún ítem incrementaría el coeficiente al ser eliminado, lo que respalda la conservación del conjunto completo. En conjunto, el patrón observado resulta coherente con el alfa de .834 de la escala, de interpretación buena (con el omega de .842, buena).
+
+Análisis de ítems: Escala total (IAE)
+Ítem	M	DE	r ítem-total corregida	α si se elimina
+P1	3.27	0.76	0.399	0.884
+P2	2.99	0.93	0.601	0.876
+P3	2.61	1.02	0.658	0.873
+P4	3.19	0.78	0.412	0.883
+P5	2.78	0.90	0.570	0.878
+P6	3.04	0.86	0.625	0.875
+P7	3.68	0.77	0.527	0.879
+P8	3.51	0.77	0.573	0.878
+E1	2.99	0.91	0.617	0.875
+E2	2.81	0.98	0.599	0.876
+E3	3.31	0.81	0.463	0.882
+E4	3.08	0.94	0.558	0.878
+E5	2.38	0.68	0.392	0.884
+E6	2.62	0.83	0.545	0.879
+E7	2.43	0.78	0.501	0.880
+E8	3.47	0.77	0.498	0.880
+
+74 caso(s) excluido(s) por datos incompletos en los ítems (n efectivo = 226).
+
+En la escala Escala total (IAE), las correlaciones ítem-total corregidas oscilaron entre .392 (E5) y .658 (P3). La totalidad de los ítems supera el criterio de .30, lo que indica que cada elemento contribuye de manera adecuada a la medición del constructo; el ítem P3 presenta la asociación más estrecha con la puntuación total y constituye el indicador más representativo del conjunto. Ningún ítem incrementaría el coeficiente al ser eliminado, lo que respalda la conservación del conjunto completo. En conjunto, el patrón observado resulta coherente con el alfa de .886 de la escala, de interpretación buena (con el omega de .889, buena).
+
+Interpretación
+
+El análisis de consistencia interna se aplicó a las 3 escalas detectadas en la base de datos. Preocupación (IAE) obtuvo un omega total de .861, con un alfa de Cronbach de .852 (IC 95 % [.824, .878]) como referencia comparativa, lo que corresponde a una fiabilidad buena (ω); con las correlaciones policóricas, propias de ítems ordinales, el α ordinal fue .878 y el ω ordinal .881; Emocionalidad (IAE) obtuvo un omega total de .842, con un alfa de Cronbach de .834 (IC 95 % [.801, .863]) como referencia comparativa, lo que corresponde a una fiabilidad buena (ω); con las correlaciones policóricas, propias de ítems ordinales, el α ordinal fue .859 y el ω ordinal .862; Escala total (IAE) obtuvo un omega total de .889 y un omega jerárquico de .696, indicativo de la varianza atribuible al factor general, con un alfa de Cronbach de .886 (IC 95 % [.863, .906]) como referencia comparativa, lo que corresponde a una fiabilidad buena (ω); con las correlaciones policóricas, propias de ítems ordinales, el α ordinal fue .903 y el ω ordinal .904. La convergencia entre el alfa y el omega respalda la estabilidad de las estimaciones, dado que el omega no exige el supuesto de tau-equivalencia que el alfa presupone. Para los ítems de respuesta ordinal o dicotómica se estimaron además el α y el ω ordinales sobre las matrices de correlaciones policóricas o tetracóricas (Olsson, 1979; Zumbo et al., 2007), que no subestiman la fiabilidad como ocurre con las correlaciones de Pearson en ítems con pocas categorías (Gadermann et al., 2012). Las observaciones señaladas en el análisis de ítems (correlaciones ítem-total reducidas o posibles ítems inversos) deben considerarse antes de interpretar las puntuaciones totales.
+
+3. PRUEBA DE NORMALIDAD
+Pruebas de normalidad
+
+Hernández-Sampieri & Mendoza (2023) establecen que el tamaño muestral es el criterio decisivo para elegir la prueba de normalidad adecuada, porque cada una tiene sensibilidad diferente según el volumen de datos. Por un lado, Shapiro-Wilk es la prueba más potente parar muestras pequeñas (menor a 50 datos). Por otro lado, Kolmogorov-Smirnov es recomendable aplicarla con muestras mayores a 50. Es decir, el criterio metodológico en la selección de la prueba depende del cumplimiento del supuesto muestral.
+
+Variable: Ansiedad ante los exámenes — IAE
+Prueba utilizada:	Kolmogorov-Smirnov (Lilliefors) (n ≥ 50)
+Estadístico:	0.0810
+p-valor:	< .001
+Decisión:	Los datos NO siguen una distribución normal (p ≤ 0.05)
+Variable: Promedio de notas (sociodemográfica continua, 0–20)
+Prueba utilizada:	Kolmogorov-Smirnov (Lilliefors) (n ≥ 50)
+Estadístico:	0.0443
+p-valor:	.180
+Decisión:	Los datos siguen una distribución normal (p > 0.05)
+
+Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.
+
+Frecuencia
+Ansiedad ante los exámenes — IAE
+15
+20
+25
+30
+35
+0
+10
+20
+30
+40
+50
+60
+— Normal teórica N(24.2, 4.1)
+Distribución: Ansiedad ante los exámenes — IAE
+Cuantiles observados
+Cuantiles teóricos (normal)
+-2.5
+-2.0
+-1.5
+-1.0
+-0.5
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+-2.5
+-2.0
+-1.5
+-1.0
+-0.5
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+Q-Q: Ansiedad ante los exámenes — IAE
+Frecuencia
+Promedio de notas (sociodemográfica continua, 0–20)
+8
+10
+12
+14
+16
+18
+0
+10
+20
+30
+40
+50
+60
+— Normal teórica N(14.2, 1.8)
+Distribución: Promedio de notas (sociodemográfica continua, 0–20)
+Cuantiles observados
+Cuantiles teóricos (normal)
+-3.0
+-2.5
+-2.0
+-1.5
+-1.0
+-0.5
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+-3.0
+-2.5
+-2.0
+-1.5
+-1.0
+-0.5
+0.0
+0.5
+1.0
+1.5
+2.0
+2.5
+Q-Q: Promedio de notas (sociodemográfica continua, 0–20)
+Interpretación Estadística
+
+Se evaluó el supuesto de normalidad de Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) mediante la prueba de Kolmogorov-Smirnov (Lilliefors), seleccionada por el tamaño de la muestra (n = 290 ≥ 50), rango en el que Kolmogorov-Smirnov con la corrección de Lilliefors es el procedimiento de referencia. El criterio de decisión fue: p > 0.05 indica que la distribución no se desvía significativamente de la normal. Los resultados fueron mixtos: Ansiedad ante los exámenes — IAE se desvió significativamente de la normalidad (Ansiedad ante los exámenes — IAE: D = 0.081, p < 0.001, p ≤ 0.05), mientras que Promedio de notas (sociodemográfica continua, 0–20) sí cumplió el supuesto (Promedio de notas (sociodemográfica continua, 0–20): D = 0.044, p = 0.180, p > 0.05). Dado que el coeficiente de Pearson exige normalidad en ambas variables, basta con que una la incumpla para que el procedimiento paramétrico deje de ser apropiado. Por ello se optó por el coeficiente de correlación de Spearman (ρ), que al operar sobre rangos es robusto frente a desviaciones de la normalidad y a valores extremos. Los gráficos Q-Q permiten corroborarlo visualmente: con una distribución normal los puntos se alinean sobre la recta de referencia, y la desviación que detectó la prueba en Ansiedad ante los exámenes — IAE se aprecia como puntos que se apartan de ella, sobre todo en las colas.
+
+💡 Los porqués detrás de estos números
+
+¿Por qué media y desviación estándar? La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la distancia típica de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.
+
+¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último de la fila». Robustez por diseño, no por parche.
+
+¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.
+
+4. ANÁLISIS DE CORRELACIÓN
+Análisis de Correlación
+
+El análisis de correlación permite medir la fuerza y dirección de la relación entre dos variables cuantitativas. Según Hernández, Fernández & Baptista (2010), el coeficiente de correlación de Pearson es adecuado cuando ambas variables siguen una distribución normal, mientras que el coeficiente de correlación de Spearman es preferible cuando al menos una variable no cumple con la normalidad. Es decir, la elección del coeficiente no es arbitraria, depende estrictamente del cumplimiento del supuesto de normalidad previamente validado. La interpretación del coeficiente varía desde -1 (correlación negativa perfecta) hasta +1 (correlación positiva perfecta), siendo 0 indicativo de ausencia de correlación.
+
+Variables:	Ansiedad ante los exámenes — IAE - Promedio de notas (sociodemográfica continua, 0–20)
+N:	290
+Coeficiente utilizado:	Spearman (Rho)
+Razón:	Al menos una variable no sigue una distribución normal
+Coeficiente (ρ):	-0.3257
+p-valor (bilateral):	< .001
+IC 95% del coeficiente:	[-0.427, -0.216]
+Tamaño del efecto (r²):	10.6% de varianza compartida
+Interpretación:	Correlación moderada negativa altamente significativa (p < .001)
+Interpretación Estadística
+
+Dado que al menos una de las variables incumplió el supuesto de normalidad, se calculó el coeficiente de correlación de Spearman (ρ), que evalúa la relación monotónica entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) a partir de sus rangos. El análisis arrojó ρ(288) = -0.326, p < 0.001 (N = 290), IC 95% [-0.427, -0.216]. La magnitud corresponde a una correlación moderada de dirección negativa. En términos sustantivos, las personas con puntuaciones más altas en Ansiedad ante los exámenes — IAE tienden a presentar puntuaciones más bajas en Promedio de notas (sociodemográfica continua, 0–20): una relación inversa. El resultado es estadísticamente significativo incluso bajo el criterio exigente de 0.01 (p < 0.001), lo que aporta evidencia sólida de que la asociación observada no se debe al azar muestral. En cuanto al tamaño del efecto, |ρ| = 0.33 se clasifica como mediano según los puntos de corte de Cohen (1988: 0.10 pequeño, 0.30 mediano, 0.50 grande). Asimismo, ρ² = 0.106 indica que las variables comparten aproximadamente el 10.6% de la varianza de sus RANGOS (al ser un índice basado en rangos, no debe leerse como varianza explicada en sentido lineal estricto). El intervalo de confianza excluye el cero, de modo que incluso el escenario más conservador del intervalo sigue indicando una asociación negativa en la población. La precisión del intervalo de confianza respalda la estabilidad del hallazgo.
+
+5. PRUEBA DE HIPÓTESIS
+Prueba de Hipótesis
+
+Según Taherdoost (2022), la prueba de hipótesis es un procedimiento estadístico que permite evaluar afirmaciones sobre parámetros poblacionales basándose en datos muestrales. El proceso implica formular una hipótesis nula (H₀) y una hipótesis alternativa (H₁), seleccionar un nivel de significancia (α), calcular un estadístico de prueba y determinar el p-valor asociado. La decisión de rechazar o no rechazar H₀ se basa en la comparación del p-valor con α, proporcionando así una base objetiva para la inferencia estadística.
+
+Nivel de significancia (α):	0.05
+p-valor:	< .001
+Comparación:	p < .001 < α = 0.05
+Decisión sobre H₀:	SE RECHAZA H₀
+Conclusión:	Existe una relación estadísticamente significativa negativa
+Potencia estadística (1 − β):	100.0% (adecuada, ≥ 80%)
+
+Se rechaza la hipótesis nula (p < 0.001 < α = 0.05)
+
+Interpretación Estadística
+
+En el marco de la prueba de hipótesis se contrastó H₀: ρₛ = 0 (la correlación poblacional entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) es nula) frente a H₁: ρₛ ≠ 0 (existe correlación, en cualquier dirección), mediante una prueba bilateral con un nivel de significancia α = 0.05. La regla de decisión fue: rechazar H₀ si p < α. Con ρ(288) = -0.326 y p < 0.001, el p-valor resulta inferior al nivel de significancia (p < 0.001, frente a α = 0.05), por lo que SE RECHAZA H₀. Se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en la población es distinta de cero. Dos precisiones son obligadas en un reporte riguroso. Primera: significancia estadística no equivale a relevancia práctica; la importancia del hallazgo debe juzgarse por el tamaño del efecto (|ρ| = 0.33) y no por el p-valor. Segunda: correlación no implica causalidad; este resultado documenta covariación sistemática, pero la dirección causal solo podría establecerse con un diseño experimental o longitudinal apropiado. Para futuras investigaciones se recomienda aprovechar el tamaño muestral disponible (N = 290), que ofrece un poder estadístico excelente, para análisis más avanzados; con muestras grandes conviene además recordar que efectos diminutos pueden resultar significativos, por lo que el tamaño del efecto debe guiar la interpretación. Asimismo, se sugiere explorar posibles variables mediadoras o moderadoras, considerar transformaciones o métodos robustos si se desea modelar la relación, y triangular estos hallazgos cuantitativos con evidencia cualitativa para una comprensión más completa del fenómeno (Hernández-Sampieri y Mendoza, 2023).
+
+6. REPORTE EN FORMATO APA
+Reporte en formato APA
+
+Frase lista para pegar en la sección de resultados de tu tesis o artículo (estilo APA 7).
+
+Se halló una correlación negativa estadísticamente significativa entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20), rₛ(288) = -.33, p < .001, IC 95% [-.43, -.22]; r² = .11.
+
+Copiar
+
+7. DISCUSIÓN (PLANTILLA)
+Discusión (Plantilla)
+**MARCO DE INVESTIGACIÓN** **Pregunta de Investigación:** ¿Cuál es la relación entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana? **Objetivo General:** Determinar la relación entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. **Objetivos Específicos:** 1. Identificar la relación entre la dimensión Emocionalidad de Ansiedad ante los exámenes y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. 2. Establecer la relación entre la dimensión Preocupación de Ansiedad ante los exámenes y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. 3. Analizar las diferencias de Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) según sexo en estudiantes de secundaria de Lima Metropolitana. 4. Comparar los niveles de Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) según grado en estudiantes de secundaria de Lima Metropolitana. 5. Analizar las diferencias de Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) según gestión en estudiantes de secundaria de Lima Metropolitana. 6. Comparar los niveles de Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) según nivel_i en estudiantes de secundaria de Lima Metropolitana. **Hipótesis de Investigación:** Existe una relación estadísticamente significativa entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. **Hipótesis Nula (H₀):** No existe una relación estadísticamente significativa entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. **Hipótesis Alterna (H₁):** Sí existe una relación estadísticamente significativa entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. --- **METODOLOGÍA ESTADÍSTICA** El análisis correlacional se realizó mediante el coeficiente de Spearman (ρ), seleccionado a partir de las pruebas de normalidad. Al menos una variable se desvió significativamente de la normalidad (Ansiedad ante los exámenes — IAE: p < 0.001; Promedio de notas (sociodemográfica continua, 0–20): p = 0.180; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables. Se estableció un nivel de significancia de α = 0.05, mediante una prueba bilateral. --- **RESULTADOS** El análisis arrojó ρ(288) = -0.326, p < 0.001 (N = 290), IC 95% [-0.427, -0.216]. Dado que el p-valor es inferior a α (p < 0.001 frente a α = 0.05), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre Ansiedad ante los exámenes — IAE y Promedio de notas (sociodemográfica continua, 0–20) en estudiantes de secundaria de Lima Metropolitana. La magnitud corresponde a una correlación **moderada** de dirección **negativa** (tamaño del efecto mediano según Cohen, 1988), lo que indica que a medida que aumenta una variable, la otra tiende a disminuir. El coeficiente al cuadrado (ρ² = 0.106) indica que las variables comparten aproximadamente el 10.6% de la varianza de sus rangos. --- **DISCUSIÓN E INTERPRETACIÓN** Los hallazgos confirman la hipótesis de investigación planteada. Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO]. La relación negativa observada sugiere que [INTERPRETACIÓN TEÓRICA]. Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad. **Implicaciones:** - [IMPLICACIÓN TEÓRICA] - [IMPLICACIÓN PRÁCTICA] - [IMPLICACIÓN METODOLÓGICA] **Limitaciones del estudio:** - [LIMITACIÓN MUESTRAL/METODOLÓGICA] - [LIMITACIÓN DE GENERALIZACIÓN] - El diseño correlacional de corte transversal no permite inferencias causales. **Recomendaciones para futuras investigaciones:** - [RECOMENDACIÓN 1] - [RECOMENDACIÓN 2]
+----
+Generado por StatSim Pro
+Fecha: 21/10/2026

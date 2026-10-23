@@ -25,7 +25,9 @@ function publicarDatosGenerados(base) {
     // Traspaso al Analizador sin importarlo: estado compartido + evento (el Analizador se suscribe)
     // La vista por objetos se calcula solo cuando alguien la pide (getter): con n grande cuesta tiempo y memoria,
     // y si el usuario no abre el Analizador no hace falta. La base la cachea una sola vez.
-    const paquete = { get datos() { return base ? base.aObjetos() : null; }, etiquetas: generadorDatos.obtenerEtiquetas(), estructura: generadorDatos.obtenerEstructuraEscalas() };
+    // (2027.01.01) con los códigos de las categorías («0 = No, 1 = Sí»): el Analizador los necesita para saber qué categoría de
+    // un desenlace binario es el 1
+    const paquete = { get datos() { return base ? base.aObjetos() : null; }, etiquetas: generadorDatos.obtenerEtiquetas(), estructura: generadorDatos.obtenerEstructuraEscalas(), codigosDeCategorias: base && base.codigosDeCategorias ? base.codigosDeCategorias() : {} };
     estado.set(CLAVES.BASE_SIMULADOR, paquete);
     bus.emit(EVENTOS.BASE_GENERADA, paquete);
 }

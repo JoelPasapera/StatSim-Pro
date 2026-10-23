@@ -6,7 +6,7 @@ import { cuantilNormal, densidadNormal } from '../core/stats/numerico.js';
 import { pCorrelacion, icCorrelacion } from '../core/stats/correlacion.js';
 import { regresionSimple, bandaConfianzaRecta } from '../core/stats/regresion-simple.js';
 import { fuerzaCorrelacionGrafico } from './motor/magnitudes.js';
-import { formatoP } from '../shared/formato-numero.js';
+import { formatoP, numeroConMenos, terminoConSigno } from '../shared/formato-numero.js';
 /**
  * ScientificCharts - Librería de Visualización Científica
  * Arquitectura: Patrón Builder con Clases ES6
@@ -1172,7 +1172,7 @@ class ScientificCharts {
             .attr('x', 10)
             .attr('y', 20)
             .attr('font-size', this.config.fontSize)
-            .text(`y = ${slope.toFixed(3)}x + ${intercept.toFixed(3)}`);
+            .text(`y = ${numeroConMenos(slope)}x ${terminoConSigno(intercept)}`);   // (2027.01.01) «− 3.200», no «+ -3.200»; y «−0.500x»
         legend.append('text')
             .attr('x', 10)
             .attr('y', 40)

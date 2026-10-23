@@ -18,6 +18,35 @@ export function formatoNumero(v, decimales = 2) {
 }
 
 /**
+ * (2027.01.01, revisión) Un número con el signo menos tipográfico («−2.700»), el mismo de los términos que siguen
+ * (terminoConSigno): el primer término de «ŷ = −2.700 − 0.114·x» (antes, «-2.700 − 0.114·x»). Redondeado a cero, sin signo:
+ * «0.000», no «-0.000».
+ * @param {number} v
+ * @param {number} [decimales] 3 por omisión
+ * @returns {string}
+ */
+export function numeroConMenos(v, decimales = 3) {
+    if (!Number.isFinite(v)) return formatoNumero(v, decimales);
+    const texto = v.toFixed(decimales);
+    return Number(texto) < 0 ? `−${texto.slice(1)}` : texto.replace(/^-/, '');
+}
+
+/**
+ * (2027.01.01) Un término de una ecuación con su signo delante: «+ 0.114·x», «− 0.114·x». Hasta la 2026.12.31, las
+ * ecuaciones de la regresión y del diagrama de dispersión escribían «+ -0.114·x». El signo es el del número ya redondeado:
+ * −0.0001 con tres decimales es «+ 0.000·x», no «− 0.000·x».
+ * @param {number} v
+ * @param {string} [sufijo] lo que sigue al número («·x», «·x²», «·ln(x)», «x»)
+ * @param {number} [decimales] 3 por omisión
+ * @returns {string}
+ */
+export function terminoConSigno(v, sufijo = '', decimales = 3) {
+    if (!Number.isFinite(v)) return v === -Infinity ? `− ∞${sufijo}` : `+ ${formatoNumero(v, decimales)}${sufijo}`;
+    const texto = v.toFixed(decimales), negativo = Number(texto) < 0;
+    return `${negativo ? '−' : '+'} ${texto.replace(/^-/, '')}${sufijo}`;
+}
+
+/**
  * Un estadístico que es entero o semientero, como la U de Mann-Whitney (con empates, los rangos medios la dejan en x.5):
  * «24» o «24.5», sin perder el medio (2026.12.30: la frase APA escribía «U = 25» con U = 24.5, y la tabla, «24.0» con U = 24).
  * Si no es múltiplo de 0.5, con dos decimales.

@@ -2,6 +2,7 @@
 // Origen: comparacion-grupos.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
 
 import { AnalizadorEstadistico } from './estadistica.js';
+import { bus, EVENTOS } from '../shared/eventos.js';
 import { RegresionMultiple } from './regresion.js';
 import { obtenerColumnasCategoricas, obtenerColumnasNumericas } from './ui/carga.js';
 import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
@@ -205,6 +206,15 @@ const ComparacionGrupos = {
         const btn = document.getElementById('cgAnalizar');
         if (btn) btn.addEventListener('click', () => this._onAnalizar());
         this.actualizarSelects();
+        bus.on(EVENTOS.DATOS_CARGADOS, () => this.olvidar());
+    },
+
+    /** (2027.01.01, revisión) Con otros datos en el Analizador, la comparación anterior era de los de antes: se olvida (y con ella, lo impreso). */
+    olvidar() {
+        this._ultimo = null;
+        const out = document.getElementById('cgResultado'), estado = document.getElementById('cgEstado');
+        if (out) out.innerHTML = '';
+        if (estado) estado.textContent = '';
     },
 
     actualizarSelects() {

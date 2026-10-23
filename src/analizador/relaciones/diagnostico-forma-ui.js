@@ -8,6 +8,7 @@ import { mostrarToast } from '../../shared/toast.js';
 import { descargarBlob } from '../../shared/descargas.js';
 import { asegurarHtmlDocx } from '../../shared/vendor.js';
 import { aNumero, esPerdido } from '../../core/data/celdas.js';
+import { bus, EVENTOS } from '../../shared/eventos.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const guia = t => `<div class="orden-guia" role="note" style="margin:0 0 0.6rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">${t}</span></div>`;
@@ -141,10 +142,23 @@ function diagnosticarPar(a, b) {
     if (typeof contenedor.scrollIntoView === 'function') contenedor.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return calcular();
 }
+/** (2027.01.01, revisión) Con otros datos en el Analizador, el resultado anterior era de los de antes: se olvida (y con él, su Word y lo impreso). Un diagnóstico en curso se descarta (otro turno), y el botón vuelve a estar disponible. */
+export function olvidarDiagnosticoForma() {
+    turno++;
+    ultimo = null;
+    if (!contenedor) return;
+    const q = (/** @type {string} */ s) => contenedor.querySelector(s);
+    q('#dfResultados').hidden = true;
+    q('#dfMensajes').innerHTML = '';
+    q('#dfCalcular').disabled = false;
+    q('#dfEstado').textContent = '';
+}
+
 export function montarDiagnosticoForma() {
     contenedor = typeof document !== 'undefined' ? document.getElementById('diagnosticoFormaContainer') : null;
     if (!contenedor || contenedor.dataset.montado === '1') return;
     contenedor.dataset.montado = '1';
+    bus.on(EVENTOS.DATOS_CARGADOS, olvidarDiagnosticoForma);
     contenedor.innerHTML = PLANTILLA();
     contenedor.querySelector('#dfX').addEventListener('focus', actualizarVariables);
     contenedor.querySelector('#dfY').addEventListener('focus', actualizarVariables);
