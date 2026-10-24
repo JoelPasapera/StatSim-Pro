@@ -3,7 +3,7 @@
 import { VERSION, SECCIONES } from './version.js';
 import { montarSimulador } from './simulador/index.js';
 import { montarInterfazSimulador } from './simulador/ui/index.js';
-import { configurarNavegacion } from './shared/navegacion.js';
+import { configurarNavegacion, seccionDe } from './shared/navegacion.js';
 import { mejorarTablasDesplazables } from './shared/tabla-desplazable.js';
 import { montarAnalizador } from './analizador/index.js';
 import * as analizador from './analizador/index.js';
@@ -15,6 +15,7 @@ import { recargarSinCache, autotest } from './shared/mantenimiento.js';
 import { montarProyecto } from './proyecto/ui.js';
 import { montarImpresion } from './shared/impresion.js';
 import { d3 } from './shared/statviz.js';
+import { bus, EVENTOS } from './shared/eventos.js';
 
 const StatSim = { version: VERSION, secciones: new Map(), autotest };
 window.StatSim = StatSim;
@@ -56,13 +57,40 @@ async function comprobarVersionPublicada() {
     } catch (e) { /* sin red o sin version.json: no pasa nada */ }
 }
 if (typeof fetch === 'function' && typeof sessionStorage !== 'undefined') comprobarVersionPublicada();
-if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', alCargarDOM); else alCargarDOM();
 
-// Carga perezosa: cuando una sección migrada entra en pantalla (#hash), se importa una sola vez.
+// Carga perezosa: cuando una sección de carga perezosa se muestra, su módulo se importa una sola vez. (2027.01.02) Por el aviso
+// «seccion:mostrada» de shared/navegacion.js, con el id ya decodificado: también la que se muestra al arrancar (un enlace
+// profundo, «index.html#ejemplos»), por eso se escucha antes de montar la navegación. Si su módulo no se pudo cargar, lo dice
+// en la propia sección (en su elemento [data-estado-carga]) y ofrece recargar sin caché: el navegador recuerda el fallo de un
+// módulo, y volver a importarlo sin recargar no lo arregla.
+/** @param {string} id @param {unknown} e */
+const avisarFalloDeCarga = (id, e) => {
+    const aviso = document.querySelector(`#${id} [data-estado-carga]`);
+    if (!aviso) return;
+    aviso.textContent = `No se pudo cargar esta pestaña (${e instanceof Error ? e.message : e}). Vuelve a cargar la página sin caché (no se borra nada tuyo): `;
+    const boton = document.createElement('button');
+    boton.type = 'button';
+    boton.className = 'btn btn-outline';
+    boton.textContent = 'Recargar sin caché';
+    boton.addEventListener('click', () => { recargarSinCache(false); });
+    aviso.appendChild(boton);
+    aviso.classList.add('aviso-error');
+};
+/** @param {string | null} id */
 const cargarSeccion = async id => {
     const s = SECCIONES.find(x => x.id === id);
-    if (!s || s.heredado || StatSim.secciones.get(id)?.cargada) return;
-    StatSim.secciones.set(id, { cargada: true, modulo: await s.cargar() });
+    if (!id || !s || s.heredado || StatSim.secciones.get(id)?.cargada) return;
+    StatSim.secciones.set(id, { cargada: true });
+    try {
+        StatSim.secciones.set(id, { cargada: true, modulo: await s.cargar() });
+    } catch (e) {
+        StatSim.secciones.delete(id);   // la próxima vez que se muestre, se vuelve a pedir (tras recargar, ya sin el fallo)
+        console.error(`[StatSim] no se pudo cargar la sección «${id}»:`, e);
+        avisarFalloDeCarga(id, e);
+    }
 };
-window.addEventListener('hashchange', () => cargarSeccion(location.hash.replace('#', '')));
-cargarSeccion(location.hash.replace('#', ''));
+bus.on(EVENTOS.SECCION_MOSTRADA, ({ id }) => { cargarSeccion(id); });
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', alCargarDOM); else alCargarDOM();
+// por si la navegación no llegara a montarse: la sección de la dirección (decodificada, si es una del menú)
+window.addEventListener('hashchange', () => { cargarSeccion(seccionDe(location.hash)); });
+cargarSeccion(seccionDe(location.hash));

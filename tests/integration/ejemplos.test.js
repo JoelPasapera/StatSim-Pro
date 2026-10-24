@@ -11,13 +11,18 @@
 // Aiken y del AFE. Y (5) los códigos de las categorías («0 = Mujer; 1 = Hombre», de los que la regresión logística toma qué
 // categoría es el 1) son los mismos en la base, en el .sav, en el .xlsx y en el proyecto del Analizador. Si un cambio altera a
 // propósito lo que entrega la página, los ejemplos se rehacen con «npm run ejemplos».
+// (2027.01.02) Y (6) el proyecto de cada caso trae la configuración de la investigación (lo que su README y la guía de la
+// pestaña «Ejemplos» dan por hecho al abrirlo), y (7) ejemplos/indice.json, el catálogo de la pestaña, es el que dan las
+// carpetas de los casos: sus archivos, con sus tamaños, y las fichas de sus verificacion.json.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CASOS } from '../navegador/ejemplos.mjs';
+import { CASOS, indiceDeLosEjemplos } from '../navegador/ejemplos.mjs';
+import { investigacionValida } from '../../src/analizador/motor/datos-proyecto.js';
+import { leerCatalogo } from '../../src/ejemplos/catalogo.js';
 import { pdfSinFechas } from '../navegador/comparar.mjs';
 import { VERSION } from '../../src/version.js';
 import { leerProyecto } from '../../src/proyecto/paquete.js';
@@ -148,6 +153,12 @@ for (const nombre of presentes) {
         assert.deepEqual(metaAnalizador.codigosDeCategorias, codigos, 'el proyecto del Analizador (etiquetas.json)');
     });
 
+    test(`${nombre}: su proyecto trae la configuración de la investigación (al abrirlo solo se repiten los análisis)`, async () => {
+        const { metaAnalizador } = await partes;
+        assert.ok(investigacionValida(metaAnalizador.investigacion), 'el título, la unidad de análisis y el lugar');
+        assert.ok(metaAnalizador.investigacion.titulo.length > 20 && metaAnalizador.investigacion.unidad && metaAnalizador.investigacion.lugar, JSON.stringify(metaAnalizador.investigacion));
+    });
+
     test(`${nombre}: el Analizador vuelve a dar lo que dio la página`, async () => {
         const { filasAnalizador, metaAnalizador } = await partes;
         AnalizadorEstadistico.cargarDatos(filasAnalizador, { codigosDeCategorias: metaAnalizador.codigosDeCategorias || null });
@@ -166,4 +177,23 @@ for (const nombre of presentes) {
 
 test('hay ejemplos que comprobar', () => {
     assert.ok(presentes.length > 0, 'la carpeta ejemplos/ no tiene casos con verificacion.json');
+});
+
+test('ejemplos/indice.json es el catálogo que dan las carpetas de los casos (el de la pestaña «Ejemplos»)', { skip: presentes.length !== CASOS.length && 'faltan casos' }, async () => {
+    const recetas = await Promise.all(CASOS.map(async c => (await import(new URL(`../navegador/recetas/${c}.mjs`, import.meta.url).href)).default));
+    const texto = fs.readFileSync(path.join(ejemplos, 'indice.json'), 'utf8');
+    assert.equal(texto, indiceDeLosEjemplos(recetas, ejemplos), 'rehazlo con «npm run ejemplos»');
+    const catalogo = leerCatalogo(texto);
+    assert.deepEqual(catalogo.casos.map(e => e.carpeta), CASOS);
+    for (const e of catalogo.casos) {
+        const verificacion = JSON.parse(fs.readFileSync(path.join(ejemplos, e.carpeta, 'verificacion.json'), 'utf8'));
+        assert.deepEqual(e.archivos.map(a => a.ruta).sort(), Object.keys(verificacion.archivos).sort(), `${e.carpeta}: los mismos archivos`);
+        for (const a of e.archivos) {
+            assert.equal(fs.statSync(path.join(ejemplos, e.carpeta, ...a.ruta.split('/'))).size, a.bytes, `${e.carpeta}/${a.ruta}: su tamaño`);
+            assert.ok(a.descripcion.length > 10, `${e.carpeta}/${a.ruta}: lo que es`);
+        }
+        assert.ok(e.destacados.length >= 1 && e.pasos.length >= 3 && e.repetir.hasta <= e.pasos.length, e.carpeta);
+        assert.ok(/Guardar proyecto/.test(e.pasos[e.pasos.length - 1]), `${e.carpeta}: el último paso es guardar el proyecto (opcional al abrirlo)`);
+        assert.ok(e.repetir.hasta < e.pasos.length, `${e.carpeta}: guardar el proyecto no está entre lo que se repite`);
+    }
 });

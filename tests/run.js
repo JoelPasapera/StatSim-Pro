@@ -123,6 +123,30 @@ if (completo) {
         const cola = ok ? '' : '\n' + r.out.trim().split('\n').slice(-6).map(l => `✗ ${l}`).join('\n');
         registrar('ejemplos rehechos en Chromium (los cinco casos de ejemplos/, comparados con su carpeta)', { ...r, out: r.out + cola, ok }, `${iguales} iguales${distintos ? ` · ${distintos} distintos` : ''}${sinDibujo ? ' · PDF y figuras del Word sin comparar byte a byte (otro dibujo: otras fuentes u otro Chromium)' : ''}`);
     })());
+    // (2027.01.02) la pestaña «Ejemplos» en Chromium: la galería, cada caso con sus descargas, el .zip, «Abrir en StatSim» y
+    // la guía, en el escritorio y en un teléfono (tests/navegador/pestana-ejemplos.mjs)
+    if (incluye('navegador')) tareas.push((async () => {
+        const { prepararChromium } = await import('./navegador/entorno.mjs');
+        const { pw } = await prepararChromium();
+        if (!pw) return;   // el bloque de los ejemplos ya dijo por qué se omite
+        const r = await correr(process.execPath, [path.join('navegador', 'pestana-ejemplos.mjs')], aqui);
+        const bien = (r.out.match(/^✓/gm) || []).length, mal = (r.out.match(/^✗/gm) || []).length;
+        const ok = r.ok && mal === 0 && bien > 0;
+        const cola = ok ? '' : '\n' + r.out.trim().split('\n').filter(l => !/^✓/.test(l)).slice(-6).map(l => (/^✗/.test(l) ? l : `✗ ${l}`)).join('\n');
+        registrar('la pestaña «Ejemplos» en Chromium (galería, descargas, .zip, «Abrir en StatSim», guía; escritorio y teléfono)', { ...r, out: r.out + cola, ok }, `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+    })());
+    // (2027.01.03) «Hazlo por mí» en Chromium: los cinco casos repetidos con los botones de su guía, y lo que se descarga tras
+    // cada paso, byte a byte el de su carpeta; «Muéstrame», a la vista en el escritorio y en un teléfono (tests/navegador/hazlo-por-mi.mjs)
+    if (incluye('navegador')) tareas.push((async () => {
+        const { prepararChromium } = await import('./navegador/entorno.mjs');
+        const { pw } = await prepararChromium();
+        if (!pw) return;   // el bloque de los ejemplos ya dijo por qué se omite
+        const r = await correr(process.execPath, [path.join('navegador', 'hazlo-por-mi.mjs')], aqui);
+        const bien = (r.out.match(/^✓/gm) || []).length, mal = (r.out.match(/^✗/gm) || []).length;
+        const ok = r.ok && mal === 0 && bien > 0;
+        const cola = ok ? '' : '\n' + r.out.trim().split('\n').filter(l => !/^✓/.test(l)).slice(-6).map(l => (/^✗/.test(l) ? l : `✗ ${l}`)).join('\n');
+        registrar('«Hazlo por mí» en Chromium (los cinco casos con su guía, comparados byte a byte con su carpeta; «Muéstrame» a la vista)', { ...r, out: r.out + cola, ok }, `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+    })());
     if (incluye('oraculos')) tareas.push((async () => {
         const py = await python();
         if (!py) { filas.push('· oráculos omitidos (hace falta Python 3 con NumPy y SciPy)'); return; }

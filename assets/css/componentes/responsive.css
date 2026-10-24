@@ -1,13 +1,26 @@
 /* ========================================
    RESPONSIVE
    ======================================== */
+/* (2027.01.02) La cabecera con los siete enlaces del menú (llegó «Ejemplos»): entre 900 y 1100 px, los enlaces más juntos
+   para seguir en una fila junto al logo; por debajo de 900 px, el menú bajo el logo (antes, por debajo de 1024 px el logo
+   se partía en tres renglones y la cabecera fija crecía); y en un teléfono, en dos filas como mucho (en 320 px eran tres). */
+@media (min-width: 900px) and (max-width: 1100px) {
+    .nav { gap: 1.2rem; }
+    .nav-link { font-size: 0.875rem; }
+}
+@media (max-width: 899px) {
+    .header-content { flex-direction: column; gap: var(--spacing-sm); }
+    .nav { gap: 0.45rem 1.15rem; flex-wrap: wrap; justify-content: center; }
+    .nav-link { font-size: 0.875rem; }
+    .nav-link::after { bottom: -0.35rem; }
+}
+@media (max-width: 420px) {
+    .nav { gap: 0.4rem 0.85rem; }
+    .nav-link { font-size: 0.84rem; }
+}
 @media (max-width: 768px) {
     .section-title { font-size: 1.9rem; }
     .form-row { grid-template-columns: 1fr; }
-    .header-content { flex-direction: column; gap: var(--spacing-md); }
-    .nav { gap: var(--spacing-md); flex-wrap: wrap; justify-content: center; }
-    .nav-link { font-size: 0.875rem; }
-    .nav-link::after { bottom: -0.4rem; }
     .actions-bar { flex-direction: column; }
     .upload-options { flex-direction: column; }
     .table-container { font-size: 0.8125rem; }

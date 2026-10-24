@@ -5,36 +5,26 @@
 // AFE, la V de Aiken y la invarianza; imprimir en PDF y guardar el proyecto. Todo por los botones, los campos y los
 // diálogos de archivo de la interfaz: nada se llama por dentro de la aplicación. Cada paso espera a que la página termine
 // (su aviso, su tabla de resultados) y falla diciendo qué esperaba.
+// (2027.01.03) Los pasos del Analizador son los planes de src/ejemplos/hazlo/planes.js, que aquí ejecuta conductor.mjs: los
+// mismos que repite «Hazlo por mí» en la página. Lo que no es del plan (las descargas de las tarjetas, lo que devuelve cada
+// paso) se queda aquí.
 import { descargar, descargarCon, esperarAviso, imprimirPDF, irA } from './acciones.mjs';
+import { ejecutarPlan, elegirArchivo } from './conductor.mjs';
+import { planDe } from '../../src/ejemplos/hazlo/planes.js';
 
 /** @typedef {{ nombre: string, bytes: Buffer }} Archivo */
+/** @typedef {{ archivo?: (ruta: string) => { nombre: string, bytes: Buffer | string } }} OpcionesDelPaso los archivos del caso que se suben (la V de Aiken), por su ruta */
 
 /**
- * Elige un archivo en el diálogo que abre un botón (como «Importar» o «Cargar CSV»).
+ * El plan de una acción, ejecutado en la página.
  * @param {any} pagina
- * @param {() => Promise<unknown>} pulsar
- * @param {{ nombre: string, bytes: Buffer | string, tipo?: string }} archivo
+ * @param {string} accion
+ * @param {Record<string, any>} datos
+ * @param {OpcionesDelPaso} [opciones]
+ * @returns {Promise<string>} lo que dijo la página al terminar (el aviso, la salida del SEM…)
  */
-async function elegirArchivo(pagina, pulsar, { nombre, bytes, tipo = 'text/csv' }) {
-    const [dialogo] = await Promise.all([pagina.waitForEvent('filechooser', { timeout: 30000 }), pulsar()]);
-    await dialogo.setFiles({ name: nombre, mimeType: tipo, buffer: typeof bytes === 'string' ? Buffer.from(bytes, 'utf8') : bytes });
-}
+const conPlan = (pagina, accion, datos, opciones = {}) => ejecutarPlan(pagina, planDe({ accion, datos }).ops, opciones);
 
-/**
- * Pone el valor de un campo de texto o de un desplegable y avisa a la página (los eventos input y change).
- * @param {any} pagina
- * @param {string} selector
- * @param {string} valor
- */
-async function poner(pagina, selector, valor) {
-    const etiqueta = await pagina.$eval(selector, /** @param {Element} el */ el => el.tagName);
-    if (etiqueta === 'SELECT') {
-        const elegidos = await pagina.selectOption(selector, String(valor));
-        if (!elegidos.includes(String(valor))) throw new Error(`${selector}: no tiene la opción «${valor}»`);
-    } else {
-        await pagina.fill(selector, String(valor));
-    }
-}
 
 // ================================================================ Simulador
 
@@ -122,23 +112,17 @@ export async function imprimirSimulador(pagina) {
  * @returns {Promise<number>} los casos cargados
  */
 export async function usarBaseDelSimulador(pagina) {
-    await irA(pagina, 'analizador');
-    const n = await pagina.evaluate(() => /** @type {any} */ (window).generadorDatos.datosGenerados.n);
-    await pagina.click('#btnUsarGenerados');
-    await pagina.waitForFunction(/** @param {number} esperado */ esperado => (document.getElementById('analisisN') || {}).textContent === String(esperado), n, { timeout: 60000 });
-    return n;
+    await conPlan(pagina, 'usarBaseDelSimulador', {});
+    return pagina.evaluate(() => /** @type {any} */ (window).generadorDatos.datosGenerados.n);
 }
 
 /**
  * «1. Configuración de la investigación»: el título (para el Word), la unidad de análisis y el lugar.
  * @param {any} pagina
- * @param {{ titulo?: string, unidad?: string, lugar?: string }} contexto
+ * @param {{ titulo?: string, unidad?: string, lugar?: string }} datos
  */
-export async function describirInvestigacion(pagina, { titulo = '', unidad = '', lugar = '' }) {
-    await irA(pagina, 'analizador');
-    await poner(pagina, '#tituloTesis', titulo);
-    await poner(pagina, '#unidadAnalisis', unidad);
-    await poner(pagina, '#lugarContexto', lugar);
+export async function describirInvestigacion(pagina, datos) {
+    await conPlan(pagina, 'describirInvestigacion', datos);
 }
 
 /**
@@ -156,37 +140,8 @@ export async function describirInvestigacion(pagina, { titulo = '', unidad = '',
  * @param {PedidoDeAnalisis} pedido
  * @returns {Promise<string>}
  */
-export async function analizar(pagina, { tipo, variables, prueba = 'bilateral', regresion }) {
-    await irA(pagina, 'analizador');
-    await pagina.check(`input[name="tipoAnalisis"][value="${tipo}"]`);
-    // las variables adicionales de una correlación (la matriz): una fila por cada una con «＋ Agregar variable»
-    await pagina.evaluate(() => { const c = document.getElementById('varsExtraCont'); if (c) c.innerHTML = ''; const p = document.getElementById('regPredsCont'); if (p) p.innerHTML = ''; });
-    await poner(pagina, '#variable1', variables[0]);
-    await poner(pagina, '#variable2', variables[1]);
-    for (const [k, extra] of variables.slice(2).entries()) {
-        await pagina.click('#btnAgregarVariable');
-        await poner(pagina, `#varsExtraCont > :nth-child(${k + 1}) select`, extra);
-    }
-    await pagina.check(`input[name="tipoPrueba"][value="${prueba}"]`);
-    await poner(pagina, '#regDep', regresion ? regresion.dependiente : '');
-    await poner(pagina, '#regInd', regresion ? regresion.predictores[0] : '');
-    if (regresion) {
-        for (const [k, predictor] of regresion.predictores.slice(1).entries()) {
-            await pagina.click('#btnAgregarPredictor');
-            await poner(pagina, `#regPredsCont > :nth-child(${k + 1}) select`, predictor);
-        }
-        for (const [id, marcar] of [['#regInter', !!regresion.interaccion], ['#regCuad', !!regresion.cuadratico], ['#regPoisson', !!regresion.poisson]]) {
-            if (await pagina.isVisible(/** @type {string} */ (id))) await pagina.setChecked(/** @type {string} */ (id), /** @type {boolean} */ (marcar));
-            else if (marcar) throw new Error(`${id} no está a la vista: la regresión no admite esa opción con estos predictores`);
-        }
-    }
-    await pagina.evaluate(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; });
-    await pagina.click('#btnAnalizar');
-    const aviso = await esperarAviso(pagina, /Análisis completado|Error|selecciona|deben ser diferentes|no hay|insuficiente/i, 300000);
-    if (!/Análisis completado/.test(aviso)) throw new Error('el análisis no terminó: ' + aviso);
-    await pagina.waitForFunction(() => !(/** @type {HTMLButtonElement} */ (document.getElementById('btnAnalizar')).disabled));
-    await esperarCalculosEnSegundoPlano(pagina);
-    return aviso;
+export async function analizar(pagina, pedido) {
+    return conPlan(pagina, 'analizar', pedido);
 }
 
 /**
@@ -220,16 +175,8 @@ export async function exportarAnalisis(pagina, { word = true } = {}) {
  * @param {any} pagina
  * @param {{ grupo: string, numerica: string, covariable?: string, adicionales?: string[] }} pedido
  */
-export async function compararGrupos(pagina, { grupo, numerica, covariable = '', adicionales = [] }) {
-    await irA(pagina, 'analizador');
-    await poner(pagina, '#cgGrupo', grupo);
-    await poner(pagina, '#cgNum', numerica);
-    await poner(pagina, '#cgCov', covariable);
-    for (const v of adicionales) await pagina.check(`#cgDVs input[value="${v}"]`);
-    await pagina.evaluate(() => { const r = document.getElementById('cgResultado'); if (r) r.innerHTML = ''; });
-    await pagina.click('#cgAnalizar');
-    await pagina.waitForFunction(() => ((document.getElementById('cgResultado') || {}).textContent || '').trim().length > 0, null, { timeout: 120000 });
-    return pagina.evaluate(() => (document.getElementById('cgResultado') || {}).textContent || '');
+export async function compararGrupos(pagina, pedido) {
+    return conPlan(pagina, 'compararGrupos', pedido);
 }
 
 /**
@@ -238,38 +185,8 @@ export async function compararGrupos(pagina, { grupo, numerica, covariable = '',
  * @param {{ sintaxis: string, etiqueta?: string, estimador?: 'ML' | 'WLSMV' }} pedido
  * @returns {Promise<string>} el texto de lo que dio
  */
-export async function ajustarSEM(pagina, { sintaxis, etiqueta = 'Modelo inicial', estimador = 'ML' }) {
-    await irA(pagina, 'analizador');
-    await poner(pagina, '#semSintaxis', sintaxis);
-    await poner(pagina, '#semEtiqueta', etiqueta);
-    await poner(pagina, '#semEstimador', estimador);
-    await pagina.click('#semEvaluar');
-    await pagina.waitForFunction(() => ((document.getElementById('semDecision') || {}).textContent || '').trim().length > 0, null, { timeout: 60000 });
-    await pagina.evaluate(() => { const r = document.getElementById('semOut'); if (r) r.innerHTML = ''; });
-    await pagina.click('#semAjustar');
-    await pagina.waitForFunction(() => {
-        const t = ((document.getElementById('semOut') || {}).textContent || '').trim();
-        return t.length > 0 && !/^Estimando/.test(t);
-    }, null, { timeout: 600000 });
-    const texto = await pagina.evaluate(() => (document.getElementById('semOut') || {}).textContent || '');
-    if (/^\s*⚠️/.test(texto) && !/parámetros estimados/.test(texto)) throw new Error('el SEM no se ajustó: ' + texto.slice(0, 300));
-    return texto;
-}
-
-/**
- * Espera a que una tarjeta de psicometría muestre sus resultados (o falle con su mensaje).
- * @param {any} pagina
- * @param {string} resultados el id del contenedor de resultados («afeResultados»…)
- * @param {string} mensajes el id del de los mensajes («afeMensajes»…)
- * @param {number} ms
- */
-async function esperarResultados(pagina, resultados, mensajes, ms) {
-    await pagina.waitForFunction(/** @param {[string, string]} ids */ ([r, m]) => {
-        const res = document.getElementById(r), men = document.getElementById(m);
-        return (!!res && !res.hidden && (res.textContent || '').trim().length > 0) || (!!men && /error|no se pud|no hay|falta/i.test(men.textContent || ''));
-    }, [resultados, mensajes], { timeout: ms });
-    const listo = await pagina.evaluate(/** @param {string} r */ r => { const el = document.getElementById(r); return !!el && !el.hidden; }, resultados);
-    if (!listo) throw new Error(`${resultados}: ` + await pagina.evaluate(/** @param {string} m */ m => (document.getElementById(m) || {}).textContent || '', mensajes));
+export async function ajustarSEM(pagina, pedido) {
+    return conPlan(pagina, 'ajustarSEM', pedido);
 }
 
 /**
@@ -279,27 +196,8 @@ async function esperarResultados(pagina, resultados, mensajes, ms) {
  * @param {{ conjunto?: string, items?: string[], correlacion?: string, factores?: string, rotacion?: string, replicas?: number, semilla?: number }} pedido
  * @returns {Promise<{ csv: Archivo, word: Archivo }>}
  */
-export async function calcularAFE(pagina, { conjunto, items, correlacion = 'auto', factores = 'paralelo', rotacion = 'oblimin', replicas = 200, semilla = 2026 }) {
-    await irA(pagina, 'analizador');
-    await pagina.click('#afeActualizar');
-    if (items) {
-        await poner(pagina, '#afeConjunto', 'propia');
-        await poner(pagina, '#afeItems', items.join(', '));
-    } else if (conjunto !== undefined) {
-        const valor = await pagina.$eval('#afeConjunto', /** @param {any} sel @param {string} texto */ (sel, texto) => {
-            const op = Array.from(sel.options).find(/** @param {any} o */ o => o.value === texto || o.textContent.trim() === texto || o.textContent.startsWith(texto));
-            return op ? op.value : null;
-        }, conjunto);
-        if (valor === null) throw new Error(`#afeConjunto: no tiene «${conjunto}» (tiene: ${await pagina.$eval('#afeConjunto', /** @param {any} s */ s => Array.from(s.options).map(/** @param {any} o */ o => o.textContent).join(' | '))})`);
-        await poner(pagina, '#afeConjunto', valor);
-    }
-    await poner(pagina, '#afeCorrelacion', correlacion);
-    await poner(pagina, '#afeFactores', factores);
-    await poner(pagina, '#afeRotacion', rotacion);
-    await poner(pagina, '#afeB', String(replicas));
-    await poner(pagina, '#afeSemilla', String(semilla));
-    await pagina.click('#afeCalcular');
-    await esperarResultados(pagina, 'afeResultados', 'afeMensajes', 900000);
+export async function calcularAFE(pagina, pedido) {
+    await conPlan(pagina, 'calcularAFE', pedido);
     return { csv: await descargarCon(pagina, '#afeCSV'), word: await descargarCon(pagina, '#afeWord') };
 }
 
@@ -307,30 +205,13 @@ export async function calcularAFE(pagina, { conjunto, items, correlacion = 'auto
  * La tarjeta de la V de Aiken: la escala de valoración, el nivel de confianza y el criterio V₀; un criterio por archivo
  * (su nombre y «Cargar CSV»); «Calcular V de Aiken» y sus descargas (la tabla en CSV y el Word).
  * @param {any} pagina
- * @param {{ minimo: number, maximo: number, confianza?: number, v0?: number, criterios: Array<{ nombre: string, archivo: { nombre: string, bytes: Buffer | string } }> }} pedido
+ * @param {{ minimo: number, maximo: number, confianza?: number, v0?: number, criterios: Array<{ nombre: string, archivo: string }> }} pedido
+ *   archivo: la ruta del CSV del criterio en la carpeta del caso (lo que guarda el guion)
+ * @param {OpcionesDelPaso} [opciones] de dónde salen esos archivos
  * @returns {Promise<{ csv: Archivo, word: Archivo }>}
  */
-export async function calcularAiken(pagina, { minimo, maximo, confianza = 0.95, v0 = 0.7, criterios }) {
-    await irA(pagina, 'analizador');
-    await poner(pagina, '#aikenMinimo', String(minimo));
-    await poner(pagina, '#aikenMaximo', String(maximo));
-    await poner(pagina, '#aikenConfianza', String(confianza));
-    await poner(pagina, '#aikenV0', String(v0));
-    // tantos bloques de criterio como criterios: se agregan o se quitan con sus botones
-    for (;;) {
-        const hay = await pagina.locator('#aikenCriterios .criterio-aiken').count();
-        if (hay < criterios.length) { await pagina.click('#aikenAgregarCriterio'); continue; }
-        if (hay > criterios.length) { await pagina.locator('#aikenCriterios .criterio-aiken .btn-delete').last().click(); continue; }
-        break;
-    }
-    for (const [k, criterio] of criterios.entries()) {
-        const bloque = pagina.locator('#aikenCriterios .criterio-aiken').nth(k);
-        await bloque.locator('[aria-label="Nombre del criterio"]').fill(criterio.nombre);
-        await elegirArchivo(pagina, () => bloque.locator('[data-accion="cargar-csv"]').click(), criterio.archivo);
-        await esperarAviso(pagina, new RegExp(`«${criterio.archivo.nombre.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}» cargado`));
-    }
-    await pagina.click('#aikenCalcular');
-    await esperarResultados(pagina, 'aikenResultados', 'aikenMensajes', 120000);
+export async function calcularAiken(pagina, pedido, opciones = {}) {
+    await conPlan(pagina, 'calcularAiken', pedido, opciones);
     return { csv: await descargarCon(pagina, '#aikenCSV'), word: await descargarCon(pagina, '#aikenWord') };
 }
 
@@ -341,16 +222,8 @@ export async function calcularAiken(pagina, { minimo, maximo, confianza = 0.95, 
  * @param {{ sintaxis?: string, delSEM?: boolean, grupo: string, estimador?: 'ML' | 'WLSMV', estricta?: boolean }} pedido
  * @returns {Promise<{ word: Archivo }>}
  */
-export async function evaluarInvarianza(pagina, { sintaxis, delSEM = false, grupo, estimador = 'ML', estricta = false }) {
-    await irA(pagina, 'analizador');
-    if (delSEM) await pagina.click('#invDelSEM');
-    else await poner(pagina, '#invSintaxis', sintaxis || '');
-    await pagina.click('#invActualizar');
-    await poner(pagina, '#invGrupo', grupo);
-    await poner(pagina, '#invEstimador', estimador);
-    await pagina.setChecked('#invEstricta', estricta);
-    await pagina.click('#invCalcular');
-    await esperarResultados(pagina, 'invResultados', 'invMensajes', 1800000);
+export async function evaluarInvarianza(pagina, pedido) {
+    await conPlan(pagina, 'evaluarInvarianza', pedido);
     return { word: await descargarCon(pagina, '#invWord') };
 }
 

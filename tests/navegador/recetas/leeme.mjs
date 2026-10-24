@@ -4,6 +4,7 @@
 // vs. obtenido» y las escalas del maestro, leídos de los archivos del caso), la lista de archivos con su descripción y
 // cómo reproducir el caso. Las cifras salen de lo que dio la página (caso.cifras): nada se copia a mano.
 import { parsearLineaCSV } from '../../../src/shared/csv.js';
+import { pasosEnPalabras } from '../../../src/ejemplos/catalogo.js';
 
 export const AVISO = '> **Datos simulados.** La base de este caso la generó el Simulador de StatSim Pro con una configuración y una semilla fijas. Sirve para ver qué hace cada sección y qué archivos entrega, no es el resultado de una investigación.';
 
@@ -80,6 +81,7 @@ export function listaArchivos(caso, descripciones) {
     const filas = [...caso.archivos.keys()].filter(r => r !== 'README.md' && r !== 'verificacion.json').sort().map(ruta => {
         const d = descripciones.find(([re]) => re.test(ruta));
         if (!d) throw new Error(`${caso.carpeta}: falta la descripción de «${ruta}» en su README`);
+        caso.descripciones.set(ruta, d[1]);   // (2027.01.02) también para la pestaña «Ejemplos» (verificacion.json)
         return [`[${ruta}](${ruta})`, d[1], tamano(/** @type {Buffer} */ (caso.archivos.get(ruta)).length)];
     });
     return tabla(['Archivo', 'Qué es', 'Tamaño'], filas);
@@ -103,12 +105,14 @@ export const DESCRIPCIONES_COMUNES = [
 /**
  * Cómo se abre, se rehace y se comprueba el caso.
  * @param {string} carpeta
- * @param {string} analizador lo que hay que volver a pulsar en el Analizador tras abrir el proyecto
+ * @param {{ desde: number, hasta: number, nota?: string }} repetir (2027.01.02) los pasos del Analizador que hay que volver
+ *   a dar tras abrir el proyecto (los de la receta: los mismos que marca la guía de la pestaña «Ejemplos»)
  */
-export function seccionReproducir(carpeta, analizador) {
+export function seccionReproducir(carpeta, repetir) {
+    const analizador = `tras abrirlo, repite ${pasosEnPalabras(repetir)} del Analizador${repetir.nota ? ` (${repetir.nota})` : ''}.`;
     return `## Cómo reproducirlo
 
-- **Abrir el proyecto.** En Ayuda, «Abrir proyecto» y elige \`proyecto.statsim\`: el Simulador vuelve con su configuración y su base (la misma, bit a bit) y el Analizador con sus datos. Los análisis no se guardan en el proyecto: ${analizador}
+- **Abrirlo en la página.** En la pestaña «Ejemplos», elige este caso y pulsa «Abrir en StatSim» (o, en Ayuda, «Abrir proyecto» con \`proyecto.statsim\`): el Simulador vuelve con su configuración y su base (la misma, bit a bit) y el Analizador con sus datos y la configuración de la investigación. Los análisis no se guardan en el proyecto: ${analizador} En la guía que se abre con el caso, «Hazlo por mí» (o «Hazlo todo por mí») los repite a la vista, como se hicieron aquí, y «Muéstrame» señala dónde está cada cosa.
 - **Desde cero.** En el Simulador, «Importar todo» con \`simulador/configuracion_completa_simulador.csv\` y «Generar»: con la misma semilla sale la misma base. Después, los pasos del Analizador de arriba.
 - **Comprobarlo.** \`npm test\` abre este proyecto con el código del momento y comprueba que regenera la misma base y que el Analizador da las cifras de \`verificacion.json\`. Con Playwright instalado, \`node tests/navegador/ejemplos.mjs comprobar ${carpeta}\` rehace el caso entero en Chromium, pulsando los botones, y lo compara con esta carpeta: byte a byte, salvo los PDF, de los que se compara su texto impreso y sus páginas (y en otra computadora, con otras fuentes, del Word se compara su texto).`;
 }

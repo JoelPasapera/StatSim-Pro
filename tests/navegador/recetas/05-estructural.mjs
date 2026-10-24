@@ -2,7 +2,6 @@
 // tests/navegador/recetas/05-estructural.mjs — caso 5: modelo de ecuaciones estructurales con variables latentes (el apoyo
 // social y la autoeficacia académica como antecedentes del engagement académico), con un modelo rival de mediación
 // completa, y la regresión múltiple de los puntajes observados.
-import * as P from '../pasos.mjs';
 import { columna, comprobarCorrelacion, comprobarFiabilidad, comprobarRegresion, comprobarSEM, guardarAnalisis, leerDeLaPagina, simularYDescargar, tablasDe, textoDe } from './comun.mjs';
 import { AVISO, DESCRIPCIONES_COMUNES, afirmar, listaArchivos, num, pAPA, pTabla, seccionAvisos, seccionReproducir, sinCero, tabla, tablaEscalas, tablaInforme } from './leeme.mjs';
 
@@ -47,22 +46,27 @@ const COMPLETA = `${MEDIDA}
 Autoeficacia ~ Apoyo
 Engagement ~ Autoeficacia`;
 
+/** (2027.01.02) Los pasos del Analizador que hay que repetir tras abrir el proyecto (su README y la guía de la pestaña). */
+const REPETIR = { desde: 2, hasta: 3 };
+
 /** @type {import('../ejemplos.mjs').Receta} */
 export default {
     carpeta: '05-estructural',
     titulo: 'Apoyo social, autoeficacia y engagement académico',
     diseno: 'Explicativo (SEM)',
     resumen: 'Modelo de ecuaciones estructurales con tres variables latentes por WLSMV, comparado con un rival de mediación completa; validez convergente (AVE y fiabilidad compuesta) y la regresión de los puntajes.',
+    carpetas: { 'analizador/1-capitulo': 'La correlación, la regresión y el capítulo de Word (con el SEM)' },
+    repetir: REPETIR,
     async recorrer(caso) {
         const p = caso.pagina;
         const { columnas } = await simularYDescargar(caso, MAESTRO);
         const apoyo = columna(columnas, /^General_ASP$/), autoeficacia = columna(columnas, /^General_AA$/), engagement = columna(columnas, /^General_EA$/);
         caso.cifras.columnas = { apoyo, autoeficacia, engagement };
-        await P.usarBaseDelSimulador(p);
-        await P.describirInvestigacion(p, { titulo: 'Apoyo social percibido, autoeficacia académica y engagement académico en universitarios de Lima Metropolitana: un modelo de ecuaciones estructurales, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
+        await caso.hacer(1, 'usarBaseDelSimulador');
+        await caso.hacer(1, 'describirInvestigacion', { titulo: 'Apoyo social percibido, autoeficacia académica y engagement académico en universitarios de Lima Metropolitana: un modelo de ecuaciones estructurales, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
         // 1) los dos modelos estructurales (WLSMV: los ítems son ordinales), primero el rival y después la hipótesis
         const modelos = [{ sintaxis: COMPLETA, etiqueta: 'Modelo alternativo', estimador: 'WLSMV' }, { sintaxis: PARCIAL, etiqueta: 'Modelo final', estimador: 'WLSMV' }];
-        for (const m of modelos) await P.ajustarSEM(p, /** @type {any} */ (m));
+        for (const m of modelos) await caso.hacer(2, 'ajustarSEM', m);
         caso.cifras.sem = await comprobarSEM(caso, modelos);
         caso.cifras.semParametros = (await tablasDe(p, '#semOut'))[0];
         caso.cifras.semTexto = await textoDe(p, '#semOut');
@@ -70,13 +74,13 @@ export default {
         // 2) la correlación del apoyo con el engagement y la regresión del engagement en los dos antecedentes (el capítulo
         //    de Word, que lleva también los modelos estructurales)
         const regresion = { dependiente: engagement, predictores: [apoyo, autoeficacia] };
-        await P.analizar(p, { tipo: 'correlacion', variables: [apoyo, engagement], regresion });
+        await caso.hacer(3, 'analizar', { tipo: 'correlacion', variables: [apoyo, engagement], regresion });
         caso.cifras.correlacion = await comprobarCorrelacion(caso);
         await comprobarRegresion(caso, regresion.dependiente, regresion.predictores);
         comprobarFiabilidad(caso);
         caso.cifras.multiple = await leerDeLaPagina(p, "import('./src/analizador/regresion.js').then(m => { const R = m.RegresionMultiple._ultimaMultiple; return R && { familia: R.familia, n: R.n, R2: R.R2, R2aj: R.R2aj, F: R.F, glR: R.glR, glE: R.glE, pF: R.pF, coefs: R.coefs }; })");
-        await guardarAnalisis(caso, '1-capitulo');
-        caso.guardar('proyecto.statsim', (await P.guardarProyecto(p)).bytes);
+        await guardarAnalisis(caso, 3, '1-capitulo');
+        caso.guardar('proyecto.statsim', (await caso.hacer(4, 'guardarProyecto')).bytes);
     },
     leeme(caso) {
         const c = caso.cifras, s = c.simulador, r = c.correlacion, m = c.multiple;
@@ -89,6 +93,9 @@ export default {
         const directo = caminos.find((/** @type {string[]} */ f) => f[0] === 'Engagement ~ Apoyo');
         afirmar(!!comparacion && Number(comparacion[1]) < 0 && !!directo && /^(<|\.0[0-4])/.test(String(directo[2]).trim()), 'el rival se ajusta peor y el camino directo es significativo');
         const filasMultiple = m.coefs.map((/** @type {any} */ k) => [k.nombre, num(k.b, 3), k.beta === null ? '—' : sinCero(k.beta), pTabla(k.pValor)]);
+        const final = c.sem.find((/** @type {any} */ x) => x.etiqueta === 'Modelo final'), pDirecto = String(directo[2]).trim();
+        caso.destacar(`Mediación parcial: CFI = ${sinCero(final.CFI, 3)}, RMSEA = ${sinCero(final.RMSEA, 3)}`,
+            `Camino directo del apoyo al engagement: ${directo[1]}, p ${/^[<>]/.test(pDirecto) ? pDirecto : `= ${pDirecto}`}`);
         const validez = (c.semValidez || []).map((/** @type {any} */ f) => [f.factor, sinCero(f.AVE), sinCero(f.CR)]);
         return `# Caso 5 · Modelo de ecuaciones estructurales: apoyo social, autoeficacia y engagement
 
@@ -148,7 +155,7 @@ ${tabla(['Término', 'B', 'β', 'p'], filasMultiple)}
 
 ${listaArchivos(caso, DESCRIPCIONES_COMUNES)}
 
-${seccionReproducir(caso.carpeta, 'tras abrirlo, repite los pasos 2 y 3 del Analizador.')}
+${seccionReproducir(caso.carpeta, REPETIR)}
 
 ${seccionAvisos(s.avisos)}
 `;

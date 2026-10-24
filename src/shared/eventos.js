@@ -22,5 +22,9 @@ export const EVENTOS = {
     FUENTES_CAMBIADAS: 'fuentes:cambiadas', // Buscador → Redactor: las fuentes seleccionadas cambiaron
     FIABILIDAD_ACTUALIZADA: 'fiabilidad:actualizada', // Analizador: la fiabilidad se completó en segundo plano (p. ej., bootstrap)
     // (2027.01.01) Analizador: hay otros datos cargados; lo calculado con los anteriores (cada tarjeta, el SEM) se olvida
-    DATOS_CARGADOS: 'analizador:datos-cargados'
+    DATOS_CARGADOS: 'analizador:datos-cargados',
+    // (2027.01.02) la cáscara mostró una sección: { id } (main.js carga entonces la de carga perezosa, como «Ejemplos»)
+    SECCION_MOSTRADA: 'seccion:mostrada',
+    // (2027.01.02) se abrió un proyecto (proyecto/ui.js): la guía de un ejemplo abierto antes se cierra (ya no es lo que hay)
+    PROYECTO_ABIERTO: 'proyecto:abierto'
 };

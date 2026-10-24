@@ -78,6 +78,9 @@ test('guardar el proyecto, borrarlo todo y abrirlo: cada sección vuelve como es
     Protocolo.registrar({ fuente: 'Scopus', ecuacion: '"self-esteem" AND performance', filtros: 'Años 2020–2025', resultados: 143 });
     Prisma.registrar('identificados', { fuente: 'Scopus', n: 143 });
     Prisma.registrar('incluidos', { n: 12 });
+    // (2027.01.02) y «1. Configuración de la investigación», que usan el capítulo de Word y la redacción
+    const investigacion = { tituloTesis: 'Autoestima y rendimiento en universitarios de Lima, 2026', unidadAnalisis: 'universitarios', lugarContexto: 'Lima Metropolitana' };
+    for (const [id, v] of Object.entries(investigacion)) q('#' + id).value = v;
 
     // 2) guardar
     const antes = env.descargas.length;
@@ -99,6 +102,7 @@ test('guardar el proyecto, borrarlo todo y abrirlo: cada sección vuelve como es
     q('#validezContenidoContainer textarea').value = '';
     localStorage.removeItem('statsim_redactor_ultimo');
     Protocolo.limpiar(); Prisma.reiniciar();
+    for (const id of Object.keys(investigacion)) q('#' + id).value = 'otra cosa';
     assert.equal(maestro.textoMaestro(), null);
 
     // 4) abrir
@@ -119,6 +123,7 @@ test('guardar el proyecto, borrarlo todo y abrirlo: cada sección vuelve como es
     assert.deepEqual(EV._mapa, etiquetasAntes);
     assert.match(q('#editorEtiquetas').textContent, /Datos del Simulador/);
     assert.equal(q('#analisisN').textContent, '120');
+    for (const [id, v] of Object.entries(investigacion)) assert.equal(q('#' + id).value, v, `${id}: la configuración de la investigación vuelve`);
     // Aiken, Redactor y Buscador
     assert.equal(q('#validezContenidoContainer textarea').value, '4 3 4\n3 4 4\n4 4 3');
     assert.deepEqual(JSON.parse(localStorage.getItem('statsim_redactor_ultimo')).secciones, REDACCION.secciones);
@@ -127,6 +132,29 @@ test('guardar el proyecto, borrarlo todo y abrirlo: cada sección vuelve como es
     assert.equal(Protocolo.estadoActual().consultas[0].resultados, 143);
     assert.deepEqual(Prisma._datos.identificados, { Scopus: 143 });
     assert.equal(Prisma._datos.incluidos, 12);
+});
+
+test('(2027.01.02) la configuración de la investigación: uno anterior la deja como estaba; con marcado, sin él; con otra forma, se rechaza', async () => {
+    const { unirTrozos } = await import(new URL('src/core/data/zip/escritor.js', raiz));
+    const campos = ['tituloTesis', 'unidadAnalisis', 'lugarContexto'];
+    const poner = (/** @type {string[]} */ v) => campos.forEach((id, i) => { q('#' + id).value = v[i]; });
+    const leer = () => campos.map(id => q('#' + id).value);
+    /** Un proyecto con los datos del Analizador y, si se da, su configuración de la investigación. @param {any} [investigacion] */
+    const conInvestigacion = async investigacion => unirTrozos(await paquete.escribirProyecto([{ seccion: 'analizador', titulo: 'el Analizador', resumen: '',
+        archivos: { 'datos.json': '{"columnas":["a"],"valores":[[1,2,3]]}', 'etiquetas.json': JSON.stringify({ etiquetas: {}, estructura: [], origen: { tipo: 'csv' }, ...(investigacion === undefined ? {} : { investigacion }) }) } }], { version: 'x' }));
+    poner(['Mi título', 'mi unidad', 'mi lugar']);
+    await proyecto.abrirProyecto(archivo('anterior.statsim', await conInvestigacion()));
+    assert.match(toast().texto, /^Proyecto abierto/);
+    assert.deepEqual(leer(), ['Mi título', 'mi unidad', 'mi lugar'], 'un proyecto anterior a la 2027.01.02 no la trae: quedan como estaban');
+    await proyecto.abrirProyecto(archivo('ajeno.statsim', await conInvestigacion({ titulo: 'Un <img src=x onerror=alert(1)> título', unidad: '<b>', lugar: '' })));
+    assert.match(toast().texto, /^Proyecto abierto/);
+    assert.deepEqual(leer(), ['Un ‹img src=x onerror=alert(1)› título', '‹b›', ''], 'sin marcado: el capítulo y la redacción la pintan');
+    poner(['Mi título', 'mi unidad', 'mi lugar']);
+    for (const mala of [{ titulo: 1, unidad: '', lugar: '' }, { titulo: 'x'.repeat(2001), unidad: '', lugar: '' }, { titulo: 'x' }, 'texto']) {
+        await proyecto.abrirProyecto(archivo('malo.statsim', await conInvestigacion(mala)));
+        assert.match(toast().texto, /la configuración de la investigación guardada \(«etiquetas\.json»\) no tiene la forma esperada/, JSON.stringify(mala).slice(0, 40));
+        assert.deepEqual(leer(), ['Mi título', 'mi unidad', 'mi lugar'], 'y nada cambia');
+    }
 });
 
 test('lo que no es un proyecto, o uno de una versión más nueva: un error claro, y nada cambia', async () => {

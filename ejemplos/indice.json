@@ -1,0 +1,920 @@
+{
+  "formato": 1,
+  "version": "2027.01.03",
+  "casos": [
+    {
+      "carpeta": "01-correlacional",
+      "titulo": "Estrés académico y bienestar psicológico",
+      "diseno": "Correlacional",
+      "resumen": "Dos instrumentos de tres dimensiones: normalidad, correlación de Spearman, objetivos específicos por dimensiones con Holm, fiabilidad y el capítulo de Word completo.",
+      "version": "2027.01.03",
+      "destacados": [
+        "Estrés y bienestar: ρ = −.40, p < .001",
+        "5 de 5 objetivos específicos significativos tras Holm",
+        "Fiabilidad: ω de .80 a .90"
+      ],
+      "pasos": [
+        "«Usar datos generados»: la base pasa al Analizador con sus etiquetas.",
+        "«1. Configuración de la investigación»: el título, la unidad de análisis (estudiantes universitarios) y el lugar (Lima Metropolitana), que usa la redacción.",
+        "«Análisis estadístico»: Correlación, Variable 1 = Estrés académico — EEA (`General_EE`), Variable 2 = Bienestar psicológico — EBP (`General_EB`), prueba bilateral, y «Ejecutar análisis».",
+        "«Exportar capítulo a Word», «Descargar resultados» e «Imprimir o guardar en PDF» (carpeta `analizador/1-correlacion/`).",
+        "Ayuda → «Guardar proyecto»."
+      ],
+      "repetir": {
+        "desde": 3,
+        "hasta": 3,
+        "nota": ""
+      },
+      "guiones": [
+        [
+          {
+            "accion": "usarBaseDelSimulador",
+            "datos": {}
+          }
+        ],
+        [
+          {
+            "accion": "describirInvestigacion",
+            "datos": {
+              "titulo": "Estrés académico y bienestar psicológico en estudiantes universitarios de Lima Metropolitana, 2026",
+              "unidad": "estudiantes universitarios",
+              "lugar": "Lima Metropolitana"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_EE",
+                "General_EB"
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "1-correlacion"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "guardarProyecto",
+            "datos": {}
+          }
+        ]
+      ],
+      "carpetas": [
+        {
+          "ruta": "analizador/1-correlacion",
+          "titulo": "La correlación y su capítulo de Word"
+        }
+      ],
+      "archivos": [
+        {
+          "ruta": "analizador/1-correlacion/capitulo_resultados_APA.docx",
+          "bytes": 737165,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/1-correlacion/resultados_analisis.txt",
+          "bytes": 33175,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/1-correlacion/resultados.pdf",
+          "bytes": 1150978,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "proyecto.statsim",
+          "bytes": 29893,
+          "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_excel_espanol.csv",
+          "bytes": 39173,
+          "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_internacional.csv",
+          "bytes": 39173,
+          "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.sav",
+          "bytes": 22613,
+          "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.xlsx",
+          "bytes": 56944,
+          "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
+        },
+        {
+          "ruta": "simulador/configuracion_completa_simulador.csv",
+          "bytes": 2187,
+          "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
+        },
+        {
+          "ruta": "simulador/informe_pedido_vs_obtenido.csv",
+          "bytes": 1051,
+          "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
+        },
+        {
+          "ruta": "simulador/verificacion_de_la_base.pdf",
+          "bytes": 77738,
+          "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
+        }
+      ]
+    },
+    {
+      "carpeta": "02-comparativo",
+      "titulo": "Ansiedad ante los exámenes según el sexo y el grado",
+      "diseno": "Comparativo",
+      "resumen": "Diferencias pedidas como d de Cohen: Mann-Whitney por sexo, Kruskal-Wallis por grado con post hoc de Holm, χ² del nivel con el sexo y una base con respuestas perdidas.",
+      "version": "2027.01.03",
+      "destacados": [
+        "Según el sexo: U = 7818, p < .001",
+        "Según el grado: H(2) = 12.39, p = .002",
+        "Nivel de ansiedad y sexo: χ²(2) = 12.91, p = .002"
+      ],
+      "pasos": [
+        "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+        "**El capítulo** (`analizador/1-capitulo/`): Correlación entre la ansiedad (`General_I`) y el promedio (`Promedio de notas`), «Ejecutar análisis» y las tres descargas. El capítulo de Word se redacta sobre una correlación, y sus secciones ya comparan las dos variables según el sexo, el grado y la gestión del colegio.",
+        "**Las comparaciones** (`analizador/2-comparacion/`): «Comparación de grupos» con la ansiedad como variable cuantitativa y Sexo como agrupación, «Ejecutar análisis»; y, en la tarjeta «Comparación entre grupos», Grado y la ansiedad, «Comparar grupos». Después, «Descargar resultados» e «Imprimir o guardar en PDF» (el PDF lleva las dos).",
+        "**La asociación** (`analizador/3-asociacion/`): «Asociación de dos variables categóricas (Chi²)» con `Nivel_I` y Sexo, «Ejecutar análisis», «Descargar resultados» e «Imprimir o guardar en PDF».",
+        "Ayuda → «Guardar proyecto»."
+      ],
+      "repetir": {
+        "desde": 2,
+        "hasta": 4,
+        "nota": ""
+      },
+      "guiones": [
+        [
+          {
+            "accion": "usarBaseDelSimulador",
+            "datos": {}
+          },
+          {
+            "accion": "describirInvestigacion",
+            "datos": {
+              "titulo": "Ansiedad ante los exámenes en estudiantes de secundaria de Lima Metropolitana: diferencias según el sexo y el grado, 2026",
+              "unidad": "estudiantes de secundaria",
+              "lugar": "Lima Metropolitana"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_I",
+                "Promedio de notas"
+              ]
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "1-capitulo"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "comparacion",
+              "variables": [
+                "General_I",
+                "Sexo"
+              ]
+            }
+          },
+          {
+            "accion": "compararGrupos",
+            "datos": {
+              "grupo": "Grado",
+              "numerica": "General_I"
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": false,
+              "carpeta": "2-comparacion"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "asociacion",
+              "variables": [
+                "Nivel_I",
+                "Sexo"
+              ]
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": false,
+              "carpeta": "3-asociacion"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "guardarProyecto",
+            "datos": {}
+          }
+        ]
+      ],
+      "carpetas": [
+        {
+          "ruta": "analizador/1-capitulo",
+          "titulo": "La correlación y su capítulo de Word"
+        },
+        {
+          "ruta": "analizador/2-comparacion",
+          "titulo": "Las comparaciones según el sexo y el grado"
+        },
+        {
+          "ruta": "analizador/3-asociacion",
+          "titulo": "La asociación del nivel con el sexo (χ²)"
+        }
+      ],
+      "archivos": [
+        {
+          "ruta": "analizador/1-capitulo/capitulo_resultados_APA.docx",
+          "bytes": 859170,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/1-capitulo/resultados_analisis.txt",
+          "bytes": 27030,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/1-capitulo/resultados.pdf",
+          "bytes": 1036110,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "analizador/2-comparacion/resultados_analisis.txt",
+          "bytes": 1540,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/2-comparacion/resultados.pdf",
+          "bytes": 313078,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "analizador/3-asociacion/resultados_analisis.txt",
+          "bytes": 891,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/3-asociacion/resultados.pdf",
+          "bytes": 300962,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "proyecto.statsim",
+          "bytes": 18935,
+          "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_excel_espanol.csv",
+          "bytes": 27263,
+          "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_internacional.csv",
+          "bytes": 27263,
+          "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.sav",
+          "bytes": 14634,
+          "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.xlsx",
+          "bytes": 32311,
+          "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
+        },
+        {
+          "ruta": "simulador/configuracion_completa_simulador.csv",
+          "bytes": 2145,
+          "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
+        },
+        {
+          "ruta": "simulador/informe_pedido_vs_obtenido.csv",
+          "bytes": 1194,
+          "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
+        },
+        {
+          "ruta": "simulador/verificacion_de_la_base.pdf",
+          "bytes": 76662,
+          "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
+        }
+      ]
+    },
+    {
+      "carpeta": "03-predictivo",
+      "titulo": "Predictores del rendimiento y del riesgo de deserción",
+      "diseno": "Predictivo",
+      "resumen": "Regresión lineal múltiple del promedio (β, VIF, R²) y regresión logística del riesgo de deserción, el desenlace binario «No/Sí» del Simulador (OR con su intervalo).",
+      "version": "2027.01.03",
+      "destacados": [
+        "Regresión múltiple del promedio: R² = .255, p < .001",
+        "Regresión logística del riesgo: pseudo-R² = .180",
+        "3 de 3 predictores del riesgo, significativos"
+      ],
+      "pasos": [
+        "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+        "**La regresión lineal múltiple** (`analizador/1-regresion-multiple/`): Correlación entre la autoeficacia (`General_AA`) y el promedio (`Promedio ponderado`); en «Regresión», el promedio como variable dependiente y la autoeficacia como predictor; con «＋ Agregar predictor», la procrastinación (`General_PA`) y el apoyo social (`General_EA`). «Ejecutar análisis» y las tres descargas: el capítulo de Word lleva la regresión múltiple.",
+        "**La regresión logística** (`analizador/2-regresion-logistica/`): Correlación entre la procrastinación y el promedio; en «Regresión», «Riesgo de deserción» como variable dependiente (aparece como «dos categorías: No = 0, Sí = 1») y como predictores la autoeficacia, la procrastinación y el promedio. «Ejecutar análisis» y las tres descargas.",
+        "Ayuda → «Guardar proyecto»."
+      ],
+      "repetir": {
+        "desde": 2,
+        "hasta": 3,
+        "nota": ""
+      },
+      "guiones": [
+        [
+          {
+            "accion": "usarBaseDelSimulador",
+            "datos": {}
+          },
+          {
+            "accion": "describirInvestigacion",
+            "datos": {
+              "titulo": "Autoeficacia académica, procrastinación y apoyo social como predictores del rendimiento y del riesgo de deserción en universitarios de Lima Metropolitana, 2026",
+              "unidad": "estudiantes universitarios",
+              "lugar": "Lima Metropolitana"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_AA",
+                "Promedio ponderado"
+              ],
+              "regresion": {
+                "dependiente": "Promedio ponderado",
+                "predictores": [
+                  "General_AA",
+                  "General_PA",
+                  "General_EA"
+                ]
+              }
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "1-regresion-multiple"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_PA",
+                "Promedio ponderado"
+              ],
+              "regresion": {
+                "dependiente": "Riesgo de deserción",
+                "predictores": [
+                  "General_AA",
+                  "General_PA",
+                  "Promedio ponderado"
+                ]
+              }
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "2-regresion-logistica"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "guardarProyecto",
+            "datos": {}
+          }
+        ]
+      ],
+      "carpetas": [
+        {
+          "ruta": "analizador/1-regresion-multiple",
+          "titulo": "La regresión lineal múltiple"
+        },
+        {
+          "ruta": "analizador/2-regresion-logistica",
+          "titulo": "La regresión logística"
+        }
+      ],
+      "archivos": [
+        {
+          "ruta": "analizador/1-regresion-multiple/capitulo_resultados_APA.docx",
+          "bytes": 852269,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/1-regresion-multiple/resultados_analisis.txt",
+          "bytes": 34713,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/1-regresion-multiple/resultados.pdf",
+          "bytes": 1301940,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "analizador/2-regresion-logistica/capitulo_resultados_APA.docx",
+          "bytes": 875654,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/2-regresion-logistica/resultados_analisis.txt",
+          "bytes": 31920,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/2-regresion-logistica/resultados.pdf",
+          "bytes": 1300605,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "proyecto.statsim",
+          "bytes": 33051,
+          "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_excel_espanol.csv",
+          "bytes": 43541,
+          "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_internacional.csv",
+          "bytes": 43541,
+          "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.sav",
+          "bytes": 28296,
+          "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.xlsx",
+          "bytes": 65450,
+          "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
+        },
+        {
+          "ruta": "simulador/configuracion_completa_simulador.csv",
+          "bytes": 2646,
+          "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
+        },
+        {
+          "ruta": "simulador/informe_pedido_vs_obtenido.csv",
+          "bytes": 1626,
+          "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
+        },
+        {
+          "ruta": "simulador/verificacion_de_la_base.pdf",
+          "bytes": 78798,
+          "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
+        }
+      ]
+    },
+    {
+      "carpeta": "04-instrumental",
+      "titulo": "Propiedades psicométricas de una escala de procrastinación académica",
+      "diseno": "Instrumental",
+      "resumen": "V de Aiken con 7 jueces, AFE con correlaciones policóricas y análisis paralelo, AFC por WLSMV frente a un modelo rival, invarianza según el sexo, fiabilidad α y ω y validez convergente.",
+      "version": "2027.01.03",
+      "destacados": [
+        "V de Aiken: 7 de 15 ítems válidos",
+        "AFE: 3 factores, KMO = .91",
+        "AFC de tres factores: CFI = .991, RMSEA = .031"
+      ],
+      "pasos": [
+        "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+        "**«3. Validez de contenido por juicio de expertos (V de Aiken)»**: escala de 1 a 4, IC del 95 %, criterio V₀ = .70; tres criterios (Claridad, Coherencia y Relevancia), cada uno con «Cargar CSV»; «Calcular V de Aiken» y sus descargas (`analizador/1-validez-de-contenido/`).",
+        "**«4. Análisis factorial exploratorio (AFE)»**: «Escala total (EPA)», correlación automática (policórica), factores por análisis paralelo (200 réplicas, semilla 2026), rotación oblimin; «Calcular AFE» y sus descargas (`analizador/2-afe/`).",
+        "**SEM (AFC)**: el modelo de un factor como «Modelo alternativo» y el de tres como «Modelo final», los dos con WLSMV; «¿Es adecuado usar SEM aquí?» y «Ajustar modelo» en cada uno.",
+        "**«6. Invarianza de medición»**: el modelo de tres factores, agrupación Sexo, WLSMV; «Evaluar la invarianza» y su Word (`analizador/3-invarianza/`).",
+        "**Fiabilidad y validez convergente**: Correlación entre la escala (`General_E`) y la autoeficacia (`General_AA`), «Ejecutar análisis» y las tres descargas (`analizador/4-capitulo/`). El PDF de esta carpeta lleva todas las tarjetas anteriores con sus resultados, y el capítulo de Word, el AFC.",
+        "Ayuda → «Guardar proyecto»: el proyecto guarda también las valoraciones de los jueces."
+      ],
+      "repetir": {
+        "desde": 2,
+        "hasta": 6,
+        "nota": "la V de Aiken vuelve con sus valoraciones: en el paso 2 basta con «Calcular V de Aiken»"
+      },
+      "guiones": [
+        [
+          {
+            "accion": "usarBaseDelSimulador",
+            "datos": {}
+          },
+          {
+            "accion": "describirInvestigacion",
+            "datos": {
+              "titulo": "Propiedades psicométricas de la Escala de Procrastinación Académica en universitarios de Lima Metropolitana, 2026",
+              "unidad": "estudiantes universitarios",
+              "lugar": "Lima Metropolitana"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "calcularAiken",
+            "datos": {
+              "minimo": 1,
+              "maximo": 4,
+              "confianza": 0.95,
+              "v0": 0.7,
+              "criterios": [
+                {
+                  "nombre": "Claridad",
+                  "archivo": "analizador/1-validez-de-contenido/valoraciones_claridad.csv"
+                },
+                {
+                  "nombre": "Coherencia",
+                  "archivo": "analizador/1-validez-de-contenido/valoraciones_coherencia.csv"
+                },
+                {
+                  "nombre": "Relevancia",
+                  "archivo": "analizador/1-validez-de-contenido/valoraciones_relevancia.csv"
+                }
+              ]
+            }
+          }
+        ],
+        [
+          {
+            "accion": "calcularAFE",
+            "datos": {
+              "conjunto": "Escala total (EPA)",
+              "correlacion": "auto",
+              "factores": "paralelo",
+              "rotacion": "oblimin",
+              "replicas": 200,
+              "semilla": 2026
+            }
+          }
+        ],
+        [
+          {
+            "accion": "ajustarSEM",
+            "datos": {
+              "sintaxis": "Procrastinacion =~ P1 + P2 + P3 + P4 + P5 + D1 + D2 + D3 + D4 + D5 + DE1 + DE2 + DE3 + DE4 + DE5",
+              "etiqueta": "Modelo alternativo",
+              "estimador": "WLSMV"
+            }
+          },
+          {
+            "accion": "ajustarSEM",
+            "datos": {
+              "sintaxis": "Postergacion =~ P1 + P2 + P3 + P4 + P5\nDistraccion =~ D1 + D2 + D3 + D4 + D5\nDesorganizacion =~ DE1 + DE2 + DE3 + DE4 + DE5",
+              "etiqueta": "Modelo final",
+              "estimador": "WLSMV"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "evaluarInvarianza",
+            "datos": {
+              "sintaxis": "Postergacion =~ P1 + P2 + P3 + P4 + P5\nDistraccion =~ D1 + D2 + D3 + D4 + D5\nDesorganizacion =~ DE1 + DE2 + DE3 + DE4 + DE5",
+              "grupo": "Sexo",
+              "estimador": "WLSMV",
+              "agrupar": true
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_E",
+                "General_AA"
+              ]
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "4-capitulo"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "guardarProyecto",
+            "datos": {}
+          }
+        ]
+      ],
+      "carpetas": [
+        {
+          "ruta": "analizador/1-validez-de-contenido",
+          "titulo": "La validez de contenido (V de Aiken)"
+        },
+        {
+          "ruta": "analizador/2-afe",
+          "titulo": "El análisis factorial exploratorio"
+        },
+        {
+          "ruta": "analizador/3-invarianza",
+          "titulo": "La invarianza según el sexo"
+        },
+        {
+          "ruta": "analizador/4-capitulo",
+          "titulo": "La fiabilidad, la validez convergente y el capítulo de Word"
+        }
+      ],
+      "archivos": [
+        {
+          "ruta": "analizador/1-validez-de-contenido/validez_contenido_aiken.csv",
+          "bytes": 2885,
+          "descripcion": "La V de Aiken de cada ítem en cada criterio, con su intervalo, su p y su decisión: botón «CSV» de la tarjeta."
+        },
+        {
+          "ruta": "analizador/1-validez-de-contenido/validez_contenido_aiken.docx",
+          "bytes": 31722,
+          "descripcion": "La validez de contenido redactada en APA, con sus tablas: botón «Word» de la tarjeta."
+        },
+        {
+          "ruta": "analizador/1-validez-de-contenido/valoraciones_claridad.csv",
+          "bytes": 331,
+          "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
+        },
+        {
+          "ruta": "analizador/1-validez-de-contenido/valoraciones_coherencia.csv",
+          "bytes": 331,
+          "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
+        },
+        {
+          "ruta": "analizador/1-validez-de-contenido/valoraciones_relevancia.csv",
+          "bytes": 331,
+          "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
+        },
+        {
+          "ruta": "analizador/2-afe/afe_APA.docx",
+          "bytes": 17846,
+          "descripcion": "El AFE redactado en APA, con sus tablas: botón «Word» del AFE."
+        },
+        {
+          "ruta": "analizador/2-afe/afe_cargas.csv",
+          "bytes": 687,
+          "descripcion": "Las cargas factoriales, las comunalidades y la MSA de cada ítem: botón «CSV» del AFE."
+        },
+        {
+          "ruta": "analizador/3-invarianza/invarianza_APA.docx",
+          "bytes": 20680,
+          "descripcion": "La invarianza de medición redactada en APA, con sus tablas: botón «Word» de la tarjeta."
+        },
+        {
+          "ruta": "analizador/4-capitulo/capitulo_resultados_APA.docx",
+          "bytes": 786320,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/4-capitulo/resultados_analisis.txt",
+          "bytes": 28067,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/4-capitulo/resultados.pdf",
+          "bytes": 1499452,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "proyecto.statsim",
+          "bytes": 24647,
+          "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_excel_espanol.csv",
+          "bytes": 33502,
+          "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_internacional.csv",
+          "bytes": 33502,
+          "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.sav",
+          "bytes": 19761,
+          "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.xlsx",
+          "bytes": 50358,
+          "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
+        },
+        {
+          "ruta": "simulador/configuracion_completa_simulador.csv",
+          "bytes": 1995,
+          "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
+        },
+        {
+          "ruta": "simulador/informe_pedido_vs_obtenido.csv",
+          "bytes": 711,
+          "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
+        },
+        {
+          "ruta": "simulador/verificacion_de_la_base.pdf",
+          "bytes": 73045,
+          "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
+        }
+      ]
+    },
+    {
+      "carpeta": "05-estructural",
+      "titulo": "Apoyo social, autoeficacia y engagement académico",
+      "diseno": "Explicativo (SEM)",
+      "resumen": "Modelo de ecuaciones estructurales con tres variables latentes por WLSMV, comparado con un rival de mediación completa; validez convergente (AVE y fiabilidad compuesta) y la regresión de los puntajes.",
+      "version": "2027.01.03",
+      "destacados": [
+        "Mediación parcial: CFI = .997, RMSEA = .019",
+        "Camino directo del apoyo al engagement: 0.13, p = .016"
+      ],
+      "pasos": [
+        "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+        "**SEM**, dos veces, con el estimador WLSMV: primero el rival (mediación completa, sin el camino directo) como «Modelo alternativo» y después la hipótesis (mediación parcial) como «Modelo final»; en cada uno, «¿Es adecuado usar SEM aquí?» y «Ajustar modelo». Los modelos, en la sintaxis de la tarjeta:\n\n```\nApoyo =~ ASP1 + ASP2 + ASP3 + ASP4 + ASP5 + ASP6\nAutoeficacia =~ AA1 + AA2 + AA3 + AA4 + AA5 + AA6\nEngagement =~ EA1 + EA2 + EA3 + EA4 + EA5 + EA6\nAutoeficacia ~ Apoyo\nEngagement ~ Autoeficacia + Apoyo\n```\n\nEl rival es el mismo sin «+ Apoyo» en la última línea.",
+        "**El capítulo** (`analizador/1-capitulo/`): Correlación entre el apoyo social (`General_ASP`) y el engagement (`General_EA`), con la regresión del engagement en el apoyo y la autoeficacia (`General_AA`); «Ejecutar análisis» y las tres descargas. El capítulo de Word lleva la comparación de los modelos estructurales y el diagrama de rutas, y el PDF, la tarjeta del SEM completa.",
+        "Ayuda → «Guardar proyecto»."
+      ],
+      "repetir": {
+        "desde": 2,
+        "hasta": 3,
+        "nota": ""
+      },
+      "guiones": [
+        [
+          {
+            "accion": "usarBaseDelSimulador",
+            "datos": {}
+          },
+          {
+            "accion": "describirInvestigacion",
+            "datos": {
+              "titulo": "Apoyo social percibido, autoeficacia académica y engagement académico en universitarios de Lima Metropolitana: un modelo de ecuaciones estructurales, 2026",
+              "unidad": "estudiantes universitarios",
+              "lugar": "Lima Metropolitana"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "ajustarSEM",
+            "datos": {
+              "sintaxis": "Apoyo =~ ASP1 + ASP2 + ASP3 + ASP4 + ASP5 + ASP6\nAutoeficacia =~ AA1 + AA2 + AA3 + AA4 + AA5 + AA6\nEngagement =~ EA1 + EA2 + EA3 + EA4 + EA5 + EA6\nAutoeficacia ~ Apoyo\nEngagement ~ Autoeficacia",
+              "etiqueta": "Modelo alternativo",
+              "estimador": "WLSMV"
+            }
+          },
+          {
+            "accion": "ajustarSEM",
+            "datos": {
+              "sintaxis": "Apoyo =~ ASP1 + ASP2 + ASP3 + ASP4 + ASP5 + ASP6\nAutoeficacia =~ AA1 + AA2 + AA3 + AA4 + AA5 + AA6\nEngagement =~ EA1 + EA2 + EA3 + EA4 + EA5 + EA6\nAutoeficacia ~ Apoyo\nEngagement ~ Autoeficacia + Apoyo",
+              "etiqueta": "Modelo final",
+              "estimador": "WLSMV"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "analizar",
+            "datos": {
+              "tipo": "correlacion",
+              "variables": [
+                "General_ASP",
+                "General_EA"
+              ],
+              "regresion": {
+                "dependiente": "General_EA",
+                "predictores": [
+                  "General_ASP",
+                  "General_AA"
+                ]
+              }
+            }
+          },
+          {
+            "accion": "exportarAnalisis",
+            "datos": {
+              "word": true,
+              "carpeta": "1-capitulo"
+            }
+          }
+        ],
+        [
+          {
+            "accion": "guardarProyecto",
+            "datos": {}
+          }
+        ]
+      ],
+      "carpetas": [
+        {
+          "ruta": "analizador/1-capitulo",
+          "titulo": "La correlación, la regresión y el capítulo de Word (con el SEM)"
+        }
+      ],
+      "archivos": [
+        {
+          "ruta": "analizador/1-capitulo/capitulo_resultados_APA.docx",
+          "bytes": 785639,
+          "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
+        },
+        {
+          "ruta": "analizador/1-capitulo/resultados_analisis.txt",
+          "bytes": 28647,
+          "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
+        },
+        {
+          "ruta": "analizador/1-capitulo/resultados.pdf",
+          "bytes": 1248983,
+          "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
+        },
+        {
+          "ruta": "proyecto.statsim",
+          "bytes": 18802,
+          "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_excel_espanol.csv",
+          "bytes": 22219,
+          "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada_internacional.csv",
+          "bytes": 22219,
+          "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.sav",
+          "bytes": 13871,
+          "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
+        },
+        {
+          "ruta": "simulador/base_datos_simulada.xlsx",
+          "bytes": 36177,
+          "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
+        },
+        {
+          "ruta": "simulador/configuracion_completa_simulador.csv",
+          "bytes": 1999,
+          "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
+        },
+        {
+          "ruta": "simulador/informe_pedido_vs_obtenido.csv",
+          "bytes": 1254,
+          "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
+        },
+        {
+          "ruta": "simulador/verificacion_de_la_base.pdf",
+          "bytes": 78147,
+          "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
+        }
+      ]
+    }
+  ]
+}

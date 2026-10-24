@@ -82,6 +82,8 @@ Cada comprobación corresponde a un fallo que ocurrió de verdad durante el desa
 
 La carpeta [`ejemplos/`](ejemplos/README.md) trae cinco casos de uso completos —un estudio correlacional, uno comparativo, uno predictivo, uno instrumental y uno estructural— recorridos en un navegador de verdad como lo haría una persona. Cada uno guarda lo que descargó la página, sin retocar: la configuración del Simulador, la base en CSV, SPSS y Excel, el informe «pedido vs. obtenido» y su verificación en PDF, el capítulo de Word, los resultados en texto y en PDF, los informes de psicometría y el proyecto `.statsim` para abrirlo y seguir. Su README explica la pregunta, qué se pulsó y qué dio cada análisis. Son datos simulados, y son también una prueba: `npm test` comprueba que cada proyecto regenera la misma base y que el Analizador vuelve a dar las mismas cifras.
 
+En la página, la pestaña **Ejemplos** los muestra uno por uno: sus cifras clave, sus archivos para descargar (o el caso entero en un .zip) y su explicación; con **«Abrir en StatSim»** el caso se carga en el Simulador y el Analizador y una guía deja a la vista sus pasos, con los que ya trajo el proyecto marcados y los que hay que repetir resaltados. En cada paso, **«Muéstrame»** te señala en la página dónde está cada control y qué lleva, y **«Hazlo por mí»** (o «Hazlo todo por mí») repite los análisis a la vista, con pausas, como se hicieron en el caso: las descargas quedan para ti, señaladas.
+
 ---
 
 ## 📚 Motor estadístico implementado desde cero
@@ -239,14 +241,15 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 ## 🚀 Uso
 
 1. Abre la demo: [joelpasapera.github.io/StatSim-Pro](https://joelpasapera.github.io/StatSim-Pro)
-2. **Simulador** → declara tus pruebas y dimensiones, fija la fiabilidad y las correlaciones objetivo, y genera la base (o salta este paso si tienes la tuya). Revisa el **informe pedido vs. obtenido** y, si vas a enseñar limpieza de datos, activa las **imperfecciones realistas**
-3. **Analizador** → carga tu CSV o usa los datos generados; etiqueta tus variables; elige el análisis (fiabilidad, correlación, comparación de grupos, chi², multivariado) y ejecuta
-4. **Explora el dashboard**: selecciona variables con las casillas, pasa el cursor por la matriz y los diagramas de caja, investiga los atípicos y lee el análisis automático bajo cada gráfico
-5. Exporta el **capítulo de resultados en Word APA** con un clic
-6. **Buscador** → busca antecedentes (con tus propias variantes si quieres), analiza relevancia con IA, llena la matriz y expórtala
-7. **Redactor** → importa la matriz, filtra por relevancia, identifica variables, genera el **marco teórico completo**, pásale el **pase de coherencia** y descárgalo en **Word o PDF APA**
+2. ¿Primera vez? En **Ejemplos**, abre un caso resuelto en StatSim y sigue su guía («Muéstrame» te señala cada control; «Hazlo por mí» lo hace a la vista): verás el recorrido entero con datos de ejemplo antes de usar los tuyos
+3. **Simulador** → declara tus pruebas y dimensiones, fija la fiabilidad y las correlaciones objetivo, y genera la base (o salta este paso si tienes la tuya). Revisa el **informe pedido vs. obtenido** y, si vas a enseñar limpieza de datos, activa las **imperfecciones realistas**
+4. **Analizador** → carga tu CSV o usa los datos generados; etiqueta tus variables; elige el análisis (fiabilidad, correlación, comparación de grupos, chi², multivariado) y ejecuta
+5. **Explora el dashboard**: selecciona variables con las casillas, pasa el cursor por la matriz y los diagramas de caja, investiga los atípicos y lee el análisis automático bajo cada gráfico
+6. Exporta el **capítulo de resultados en Word APA** con un clic
+7. **Buscador** → busca antecedentes (con tus propias variantes si quieres), analiza relevancia con IA, llena la matriz y expórtala
+8. **Redactor** → importa la matriz, filtra por relevancia, identifica variables, genera el **marco teórico completo**, pásale el **pase de coherencia** y descárgalo en **Word o PDF APA**
 
-Para uso local: clona el repositorio y abre `index.html` (o sirve la carpeta con cualquier servidor estático).
+Para uso local: clona el repositorio y sirve la carpeta con cualquier servidor estático (abierta como archivo, con doble clic en `index.html`, el navegador no carga los módulos de la página).
 
 ```bash
 git clone https://github.com/JoelPasapera/StatSim-Pro.git
@@ -277,6 +280,7 @@ python -m http.server 8000   # o cualquier servidor estático
 | `workers/relevo-wos.js` | Relevo de Web of Science (Cloudflare Worker): CORS y claves fuera de la página ([docs/WEB-OF-SCIENCE.md](docs/WEB-OF-SCIENCE.md)) |
 | `shared/impresion.js`, `assets/css/componentes/impresion.css` | «Imprimir o guardar en PDF»: el encabezado de lo impreso y los estilos de impresión (solo los resultados, en papel blanco) |
 | `ejemplos/`, `tests/navegador/` | Cinco casos de uso hechos por la página en Chromium, con todo lo que descargó, y las recetas que los rehacen y los comparan |
+| `src/ejemplos/` | La pestaña «Ejemplos»: el catálogo (`ejemplos/indice.json`), los README en HTML seguro, la galería, la vista de cada caso con sus descargas y su .zip, «Abrir en StatSim» y la guía de sus pasos; `hazlo/`, «Muéstrame» y «Hazlo por mí» (los planes de cada paso, compartidos con el generador de los ejemplos) |
 | `ia-asistente.js` | Cliente de los Workers de IA (criterios, relevancia, redacción, pase de coherencia) con respaldo entre proveedores |
 | `redactor-teorico.js` | Marco teórico completo con citas verificadas, pase de coherencia y exportación Word/PDF APA |
 

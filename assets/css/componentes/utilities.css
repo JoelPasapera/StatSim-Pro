@@ -146,6 +146,17 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     margin-top: 1.8rem;
     display: inline-flex;
 }
+/* (2027.01.02) Los botones de la portada: «Comenzar mi investigación» y «Ver ejemplos terminados», en una fila que se
+   parte en pantallas estrechas; y debajo, las cuatro cosas que hace el sitio, separadas (iban pegadas unas a otras). */
+.hero-ctas {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center;
+    gap: 0.75rem 1rem; margin-top: 1.8rem;
+}
+.hero-ctas .hero-cta { margin-top: 0; }
+.hero-chips {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem 1.4rem;
+    margin-top: 1.4rem; font-size: 0.92rem; color: var(--color-text-secondary);
+}
 .hero {
     position: relative;
     text-align: center;

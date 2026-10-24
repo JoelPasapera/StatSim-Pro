@@ -37,7 +37,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet">
     <meta name="theme-color" content="#0b0f19">
     <!-- Styles -->
-    <link rel="stylesheet" href="assets/css/styles.css?v=16">
+    <link rel="stylesheet" href="assets/css/styles.css?v=17">
     <style>
         .chart-grid {
             display: grid;
@@ -125,6 +125,7 @@
                     <a href="#buscador" class="nav-link">Buscador</a>
                     <a href="#simulador" class="nav-link active" aria-current="page">Simulador</a>
                     <a href="#analizador" class="nav-link">Analizador</a>
+                    <a href="#ejemplos" class="nav-link">Ejemplos</a>
                     <a href="#ayuda" class="nav-link">Ayuda</a>
                     <a href="#contacto" class="nav-link">Contacto</a>
                 </nav>
@@ -158,7 +159,11 @@
                 <h2 class="hero-titulo">StatSim<span class="accent">Pro</span></h2>
                 <p class="hero-lema">De una idea difusa a una tesis defendible.<br>
                 <span class="hero-lema-sub">Encuentra temas y problemáticas, explora antecedentes, trabaja con datos y obtén análisis y resultados que te ayuden a avanzar en tu investigación de principio a fin — gratis y 100 % en tu navegador.</span></p>
-                <a href="#explorador" class="btn btn-primary btn-lg hero-cta">Comenzar mi investigación →</a>
+                <div class="hero-ctas">
+                    <a href="#explorador" class="btn btn-primary btn-lg hero-cta">Comenzar mi investigación →</a>
+                    <!-- (2027.01.02) los casos resueltos de ejemplos/: data-ir-a va por el menú (shared/navegacion.js) -->
+                    <a href="#ejemplos" class="btn btn-outline btn-lg" data-ir-a="ejemplos">Ver ejemplos terminados</a>
+                </div>
                 <p class="hero-chips"><span>🔭 Explora problemáticas</span><span>🔎 Busca antecedentes</span><span>🎲 Genera bases de datos</span><span>📊 Analiza y exporta en Word APA 7</span></p>
             </div>
 
@@ -284,6 +289,7 @@
                         <div class="ana-ctas">
                             <a class="btn btn-primary" data-scroll="cardConfigGeneral" href="#simulador">Generar mi base</a>
                             <a class="btn btn-outline ana-cta-tutorial" href="#simulador">▶ Ver tutorial</a>
+                            <a class="btn btn-outline" href="#ejemplos" data-ir-a="ejemplos">📂 Ver un ejemplo</a>
                         </div>
                     </div>
                     <div class="ana-hero-video"></div>
@@ -1419,6 +1425,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                         <div class="ana-ctas">
                             <a class="btn btn-primary" data-scroll="cardCargarDatos" href="#analizador">Empezar análisis</a>
                             <a class="btn btn-outline ana-cta-tutorial" href="#analizador">▶ Ver tutorial</a>
+                            <a class="btn btn-outline" href="#ejemplos" data-ir-a="ejemplos">📂 Ver un ejemplo</a>
                         </div>
                     </div>
                     <div class="ana-hero-video" id="anaHeroVideo"></div>
@@ -1736,6 +1743,40 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
             </div>
         </section>
 
+        <!-- Sección Ejemplos (2027.01.02): los casos de ejemplos/ (los pinta src/ejemplos/index.js, que main.js carga la primera
+             vez que se muestra la pestaña, con el catálogo ejemplos/indice.json) -->
+        <section id="ejemplos" class="section">
+            <div class="container">
+                <div class="section-header" style="display:none" aria-hidden="true"></div>
+                <div class="ana-hero">
+                    <div class="ana-hero-texto">
+                        <p class="ana-eyebrow">Para tesis de psicología</p>
+                        <h2 class="ana-titulo">Ejemplos<span class="oro">resueltos</span></h2>
+                        <p class="ana-parrafo">Estudios completos hechos con StatSim Pro, de principio a fin: qué se configuró en el Simulador, qué se pulsó en el Analizador y qué salió. Descarga sus archivos —la base en Excel y SPSS, el capítulo en Word, los resultados en PDF— o ábrelos en StatSim para repetirlos paso a paso.</p>
+                        <div class="ana-flujo" aria-label="Cómo funciona: tres pasos">
+                            <span class="af-paso"><i>1</i> Elige un caso</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso"><i>2</i> Míralo o descárgalo</span>
+                            <span class="af-linea" aria-hidden="true"></span>
+                            <span class="af-paso af-oro"><i>3</i> Repítelo en StatSim</span>
+                        </div>
+                        <div class="ana-ctas">
+                            <a class="btn btn-primary" data-accion-ejemplo="galeria" href="#ejemplos">Ver los casos</a>
+                        </div>
+                    </div>
+                    <div class="ana-hero-video"></div>
+                </div>
+                <div class="orden-guia" role="note" aria-label="Qué son estos ejemplos">
+                    <span class="orden-guia-titulo">Para qué sirve:</span>
+                    <span class="orden-nota">Para ver, antes de trabajar con tus datos, qué hace cada sección y qué archivos entrega. Al abrir un caso en StatSim, su guía te señala dónde está cada control («Muéstrame») y puede repetir sus análisis por ti, a la vista («Hazlo por mí»). Los datos son simulados: los generó el Simulador con una configuración y una semilla fijas, así que no son resultados de ninguna investigación.</span>
+                </div>
+                <!-- data-estado-carga: donde main.js dice que el código de la pestaña no se pudo cargar -->
+                <p id="ejemplosEstado" class="ejemplos-estado" role="status" aria-live="polite" data-estado-carga>Cargando los ejemplos…</p>
+                <div id="ejemplosGaleria"></div>
+                <div id="ejemplosCaso" hidden></div>
+            </div>
+        </section>
+
         <!-- Sección Ayuda -->
         <section id="ayuda" class="section" style="min-height:auto; padding-bottom:1.5rem;">
             <div class="container">
@@ -1748,6 +1789,17 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                     <div class="help-card">
                         <h3>🧭 El flujo completo de una tesis</h3>
                         <p>StatSim Pro acompaña las dos mitades del trabajo: la teórica (Buscador → matriz de fuentes → Redactor del marco teórico) y la empírica (Simulador o tus propios datos → Analizador → capítulo de resultados en Word). Cada pieza alimenta a la siguiente.</p>
+                    </div>
+                    <!-- (2027.01.02) Los casos resueltos: la pestaña «Ejemplos» -->
+                    <div class="help-card" id="ayudaEjemplos">
+                        <h3>📂 Ejemplos resueltos</h3>
+                        <p>Estudios completos hechos con la propia página (correlacional, comparativo, predictivo, instrumental y con
+                        ecuaciones estructurales), con todo lo que entregó: la base en CSV, Excel y SPSS, el capítulo en Word, los
+                        resultados en PDF y el proyecto. En la pestaña <strong>Ejemplos</strong> ves cada caso, descargas sus archivos
+                        o lo abres en StatSim para repetir sus pasos: su guía te señala cada control y, si quieres, los hace por ti.</p>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
+                            <a href="#ejemplos" class="btn btn-primary" data-ir-a="ejemplos">Ver los ejemplos</a>
+                        </div>
                     </div>
                     <div class="help-card">
                         <h3>🔎 Buscador de antecedentes</h3>
@@ -1781,8 +1833,9 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                     <div class="help-card" id="proyecto">
                         <h3>💾 Proyecto completo</h3>
                         <p><strong>Guardar proyecto</strong> descarga un solo archivo (.statsim) con todo tu trabajo: la configuración del
-                        Simulador y su base generada (la misma, sin volver a generarla), los datos cargados en el Analizador con sus etiquetas,
-                        la tabla de la V de Aiken, la última redacción del Redactor y el protocolo de búsqueda con su flujo PRISMA.
+                        Simulador y su base generada (la misma, sin volver a generarla), los datos cargados en el Analizador con sus etiquetas
+                        y su configuración de la investigación (el título de la tesis, la unidad de análisis y el lugar), la tabla de la V de
+                        Aiken, la última redacción del Redactor y el protocolo de búsqueda con su flujo PRISMA.
                         <strong>Abrir proyecto</strong> lo devuelve todo a su sitio, en este u otro navegador (te pide confirmarlo antes de
                         reemplazar lo que tengas). No guarda tu clave de Web of Science.</p>
                         <div style="display:flex; gap:10px; flex-wrap:wrap; margin:0.6rem 0 0.4rem;">
@@ -1955,7 +2008,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: src/main.js?v=2027.01.01). Eso obliga a navegadores y CDN
+         (ej: src/main.js?v=2027.01.03). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -1964,7 +2017,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
          mismas versiones) -->
     <!-- Arranque modular: src/main.js carga todo el código propio (módulos ES bajo src/). Al publicar cambios:
          sube VERSION en src/version.js y este ?v=. -->
-    <script type="module" src="src/main.js?v=2027.01.01"></script>
+    <script type="module" src="src/main.js?v=2027.01.03"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
 

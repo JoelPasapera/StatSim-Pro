@@ -110,7 +110,7 @@ Las cargas de los 18 ítems van de .63 a .91.
 
 ## Cómo reproducirlo
 
-- **Abrir el proyecto.** En Ayuda, «Abrir proyecto» y elige `proyecto.statsim`: el Simulador vuelve con su configuración y su base (la misma, bit a bit) y el Analizador con sus datos. Los análisis no se guardan en el proyecto: tras abrirlo, repite los pasos 2 y 3 del Analizador.
+- **Abrirlo en la página.** En la pestaña «Ejemplos», elige este caso y pulsa «Abrir en StatSim» (o, en Ayuda, «Abrir proyecto» con `proyecto.statsim`): el Simulador vuelve con su configuración y su base (la misma, bit a bit) y el Analizador con sus datos y la configuración de la investigación. Los análisis no se guardan en el proyecto: tras abrirlo, repite los pasos 2 y 3 del Analizador. En la guía que se abre con el caso, «Hazlo por mí» (o «Hazlo todo por mí») los repite a la vista, como se hicieron aquí, y «Muéstrame» señala dónde está cada cosa.
 - **Desde cero.** En el Simulador, «Importar todo» con `simulador/configuracion_completa_simulador.csv` y «Generar»: con la misma semilla sale la misma base. Después, los pasos del Analizador de arriba.
 - **Comprobarlo.** `npm test` abre este proyecto con el código del momento y comprueba que regenera la misma base y que el Analizador da las cifras de `verificacion.json`. Con Playwright instalado, `node tests/navegador/ejemplos.mjs comprobar 05-estructural` rehace el caso entero en Chromium, pulsando los botones, y lo compara con esta carpeta: byte a byte, salvo los PDF, de los que se compara su texto impreso y sus páginas (y en otra computadora, con otras fuentes, del Word se compara su texto).
 

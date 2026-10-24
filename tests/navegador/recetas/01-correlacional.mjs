@@ -1,7 +1,6 @@
 // @ts-check
 // tests/navegador/recetas/01-correlacional.mjs — caso 1: estudio correlacional entre dos instrumentos de tres dimensiones
 // (estrés académico y bienestar psicológico en universitarios), con los objetivos específicos por dimensiones.
-import * as P from '../pasos.mjs';
 import { columna, comprobarCorrelacion, comprobarFiabilidad, comprobarObjetivos, guardarAnalisis, leerDeLaPagina, objetivosEspecificos, simularYDescargar, tablasDe } from './comun.mjs';
 import { AVISO, DESCRIPCIONES_COMUNES, afirmar, listaArchivos, pAPA, seccionAvisos, seccionReproducir, sinCero, tabla, tablaEscalas, tablaInforme } from './leeme.mjs';
 
@@ -35,27 +34,32 @@ VariableA,VariableB,Correlacion,Tipo,Nube,RAtipicos,CasosAtipicos
 Estrés académico — EEA,Bienestar psicológico — EBP,-0.42,lineal,homogenea,,
 `;
 
+/** (2027.01.02) Los pasos del Analizador que hay que repetir tras abrir el proyecto (su README y la guía de la pestaña). */
+const REPETIR = { desde: 3, hasta: 3 };
+
 /** @type {import('../ejemplos.mjs').Receta} */
 export default {
     carpeta: '01-correlacional',
     titulo: 'Estrés académico y bienestar psicológico',
     diseno: 'Correlacional',
     resumen: 'Dos instrumentos de tres dimensiones: normalidad, correlación de Spearman, objetivos específicos por dimensiones con Holm, fiabilidad y el capítulo de Word completo.',
+    carpetas: { 'analizador/1-correlacion': 'La correlación y su capítulo de Word' },
+    repetir: REPETIR,
     async recorrer(caso) {
         const p = caso.pagina;
         const { columnas } = await simularYDescargar(caso, MAESTRO);
         const estres = columna(columnas, /^General_EE$/), bienestar = columna(columnas, /^General_EB$/);
-        await P.usarBaseDelSimulador(p);
-        await P.describirInvestigacion(p, { titulo: 'Estrés académico y bienestar psicológico en estudiantes universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
-        await P.analizar(p, { tipo: 'correlacion', variables: [estres, bienestar] });
+        await caso.hacer(1, 'usarBaseDelSimulador');
+        await caso.hacer(2, 'describirInvestigacion', { titulo: 'Estrés académico y bienestar psicológico en estudiantes universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
+        await caso.hacer(3, 'analizar', { tipo: 'correlacion', variables: [estres, bienestar] });
         caso.cifras.correlacion = await leerDeLaPagina(p, '(() => { const u = window.ultimoAnalisis; const r = { ...u.resultado }; delete r.valoresPareados; return { var1: u.var1, var2: u.var2, et1: u.et1, et2: u.et2, resultado: r }; })()');
         await comprobarCorrelacion(caso);
         comprobarObjetivos(caso, estres, bienestar);
         comprobarFiabilidad(caso);
         caso.cifras.objetivos = await objetivosEspecificos(p);
         caso.cifras.fiabilidad = (await tablasDe(p, '#resultadosFiabilidad'))[0];
-        await guardarAnalisis(caso, '1-correlacion');
-        caso.guardar('proyecto.statsim', (await P.guardarProyecto(p)).bytes);
+        await guardarAnalisis(caso, 4, '1-correlacion');
+        caso.guardar('proyecto.statsim', (await caso.hacer(5, 'guardarProyecto')).bytes);
     },
     leeme(caso) {
         const c = caso.cifras, r = c.correlacion.resultado, s = c.simulador;
@@ -66,6 +70,10 @@ export default {
             return [o.titulo.replace(/^Objetivo específico \d+:\s*/, '') || `Objetivo ${k + 1}`, col('Coeficiente'), col('p ajustado'), col('Decisión')];
         });
         const fiab = c.fiabilidad.slice(1).map(f => [f[0], f[1], f[3], (f[5] || '').replace(/\[.*$/, ''), f[11]]);
+        const omegas = fiab.map(f => Number(f[2])).filter(Number.isFinite);
+        caso.destacar(`Estrés y bienestar: ${rho} = ${sinCero(r.coeficiente)}, ${pAPA(r.pValor)}`,
+            `${objetivos.filter(o => /^✅/.test(String(o[3]))).length} de ${objetivos.length} objetivos específicos significativos tras Holm`,
+            `Fiabilidad: ω de ${sinCero(Math.min(...omegas))} a ${sinCero(Math.max(...omegas))}`);
         return `# Caso 1 · Estudio correlacional: estrés académico y bienestar psicológico
 
 ${AVISO}
@@ -116,7 +124,7 @@ El capítulo de Word reúne todo lo anterior con el marco metodológico (pregunt
 
 ${listaArchivos(caso, DESCRIPCIONES_COMUNES)}
 
-${seccionReproducir(caso.carpeta, 'tras abrirlo, repite el paso 3 del Analizador.')}
+${seccionReproducir(caso.carpeta, REPETIR)}
 
 ${seccionAvisos(s.avisos)}
 `;

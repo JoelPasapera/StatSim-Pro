@@ -4,10 +4,13 @@
 // NaN, infinitos y −0), sus etiquetas de variable, su estructura de pruebas y de dónde vinieron (del Simulador, de un CSV,
 // de un .sav o de un libro de Excel, con su hoja) y, desde la 2027.01.01, los códigos de sus categorías («0 = No, 1 = Sí»).
 // Al abrirlo, el Analizador queda con esos datos, como tras cargarlos; los análisis se vuelven a ejecutar con «Analizar».
+// (2027.01.02) También «1. Configuración de la investigación» (el título de la tesis, la unidad de análisis y el lugar), que
+// usan el capítulo de Word y la redacción: sin ella, un proyecto abierto en otro navegador (o un ejemplo de la pestaña
+// «Ejemplos») daba otro capítulo. Los proyectos anteriores no la traen: al abrirlos, esos campos quedan como estaban.
 
 import { inscribirEnProyecto } from '../../shared/proyecto.js';
 import { leerJsonAcotado } from '../../core/data/json-acotado.js';
-import { TOPES_JSON_ETIQUETAS, codigosValidos, columnasAJson, datosDeJson, estructuraValida, etiquetasValidas, filasAColumnas } from '../motor/datos-proyecto.js';
+import { LARGO_CAMPO_INVESTIGACION, TOPES_JSON_ETIQUETAS, codigosValidos, columnasAJson, datosDeJson, estructuraValida, etiquetasValidas, filasAColumnas, investigacionValida } from '../motor/datos-proyecto.js';
 import { sinMarcado } from '../../core/data/texto.js';
 import { estadoDeLosDatos, restaurarDatos } from './carga.js';
 
@@ -16,6 +19,29 @@ const ORIGENES = { simulador: 'del Simulador', csv: 'de un CSV', sav: 'de una ba
 
 /** El texto UTF-8 de un archivo del proyecto. @param {Uint8Array | undefined} b */
 const texto = b => (b ? new TextDecoder().decode(b) : null);
+
+/** (2027.01.02) Los campos de «1. Configuración de la investigación», por su nombre en el proyecto. */
+const CAMPOS_INVESTIGACION = { titulo: 'tituloTesis', unidad: 'unidadAnalisis', lugar: 'lugarContexto' };
+
+/** Lo escrito en «1. Configuración de la investigación» (cada campo, recortado a lo que un proyecto puede abrir). */
+function investigacionActual() {
+    /** @type {Record<string, string>} */
+    const campos = {};
+    for (const [clave, id] of Object.entries(CAMPOS_INVESTIGACION)) {
+        const campo = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
+        campos[clave] = campo ? String(campo.value || '').slice(0, LARGO_CAMPO_INVESTIGACION) : '';
+    }
+    return /** @type {{ titulo: string, unidad: string, lugar: string }} */ (campos);
+}
+
+/** Pone en «1. Configuración de la investigación» la que trae un proyecto. @param {{ titulo: string, unidad: string, lugar: string }} inv */
+function ponerInvestigacion(inv) {
+    for (const [clave, id] of Object.entries(CAMPOS_INVESTIGACION)) {
+        const campo = /** @type {HTMLInputElement | null} */ (document.getElementById(id));
+        // sin marcado, como las etiquetas: el capítulo y la redacción la pintan, y el proyecto puede ser de otra persona
+        if (campo) campo.value = sinMarcado(inv[/** @type {'titulo' | 'unidad' | 'lugar'} */ (clave)]);
+    }
+}
 
 /** @returns {import('../../shared/proyecto.js').ParteCapturada | null} */
 function capturar() {
@@ -28,7 +54,7 @@ function capturar() {
         archivos: {
             'datos.json': columnasAJson(porColumnas),
             // (revisión) los códigos, solo si el proyecto podrá volver a abrirlos (codigosValidos los acota): si no, sin ellos
-            'etiquetas.json': JSON.stringify({ etiquetas: estado.etiquetas, estructura: estado.estructura, origen, codigosDeCategorias: estado.codigosDeCategorias && codigosValidos(estado.codigosDeCategorias) ? estado.codigosDeCategorias : {} })
+            'etiquetas.json': JSON.stringify({ etiquetas: estado.etiquetas, estructura: estado.estructura, origen, codigosDeCategorias: estado.codigosDeCategorias && codigosValidos(estado.codigosDeCategorias) ? estado.codigosDeCategorias : {}, investigacion: investigacionActual() })
         },
         resumen: `los datos del Analizador (${estado.filas.length} casos y ${columnas.length} variables, ${ORIGENES[origen.tipo] || 'de un archivo'}${origen.archivo ? ` «${origen.archivo}»` : ''})`
     };
@@ -56,6 +82,8 @@ function restaurar(archivos) {
     if (!estructuraValida(meta.estructura)) throw new Error('la estructura de pruebas guardada («etiquetas.json») no tiene la forma esperada');
     // (2027.01.01) los códigos de las categorías (los proyectos anteriores no los traen)
     if (meta.codigosDeCategorias !== undefined && !codigosValidos(meta.codigosDeCategorias)) throw new Error('los códigos de las categorías guardados («etiquetas.json») no tienen la forma esperada');
+    // (2027.01.02) la configuración de la investigación (los proyectos anteriores no la traen)
+    if (meta.investigacion !== undefined && !investigacionValida(meta.investigacion)) throw new Error('la configuración de la investigación guardada («etiquetas.json») no tiene la forma esperada');
     const etiquetas = meta.etiquetas;
     /** @type {any[]} */
     const estructura = meta.estructura;
@@ -70,6 +98,7 @@ function restaurar(archivos) {
     if (origen.archivo === undefined) delete origen.archivo;
     if (origen.hoja === undefined) delete origen.hoja;
     restaurarDatos({ filas, etiquetas, estructura, origen, codigosDeCategorias: meta.codigosDeCategorias || null });
+    if (meta.investigacion !== undefined) ponerInvestigacion(meta.investigacion);
     return `los datos del Analizador (${filas.length} casos)`;
 }
 

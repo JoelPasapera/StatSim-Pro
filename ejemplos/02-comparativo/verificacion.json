@@ -1,10 +1,129 @@
 {
   "caso": "02-comparativo",
-  "version": "2027.01.01",
+  "version": "2027.01.03",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
     "dibujo": "cd9b71ddbbaad564bc7e34e07bf91e6f3ba3dfd96175c5f13e4dc76abcbaff51"
+  },
+  "ficha": {
+    "destacados": [
+      "Según el sexo: U = 7818, p < .001",
+      "Según el grado: H(2) = 12.39, p = .002",
+      "Nivel de ansiedad y sexo: χ²(2) = 12.91, p = .002"
+    ],
+    "pasos": [
+      "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+      "**El capítulo** (`analizador/1-capitulo/`): Correlación entre la ansiedad (`General_I`) y el promedio (`Promedio de notas`), «Ejecutar análisis» y las tres descargas. El capítulo de Word se redacta sobre una correlación, y sus secciones ya comparan las dos variables según el sexo, el grado y la gestión del colegio.",
+      "**Las comparaciones** (`analizador/2-comparacion/`): «Comparación de grupos» con la ansiedad como variable cuantitativa y Sexo como agrupación, «Ejecutar análisis»; y, en la tarjeta «Comparación entre grupos», Grado y la ansiedad, «Comparar grupos». Después, «Descargar resultados» e «Imprimir o guardar en PDF» (el PDF lleva las dos).",
+      "**La asociación** (`analizador/3-asociacion/`): «Asociación de dos variables categóricas (Chi²)» con `Nivel_I` y Sexo, «Ejecutar análisis», «Descargar resultados» e «Imprimir o guardar en PDF».",
+      "Ayuda → «Guardar proyecto»."
+    ],
+    "repetir": {
+      "desde": 2,
+      "hasta": 4,
+      "nota": ""
+    },
+    "guiones": [
+      [
+        {
+          "accion": "usarBaseDelSimulador",
+          "datos": {}
+        },
+        {
+          "accion": "describirInvestigacion",
+          "datos": {
+            "titulo": "Ansiedad ante los exámenes en estudiantes de secundaria de Lima Metropolitana: diferencias según el sexo y el grado, 2026",
+            "unidad": "estudiantes de secundaria",
+            "lugar": "Lima Metropolitana"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "correlacion",
+            "variables": [
+              "General_I",
+              "Promedio de notas"
+            ]
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": true,
+            "carpeta": "1-capitulo"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "comparacion",
+            "variables": [
+              "General_I",
+              "Sexo"
+            ]
+          }
+        },
+        {
+          "accion": "compararGrupos",
+          "datos": {
+            "grupo": "Grado",
+            "numerica": "General_I"
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": false,
+            "carpeta": "2-comparacion"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "asociacion",
+            "variables": [
+              "Nivel_I",
+              "Sexo"
+            ]
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": false,
+            "carpeta": "3-asociacion"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "guardarProyecto",
+          "datos": {}
+        }
+      ]
+    ],
+    "carpetas": [
+      {
+        "ruta": "analizador/1-capitulo",
+        "titulo": "La correlación y su capítulo de Word"
+      },
+      {
+        "ruta": "analizador/2-comparacion",
+        "titulo": "Las comparaciones según el sexo y el grado"
+      },
+      {
+        "ruta": "analizador/3-asociacion",
+        "titulo": "La asociación del nivel con el sexo (χ²)"
+      }
+    ]
   },
   "comprobaciones": [
     {
@@ -1263,71 +1382,86 @@
   "archivos": {
     "simulador/base_datos_simulada_excel_espanol.csv": {
       "bytes": 27263,
-      "sha256": "27e2f5d5f3f35285616ad6f602a7e325323e8ecdf7e254009ebc09e7e2447950"
+      "sha256": "27e2f5d5f3f35285616ad6f602a7e325323e8ecdf7e254009ebc09e7e2447950",
+      "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
     },
     "simulador/base_datos_simulada_internacional.csv": {
       "bytes": 27263,
-      "sha256": "2bc63476187773b9fd77e1f5fbeae037dc374b457a9ae282c7ac026621e31a16"
+      "sha256": "2bc63476187773b9fd77e1f5fbeae037dc374b457a9ae282c7ac026621e31a16",
+      "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 14634,
-      "sha256": "c8dd4412912aac766038669bf9a778a8376813b27ee6a32cae0d11bba9d89259"
+      "sha256": "cd72fc69d7ad82424c2fd9aec5bce99fc2aaaf26e3082bdce59bab6cf90fe33b",
+      "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 32311,
-      "sha256": "defeefd7d96e1706c08f61869f8f62186946e6296b6a7f393d9ddc6f3a0b1dbe"
+      "sha256": "8f92d56fa41a035e2624bc784f612e548132c2fdc145d0660628663c89cd952e",
+      "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
       "bytes": 1194,
-      "sha256": "8f6402ed95c04ef76144dd38016f122fd9f740b56acf798f9bdd9744d041a828"
+      "sha256": "8f6402ed95c04ef76144dd38016f122fd9f740b56acf798f9bdd9744d041a828",
+      "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
     },
     "simulador/configuracion_completa_simulador.csv": {
       "bytes": 2145,
-      "sha256": "09a66fafcfe7539e558dda07c0c68981d3dc74f0a9284d8ad4ec9b89bb5fbe6c"
+      "sha256": "09a66fafcfe7539e558dda07c0c68981d3dc74f0a9284d8ad4ec9b89bb5fbe6c",
+      "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
       "bytes": 76662,
-      "sha256": "3ab9d8f08b9877a220b84c74110bb110d9a0d6f4b024d1ba7d3657967eeda325",
+      "sha256": "67b48ee069fbceef645fadcfb5a6b3708bb507afce3e7dd8b74e70fd9b8297ea",
       "paginas": 2,
-      "impreso": "99d79406086b8d56a83b736f0f6ce47ce63b871649889f341d46a9bc8d6da3ba"
+      "impreso": "1e65cad31b84361e8220ff34e23f506c2de80c0111db6d0581f89c56da5b9852",
+      "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-capitulo/capitulo_resultados_APA.docx": {
       "bytes": 859170,
-      "sha256": "5bd54f381136096e88aee5d8923cb806fdd0877ed180d0761b33b87c48fb2222"
+      "sha256": "5bd54f381136096e88aee5d8923cb806fdd0877ed180d0761b33b87c48fb2222",
+      "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/1-capitulo/resultados_analisis.txt": {
       "bytes": 27030,
-      "sha256": "27c83c1fcdcf2e2b1b8666ef1b851854a7ca497c790495b026c0c4485c105338"
+      "sha256": "27c83c1fcdcf2e2b1b8666ef1b851854a7ca497c790495b026c0c4485c105338",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/1-capitulo/resultados.pdf": {
       "bytes": 1036110,
-      "sha256": "d8631790575a7ae1350368a97a808e4d24da3c47db0a2bcfddb660ad93dce000",
+      "sha256": "434050554e0f8b7db1d923d3bf918879ad9f71075b497eef9828defab0bfabfb",
       "paginas": 28,
-      "impreso": "75e915cb4b2222a8bda321df9baecf853b61b6cd55701171e887c0cc39ba4779"
+      "impreso": "30cba04e68753e29d1da6ac2d30fe7413bd4b90ea4dd358efa1400c58b2d1767",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "analizador/2-comparacion/resultados_analisis.txt": {
       "bytes": 1540,
-      "sha256": "3fe00dc67f19693e799f83868397f853912935fc73e258a2329f62e386ab6438"
+      "sha256": "3fe00dc67f19693e799f83868397f853912935fc73e258a2329f62e386ab6438",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/2-comparacion/resultados.pdf": {
-      "bytes": 313077,
-      "sha256": "122df8433ce006077cdadeed10d6563b757378e498fe7ace3d1e9f9e1a7a95ce",
+      "bytes": 313078,
+      "sha256": "0d3f2fa718bd3a828fc18617975f23b2ab3189545ec4f17015a7938b09a520cb",
       "paginas": 14,
-      "impreso": "242bd36e0ae50df2bf0234e04aea26d18d98f372a03e0ee1a8fd3875a6ba3e23"
+      "impreso": "3ace70d57726b9ec42d48c56e052c82583f582fb88aad7b4e6fbf1e2ea869152",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "analizador/3-asociacion/resultados_analisis.txt": {
       "bytes": 891,
-      "sha256": "a37b2f354f9571d5966e064b7cb89dfa72c95cde71e99f9622b1e8e216925385"
+      "sha256": "a37b2f354f9571d5966e064b7cb89dfa72c95cde71e99f9622b1e8e216925385",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/3-asociacion/resultados.pdf": {
       "bytes": 300962,
-      "sha256": "f1748521a67d4a0ccf66f3293c065897a2a9c8e367169ad8c4e8a025ea8b7e8f",
+      "sha256": "7b580e50b606bff5150d69cb94ee9b61d50e1eb0b579dcb53613009651b87f71",
       "paginas": 13,
-      "impreso": "13b812ae69b634f193465a537881e8f25ed5088e7ca5cc6613742b977917b5a9"
+      "impreso": "ddfbc04771824e5c76c4cc4be4971a46887201ff643ab06b4d4ce67dbb8dab8a",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 18848,
-      "sha256": "23bac02aa8701dcd681ce551ff1f12f2e3b44bdeb199a2eff920bc26fb54b056"
+      "bytes": 18935,
+      "sha256": "9441b705ba9e216658b308064e5997c305177f8042f53641021979ac464e6202",
+      "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }
 }

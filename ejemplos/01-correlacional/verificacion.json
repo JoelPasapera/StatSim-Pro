@@ -1,10 +1,80 @@
 {
   "caso": "01-correlacional",
-  "version": "2027.01.01",
+  "version": "2027.01.03",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
     "dibujo": "cd9b71ddbbaad564bc7e34e07bf91e6f3ba3dfd96175c5f13e4dc76abcbaff51"
+  },
+  "ficha": {
+    "destacados": [
+      "Estrés y bienestar: ρ = −.40, p < .001",
+      "5 de 5 objetivos específicos significativos tras Holm",
+      "Fiabilidad: ω de .80 a .90"
+    ],
+    "pasos": [
+      "«Usar datos generados»: la base pasa al Analizador con sus etiquetas.",
+      "«1. Configuración de la investigación»: el título, la unidad de análisis (estudiantes universitarios) y el lugar (Lima Metropolitana), que usa la redacción.",
+      "«Análisis estadístico»: Correlación, Variable 1 = Estrés académico — EEA (`General_EE`), Variable 2 = Bienestar psicológico — EBP (`General_EB`), prueba bilateral, y «Ejecutar análisis».",
+      "«Exportar capítulo a Word», «Descargar resultados» e «Imprimir o guardar en PDF» (carpeta `analizador/1-correlacion/`).",
+      "Ayuda → «Guardar proyecto»."
+    ],
+    "repetir": {
+      "desde": 3,
+      "hasta": 3,
+      "nota": ""
+    },
+    "guiones": [
+      [
+        {
+          "accion": "usarBaseDelSimulador",
+          "datos": {}
+        }
+      ],
+      [
+        {
+          "accion": "describirInvestigacion",
+          "datos": {
+            "titulo": "Estrés académico y bienestar psicológico en estudiantes universitarios de Lima Metropolitana, 2026",
+            "unidad": "estudiantes universitarios",
+            "lugar": "Lima Metropolitana"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "correlacion",
+            "variables": [
+              "General_EE",
+              "General_EB"
+            ]
+          }
+        }
+      ],
+      [
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": true,
+            "carpeta": "1-correlacion"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "guardarProyecto",
+          "datos": {}
+        }
+      ]
+    ],
+    "carpetas": [
+      {
+        "ruta": "analizador/1-correlacion",
+        "titulo": "La correlación y su capítulo de Word"
+      }
+    ]
   },
   "comprobaciones": [
     {
@@ -2523,51 +2593,62 @@
   "archivos": {
     "simulador/base_datos_simulada_excel_espanol.csv": {
       "bytes": 39173,
-      "sha256": "8ee63a21d3b84b41725007aa1492b4e57b89a3014ac498a849ca5651089c9e4b"
+      "sha256": "8ee63a21d3b84b41725007aa1492b4e57b89a3014ac498a849ca5651089c9e4b",
+      "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
     },
     "simulador/base_datos_simulada_internacional.csv": {
       "bytes": 39173,
-      "sha256": "af352d61ed539e0fd98c927ff057c2d8c1ef4eadd1abe95fc4eff682cb427efa"
+      "sha256": "af352d61ed539e0fd98c927ff057c2d8c1ef4eadd1abe95fc4eff682cb427efa",
+      "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 22613,
-      "sha256": "1ec1cb296fdc0526900c10c584fd4ad83d3c8ced3cb34caa4c916b7efef1b344"
+      "sha256": "d54555b695cbeca536f80093ebcdfa4100cb15151064599ea69ca10020767a25",
+      "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
-      "bytes": 56943,
-      "sha256": "1111252da3e2e25d10b8080c60982ebba48580f1f3b2d45a752b788d8e087469"
+      "bytes": 56944,
+      "sha256": "e54b71f8390961b6b5e6b09863db07e7c1f1eae67f1797a08574d37e40e01e09",
+      "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
       "bytes": 1051,
-      "sha256": "080f799fc03b76a53d140a54ee0e80d9e283a76363ec5b798ec8f01ff946410a"
+      "sha256": "080f799fc03b76a53d140a54ee0e80d9e283a76363ec5b798ec8f01ff946410a",
+      "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
     },
     "simulador/configuracion_completa_simulador.csv": {
       "bytes": 2187,
-      "sha256": "b0a7dba7069282f684bb861b8c8f165df261c87cb549e99bdea085ae7de52c06"
+      "sha256": "b0a7dba7069282f684bb861b8c8f165df261c87cb549e99bdea085ae7de52c06",
+      "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 77737,
-      "sha256": "e11fa5f05acc428193787fb85c3b0db8d6165116c8d03d0de5d3fe4e09493712",
+      "bytes": 77738,
+      "sha256": "9ff027ff18fd8dbbeee9cbcd1a79eac1ae93c80cd19322ccba3fe37adc648402",
       "paginas": 2,
-      "impreso": "4f03d5f2ec5843a846cf057ddba23279d935bb3cade8cf8783f550fc5aa1889c"
+      "impreso": "64e214d814cefc9dd7e3e7715cca727d779b4f98e7ebb3ff8b44fc5b067b7063",
+      "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-correlacion/capitulo_resultados_APA.docx": {
       "bytes": 737165,
-      "sha256": "fca5aa48283119b7f5005f20ea5e53f702ed6c823f182f3860d74c036eece733"
+      "sha256": "fca5aa48283119b7f5005f20ea5e53f702ed6c823f182f3860d74c036eece733",
+      "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/1-correlacion/resultados_analisis.txt": {
       "bytes": 33175,
-      "sha256": "078b401b37e84b76375ee77f3f0740482915d457fcab1624e3227b99851fe0ac"
+      "sha256": "078b401b37e84b76375ee77f3f0740482915d457fcab1624e3227b99851fe0ac",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/1-correlacion/resultados.pdf": {
-      "bytes": 1150977,
-      "sha256": "36c9eec7b064f909f1489468dcf481af65c94e3dedf964bfdb5634cea9e5d5a0",
+      "bytes": 1150978,
+      "sha256": "57fcff3b9b5e502f9a319fbd07cf8b760a77feaf551f5c21376534391941506b",
       "paginas": 33,
-      "impreso": "e6c637a0fd75699bf92ea2edc34580eb95de28a14932e6b7dbac006cf5f2eb5e"
+      "impreso": "a966b8958921ac21f0ec82e16a5512a8ed07dd79749102fbfad968332155ae5a",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 29816,
-      "sha256": "8bd0af6b05e7094e2c3a5457bb1570a19270cf4e10546f100a6ec6756a2cef80"
+      "bytes": 29893,
+      "sha256": "f666d8abc8d063f57902414a408bbe41c1e0065fc1787f7332779d56a43ada70",
+      "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }
 }

@@ -2,7 +2,6 @@
 // tests/navegador/recetas/04-instrumental.mjs — caso 4: estudio instrumental (las propiedades psicométricas de una escala
 // de procrastinación académica de 15 ítems y tres dimensiones): validez de contenido por jueces (V de Aiken), estructura
 // interna (AFE y AFC por WLSMV), invarianza según el sexo, fiabilidad y validez convergente con la autoeficacia.
-import * as P from '../pasos.mjs';
 import { columna, comprobarCorrelacion, comprobarFiabilidad, comprobarSEM, guardarAnalisis, simularYDescargar, tablasDe, textoDe } from './comun.mjs';
 import { AVISO, DESCRIPCIONES_COMUNES, afirmar, listaArchivos, num, pAPA, seccionAvisos, seccionReproducir, sinCero, tabla, tablaEscalas, tablaInforme } from './leeme.mjs';
 
@@ -74,50 +73,55 @@ const MODELO_UNO = `Procrastinacion =~ ${ITEMS.join(' + ')}`;
 /** Un número de un CSV con coma decimal (y exponente: «7,3242e-3»). @param {string} t */
 const numCSV = t => Number(String(t).replace(',', '.'));
 
+/** (2027.01.02) Los pasos del Analizador que hay que repetir tras abrir el proyecto (su README y la guía de la pestaña). */
+const REPETIR = { desde: 2, hasta: 6, nota: 'la V de Aiken vuelve con sus valoraciones: en el paso 2 basta con «Calcular V de Aiken»' };
+
 /** @type {import('../ejemplos.mjs').Receta} */
 export default {
     carpeta: '04-instrumental',
     titulo: 'Propiedades psicométricas de una escala de procrastinación académica',
     diseno: 'Instrumental',
     resumen: 'V de Aiken con 7 jueces, AFE con correlaciones policóricas y análisis paralelo, AFC por WLSMV frente a un modelo rival, invarianza según el sexo, fiabilidad α y ω y validez convergente.',
+    carpetas: { 'analizador/1-validez-de-contenido': 'La validez de contenido (V de Aiken)', 'analizador/2-afe': 'El análisis factorial exploratorio', 'analizador/3-invarianza': 'La invarianza según el sexo', 'analizador/4-capitulo': 'La fiabilidad, la validez convergente y el capítulo de Word' },
+    repetir: REPETIR,
     async recorrer(caso) {
         const p = caso.pagina;
         const { columnas } = await simularYDescargar(caso, MAESTRO);
         const procrastinacion = columna(columnas, /^General_E$/), autoeficacia = columna(columnas, /^General_AA$/);
         for (const it of ITEMS) if (!columnas.includes(it)) throw new Error(`la base no tiene el ítem ${it}`);
         caso.cifras.columnas = { procrastinacion, autoeficacia };
-        await P.usarBaseDelSimulador(p);
-        await P.describirInvestigacion(p, { titulo: 'Propiedades psicométricas de la Escala de Procrastinación Académica en universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
+        await caso.hacer(1, 'usarBaseDelSimulador');
+        await caso.hacer(1, 'describirInvestigacion', { titulo: 'Propiedades psicométricas de la Escala de Procrastinación Académica en universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
         // 1) validez de contenido: las valoraciones de los jueces, un archivo por criterio
         for (const c of CRITERIOS) caso.guardar(`${CARPETA_AIKEN}/${c.archivo}`, c.texto);
-        const aiken = await P.calcularAiken(p, { ...AIKEN, criterios: CRITERIOS.map(c => ({ nombre: c.nombre, archivo: { nombre: c.archivo, bytes: c.texto } })) });
+        const aiken = await caso.hacer(2, 'calcularAiken', { ...AIKEN, criterios: CRITERIOS.map(c => ({ nombre: c.nombre, archivo: `${CARPETA_AIKEN}/${c.archivo}` })) });
         caso.guardar(`${CARPETA_AIKEN}/${aiken.csv.nombre}`, aiken.csv.bytes);
         caso.guardar(`${CARPETA_AIKEN}/${aiken.word.nombre}`, aiken.word.bytes);
         caso.pedir('aiken', { ...AIKEN, criterios: CRITERIOS.map(c => ({ nombre: c.nombre, archivo: `${CARPETA_AIKEN}/${c.archivo}` })), csv: `${CARPETA_AIKEN}/${aiken.csv.nombre}` });
         caso.cifras.aikenCSV = aiken.csv.bytes.toString('utf8');
         caso.cifras.aikenResumen = await textoDe(p, '#aikenResultados');
         // 2) estructura interna exploratoria: AFE de los 15 ítems
-        const afe = await P.calcularAFE(p, { conjunto: 'Escala total (EPA)', correlacion: AFE.correlacion, factores: AFE.factores, rotacion: AFE.rotacion, replicas: AFE.B, semilla: AFE.semilla });
+        const afe = await caso.hacer(3, 'calcularAFE', { conjunto: 'Escala total (EPA)', correlacion: AFE.correlacion, factores: AFE.factores, rotacion: AFE.rotacion, replicas: AFE.B, semilla: AFE.semilla });
         caso.guardar(`analizador/2-afe/${afe.csv.nombre}`, afe.csv.bytes);
         caso.guardar(`analizador/2-afe/${afe.word.nombre}`, afe.word.bytes);
         caso.pedir('afe', { items: ITEMS, opciones: AFE, csv: `analizador/2-afe/${afe.csv.nombre}` });
         caso.cifras.afe = await textoDe(p, '#afeResultados');
         // 3) estructura interna confirmatoria: el modelo de un factor y el de tres (AFC por WLSMV), comparados
         const modelos = [{ sintaxis: MODELO_UNO, etiqueta: 'Modelo alternativo', estimador: 'WLSMV' }, { sintaxis: MODELO_TRES, etiqueta: 'Modelo final', estimador: 'WLSMV' }];
-        for (const m of modelos) await P.ajustarSEM(p, /** @type {any} */ (m));
+        for (const m of modelos) await caso.hacer(4, 'ajustarSEM', m);
         caso.cifras.sem = await comprobarSEM(caso, modelos);
         // 4) invarianza según el sexo, con el modelo de tres factores
-        const inv = await P.evaluarInvarianza(p, { sintaxis: MODELO_TRES, grupo: 'Sexo', estimador: 'WLSMV' });
+        const inv = await caso.hacer(5, 'evaluarInvarianza', { sintaxis: MODELO_TRES, grupo: 'Sexo', estimador: 'WLSMV', agrupar: true });
         caso.guardar(`analizador/3-invarianza/${inv.word.nombre}`, inv.word.bytes);
         caso.pedir('invarianza', { sintaxis: MODELO_TRES, grupo: 'Sexo', estimador: 'WLSMV', estricta: false, agrupar: await p.isChecked('#invAgrupar') });
         caso.cifras.invarianza = await tablasDe(p, '#invResultados');
         // 5) fiabilidad y validez convergente: la correlación con la autoeficacia (el capítulo de Word, con el AFC)
-        await P.analizar(p, { tipo: 'correlacion', variables: [procrastinacion, autoeficacia] });
+        await caso.hacer(6, 'analizar', { tipo: 'correlacion', variables: [procrastinacion, autoeficacia] });
         caso.cifras.correlacion = await comprobarCorrelacion(caso);
         comprobarFiabilidad(caso);
         caso.cifras.fiabilidad = (await tablasDe(p, '#resultadosFiabilidad'))[0];
-        await guardarAnalisis(caso, '4-capitulo');
-        caso.guardar('proyecto.statsim', (await P.guardarProyecto(p)).bytes);
+        await guardarAnalisis(caso, 6, '4-capitulo');
+        caso.guardar('proyecto.statsim', (await caso.hacer(7, 'guardarProyecto')).bytes);
     },
     leeme(caso) {
         const c = caso.cifras, s = c.simulador, afe = c.afe, r = c.correlacion;
@@ -151,6 +155,8 @@ export default {
         const conMenos = (/** @type {string[]} */ fila) => fila.map(celda => celda.replace(/^-(?=[.\d])/, '−'));
         const ajuste = (/** @type {any} */ m) => [m.etiqueta === 'Modelo final' ? 'Tres factores' : 'Un factor', `${num(m.chi2)} (${m.gl})`, sinCero(m.CFI, 3), sinCero(m.RMSEA, 3)];
         const fiab = c.fiabilidad.slice(1).map((/** @type {string[]} */ f) => [f[0], f[1], f[3], f[4], (f[5] || '').replace(/\[.*$/, ''), f[11]]);
+        caso.destacar(`V de Aiken: ${cuenta('Válido')} de ${filasAiken.length} ítems válidos`, `AFE: ${factores[2]} factores, KMO = ${kmo[1]}`,
+            `AFC de tres factores: CFI = ${sinCero(tres.CFI, 3)}, RMSEA = ${sinCero(tres.RMSEA, 3)}`);
         return `# Caso 4 · Estudio instrumental: una escala de procrastinación académica
 
 ${AVISO}
@@ -221,7 +227,7 @@ ${listaArchivos(caso, [
     ...DESCRIPCIONES_COMUNES,
 ])}
 
-${seccionReproducir(caso.carpeta, 'tras abrirlo, la V de Aiken vuelve con sus valoraciones; repite los pasos 3 a 6 del Analizador.')}
+${seccionReproducir(caso.carpeta, REPETIR)}
 
 ${seccionAvisos(s.avisos)}
 `;

@@ -207,10 +207,24 @@ export function codigosValidos(codigos) {
         && codigos[k].every((/** @type {unknown} */ par) => Array.isArray(par) && par.length === 2 && typeof par[0] === 'number' && Number.isFinite(par[0]) && typeof par[1] === 'string' && par[1].length <= 10000));
 }
 
+/** (2027.01.02) El largo máximo de cada campo de «1. Configuración de la investigación» que trae un proyecto. */
+export const LARGO_CAMPO_INVESTIGACION = 2000;
+
+/**
+ * (2027.01.02) ¿Es la configuración de la investigación de un proyecto la que escribe el Analizador: el título de la tesis,
+ * la unidad de análisis y el lugar, tres textos de un largo razonable (cualquiera, vacío)?
+ * @param {unknown} x
+ * @returns {x is { titulo: string, unidad: string, lugar: string }}
+ */
+export function investigacionValida(x) {
+    return esObjeto(x) && ['titulo', 'unidad', 'lugar'].every(k => typeof x[k] === 'string' && x[k].length <= LARGO_CAMPO_INVESTIGACION);
+}
+
 /**
  * Lo más que puede traer un «etiquetas.json» (las etiquetas, la estructura, el origen y, desde la 2027.01.01, los códigos
- * de las categorías), para medirlo antes de leerlo: cada prueba, un objeto con su lista de dimensiones y siete campos;
- * cada dimensión, un objeto con tres; cada código, una lista de dos; con holgura.
+ * de las categorías; desde la 2027.01.02, la configuración de la investigación: un objeto de tres textos, dentro de la
+ * holgura), para medirlo antes de leerlo: cada prueba, un objeto con su lista de dimensiones y siete campos; cada
+ * dimensión, un objeto con tres; cada código, una lista de dos; con holgura.
  * @type {TopesJson}
  */
 export const TOPES_JSON_ETIQUETAS = {

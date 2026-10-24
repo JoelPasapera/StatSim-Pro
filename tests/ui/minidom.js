@@ -94,7 +94,23 @@ export class Elemento extends Nodo {
     get selectedIndex() { const ops = this.options; const i = ops.findIndex(o => o.selected); return ops.length ? Math.max(0, i) : -1; }
     set selectedIndex(i) { this.options.forEach((o, k) => { o.selected = k === i; }); }
     get selectedOptions() { return this.options.filter(o => o.selected); }
-    focus() {} blur() {} select() {} scrollIntoView() {} click() { this.dispatchEvent(new Evento('click', { bubbles: true, cancelable: true })); }
+    focus() {} blur() {} select() {} scrollIntoView() {}
+    // (2027.01.03) como el navegador: el clic en una casilla la marca o desmarca (y en una opción, la elige y desmarca las de
+    // su grupo) antes de avisar del clic; si el clic se cancela, vuelve como estaba; si cambió, después, input y change
+    click() {
+        const casilla = this.localName === 'input' && (this.type === 'checkbox' || this.type === 'radio');
+        if (casilla && this.disabled) return;
+        const antes = casilla ? this.checked : false;
+        const grupo = casilla && this.type === 'radio' && this.name
+            ? this.ownerDocument.querySelectorAll('input').filter(r => r !== this && r.type === 'radio' && r.name === this.name && r.closest('form') === this.closest('form'))
+            : [];
+        const marcadas = grupo.filter(r => r.checked);
+        if (casilla) { if (this.type === 'checkbox') this.checked = !antes; else if (!antes) { marcadas.forEach(r => { r.checked = false; }); this.checked = true; } }
+        const seguir = this.dispatchEvent(new Evento('click', { bubbles: true, cancelable: true }));
+        if (!casilla) return;
+        if (!seguir) { this.checked = antes; marcadas.forEach(r => { r.checked = true; }); return; }
+        if (this.checked !== antes) { this.dispatchEvent(new Evento('input', { bubbles: true })); this.dispatchEvent(new Evento('change', { bubbles: true })); }
+    }
     // maquetación simulada (no hay motor de layout): medidas fijas y razonables para que las gráficas se construyan
     get clientWidth() { return 900; } get clientHeight() { return 420; } get offsetWidth() { return 900; } get offsetHeight() { return 420; }
     getBoundingClientRect() { return { left: 0, top: 0, right: 900, bottom: 420, width: 900, height: 420, x: 0, y: 0 }; }
@@ -158,9 +174,10 @@ function crearEstilo() {
 }
 
 // ---- selectores (subconjunto): lista ',', descendiente ' ', compuestos tag/#id/.clase/[attr]/[attr=v]/[attr^=v]/[attr~=v]/[attr*=v]/:checked/:not(...)/:first-of-type
+//      y (2027.01.03, los planes de «Hazlo por mí») :nth-child(n)
 function separarLista(sel) { const out = []; let cur = '', prof = 0, comilla = null; for (const ch of String(sel)) { if (comilla) { cur += ch; if (ch === comilla) comilla = null; continue; } if (ch === '"' || ch === "'") comilla = ch; if (ch === '[' || ch === '(') prof++; if (ch === ']' || ch === ')') prof--; if (ch === ',' && prof === 0) { out.push(cur.trim()); cur = ''; continue; } cur += ch; } if (cur.trim()) out.push(cur.trim()); return out.filter(Boolean); }
 function partesCompuesto(c) {
-    const partes = []; const re = /\*|[A-Za-z][\w-]*|#[\w-]+|\.[\w-]+|\[[^\]]+\]|:not\([^)]*\)|:[\w-]+/g; let m;
+    const partes = []; const re = /\*|[A-Za-z][\w-]*|#[\w-]+|\.[\w-]+|\[[^\]]+\]|:not\([^)]*\)|:nth-child\(\s*\d+\s*\)|:[\w-]+/g; let m;
     while ((m = re.exec(c))) partes.push(m[0]);
     return partes;
 }
@@ -181,6 +198,7 @@ function coincideCompuesto(el, comp) {
         }
         else if (p.startsWith(':not(')) { if (el.matches(p.slice(5, -1))) return false; }
         else if (p === ':checked') { if (!(el.checked || el.selected)) return false; }
+        else if (p.startsWith(':nth-child(')) { if (!el.parentNode || el.parentNode.children.indexOf(el) + 1 !== parseInt(p.slice(11), 10)) return false; }
         else if (p === ':first-of-type') { if (!el.parentNode || el.parentNode.children.find(c => c.localName === el.localName) !== el) return false; }
         else if (p === ':disabled') { if (!el.disabled) return false; }
         else if (p === ':enabled') { if (el.disabled) return false; }

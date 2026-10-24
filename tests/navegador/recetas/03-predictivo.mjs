@@ -1,7 +1,6 @@
 // @ts-check
 // tests/navegador/recetas/03-predictivo.mjs — caso 3: estudio predictivo (el promedio ponderado según la autoeficacia, la
 // procrastinación y el apoyo social: regresión lineal múltiple; y el riesgo de deserción, sí o no: regresión logística).
-import * as P from '../pasos.mjs';
 import { columna, comprobarCorrelacion, comprobarFiabilidad, comprobarRegresion, guardarAnalisis, leerDeLaPagina, simularYDescargar } from './comun.mjs';
 import { AVISO, DESCRIPCIONES_COMUNES, filasCSV, listaArchivos, num, pAPA, pTabla, seccionAvisos, seccionReproducir, sinCero, tabla, tablaEscalas, tablaInforme } from './leeme.mjs';
 
@@ -61,42 +60,49 @@ function notaDeLasOR(informe, n) {
 /** Lo que el README cita de la última regresión de la página (RegresionMultiple._ultimaMultiple). */
 const ULTIMA = "import('./src/analizador/regresion.js').then(m => { const R = m.RegresionMultiple._ultimaMultiple; return R && { familia: R.familia, n: R.n, R2: R.R2, R2aj: R.R2aj, F: R.F, glR: R.glR, glE: R.glE, pF: R.pF, mcFadden: R.mcFadden, coefs: R.coefs, vifs: R.vifs, eventoY: R.eventoY, avisos: R.avisos }; })";
 
+/** (2027.01.02) Los pasos del Analizador que hay que repetir tras abrir el proyecto (su README y la guía de la pestaña). */
+const REPETIR = { desde: 2, hasta: 3 };
+
 /** @type {import('../ejemplos.mjs').Receta} */
 export default {
     carpeta: '03-predictivo',
     titulo: 'Predictores del rendimiento y del riesgo de deserción',
     diseno: 'Predictivo',
     resumen: 'Regresión lineal múltiple del promedio (β, VIF, R²) y regresión logística del riesgo de deserción, el desenlace binario «No/Sí» del Simulador (OR con su intervalo).',
+    carpetas: { 'analizador/1-regresion-multiple': 'La regresión lineal múltiple', 'analizador/2-regresion-logistica': 'La regresión logística' },
+    repetir: REPETIR,
     async recorrer(caso) {
         const p = caso.pagina;
         const { columnas } = await simularYDescargar(caso, MAESTRO);
         const autoeficacia = columna(columnas, /^General_AA$/), procrastinacion = columna(columnas, /^General_PA$/);
         const apoyo = columna(columnas, /^General_E/), promedio = columna(columnas, /^Promedio/), riesgo = columna(columnas, /^Riesgo/);
         caso.cifras.columnas = { autoeficacia, procrastinacion, apoyo, promedio, riesgo };
-        await P.usarBaseDelSimulador(p);
-        await P.describirInvestigacion(p, { titulo: 'Autoeficacia académica, procrastinación y apoyo social como predictores del rendimiento y del riesgo de deserción en universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
+        await caso.hacer(1, 'usarBaseDelSimulador');
+        await caso.hacer(1, 'describirInvestigacion', { titulo: 'Autoeficacia académica, procrastinación y apoyo social como predictores del rendimiento y del riesgo de deserción en universitarios de Lima Metropolitana, 2026', unidad: 'estudiantes universitarios', lugar: 'Lima Metropolitana' });
         // 1) el promedio según los tres predictores (regresión lineal múltiple), sobre la correlación autoeficacia–promedio
         const multiple = { dependiente: promedio, predictores: [autoeficacia, procrastinacion, apoyo] };
-        await P.analizar(p, { tipo: 'correlacion', variables: [autoeficacia, promedio], regresion: multiple });
+        await caso.hacer(2, 'analizar', { tipo: 'correlacion', variables: [autoeficacia, promedio], regresion: multiple });
         caso.cifras.correlacion1 = await comprobarCorrelacion(caso);
         await comprobarRegresion(caso, multiple.dependiente, multiple.predictores);
         comprobarFiabilidad(caso);
         caso.cifras.multiple = await leerDeLaPagina(p, ULTIMA);
-        await guardarAnalisis(caso, '1-regresion-multiple');
+        await guardarAnalisis(caso, 2, '1-regresion-multiple');
         // 2) el riesgo de deserción (sí/no) según la autoeficacia, la procrastinación y el promedio (regresión logística)
         const logistica = { dependiente: riesgo, predictores: [autoeficacia, procrastinacion, promedio] };
-        await P.analizar(p, { tipo: 'correlacion', variables: [procrastinacion, promedio], regresion: logistica });
+        await caso.hacer(3, 'analizar', { tipo: 'correlacion', variables: [procrastinacion, promedio], regresion: logistica });
         caso.cifras.correlacion2 = await comprobarCorrelacion(caso);
         await comprobarRegresion(caso, logistica.dependiente, logistica.predictores);
         caso.cifras.logistica = await leerDeLaPagina(p, ULTIMA);
-        await guardarAnalisis(caso, '2-regresion-logistica');
-        caso.guardar('proyecto.statsim', (await P.guardarProyecto(p)).bytes);
+        await guardarAnalisis(caso, 3, '2-regresion-logistica');
+        caso.guardar('proyecto.statsim', (await caso.hacer(4, 'guardarProyecto')).bytes);
     },
     leeme(caso) {
         const c = caso.cifras, s = c.simulador, m = c.multiple, l = c.logistica, col = c.columnas;
         if (m.familia !== 'ols' || l.familia !== 'logistica') throw new Error(`regresiones inesperadas: ${m.familia} y ${l.familia}`);
         const rho = (/** @type {any} */ r) => `${r.metodo.startsWith('Spearman') ? 'ρ' : 'r'} = ${sinCero(r.coeficiente)}, ${pAPA(r.pValor)}`;
         const filasMultiple = m.coefs.map((/** @type {any} */ k, /** @type {number} */ j) => [k.nombre, num(k.b, 3), k.beta === null ? '—' : sinCero(k.beta), pTabla(k.pValor), `[${num(k.ic[0], 3)}, ${num(k.ic[1], 3)}]`, j === 0 ? '—' : num(m.vifs[j - 1])]);
+        caso.destacar(`Regresión múltiple del promedio: R² = ${sinCero(m.R2, 3)}, ${pAPA(m.pF)}`, `Regresión logística del riesgo: pseudo-R² = ${sinCero(l.mcFadden, 3)}`,
+            `${l.coefs.filter((/** @type {any} */ k, /** @type {number} */ j) => j > 0 && k.pValor < 0.05).length} de ${l.coefs.length - 1} predictores del riesgo, significativos`);
         const filasLogistica = l.coefs.map((/** @type {any} */ k) => [k.nombre, num(k.b, 3), pTabla(k.pValor), num(k.OR, 3), `[${num(k.ic[0], 3)}, ${num(k.ic[1], 3)}]`]);
         return `# Caso 3 · Estudio predictivo: rendimiento académico y riesgo de deserción
 
@@ -146,7 +152,7 @@ Las OR de la tabla son por punto de cada escala; las del Simulador se pidieron p
 
 ${listaArchivos(caso, DESCRIPCIONES_COMUNES)}
 
-${seccionReproducir(caso.carpeta, 'tras abrirlo, repite los pasos 2 y 3 del Analizador.')}
+${seccionReproducir(caso.carpeta, REPETIR)}
 
 ${seccionAvisos(s.avisos)}
 `;

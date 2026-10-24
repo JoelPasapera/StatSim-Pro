@@ -1,7 +1,6 @@
 // @ts-check
 // tests/navegador/recetas/02-comparativo.mjs — caso 2: estudio comparativo en escolares (ansiedad ante los exámenes según
 // el sexo y el grado, su nivel según el sexo y su relación con el promedio de notas), con un 2 % de respuestas perdidas.
-import * as P from '../pasos.mjs';
 import { columna, comprobarChi2, comprobarCorrelacion, comprobarFiabilidad, comprobarGrupos, guardarAnalisis, leerDeLaPagina, simularYDescargar, tablasDe } from './comun.mjs';
 import { AVISO, DESCRIPCIONES_COMUNES, afirmar, estadistico, letraDe, listaArchivos, num, pAPA, pTabla, seccionAvisos, seccionReproducir, sinCero, tabla, tablaEscalas, tablaInforme } from './leeme.mjs';
 
@@ -45,41 +44,46 @@ Ansiedad ante los exámenes — IAE,"Baja, Moderada, Alta @ P25, P75"
 /** El análisis de grupos que ve la página (ComparacionGrupos, el mismo protocolo de la vista y de la tarjeta). */
 const GRUPOS = (/** @type {string} */ grupo, /** @type {string} */ numerica) => `import('./src/analizador/comparacion-grupos.js').then(m => m.ComparacionGrupos.analizar(${JSON.stringify(grupo)}, ${JSON.stringify(numerica)}, ${JSON.stringify(grupo)}, ${JSON.stringify(numerica)}))`;
 
+/** (2027.01.02) Los pasos del Analizador que hay que repetir tras abrir el proyecto (su README y la guía de la pestaña). */
+const REPETIR = { desde: 2, hasta: 4 };
+
 /** @type {import('../ejemplos.mjs').Receta} */
 export default {
     carpeta: '02-comparativo',
     titulo: 'Ansiedad ante los exámenes según el sexo y el grado',
     diseno: 'Comparativo',
     resumen: 'Diferencias pedidas como d de Cohen: Mann-Whitney por sexo, Kruskal-Wallis por grado con post hoc de Holm, χ² del nivel con el sexo y una base con respuestas perdidas.',
+    carpetas: { 'analizador/1-capitulo': 'La correlación y su capítulo de Word', 'analizador/2-comparacion': 'Las comparaciones según el sexo y el grado', 'analizador/3-asociacion': 'La asociación del nivel con el sexo (χ²)' },
+    repetir: REPETIR,
     async recorrer(caso) {
         const p = caso.pagina;
         const { columnas } = await simularYDescargar(caso, MAESTRO);
         const ansiedad = columna(columnas, /^General_/), nivel = columna(columnas, /^Nivel_/), notas = columna(columnas, /^Promedio/);
         caso.cifras.columnas = { ansiedad, nivel, notas };
-        await P.usarBaseDelSimulador(p);
-        await P.describirInvestigacion(p, { titulo: 'Ansiedad ante los exámenes en estudiantes de secundaria de Lima Metropolitana: diferencias según el sexo y el grado, 2026', unidad: 'estudiantes de secundaria', lugar: 'Lima Metropolitana' });
+        await caso.hacer(1, 'usarBaseDelSimulador');
+        await caso.hacer(1, 'describirInvestigacion', { titulo: 'Ansiedad ante los exámenes en estudiantes de secundaria de Lima Metropolitana: diferencias según el sexo y el grado, 2026', unidad: 'estudiantes de secundaria', lugar: 'Lima Metropolitana' });
         // 1) el capítulo de Word: la correlación con el promedio, cuyas secciones comparan la ansiedad según el sexo, el
         //    grado y la gestión del colegio
-        await P.analizar(p, { tipo: 'correlacion', variables: [ansiedad, notas] });
+        await caso.hacer(2, 'analizar', { tipo: 'correlacion', variables: [ansiedad, notas] });
         await comprobarCorrelacion(caso);
         comprobarFiabilidad(caso);
         caso.cifras.correlacion = await leerDeLaPagina(p, '(() => { const r = window.ultimoAnalisis.resultado; return { coeficiente: r.coeficiente, pValor: r.pValor, n: r.n, tipoCorrelacion: r.tipoCorrelacion }; })()');
-        await guardarAnalisis(caso, '1-capitulo');
+        await guardarAnalisis(caso, 2, '1-capitulo');
         // 2) la comparación por sexo (el análisis general) y por grado (la tarjeta «Comparación entre grupos», con post hoc)
-        await P.analizar(p, { tipo: 'comparacion', variables: [ansiedad, 'Sexo'] });
-        await P.compararGrupos(p, { grupo: 'Grado', numerica: ansiedad });
+        await caso.hacer(3, 'analizar', { tipo: 'comparacion', variables: [ansiedad, 'Sexo'] });
+        await caso.hacer(3, 'compararGrupos', { grupo: 'Grado', numerica: ansiedad });
         caso.cifras.sexo = await leerDeLaPagina(p, GRUPOS('Sexo', ansiedad));
         caso.cifras.grado = await leerDeLaPagina(p, GRUPOS('Grado', ansiedad));
         comprobarGrupos(caso, 'Sexo', ansiedad);
         comprobarGrupos(caso, 'Grado', ansiedad);
-        await guardarAnalisis(caso, '2-comparacion', { word: false });
+        await guardarAnalisis(caso, 3, '2-comparacion', { word: false });
         // 3) la asociación del nivel de ansiedad con el sexo (χ² de independencia)
-        await P.analizar(p, { tipo: 'asociacion', variables: [nivel, 'Sexo'] });
+        await caso.hacer(4, 'analizar', { tipo: 'asociacion', variables: [nivel, 'Sexo'] });
         caso.cifras.chi = await comprobarChi2(caso, nivel, 'Sexo');
         caso.cifras.contingencia = (await tablasDe(p, '#resultadosChiCuadrado'))[0];
         caso.cifras.cramer = await leerDeLaPagina(p, `import('./src/analizador/estadistica.js').then(m => { const A = m.AnalizadorEstadistico, d = A.obtenerDatos(); return A.chiCuadradoIndependencia(d.map(f => f[${JSON.stringify(nivel)}]), d.map(f => f.Sexo)).cramerV; })`);
-        await guardarAnalisis(caso, '3-asociacion', { word: false });
-        caso.guardar('proyecto.statsim', (await P.guardarProyecto(p)).bytes);
+        await guardarAnalisis(caso, 4, '3-asociacion', { word: false });
+        caso.guardar('proyecto.statsim', (await caso.hacer(5, 'guardarProyecto')).bytes);
     },
     leeme(caso) {
         const c = caso.cifras, s = c.simulador, r = c.correlacion, sx = c.sexo, gr = c.grado, chi = c.chi;
@@ -90,6 +94,8 @@ export default {
         const grupos = (/** @type {any} */ R) => tabla(['Grupo', 'n', 'Media', 'DE', 'Mediana'], [...R.grupos].sort((/** @type {any} */ a, /** @type {any} */ b) => a.nombre.localeCompare(b.nombre, 'es', { numeric: true }))
             .map((/** @type {any} */ g) => [g.nombre, g.n, num(g.media), num(g.de), num(g.mediana)]));
         const prueba = (/** @type {any} */ R) => `${R.prueba.nombre}, ${letraDe(R.prueba.nombre)}${R.prueba.gl === null || R.prueba.gl === undefined ? '' : `(${R.prueba.gl})`} = ${estadistico(R.prueba.estadistico)}${Number.isFinite(R.prueba.z) ? `, z = ${num(R.prueba.z)}` : ''}, ${pAPA(R.prueba.pValor)}; tamaño del efecto ${R.prueba.efecto.nombre} = ${sinCero(R.prueba.efecto.valor, 3)} (${R.prueba.magnitud})`;
+        const breve = (/** @type {any} */ R) => `${letraDe(R.prueba.nombre)}${R.prueba.gl === null || R.prueba.gl === undefined ? '' : `(${R.prueba.gl})`} = ${estadistico(R.prueba.estadistico)}, ${pAPA(R.prueba.pValor)}`;
+        caso.destacar(`Según el sexo: ${breve(sx)}`, `Según el grado: ${breve(gr)}`, `Nivel de ansiedad y sexo: χ²(${chi.gl}) = ${num(chi.chiCuadrado)}, ${pAPA(chi.pValor)}`);
         const postHoc = (gr.postHoc || []).map((/** @type {any} */ q) => [`${q.a} vs ${q.b}`, q.nombre, num(q.estadistico), pTabla(q.pValor), pTabla(q.pHolm)]);
         return `# Caso 2 · Estudio comparativo: ansiedad ante los exámenes según el sexo y el grado
 
@@ -149,7 +155,7 @@ Las d pedidas (−0.50 y 0.30) se recuperan: el informe del Simulador las mide e
 
 ${listaArchivos(caso, DESCRIPCIONES_COMUNES)}
 
-${seccionReproducir(caso.carpeta, 'tras abrirlo, repite los pasos 2 a 4 del Analizador.')}
+${seccionReproducir(caso.carpeta, REPETIR)}
 
 ${seccionAvisos(s.avisos)}
 `;

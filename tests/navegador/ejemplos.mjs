@@ -18,6 +18,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compararCarpetas, paginasDelPDF, pdfSinFechas } from './comparar.mjs';
 import { abrirPagina, FECHA_FIJA, huellaDeDibujo, prepararChromium } from './entorno.mjs';
+import { elementosDeLista, seccionDe } from '../../src/ejemplos/markdown.js';
+import { FORMATO_INDICE, leerCatalogo } from '../../src/ejemplos/catalogo.js';
+import { accionEjecutable, accionValida } from '../../src/ejemplos/hazlo/planes.js';
+import * as P from './pasos.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.resolve(aqui, '..', '..');
@@ -31,8 +35,14 @@ export const CASOS = ['01-correlacional', '02-comparativo', '03-predictivo', '04
  * @property {string} titulo
  * @property {string} diseno el tipo de estudio («Correlacional»…)
  * @property {string} resumen lo que muestra, en una frase (para el índice, ejemplos/README.md)
+ * @property {Record<string, string>} carpetas (2027.01.02) lo que guarda cada carpeta de análisis («analizador/2-afe»), para
+ *   la pestaña «Ejemplos»
+ * @property {{ desde: number, hasta: number, nota?: string }} repetir (2027.01.02) los pasos del Analizador (los de su
+ *   README) que hay que volver a dar tras abrir su proyecto: los de antes los trae el proyecto y los de después son
+ *   opcionales. Lo dicen su README («Cómo reproducirlo») y la guía de la pestaña «Ejemplos»
  * @property {(caso: Caso) => Promise<void>} recorrer lo que hace la persona en la página, guardando lo que descarga
- * @property {(caso: Caso) => string} leeme el README.md del caso, con las cifras que dio la página
+ * @property {(caso: Caso) => string} leeme el README.md del caso, con las cifras que dio la página; también deja sus cifras
+ *   clave en caso.destacar (2027.01.02: las tarjetas de la pestaña «Ejemplos»)
  */
 
 /** Un caso en curso: la página, la carpeta de destino, lo guardado y las cifras para el README y la verificación. */
@@ -52,6 +62,45 @@ export class Caso {
         this.comprobaciones = [];
         /** @type {Map<string, string>} ruta de cada PDF → su texto impreso (lo que se compara de él entre dos corridas) */
         this.impresos = new Map();
+        /** @type {Map<string, string>} (2027.01.02) ruta de cada archivo → lo que es (lo pone el README: leeme.mjs, listaArchivos) */
+        this.descripciones = new Map();
+        /** @type {string[]} (2027.01.02) las cifras clave del caso, para su tarjeta en la pestaña «Ejemplos» */
+        this.destacados = [];
+        /** @type {Map<number, import('../../src/ejemplos/hazlo/planes.js').AccionDelGuion[]>} (2027.01.03) lo que se hizo en cada paso del README del Analizador, por su número */
+        this.guiones = new Map();
+    }
+    /**
+     * (2027.01.03) Da un paso del Analizador y lo anota en el guion de su paso del README (el que repite «Hazlo por mí» en la
+     * pestaña «Ejemplos»): la acción y sus datos, tal cual, y lo que hace la página con ellos, por el mismo plan
+     * (src/ejemplos/hazlo/planes.js). Los archivos que sube una acción (los CSV de la V de Aiken) son del caso, por su ruta.
+     * @param {number} paso el número del paso en «## Qué se hizo en el Analizador»
+     * @param {string} accion una de las de planes.js (y de pasos.mjs)
+     * @param {Record<string, any>} [datos]
+     * @returns {Promise<any>} lo que devuelve el paso en pasos.mjs
+     */
+    async hacer(paso, accion, datos = {}) {
+        const a = { accion, datos: JSON.parse(JSON.stringify(datos)) };
+        if (!Number.isInteger(paso) || paso < 1) throw new Error(`${this.carpeta}: «${accion}» con un número de paso que no es: ${paso}`);
+        if (!accionValida(a)) throw new Error(`${this.carpeta}: el paso ${paso} lleva una acción que el guion no admite: ${JSON.stringify(a).slice(0, 200)}`);
+        const guion = this.guiones.get(paso) || [];
+        guion.push(a);
+        this.guiones.set(paso, guion);
+        const fn = /** @type {Record<string, (pagina: any, datos: any, opciones: any) => Promise<any>>} */ (/** @type {unknown} */ (P))[accion];
+        return fn(this.pagina, datos, {
+            archivo: (/** @type {string} */ ruta) => {
+                const bytes = this.archivos.get(ruta);
+                if (!bytes) throw new Error(`${this.carpeta}: «${ruta}» se sube y no se guardó antes en el caso`);
+                return { nombre: /** @type {string} */ (ruta.split('/').pop()), bytes };
+            },
+        });
+    }
+    /**
+     * (2027.01.02) Las cifras clave del caso, dos o tres frases cortas (las tarjetas de la pestaña «Ejemplos»).
+     * @param {...string} lineas
+     */
+    destacar(...lineas) {
+        if (!lineas.length || lineas.length > 4 || lineas.some(l => typeof l !== 'string' || !l.trim() || l.length > 120)) throw new Error(`${this.carpeta}: las cifras clave son de una a cuatro frases cortas`);
+        this.destacados = lineas;
     }
     /**
      * Guarda un archivo del caso (lo que descargó la página, o una entrada que se le dio).
@@ -167,17 +216,84 @@ async function correrEn(receta, destino) {
     }
     if (errores.length) throw new Error(`${receta.carpeta}: la página dio ${errores.length} error(es):\n  ` + errores.slice(0, 10).join('\n  '));
     const version = JSON.parse(fs.readFileSync(path.join(raiz, 'version.json'), 'utf8')).version;
+    // (2027.01.02) el README primero: dice lo que es cada archivo y las cifras clave, que van también a verificacion.json
+    // (la ficha del caso en la pestaña «Ejemplos»: ejemplos/indice.json)
+    const leeme = conCRLF(receta.leeme(caso));
+    if (!caso.destacados.length) throw new Error(`${receta.carpeta}: su README no dejó las cifras clave (caso.destacar)`);
     const verificacion = {
         caso: receta.carpeta,
         version,
         fecha: FECHA_FIJA,
         entorno,
+        ficha: fichaDelCaso(receta, caso, leeme),
         comprobaciones: caso.comprobaciones,
-        archivos: Object.fromEntries([...caso.archivos].map(([r, b]) => [r, descripcionDelArchivo(caso, r, b)])),
+        archivos: Object.fromEntries([...caso.archivos].map(([r, b]) => [r, { ...descripcionDelArchivo(caso, r, b), descripcion: caso.descripciones.get(r) || '' }])),
     };
     caso.guardar('verificacion.json', conCRLF(JSON.stringify(verificacion, null, 2) + '\n'));
-    caso.guardar('README.md', conCRLF(receta.leeme(caso)));
+    caso.guardar('README.md', leeme);
     return caso;
+}
+
+/**
+ * (2027.01.02) La ficha del caso para la pestaña «Ejemplos»: sus cifras clave, los pasos que se dieron en el Analizador (los
+ * de su README), cuáles se repiten tras abrir el proyecto y lo que guarda cada carpeta de análisis. Falla si falta algo de
+ * eso. (2027.01.03) Y el guion de cada paso (lo que hizo la receta en él: caso.hacer), comprobado con lo que dice el README:
+ * cada paso tiene el suyo; los de antes de los que se repiten, solo lo que trae el proyecto (los datos y la configuración);
+ * los que se repiten, algún análisis; y los de después, ninguno (solo descargas o guardar el proyecto).
+ * @param {Receta} receta
+ * @param {Caso} caso
+ * @param {string} leeme
+ */
+function fichaDelCaso(receta, caso, leeme) {
+    const pasos = elementosDeLista(seccionDe(leeme, 'Qué se hizo en el Analizador'));
+    if (!pasos.length) throw new Error(`${receta.carpeta}: su README no tiene los pasos del Analizador («## Qué se hizo en el Analizador»)`);
+    const r = receta.repetir;
+    if (!r || !Number.isInteger(r.desde) || !Number.isInteger(r.hasta) || r.desde < 1 || r.desde > r.hasta || r.hasta > pasos.length) {
+        throw new Error(`${receta.carpeta}: «repetir» no son pasos seguidos de los ${pasos.length} de su README`);
+    }
+    const enCarpetas = [...new Set([...caso.archivos.keys()].filter(r => /^analizador\/[^/]+\//.test(r)).map(r => r.split('/').slice(0, 2).join('/')))].sort();
+    const faltan = enCarpetas.filter(c => !receta.carpetas || !receta.carpetas[c]);
+    if (faltan.length) throw new Error(`${receta.carpeta}: falta qué guarda ${faltan.join(', ')} (la propiedad «carpetas» de su receta)`);
+    const sinArchivos = Object.keys(receta.carpetas || {}).filter(c => !enCarpetas.includes(c));
+    if (sinArchivos.length) throw new Error(`${receta.carpeta}: «carpetas» nombra ${sinArchivos.join(', ')}, que no guardó nada`);
+    const sinDescripcion = [...caso.archivos.keys()].filter(r => !caso.descripciones.has(r));
+    if (sinDescripcion.length) throw new Error(`${receta.carpeta}: su README no dice qué es ${sinDescripcion.join(', ')}`);
+    const fuera = [...caso.guiones.keys()].filter(n => n > pasos.length);
+    if (fuera.length) throw new Error(`${receta.carpeta}: la receta anota los pasos ${fuera.join(', ')}, y su README tiene ${pasos.length}`);
+    const guiones = pasos.map((_, i) => caso.guiones.get(i + 1) || []);
+    guiones.forEach((g, i) => {
+        const n = i + 1, nombres = g.map(a => a.accion).join(', ') || 'nada';
+        if (!g.length) throw new Error(`${receta.carpeta}: el paso ${n} de su README no tiene guion (caso.hacer)`);
+        if (n < r.desde && !g.every(a => a.accion === 'usarBaseDelSimulador' || a.accion === 'describirInvestigacion')) throw new Error(`${receta.carpeta}: el paso ${n} lo trae el proyecto («repetir»), pero hace ${nombres}`);
+        if (n >= r.desde && n <= r.hasta && !g.some(accionEjecutable)) throw new Error(`${receta.carpeta}: el paso ${n} se repite («repetir») y no hace ningún análisis (${nombres})`);
+        if (n > r.hasta && g.some(accionEjecutable)) throw new Error(`${receta.carpeta}: el paso ${n} es opcional («repetir»), pero hace un análisis (${nombres})`);
+    });
+    return {
+        destacados: caso.destacados, pasos: pasos.map(p => p.replace(/\r\n/g, '\n')), repetir: { desde: r.desde, hasta: r.hasta, nota: r.nota || '' }, guiones,
+        carpetas: enCarpetas.map(ruta => ({ ruta, titulo: receta.carpetas[ruta] })),
+    };
+}
+
+/**
+ * (2027.01.02) ejemplos/indice.json, el catálogo de la pestaña «Ejemplos» (src/ejemplos/catalogo.js): lo que dice cada caso
+ * en su verificacion.json, en el orden de los casos. Sale solo de lo guardado: el mismo índice para las mismas carpetas.
+ * @param {Receta[]} recetas
+ * @param {string} carpetaEjemplos
+ * @returns {string}
+ */
+export function indiceDeLosEjemplos(recetas, carpetaEjemplos) {
+    const casos = recetas.map(r => {
+        const v = JSON.parse(fs.readFileSync(path.join(carpetaEjemplos, r.carpeta, 'verificacion.json'), 'utf8'));
+        if (!v.ficha) throw new Error(`ejemplos/${r.carpeta}: su verificacion.json no tiene la ficha del caso (rehazlo con «npm run ejemplos»)`);
+        const archivos = Object.entries(/** @type {Record<string, { bytes: number, descripcion?: string }>} */ (v.archivos))
+            .sort(([a], [b]) => a.localeCompare(b, 'es', { numeric: true }))
+            .map(([ruta, a]) => ({ ruta, bytes: a.bytes, descripcion: a.descripcion || '' }));
+        return { carpeta: r.carpeta, titulo: r.titulo, diseno: r.diseno, resumen: r.resumen, version: v.version, destacados: v.ficha.destacados, pasos: v.ficha.pasos, repetir: v.ficha.repetir, guiones: v.ficha.guiones, carpetas: v.ficha.carpetas, archivos };
+    });
+    const version = casos.map(c => c.version).sort().pop() || '';
+    const texto = conCRLF(JSON.stringify({ formato: FORMATO_INDICE, version, casos }, null, 2) + '\n');
+    leerCatalogo(texto);   // con la forma que lee la página
+    return texto;
 }
 
 /**
@@ -191,6 +307,8 @@ export function indice(recetas) {
 
 Cinco casos de uso hechos por la propia página. Cada uno se recorrió en un navegador de verdad (Chromium) como lo haría una persona: importar la configuración en el Simulador, generar la base, descargarla en todos sus formatos, pasarla al Analizador, analizar, exportar el Word, imprimir los resultados en PDF y guardar el proyecto. Lo que hay en cada carpeta es lo que descargó la página, sin retocar.
 
+En la página, la pestaña **Ejemplos** los muestra uno por uno, deja descargar cada archivo (o el caso entero en un .zip) y los abre en StatSim con un clic, con sus pasos a la vista: en cada paso, «Muéstrame» señala dónde está cada control y «Hazlo por mí» repite el análisis a la vista, como se hizo en el caso.
+
 > **Datos simulados.** Todas las bases las generó el Simulador con una configuración y una semilla fijas: sirven para ver qué hace cada sección y qué entrega, no son resultados de ninguna investigación.
 
 | # | Caso | Diseño | Lo que muestra |
@@ -203,7 +321,9 @@ ${filas.join('\n')}
 - \`simulador/\`: la configuración completa (el archivo maestro, para «Importar todo»), la base en CSV (dos variantes), SPSS (.sav) y Excel (.xlsx), el informe «pedido vs. obtenido» y su verificación impresa en PDF.
 - \`analizador/\`: una carpeta por análisis, con el capítulo de Word (de las correlaciones), los resultados en texto y la página impresa en PDF; y las tarjetas de psicometría, con sus propios Word y CSV.
 - \`proyecto.statsim\`: el proyecto completo, para abrirlo con Ayuda → «Abrir proyecto».
-- \`verificacion.json\`: la huella de cada archivo y las cifras que se vuelven a calcular para comprobar el caso.
+- \`verificacion.json\`: la huella de cada archivo y las cifras que se vuelven a calcular para comprobar el caso; también la ficha del caso (sus cifras clave y sus pasos).
+
+Y, junto a las carpetas, \`indice.json\`: el catálogo que lee la pestaña «Ejemplos» (sale de las fichas de los casos).
 
 ## Cómo se hicieron
 
@@ -265,6 +385,10 @@ async function principal() {
             }
         }
     }
+    // (2027.01.02) el catálogo de la pestaña «Ejemplos», de lo guardado en cada caso
+    const indiceJson = path.join(CARPETA_EJEMPLOS, 'indice.json');
+    if (orden === 'generar') fs.writeFileSync(indiceJson, indiceDeLosEjemplos(todas, CARPETA_EJEMPLOS));
+    else if (!fs.existsSync(indiceJson) || fs.readFileSync(indiceJson, 'utf8') !== indiceDeLosEjemplos(todas, CARPETA_EJEMPLOS)) { fallos++; console.log('✗ ejemplos/indice.json: no es el catálogo que dan las carpetas de los casos'); }
     if (fallos) process.exit(1);
 }
 

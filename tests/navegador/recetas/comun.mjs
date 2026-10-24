@@ -29,13 +29,14 @@ export async function simularYDescargar(caso, maestro) {
 
 /**
  * Guarda lo que da el análisis a la vista: el capítulo en Word (si es una correlación de dos variables), los resultados en
- * texto y la página impresa en PDF.
+ * texto y la página impresa en PDF. (2027.01.03) Lo anota en el guion de su paso del README (la guía lo señala).
  * @param {import('../ejemplos.mjs').Caso} caso
+ * @param {number} paso el número del paso del README en que se descarga
  * @param {string} carpeta la subcarpeta de analizador/ («1-correlacion»…)
  * @param {{ word?: boolean }} [opciones]
  */
-export async function guardarAnalisis(caso, carpeta, { word = true } = {}) {
-    const a = await P.exportarAnalisis(caso.pagina, { word });
+export async function guardarAnalisis(caso, paso, carpeta, { word = true } = {}) {
+    const a = await caso.hacer(paso, 'exportarAnalisis', { word, carpeta });
     if (a.word) caso.guardar(`analizador/${carpeta}/${a.word.nombre}`, a.word.bytes);
     caso.guardar(`analizador/${carpeta}/${a.texto.nombre}`, a.texto.bytes);
     caso.guardarImpreso(`analizador/${carpeta}/resultados.pdf`, a.impreso);

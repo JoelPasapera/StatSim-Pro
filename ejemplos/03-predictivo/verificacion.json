@@ -1,10 +1,114 @@
 {
   "caso": "03-predictivo",
-  "version": "2027.01.01",
+  "version": "2027.01.03",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
     "dibujo": "cd9b71ddbbaad564bc7e34e07bf91e6f3ba3dfd96175c5f13e4dc76abcbaff51"
+  },
+  "ficha": {
+    "destacados": [
+      "Regresión múltiple del promedio: R² = .255, p < .001",
+      "Regresión logística del riesgo: pseudo-R² = .180",
+      "3 de 3 predictores del riesgo, significativos"
+    ],
+    "pasos": [
+      "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+      "**La regresión lineal múltiple** (`analizador/1-regresion-multiple/`): Correlación entre la autoeficacia (`General_AA`) y el promedio (`Promedio ponderado`); en «Regresión», el promedio como variable dependiente y la autoeficacia como predictor; con «＋ Agregar predictor», la procrastinación (`General_PA`) y el apoyo social (`General_EA`). «Ejecutar análisis» y las tres descargas: el capítulo de Word lleva la regresión múltiple.",
+      "**La regresión logística** (`analizador/2-regresion-logistica/`): Correlación entre la procrastinación y el promedio; en «Regresión», «Riesgo de deserción» como variable dependiente (aparece como «dos categorías: No = 0, Sí = 1») y como predictores la autoeficacia, la procrastinación y el promedio. «Ejecutar análisis» y las tres descargas.",
+      "Ayuda → «Guardar proyecto»."
+    ],
+    "repetir": {
+      "desde": 2,
+      "hasta": 3,
+      "nota": ""
+    },
+    "guiones": [
+      [
+        {
+          "accion": "usarBaseDelSimulador",
+          "datos": {}
+        },
+        {
+          "accion": "describirInvestigacion",
+          "datos": {
+            "titulo": "Autoeficacia académica, procrastinación y apoyo social como predictores del rendimiento y del riesgo de deserción en universitarios de Lima Metropolitana, 2026",
+            "unidad": "estudiantes universitarios",
+            "lugar": "Lima Metropolitana"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "correlacion",
+            "variables": [
+              "General_AA",
+              "Promedio ponderado"
+            ],
+            "regresion": {
+              "dependiente": "Promedio ponderado",
+              "predictores": [
+                "General_AA",
+                "General_PA",
+                "General_EA"
+              ]
+            }
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": true,
+            "carpeta": "1-regresion-multiple"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "correlacion",
+            "variables": [
+              "General_PA",
+              "Promedio ponderado"
+            ],
+            "regresion": {
+              "dependiente": "Riesgo de deserción",
+              "predictores": [
+                "General_AA",
+                "General_PA",
+                "Promedio ponderado"
+              ]
+            }
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": true,
+            "carpeta": "2-regresion-logistica"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "guardarProyecto",
+          "datos": {}
+        }
+      ]
+    ],
+    "carpetas": [
+      {
+        "ruta": "analizador/1-regresion-multiple",
+        "titulo": "La regresión lineal múltiple"
+      },
+      {
+        "ruta": "analizador/2-regresion-logistica",
+        "titulo": "La regresión logística"
+      }
+    ]
   },
   "comprobaciones": [
     {
@@ -1692,65 +1796,79 @@
   "archivos": {
     "simulador/base_datos_simulada_excel_espanol.csv": {
       "bytes": 43541,
-      "sha256": "e851e906b4a4ce798a0b23daf6ea41322415d8df0da5c032743ce8ac379b01e9"
+      "sha256": "e851e906b4a4ce798a0b23daf6ea41322415d8df0da5c032743ce8ac379b01e9",
+      "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
     },
     "simulador/base_datos_simulada_internacional.csv": {
       "bytes": 43541,
-      "sha256": "5d01810a16a3021c2fe51bf2733a40d89745157b3d7a23c2451fa69ea0201331"
+      "sha256": "5d01810a16a3021c2fe51bf2733a40d89745157b3d7a23c2451fa69ea0201331",
+      "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 28296,
-      "sha256": "485d376179decad0fc5d42619494138df9be048db8698fdaa37e24a1fec0c77c"
+      "sha256": "7b56770303afcc4cdc1ec3148d12489da9e14b7cad57ccecfb43cb40e8fa4800",
+      "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 65450,
-      "sha256": "d09453d05787f2e08a2c32a4a60e75000ae4bfb6ab3792c7c5f43a8f4da663fd"
+      "sha256": "e46598f7bd6d351a9b9dfddc11fc8951f794122ba4677ef11005e02da9a0766a",
+      "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
       "bytes": 1626,
-      "sha256": "fb08075cc6544ba7a24735328f6023e7cd786361737d49bcd3a282985bd72e23"
+      "sha256": "fb08075cc6544ba7a24735328f6023e7cd786361737d49bcd3a282985bd72e23",
+      "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
     },
     "simulador/configuracion_completa_simulador.csv": {
       "bytes": 2646,
-      "sha256": "4194cfe91dc851a97c78f9249ef51c6a602c85b7e6abff17212e36d6aa305986"
+      "sha256": "4194cfe91dc851a97c78f9249ef51c6a602c85b7e6abff17212e36d6aa305986",
+      "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 78796,
-      "sha256": "abaa3086aafcf60e51c150a6a211d23c361250c458c227e74a9a370160500959",
+      "bytes": 78798,
+      "sha256": "8748357900e88263c470cdd0bb3cef75ba20e0205ce5814a6941072b3affb0c3",
       "paginas": 3,
-      "impreso": "1e783b845bee9787c55f9fd9ad26ecd955dbf52079832240197a006c345d5379"
+      "impreso": "245e1ce0e60e77889b3bd2fa9fd98488ade1f8fcbf01baffc711376f5fafd6f8",
+      "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-regresion-multiple/capitulo_resultados_APA.docx": {
       "bytes": 852269,
-      "sha256": "1ba7947412550ec16fb7980fc6827b300e6967efc4792dd80ab07584ac08fbf9"
+      "sha256": "1ba7947412550ec16fb7980fc6827b300e6967efc4792dd80ab07584ac08fbf9",
+      "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/1-regresion-multiple/resultados_analisis.txt": {
       "bytes": 34713,
-      "sha256": "4d60dae98c7cfb5d47c45590532c832c4da5f1a6cf6fb96a856cf8e39f04545d"
+      "sha256": "4d60dae98c7cfb5d47c45590532c832c4da5f1a6cf6fb96a856cf8e39f04545d",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/1-regresion-multiple/resultados.pdf": {
-      "bytes": 1301939,
-      "sha256": "a32eb2ec8cba36de66bcd6c1ee838fddee03c147b64dbfe457caf87aaf43d51a",
+      "bytes": 1301940,
+      "sha256": "3ff1664d0bd925d55bfdf54791affae731c9f6d025c809fef14d690187416b09",
       "paginas": 32,
-      "impreso": "c432f33558e1eebd50da021bed71f8f3658b514f202cbd5b75d66dc730ec0631"
+      "impreso": "1bac01fcda995f90501ca34305906382c2427af7abce65ba35f80375838492e4",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "analizador/2-regresion-logistica/capitulo_resultados_APA.docx": {
       "bytes": 875654,
-      "sha256": "f8107de521329fe5238ccd0910202f2c7235e477b23cbdfc949fb963e02b5a62"
+      "sha256": "f8107de521329fe5238ccd0910202f2c7235e477b23cbdfc949fb963e02b5a62",
+      "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/2-regresion-logistica/resultados_analisis.txt": {
       "bytes": 31920,
-      "sha256": "c5da2ccfe58b3969c033c3172b534217fc1743c05d7c61d16bdccef73df0e05a"
+      "sha256": "c5da2ccfe58b3969c033c3172b534217fc1743c05d7c61d16bdccef73df0e05a",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/2-regresion-logistica/resultados.pdf": {
-      "bytes": 1300604,
-      "sha256": "e689734e0cd2e6589409ff9fb52f322022c6e9c9807cb187f86cfacbca8cd850",
+      "bytes": 1300605,
+      "sha256": "0f9fe47837c53df6143613fbad3dee0a530cf4c1f977959e7e9a300b86d5a7e2",
       "paginas": 32,
-      "impreso": "7f4220875064cd96c6d5d95d6b7794210d540b74f464bfe8b93a6bda9abee473"
+      "impreso": "66e5408ab7d39b76b7f9242ca6f357b9700e0bc4b4a8ebb1148cd9ab39f2ea29",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 32946,
-      "sha256": "ca89d814ef72cf0b7901b70ee397593b2a2419d923eb36f0f520baa2d815f72d"
+      "bytes": 33051,
+      "sha256": "6d20646bd72defc0b4f727e6e625e5bf839de59f80beecdf7f9668b223217f5c",
+      "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }
 }

@@ -1,10 +1,157 @@
 {
   "caso": "04-instrumental",
-  "version": "2027.01.01",
+  "version": "2027.01.03",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
     "dibujo": "cd9b71ddbbaad564bc7e34e07bf91e6f3ba3dfd96175c5f13e4dc76abcbaff51"
+  },
+  "ficha": {
+    "destacados": [
+      "V de Aiken: 7 de 15 ítems válidos",
+      "AFE: 3 factores, KMO = .91",
+      "AFC de tres factores: CFI = .991, RMSEA = .031"
+    ],
+    "pasos": [
+      "«Usar datos generados» y, en «1. Configuración de la investigación», el título, la unidad de análisis y el lugar.",
+      "**«3. Validez de contenido por juicio de expertos (V de Aiken)»**: escala de 1 a 4, IC del 95 %, criterio V₀ = .70; tres criterios (Claridad, Coherencia y Relevancia), cada uno con «Cargar CSV»; «Calcular V de Aiken» y sus descargas (`analizador/1-validez-de-contenido/`).",
+      "**«4. Análisis factorial exploratorio (AFE)»**: «Escala total (EPA)», correlación automática (policórica), factores por análisis paralelo (200 réplicas, semilla 2026), rotación oblimin; «Calcular AFE» y sus descargas (`analizador/2-afe/`).",
+      "**SEM (AFC)**: el modelo de un factor como «Modelo alternativo» y el de tres como «Modelo final», los dos con WLSMV; «¿Es adecuado usar SEM aquí?» y «Ajustar modelo» en cada uno.",
+      "**«6. Invarianza de medición»**: el modelo de tres factores, agrupación Sexo, WLSMV; «Evaluar la invarianza» y su Word (`analizador/3-invarianza/`).",
+      "**Fiabilidad y validez convergente**: Correlación entre la escala (`General_E`) y la autoeficacia (`General_AA`), «Ejecutar análisis» y las tres descargas (`analizador/4-capitulo/`). El PDF de esta carpeta lleva todas las tarjetas anteriores con sus resultados, y el capítulo de Word, el AFC.",
+      "Ayuda → «Guardar proyecto»: el proyecto guarda también las valoraciones de los jueces."
+    ],
+    "repetir": {
+      "desde": 2,
+      "hasta": 6,
+      "nota": "la V de Aiken vuelve con sus valoraciones: en el paso 2 basta con «Calcular V de Aiken»"
+    },
+    "guiones": [
+      [
+        {
+          "accion": "usarBaseDelSimulador",
+          "datos": {}
+        },
+        {
+          "accion": "describirInvestigacion",
+          "datos": {
+            "titulo": "Propiedades psicométricas de la Escala de Procrastinación Académica en universitarios de Lima Metropolitana, 2026",
+            "unidad": "estudiantes universitarios",
+            "lugar": "Lima Metropolitana"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "calcularAiken",
+          "datos": {
+            "minimo": 1,
+            "maximo": 4,
+            "confianza": 0.95,
+            "v0": 0.7,
+            "criterios": [
+              {
+                "nombre": "Claridad",
+                "archivo": "analizador/1-validez-de-contenido/valoraciones_claridad.csv"
+              },
+              {
+                "nombre": "Coherencia",
+                "archivo": "analizador/1-validez-de-contenido/valoraciones_coherencia.csv"
+              },
+              {
+                "nombre": "Relevancia",
+                "archivo": "analizador/1-validez-de-contenido/valoraciones_relevancia.csv"
+              }
+            ]
+          }
+        }
+      ],
+      [
+        {
+          "accion": "calcularAFE",
+          "datos": {
+            "conjunto": "Escala total (EPA)",
+            "correlacion": "auto",
+            "factores": "paralelo",
+            "rotacion": "oblimin",
+            "replicas": 200,
+            "semilla": 2026
+          }
+        }
+      ],
+      [
+        {
+          "accion": "ajustarSEM",
+          "datos": {
+            "sintaxis": "Procrastinacion =~ P1 + P2 + P3 + P4 + P5 + D1 + D2 + D3 + D4 + D5 + DE1 + DE2 + DE3 + DE4 + DE5",
+            "etiqueta": "Modelo alternativo",
+            "estimador": "WLSMV"
+          }
+        },
+        {
+          "accion": "ajustarSEM",
+          "datos": {
+            "sintaxis": "Postergacion =~ P1 + P2 + P3 + P4 + P5\nDistraccion =~ D1 + D2 + D3 + D4 + D5\nDesorganizacion =~ DE1 + DE2 + DE3 + DE4 + DE5",
+            "etiqueta": "Modelo final",
+            "estimador": "WLSMV"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "evaluarInvarianza",
+          "datos": {
+            "sintaxis": "Postergacion =~ P1 + P2 + P3 + P4 + P5\nDistraccion =~ D1 + D2 + D3 + D4 + D5\nDesorganizacion =~ DE1 + DE2 + DE3 + DE4 + DE5",
+            "grupo": "Sexo",
+            "estimador": "WLSMV",
+            "agrupar": true
+          }
+        }
+      ],
+      [
+        {
+          "accion": "analizar",
+          "datos": {
+            "tipo": "correlacion",
+            "variables": [
+              "General_E",
+              "General_AA"
+            ]
+          }
+        },
+        {
+          "accion": "exportarAnalisis",
+          "datos": {
+            "word": true,
+            "carpeta": "4-capitulo"
+          }
+        }
+      ],
+      [
+        {
+          "accion": "guardarProyecto",
+          "datos": {}
+        }
+      ]
+    ],
+    "carpetas": [
+      {
+        "ruta": "analizador/1-validez-de-contenido",
+        "titulo": "La validez de contenido (V de Aiken)"
+      },
+      {
+        "ruta": "analizador/2-afe",
+        "titulo": "El análisis factorial exploratorio"
+      },
+      {
+        "ruta": "analizador/3-invarianza",
+        "titulo": "La invarianza según el sexo"
+      },
+      {
+        "ruta": "analizador/4-capitulo",
+        "titulo": "La fiabilidad, la validez convergente y el capítulo de Word"
+      }
+    ]
   },
   "comprobaciones": [
     {
@@ -14240,83 +14387,102 @@
   "archivos": {
     "simulador/base_datos_simulada_excel_espanol.csv": {
       "bytes": 33502,
-      "sha256": "33f804e331d753a0c7c5faaea66ea8cac0554bb8c467f8a557379881f365fb5e"
+      "sha256": "33f804e331d753a0c7c5faaea66ea8cac0554bb8c467f8a557379881f365fb5e",
+      "descripcion": "La base en CSV para Excel en español (punto y coma y coma decimal): botón «CSV (Excel español)»."
     },
     "simulador/base_datos_simulada_internacional.csv": {
       "bytes": 33502,
-      "sha256": "937529fc2ba1b9badcc067bab1757e001245ef56b1032d5011a54a20a2de0280"
+      "sha256": "937529fc2ba1b9badcc067bab1757e001245ef56b1032d5011a54a20a2de0280",
+      "descripcion": "La base en CSV internacional (coma y punto decimal): botón «CSV (internacional)»."
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 19761,
-      "sha256": "5aa07bcfa02f95c36268b5eb11cf50b981a68eb5f341f7c1e66a3b34321a3605"
+      "sha256": "c060dd848365815a7b60cdfc49f5c073a44db7b656a5d7215f812c214bca0480",
+      "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 50358,
-      "sha256": "c341f8bb3f2556ab4d3abb510998dc3e33bf98412bd301be9435555a03587e7a"
+      "sha256": "19aa6f76724223d81963915fec8b6c41d4ddebd3687b7db37aca6f5a0cfeede5",
+      "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
       "bytes": 711,
-      "sha256": "37a22b9403cce5c06da1987dcd8adfbe2387390111bb53541e38beeb0d94d4bc"
+      "sha256": "37a22b9403cce5c06da1987dcd8adfbe2387390111bb53541e38beeb0d94d4bc",
+      "descripcion": "Cada parámetro pedido, medido sobre la base generada: botón «Descargar informe (CSV)»."
     },
     "simulador/configuracion_completa_simulador.csv": {
       "bytes": 1995,
-      "sha256": "160d1257deb0cdcddcd5b479348876bf68f339734a5c987494a1bbe9acf16c95"
+      "sha256": "160d1257deb0cdcddcd5b479348876bf68f339734a5c987494a1bbe9acf16c95",
+      "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
       "bytes": 73045,
-      "sha256": "26ea176d81cb0ac123d4c61178f99febe59300397fbbcce6f1686cd39c77d1b8",
+      "sha256": "36506c09dd75620b09fe29a6a2d88ba18312ead46b465db3622d76519e826c97",
       "paginas": 2,
-      "impreso": "88a6f7be4db22b06ed30de5f39ebc5b71c072370c7db29945a6272891fe6d23f"
+      "impreso": "a9100ec5073a4fce9cd45fbad91bd828762073b915ff4bbf6e4d61096b93f28c",
+      "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-validez-de-contenido/valoraciones_claridad.csv": {
       "bytes": 331,
-      "sha256": "6666cf84985ccda4e048e3161cb04deec4d8ed72b92451de870094e844bf39e7"
+      "sha256": "6666cf84985ccda4e048e3161cb04deec4d8ed72b92451de870094e844bf39e7",
+      "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
     },
     "analizador/1-validez-de-contenido/valoraciones_coherencia.csv": {
       "bytes": 331,
-      "sha256": "f7fe32203945c72227a845b9b6c3a85d312c9b945244771cd78ac4a803e42171"
+      "sha256": "f7fe32203945c72227a845b9b6c3a85d312c9b945244771cd78ac4a803e42171",
+      "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
     },
     "analizador/1-validez-de-contenido/valoraciones_relevancia.csv": {
       "bytes": 331,
-      "sha256": "dc8e118f2ba4ae50de8955a0a909422a19aebcaadede68689ee8f2e5a831b1d0"
+      "sha256": "dc8e118f2ba4ae50de8955a0a909422a19aebcaadede68689ee8f2e5a831b1d0",
+      "descripcion": "Una entrada: las valoraciones de los 7 jueces a los 15 ítems en un criterio (las que se cargan con «Cargar CSV»)."
     },
     "analizador/1-validez-de-contenido/validez_contenido_aiken.csv": {
       "bytes": 2885,
-      "sha256": "0aa4c31bf0a0bbebd241c1a5d0ac7566464b86b4f34d04874d54eec9f7adaaf8"
+      "sha256": "0aa4c31bf0a0bbebd241c1a5d0ac7566464b86b4f34d04874d54eec9f7adaaf8",
+      "descripcion": "La V de Aiken de cada ítem en cada criterio, con su intervalo, su p y su decisión: botón «CSV» de la tarjeta."
     },
     "analizador/1-validez-de-contenido/validez_contenido_aiken.docx": {
       "bytes": 31722,
-      "sha256": "854ffde6880066efc0ab7dc819b55e5836e22ed617329c2e64bb89f93a1b7081"
+      "sha256": "854ffde6880066efc0ab7dc819b55e5836e22ed617329c2e64bb89f93a1b7081",
+      "descripcion": "La validez de contenido redactada en APA, con sus tablas: botón «Word» de la tarjeta."
     },
     "analizador/2-afe/afe_cargas.csv": {
       "bytes": 687,
-      "sha256": "ffd9025ac47ddfc4994b60ea64c56020d9d59890edebc7814946a08bd3443878"
+      "sha256": "ffd9025ac47ddfc4994b60ea64c56020d9d59890edebc7814946a08bd3443878",
+      "descripcion": "Las cargas factoriales, las comunalidades y la MSA de cada ítem: botón «CSV» del AFE."
     },
     "analizador/2-afe/afe_APA.docx": {
       "bytes": 17846,
-      "sha256": "9fa7b68653adf100a237f986979137f4dd4b73104db47afda93b8a33809b563a"
+      "sha256": "9fa7b68653adf100a237f986979137f4dd4b73104db47afda93b8a33809b563a",
+      "descripcion": "El AFE redactado en APA, con sus tablas: botón «Word» del AFE."
     },
     "analizador/3-invarianza/invarianza_APA.docx": {
       "bytes": 20680,
-      "sha256": "d0e3dd8bf8efc323bf34d3f6a3898eafa425b0257b86633ee57b1ead00e1f379"
+      "sha256": "d0e3dd8bf8efc323bf34d3f6a3898eafa425b0257b86633ee57b1ead00e1f379",
+      "descripcion": "La invarianza de medición redactada en APA, con sus tablas: botón «Word» de la tarjeta."
     },
     "analizador/4-capitulo/capitulo_resultados_APA.docx": {
       "bytes": 786320,
-      "sha256": "f8e17c2949c093d0da07ff3db5db186b44671475e3c7a254ed41885bd1cc15c5"
+      "sha256": "f8e17c2949c093d0da07ff3db5db186b44671475e3c7a254ed41885bd1cc15c5",
+      "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/4-capitulo/resultados_analisis.txt": {
       "bytes": 28067,
-      "sha256": "83662bd4a63f19b776770fee4345fb8fe9034fd31e9bff3552960fc29ecbbfee"
+      "sha256": "83662bd4a63f19b776770fee4345fb8fe9034fd31e9bff3552960fc29ecbbfee",
+      "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/4-capitulo/resultados.pdf": {
       "bytes": 1499452,
-      "sha256": "9b30d0c2b048e0af0e16f612674311ea21cc1ef3915220653a1f2e36442f017c",
+      "sha256": "0edb74df79cbee51cbbb25acdf084d5b66583e13b3808c96c52a419652e85389",
       "paginas": 38,
-      "impreso": "445214fc04381386ac770858d61a39053d6450e522560493b74c30372442ea3a"
+      "impreso": "18fcfb370e112f8e93ae9ac74a9a3578e10a1b7113dc7e0f9d05e372b2551584",
+      "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 24547,
-      "sha256": "bd687534dbdbdb9a0d59982d30a51731e30224450dac5ac6bf2af8074868991d"
+      "bytes": 24647,
+      "sha256": "e2d7df795bc553e6f1ba1be50c5a6df4bb4e09ec91a847ffd89d6838f9a2129e",
+      "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }
 }

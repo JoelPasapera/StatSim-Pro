@@ -39,6 +39,8 @@
 }
 .btn-lg { padding: 1rem 2rem; font-size: 1rem; }
 .btn:disabled { opacity: 0.42; cursor: not-allowed; }
+/* (2027.01.02) Ocupado, sin perder el foco (un botón disabled lo suelta y el foco vuelve al principio de la página) */
+.btn[aria-disabled="true"] { opacity: 0.55; cursor: progress; }
 .btn:focus-visible, .input:focus-visible, .nav-link:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;

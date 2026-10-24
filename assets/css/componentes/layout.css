@@ -8,6 +8,14 @@
     box-sizing: border-box;
 }
 .main { min-height: calc(100vh - 200px); padding: var(--spacing-2xl) 0; }
+/* (2027.01.02) Un aviso de error dentro de una sección (el código de una pestaña que no se pudo cargar: main.js; el catálogo
+   de los ejemplos que no se pudo leer: ejemplos/index.js) */
+.aviso-error {
+    text-align: left; padding: 0.85rem 1.1rem;
+    border: 1px solid rgba(248, 113, 113, 0.35); border-left: 4px solid var(--color-error);
+    border-radius: var(--radius-md); background: rgba(248, 113, 113, 0.06); color: var(--color-text);
+}
+.aviso-error .btn { margin: 0.4rem 0 0; }
 .section { display: none; }
 .section.active { display: block; animation: fadeIn 0.45s cubic-bezier(.22, .8, .3, 1); }
 @keyframes fadeIn {

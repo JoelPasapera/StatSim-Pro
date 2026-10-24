@@ -4,6 +4,11 @@
 // (2026.12.30) Con la sección en la dirección: el menú escribe «#buscador» en la barra (y en el historial: «Atrás» vuelve a
 // la sección anterior), y un enlace profundo («index.html#analizador») abre esa sección, sin la portada. Hasta la 2026.12.29
 // el menú no tocaba la dirección y el enlace profundo abría la portada con el Simulador detrás.
+// (2027.01.02) Cada vez que se muestra una sección, el aviso «seccion:mostrada» (main.js carga ahí las secciones de carga
+// perezosa, como «Ejemplos»); irASeccion para ir a una desde el código, y los enlaces con data-ir-a="id" (los de la portada,
+// Ayuda y las cabeceras de las secciones que llevan a «Ejemplos») van por el menú, como un clic en él.
+
+import { bus, EVENTOS } from './eventos.js';
 
 /** @returns {HTMLAnchorElement[]} */
 const enlacesDelMenu = () => /** @type {HTMLAnchorElement[]} */ ([...document.querySelectorAll('.nav-link')]);
@@ -28,6 +33,20 @@ function mostrarSeccion(id) {
         if (es) l.setAttribute('aria-current', 'page'); else l.removeAttribute('aria-current');
     });
     document.querySelectorAll('.section').forEach(section => section.classList.toggle('active', section.id === id));
+    bus.emit(EVENTOS.SECCION_MOSTRADA, { id });
+}
+
+/**
+ * (2027.01.02) Va a una sección del menú como si se pulsara su enlace (con la dirección, el historial y la portada que se
+ * oculta). false si no es una sección del menú.
+ * @param {string} id
+ * @returns {boolean}
+ */
+function irASeccion(id) {
+    const enlace = enlacesDelMenu().find(l => l.getAttribute('href') === '#' + id);
+    if (!enlace) return false;
+    enlace.click();
+    return true;
 }
 
 /** La sección del menú marcada en el HTML (la de arranque), para volver a ella con «Atrás» hasta la dirección sin «#». */
@@ -67,8 +86,12 @@ function configurarNavegacion() {
     };
     window.addEventListener('popstate', alCambiarDireccion);
     window.addEventListener('hashchange', alCambiarDireccion);
+    // (2027.01.02) los enlaces que llevan a una sección desde fuera del menú
+    document.querySelectorAll('a[data-ir-a]').forEach(a => a.addEventListener('click', e => {
+        if (irASeccion(a.getAttribute('data-ir-a') || '')) e.preventDefault();
+    }));
     // el enlace profundo
     if (seccionDe(location.hash)) alCambiarDireccion();
 }
 
-export { configurarNavegacion, mostrarSeccion, seccionDe };
+export { configurarNavegacion, mostrarSeccion, seccionDe, irASeccion };
