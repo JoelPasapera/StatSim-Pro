@@ -6,9 +6,12 @@
 // carpeta), se arman las direcciones de los archivos y se ordena lo que hay en cada caso. Sin DOM.
 // (2027.01.03) Con el guion de cada paso (lo que repite «Hazlo por mí»: hazlo/planes.js), si lo trae: un índice sin guiones
 // (el de unos ejemplos de la 2027.01.02) se lee igual, y su guía no ofrece «Hazlo por mí». Uno con guiones mal formados, no.
+// (2027.01.07) Y un caso cuyos guiones no cumplen las reglas de la guía (hazlo/reglas.js) se lee sin ellos: lo que diría de
+// sus descargas no sería cierto.
 
 import { tamanoLegible } from '../core/data/tamano.js';
-import { archivosDeLaAccion, guionValido } from './hazlo/planes.js';
+import { MAXIMO_ACCIONES, accionValida, archivosDeLaAccion, guionValido } from './hazlo/planes.js';
+import { loQueNoCumple } from './hazlo/reglas.js';
 
 /** La carpeta de los ejemplos, junto a index.html. */
 export const CARPETA_EJEMPLOS = 'ejemplos';
@@ -96,7 +99,9 @@ export function catalogoValido(x) {
 }
 
 /**
- * El catálogo de un texto (el de indice.json), comprobado.
+ * El catálogo de un texto (el de indice.json), comprobado. (2027.01.07) Un caso cuyos guiones no cumplen las reglas de la guía
+ * (hazlo/reglas.js: el generador no lo escribe; sí, uno hecho a mano) queda sin ellos, con un aviso en la consola: su guía no
+ * ofrece «Muéstrame» ni «Hazlo por mí», como la de un ejemplo de la 2027.01.02.
  * @param {string} contenido
  * @returns {Catalogo}
  */
@@ -104,8 +109,47 @@ export function leerCatalogo(contenido) {
     if (typeof contenido !== 'string' || contenido.length > MAXIMO_INDICE) throw new Error('El índice de los ejemplos («ejemplos/indice.json») es demasiado grande.');
     let datos;
     try { datos = JSON.parse(contenido.replace(/^\ufeff/, '')); } catch (e) { throw new Error('El índice de los ejemplos («ejemplos/indice.json») no es JSON válido.'); }
-    if (!catalogoValido(datos)) throw new Error('El índice de los ejemplos («ejemplos/indice.json») no tiene la forma que esta versión sabe leer: vuelve a generarlos o recarga sin caché.');
+    if (!catalogoValido(datos)) {
+        const malo = guionQueNoSabeHacer(datos);
+        if (malo) console.warn(`[StatSim] ${malo}.`);
+        throw new Error('El índice de los ejemplos («ejemplos/indice.json») no tiene la forma que esta versión sabe leer: vuelve a generarlos o recarga sin caché.');
+    }
+    for (const e of datos.casos) {
+        const malos = loQueNoCumple(e);
+        if (!malos.length) continue;
+        console.warn(`[StatSim] ejemplos/${e.carpeta}: sin «Muéstrame» ni «Hazlo por mí» (sus guiones no cumplen las reglas de la guía): ${malos.map(m => m.texto).join('; ')}.`);
+        delete e.guiones;
+    }
     return datos;
+}
+
+/**
+ * (2027.01.10, revisión) Para la consola, cuando el catálogo no tiene la forma debida: el primer caso con unos guiones que esta
+ * versión no sabe hacer, y por qué (los que no son una lista, o no uno por paso; el paso con algo que no es una lista de
+ * acciones, con una acción que no sabe hacer, con más de MAXIMO_ACCIONES o que sube un archivo que no es del caso). El mensaje
+ * de la página es para quien la usa, y no lo dice; hasta la 2027.01.09, tampoco la consola.
+ * @param {unknown} x
+ * @returns {string}
+ */
+function guionQueNoSabeHacer(x) {
+    const casos = esObjeto(x) && Array.isArray(x.casos) ? x.casos : [];
+    for (const e of casos) {
+        if (!esObjeto(e) || e.guiones === undefined) continue;
+        const caso = `ejemplos/${String(e.carpeta)}`, guiones = e.guiones;
+        if (!Array.isArray(guiones)) return `${caso}: sus guiones no son una lista`;
+        if (Array.isArray(e.pasos) && guiones.length !== e.pasos.length) return `${caso}: trae ${guiones.length} guiones para sus ${e.pasos.length} pasos`;
+        const rutas = new Set((Array.isArray(e.archivos) ? e.archivos : []).map(a => (esObjeto(a) ? a.ruta : undefined)));
+        for (let i = 0; i < guiones.length; i++) {
+            const g = guiones[i], paso = `${caso}: el paso ${i + 1}`;
+            if (!Array.isArray(g)) return `${paso} no trae una lista de acciones`;
+            const mala = g.find(a => !accionValida(a));
+            if (mala !== undefined) return `${paso} tiene una acción que esta versión no sabe hacer: ${JSON.stringify(mala).slice(0, 300)}`;
+            if (g.length > MAXIMO_ACCIONES) return `${paso} trae ${g.length} acciones: esta versión hace hasta ${MAXIMO_ACCIONES}`;
+            const ajeno = g.flatMap(archivosDeLaAccion).find(r => !rutas.has(r));
+            if (ajeno !== undefined) return `${paso} sube «${ajeno}», que no está entre los archivos del caso`;
+        }
+    }
+    return '';
 }
 
 /**
@@ -121,7 +165,9 @@ export function leerCatalogo(contenido) {
 export async function cargarCatalogo(obtener, version) {
     let r;
     try { r = await obtener(`${CARPETA_EJEMPLOS}/indice.json?v=${encodeURIComponent(version)}`); } catch (e) {
-        throw new Error(`No se pudo pedir el índice de los ejemplos: ${e instanceof Error ? e.message : e}`);
+        // (2027.01.04) en castellano: el error del navegador («Failed to fetch») no dice nada a quien lo lee
+        console.warn('[StatSim] índice de los ejemplos:', e);
+        throw new Error('No se pudo pedir el índice de los ejemplos: comprueba la conexión y vuelve a intentarlo.');
     }
     if (r.status === 404) throw new SinEjemplos();
     if (!r.ok) throw new Error(`No se pudo pedir el índice de los ejemplos (el sitio respondió ${r.status}).`);
@@ -150,7 +196,8 @@ export function urlDelArchivo(carpeta, ruta, version) {
 export async function bytesDelArchivo(e, ruta, { obtener, version }) {
     let r;
     try { r = await obtener(urlDelArchivo(e.carpeta, ruta, version)); } catch (err) {
-        throw new Error(`No se pudo descargar «${ruta}» (${err instanceof Error ? err.message : err}): comprueba la conexión y vuelve a intentarlo.`);
+        console.warn(`[StatSim] «${ruta}»:`, err);
+        throw new Error(`No se pudo descargar «${ruta}»: comprueba la conexión y vuelve a intentarlo.`);
     }
     if (!r.ok) throw new Error(`No se pudo descargar «${ruta}»: el sitio respondió ${r.status}.`);
     const bytes = new Uint8Array(await r.arrayBuffer());

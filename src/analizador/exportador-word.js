@@ -23,8 +23,9 @@ import { mostrarToast } from '../shared/toast.js';
 import { pCorrelacion } from '../core/stats/correlacion.js';
 import { aNumero, esPerdido, esColumnaNumerica } from '../core/data/celdas.js';
 import { fuerzaCorrelacionDispersion } from './motor/magnitudes.js';
-import { formatoP, numeroConMenos, pConSigno, terminoConSigno, textoP } from '../shared/formato-numero.js';
+import { formatoP, numeroConMenos, numeroFijo, pConSigno, terminoConSigno, textoP } from '../shared/formato-numero.js';
 import { escaparHTML } from '../shared/html.js';
+import { ANCHO_FIGURA, graficoEnPapel } from './graficos-en-papel.js';
 
 // ========================================
 // EXPORTADOR DEL CAPÍTULO DE RESULTADOS A WORD (APA 7)
@@ -48,16 +49,26 @@ const ExportadorWord = {
         </svg>`,
     _n: 0, // contador de tablas
     _f: 0, // contador de figuras
-    // Captura el SVG YA RENDERIZADO en la página con sus dimensiones (cero
-    // re-cálculo: XMLSerializer no muta el DOM). null si no existe.
+    // Captura el SVG YA RENDERIZADO en la página (cero re-cálculo: XMLSerializer no muta el DOM). null si no existe.
+    // (2027.01.11, revisión) La figura, de ANCHO_FIGURA y con la proporción de su lienzo (viewBox), escrita en la copia: hasta
+    // la 2027.01.10 salía siempre de 520 × 380 (el SVG no lleva width ni height), y un lienzo de otra proporción se estiraba
+    // (los histogramas y los Q-Q, al 0,855; la dispersión con un título largo, al 0,77: puntos ovalados y letras estrechas).
     _capturarSVG(idContenedor) {
         if (typeof document === 'undefined' || typeof XMLSerializer === 'undefined') return null;
         const cont = document.getElementById(idContenedor);
-        const svg = cont ? cont.querySelector('svg') : null;
+        const svg = /** @type {SVGSVGElement | null} */ (cont ? cont.querySelector('svg') : null);
         if (!svg) return null;
-        const w = +svg.getAttribute('width') || 520;
-        const h = +svg.getAttribute('height') || 380;
-        return { svg: new XMLSerializer().serializeToString(svg), w, h };
+        const vb = svg.viewBox && svg.viewBox.baseVal;
+        const w = ANCHO_FIGURA;
+        const h = vb && vb.width > 0 && vb.height > 0 ? Math.round(w * vb.height / vb.width) : 380;
+        // (2027.01.10, revisión) en papel: sus textos claros (los de la pantalla oscura), en tinta; se dibuja sobre blanco, y el
+        // título, los ejes y las leyendas salían casi blancos
+        const papel = graficoEnPapel(svg);
+        papel.setAttribute('width', String(w));
+        papel.setAttribute('height', String(h));
+        papel.style.removeProperty('width');
+        papel.style.removeProperty('height');
+        return { svg: new XMLSerializer().serializeToString(papel), w, h };
     },
     // Rasteriza un SVG a PNG base64 vía canvas a 2x (nitidez de impresión).
     // Word no renderiza SVG inline en HTML, pero sí <img> con data URI PNG.
@@ -226,6 +237,58 @@ const ExportadorWord = {
     _respaldoCriba(s, resultado) {
         return { coeficiente: s.coeficiente, pValor: pCorrelacion(s.coeficiente, resultado.n, { bilateral: resultado.tipoPrueba !== 'unilateral' }),
             tipoCorrelacion: s.metodo === 'Spearman' ? 'spearman' : 'pearson', _respaldoCriba: true };
+    },
+    /**
+     * La sección del SEM, si el investigador ajustó modelos: sus índices de ajuste, sus avisos, sus parámetros, su validez,
+     * su diagrama y la lectura de su ajuste. (2027.01.14, revisión) En su propio método, para probarla sola, y con los nombres
+     * que vienen de la sintaxis (los de las latentes) o de los datos escapados, como en la tarjeta: hasta la 2027.01.13, los
+     * avisos, los parámetros y la validez los escribían tal cual («F<b> =~ …» dejaba en negrita el resto del capítulo).
+     * @returns {string}
+     */
+    _seccionSEM() {
+        if (typeof SEM === 'undefined' || !SEM._ultimos || !SEM._ultimos.length) return '';
+        let h = '';
+        const fx = numeroFijo;   // (2027.01.13, revisión) sin «-0.000»
+        const fp = p => formatoP(p);
+        h += this._seccion('Modelado de ecuaciones estructurales (SEM)');
+        h += this._p('El modelado de ecuaciones estructurales pone a prueba simultáneamente la calidad de la medición (si los indicadores reflejan los constructos propuestos) y las relaciones teóricas entre constructos: el modelo especificado implica una matriz de covarianzas, y su ajuste se evalúa contrastando esa matriz implicada con la observada mediante máxima verosimilitud. Los índices se interpretan con los umbrales de Hu y Bentler (1999): CFI y TLI ≥ .95 (aceptable desde .90), RMSEA ≤ .06 (razonable hasta .08) y SRMR ≤ .08; el χ² se reporta siempre, con la salvedad de su sensibilidad al tamaño muestral.');
+        h += this._tablaAPA('Índices de ajuste de los modelos estimados',
+            ['Modelo', 'χ²', 'gl', 'p', 'CFI', 'TLI', 'RMSEA [IC 90 %]', 'SRMR'],
+            SEM._ultimos.map(M => [M.etiquetaModelo, fx(M.chi2, 2), M.gl, fp(M.pChi2), fx(M.CFI, 3), fx(M.TLI, 3),
+                `${fx(M.RMSEA, 3)} [${fx(M.rmseaIC[0], 3)}, ${fx(M.rmseaIC[1], 3)}]`, fx(M.SRMR, 3)]),
+            (SEM._ultimos[SEM._ultimos.length - 1].estimador === 'WLSMV'
+                ? 'Estimación WLSMV: mínimos cuadrados ponderados diagonalmente sobre las correlaciones policóricas, con errores estándar robustos y χ² corregido en media y varianza (Muthén, 1984; Asparouhov y Muthén, 2010). n = '
+                : 'Estimación por máxima verosimilitud (BFGS con gradiente analítico; errores estándar por la información esperada). n = ') + SEM._ultimos[SEM._ultimos.length - 1].n + '.');
+        const F = SEM._ultimos[SEM._ultimos.length - 1];
+        if (F.estimador === 'WLSMV') (this._refsExtra = this._refsExtra || []).push(...REFERENCIAS_WLSMV);
+        if (!F.convergio) h += this._p(`Advertencia: la estimación del modelo «${F.etiquetaModelo}» no convergió; sus parámetros e índices no deben interpretarse.`);
+        // (2027.01.14, revisión) escapados: los de lo que la sintaxis repite llevan sus nombres
+        (F.avisos || []).forEach(a => { h += this._p('Advertencia: ' + escaparHTML(a)); });
+        h += this._tablaAPA(`Parámetros del modelo «${F.etiquetaModelo}»`,
+            ['Parámetro', 'Estimado', 'Estandarizado', 'EE', 'z', 'p'],
+            F.parametros.map(p => [escaparHTML(p.nombre), fx(p.estimado), p.tipo === 'coeficiente' && typeof SEMUI !== 'undefined' ? fx(SEMUI._std(F, p.nombre, p.estimado), 2) : '—', fx(p.se), fx(p.z, 2), fp(p.pValor)]),
+            'Estandarizados calculados con las desviaciones típicas implicadas por el modelo. La primera carga de cada factor se fija en 1 (método del marcador).');
+        if (F.validez) {   // (2026.10.16) validez convergente y discriminante
+            h += this._tablaAPA(`Validez convergente y discriminante del modelo «${F.etiquetaModelo}»`, CABECERA_VALIDEZ, filasValidez(F.validez).map(f => f.map(c => escaparHTML(c))), NOTA_VALIDEZ);
+            if (F.validez.porFactor.length > 1) h += this._tablaAPA(`Razón heterorrasgo-monorrasgo (HTMT) del modelo «${F.etiquetaModelo}»`, cabeceraHTMT(F.validez).map(c => escaparHTML(c)), filasHTMT(F.validez).map(f => f.map(c => escaparHTML(c))), 'Valores < .85 indican validez discriminante (Henseler et al., 2015).');
+            h += this._p(escaparHTML(redactarValidez(F.validez)));
+            (this._refsExtra = this._refsExtra || []).push(...REFERENCIAS_VALIDEZ);
+        }
+        if (SEM._ultimoDiagramaPNG) {
+            this._png = this._png || {};
+            this._png['semDiagrama'] = SEM._ultimoDiagramaPNG;
+            h += this._figura('semDiagrama', `Diagrama de rutas del modelo «${F.etiquetaModelo}»`,
+                'Rectángulos: variables observadas; elipses: variables latentes. Los valores sobre las flechas son coeficientes estandarizados.');
+        }
+        if (typeof SEMUI !== 'undefined' && SEM._ultimos.length >= 2) {
+            h += this._p(SEMUI.htmlComparacion().replace(/<table[\s\S]*?<\/table>/, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+        }
+        h += this._p(`Lectura del ajuste del modelo «${F.etiquetaModelo}»: ${F.CFI >= 0.95 && F.RMSEA <= 0.06 && F.SRMR <= 0.08
+            ? 'los índices se sitúan en la zona de excelente ajuste conjunto (regla combinada de Hu y Bentler, 1999): la estructura propuesta reproduce fielmente el patrón de covariación observado.'
+            : F.CFI >= 0.90 && F.RMSEA <= 0.08
+                ? 'los índices se sitúan en la zona aceptable: el modelo constituye una aproximación razonable, aunque los residuos mayores merecen revisión antes de considerarlo definitivo.'
+                : 'los índices quedan por debajo de los umbrales convencionales: el modelo requiere reespecificación con fundamento teórico (revisar la pertenencia de indicadores, la dimensionalidad de los constructos o relaciones omitidas) antes de cualquier interpretación sustantiva.'}`);
+        return h;
     },
     generarCapitulo(ctx) {
         this._n = 0;
@@ -537,47 +600,7 @@ const ExportadorWord = {
             (RG.avisos || []).forEach(a => { h += this._p(`Nota metodológica: ${a}`); });
         }
         // ---- SEM (si el investigador ajustó modelos) ----
-        if (typeof SEM !== 'undefined' && SEM._ultimos && SEM._ultimos.length) {
-            const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
-            const fp = p => formatoP(p);
-            h += this._seccion('Modelado de ecuaciones estructurales (SEM)');
-            h += this._p('El modelado de ecuaciones estructurales pone a prueba simultáneamente la calidad de la medición (si los indicadores reflejan los constructos propuestos) y las relaciones teóricas entre constructos: el modelo especificado implica una matriz de covarianzas, y su ajuste se evalúa contrastando esa matriz implicada con la observada mediante máxima verosimilitud. Los índices se interpretan con los umbrales de Hu y Bentler (1999): CFI y TLI ≥ .95 (aceptable desde .90), RMSEA ≤ .06 (razonable hasta .08) y SRMR ≤ .08; el χ² se reporta siempre, con la salvedad de su sensibilidad al tamaño muestral.');
-            h += this._tablaAPA('Índices de ajuste de los modelos estimados',
-                ['Modelo', 'χ²', 'gl', 'p', 'CFI', 'TLI', 'RMSEA [IC 90 %]', 'SRMR'],
-                SEM._ultimos.map(M => [M.etiquetaModelo, fx(M.chi2, 2), M.gl, fp(M.pChi2), fx(M.CFI, 3), fx(M.TLI, 3),
-                    `${fx(M.RMSEA, 3)} [${fx(M.rmseaIC[0], 3)}, ${fx(M.rmseaIC[1], 3)}]`, fx(M.SRMR, 3)]),
-                (SEM._ultimos[SEM._ultimos.length - 1].estimador === 'WLSMV'
-                    ? 'Estimación WLSMV: mínimos cuadrados ponderados diagonalmente sobre las correlaciones policóricas, con errores estándar robustos y χ² corregido en media y varianza (Muthén, 1984; Asparouhov y Muthén, 2010). n = '
-                    : 'Estimación por máxima verosimilitud (BFGS con gradiente analítico; errores estándar por la información esperada). n = ') + SEM._ultimos[SEM._ultimos.length - 1].n + '.');
-            const F = SEM._ultimos[SEM._ultimos.length - 1];
-            if (F.estimador === 'WLSMV') (this._refsExtra = this._refsExtra || []).push(...REFERENCIAS_WLSMV);
-            if (!F.convergio) h += this._p(`Advertencia: la estimación del modelo «${F.etiquetaModelo}» no convergió; sus parámetros e índices no deben interpretarse.`);
-            (F.avisos || []).forEach(a => { h += this._p('Advertencia: ' + a); });
-            h += this._tablaAPA(`Parámetros del modelo «${F.etiquetaModelo}»`,
-                ['Parámetro', 'Estimado', 'Estandarizado', 'EE', 'z', 'p'],
-                F.parametros.map(p => [p.nombre, fx(p.estimado), p.tipo === 'coeficiente' && typeof SEMUI !== 'undefined' ? fx(SEMUI._std(F, p.nombre, p.estimado), 2) : '—', fx(p.se), fx(p.z, 2), fp(p.pValor)]),
-                'Estandarizados calculados con las desviaciones típicas implicadas por el modelo. La primera carga de cada factor se fija en 1 (método del marcador).');
-            if (F.validez) {   // (2026.10.16) validez convergente y discriminante
-                h += this._tablaAPA(`Validez convergente y discriminante del modelo «${F.etiquetaModelo}»`, CABECERA_VALIDEZ, filasValidez(F.validez), NOTA_VALIDEZ);
-                if (F.validez.porFactor.length > 1) h += this._tablaAPA(`Razón heterorrasgo-monorrasgo (HTMT) del modelo «${F.etiquetaModelo}»`, cabeceraHTMT(F.validez), filasHTMT(F.validez), 'Valores < .85 indican validez discriminante (Henseler et al., 2015).');
-                h += this._p(redactarValidez(F.validez));
-                (this._refsExtra = this._refsExtra || []).push(...REFERENCIAS_VALIDEZ);
-            }
-            if (SEM._ultimoDiagramaPNG) {
-                this._png = this._png || {};
-                this._png['semDiagrama'] = SEM._ultimoDiagramaPNG;
-                h += this._figura('semDiagrama', `Diagrama de rutas del modelo «${F.etiquetaModelo}»`,
-                    'Rectángulos: variables observadas; elipses: variables latentes. Los valores sobre las flechas son coeficientes estandarizados.');
-            }
-            if (typeof SEMUI !== 'undefined' && SEM._ultimos.length >= 2) {
-                h += this._p(SEMUI.htmlComparacion().replace(/<table[\s\S]*?<\/table>/, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
-            }
-            h += this._p(`Lectura del ajuste del modelo «${F.etiquetaModelo}»: ${F.CFI >= 0.95 && F.RMSEA <= 0.06 && F.SRMR <= 0.08
-                ? 'los índices se sitúan en la zona de excelente ajuste conjunto (regla combinada de Hu y Bentler, 1999): la estructura propuesta reproduce fielmente el patrón de covariación observado.'
-                : F.CFI >= 0.90 && F.RMSEA <= 0.08
-                    ? 'los índices se sitúan en la zona aceptable: el modelo constituye una aproximación razonable, aunque los residuos mayores merecen revisión antes de considerarlo definitivo.'
-                    : 'los índices quedan por debajo de los umbrales convencionales: el modelo requiere reespecificación con fundamento teórico (revisar la pertenencia de indicadores, la dimensionalidad de los constructos o relaciones omitidas) antes de cualquier interpretación sustantiva.'}`);
-        }
+        h += this._seccionSEM();
         // ---- Matriz de correlaciones ----
         {
             const colsMx = [[var1, et1], [var2, et2]];

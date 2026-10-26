@@ -27,12 +27,22 @@ class Nodo {
     dispatchEvent(ev) {
         ev.target = ev.target || this;
         const ruta = []; for (let n = this; n; n = n.parentNode) ruta.push(n);
-        if (this.ownerDocument && ruta[ruta.length - 1] !== this.ownerDocument) ruta.push(this.ownerDocument);
+        const doc = this.ownerDocument;
+        if (doc && ruta[ruta.length - 1] !== doc) ruta.push(doc);
+        let alDocumento = false;
         for (const n of ruta) {
             ev.currentTarget = n;
             for (const fn of [...(n._oyentes.get(ev.type) || [])]) { if (typeof fn === 'function') fn.call(n, ev); else if (fn && fn.handleEvent) fn.handleEvent(ev); if (ev._inmediato) break; }
             const inline = n['on' + ev.type]; if (typeof inline === 'function') inline.call(n, ev);
+            if (n === doc) alDocumento = true;
             if (!ev.bubbles || ev._parar) break;
+        }
+        // (2027.01.04) la ventana, después del documento, como en el navegador: lo registrado con window.addEventListener oye
+        // lo que llega al documento (o se lanza a él o a la ventana) después de los oyentes del documento, se registraran
+        // cuando se registraran (antes, era uno más del documento, en el orden en que se registró)
+        const ventana = doc && doc._ventana;
+        if (ventana && alDocumento && !ev._parar) {
+            for (const fn of [...(ventana.get(ev.type) || [])]) { if (typeof fn === 'function') fn.call(globalThis, ev); else if (fn && fn.handleEvent) fn.handleEvent(ev); if (ev._inmediato) break; }
         }
         return !ev.defaultPrevented;
     }
@@ -304,6 +314,11 @@ export function crearEntorno(html) {
     if (!('navigator' in window) || !window.navigator) Object.defineProperty(window, 'navigator', { value: { userAgent: 'minidom', language: 'es' }, configurable: true });
     window.URL.createObjectURL = blob => { descargas.push(blob); return 'blob:' + descargas.length; };
     window.URL.revokeObjectURL = () => {};
-    window.addEventListener = (t, f) => document.addEventListener(t, f); window.removeEventListener = (t, f) => document.removeEventListener(t, f); window.dispatchEvent = e => document.dispatchEvent(e);
+    // (2027.01.04) los oyentes de la ventana, aparte: oyen después de los del documento (Nodo.dispatchEvent)
+    const ventana = new Map();
+    document._ventana = ventana;
+    window.addEventListener = (t, f) => { if (!ventana.has(t)) ventana.set(t, []); ventana.get(t).push(f); };
+    window.removeEventListener = (t, f) => { const l = ventana.get(t); if (l) { const i = l.indexOf(f); if (i >= 0) l.splice(i, 1); } };
+    window.dispatchEvent = e => document.dispatchEvent(e);
     return { document, window, descargas, toasts, disparar: (el, tipo, opciones = { bubbles: true, cancelable: true }) => el.dispatchEvent(new Evento(tipo, opciones)) };
 }

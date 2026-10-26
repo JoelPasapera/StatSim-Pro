@@ -9,6 +9,10 @@
      "modo papel" claro: son vista previa del Word.
    ============================================================ */
 * { margin: 0; padding: 0; box-sizing: border-box; }
+/* (2027.01.04) lo que lleva el atributo hidden no se ve nunca: una regla con display le ganaba al estilo del navegador
+   (.btn es inline-flex y .boot-progreso, flex), y se veían los «Cancelar» y las barras de progreso de los cálculos
+   del AFE, la invarianza y el bootstrap antes de empezar */
+[hidden] { display: none !important; }
 
 :root {
     color-scheme: dark;

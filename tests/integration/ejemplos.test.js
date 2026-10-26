@@ -18,6 +18,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CASOS, indiceDeLosEjemplos } from '../navegador/ejemplos.mjs';
@@ -195,5 +196,28 @@ test('ejemplos/indice.json es el catálogo que dan las carpetas de los casos (el
         assert.ok(e.destacados.length >= 1 && e.pasos.length >= 3 && e.repetir.hasta <= e.pasos.length, e.carpeta);
         assert.ok(/Guardar proyecto/.test(e.pasos[e.pasos.length - 1]), `${e.carpeta}: el último paso es guardar el proyecto (opcional al abrirlo)`);
         assert.ok(e.repetir.hasta < e.pasos.length, `${e.carpeta}: guardar el proyecto no está entre lo que se repite`);
+    }
+});
+
+test('(2027.01.07) el índice no se escribe con un caso cuyos guiones no cumplen las reglas de la guía (la página lo leería sin ellos)', { skip: presentes.length !== CASOS.length && 'faltan casos' }, async () => {
+    const recetas = await Promise.all(CASOS.map(async c => (await import(new URL(`../navegador/recetas/${c}.mjs`, import.meta.url).href)).default));
+    const otra = fs.mkdtempSync(path.join(os.tmpdir(), 'statsim-indice-'));
+    const avisar = console.warn;
+    try {
+        for (const c of CASOS) {
+            fs.mkdirSync(path.join(otra, c));
+            fs.copyFileSync(path.join(ejemplos, c, 'verificacion.json'), path.join(otra, c, 'verificacion.json'));
+        }
+        assert.equal(indiceDeLosEjemplos(recetas, otra), fs.readFileSync(path.join(ejemplos, 'indice.json'), 'utf8'), 'con las de verdad, el mismo índice');
+        // el caso 2, con otra comparación de grupos en el paso 4 (la de su paso 3 ya está): no cumple «cada tarjeta, una vez»
+        const ruta = path.join(otra, '02-comparativo', 'verificacion.json');
+        const v = JSON.parse(fs.readFileSync(ruta, 'utf8'));
+        v.ficha.guiones[3] = [{ accion: 'compararGrupos', datos: { grupo: 'Sexo', numerica: 'General_I' } }, ...v.ficha.guiones[3]];
+        fs.writeFileSync(ruta, JSON.stringify(v));
+        console.warn = () => {};
+        assert.throws(() => indiceDeLosEjemplos(recetas, otra), /^Error: ejemplos\/02-comparativo: sus guiones no cumplen las reglas de la guía/);
+    } finally {
+        console.warn = avisar;
+        fs.rmSync(otra, { recursive: true, force: true });
     }
 });

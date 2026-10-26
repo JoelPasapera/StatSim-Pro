@@ -57,6 +57,33 @@ const numero = (/** @type {unknown} */ x) => typeof x === 'number' && Number.isF
 const TIPOS_DE_ANALISIS = { correlacion: 'Correlación', comparacion: 'Comparación de grupos', asociacion: 'Asociación (χ²)' };
 const PRUEBAS = { bilateral: 'bilateral', unilateral: 'unilateral' };
 const ESTIMADORES = ['ML', 'WLSMV'];
+/** (2027.01.07) Los papeles de un modelo del SEM, como en su tarjeta (sem-ui.js, «¿Qué papel juega este modelo?»). */
+export const PAPELES_DEL_SEM = Object.freeze(['Modelo inicial', 'Modelo alternativo', 'Modelo final']);
+/** El papel de un modelo del SEM de un guion: el suyo o, sin él, el que la tarjeta trae elegido. @param {Record<string, any>} d */
+export const papelDelSEM = d => d.etiqueta || PAPELES_DEL_SEM[0];
+
+/**
+ * (2027.01.07, revisión) Las opciones de las listas de la página (y de los botones de opción del análisis) que un guion elige
+ * por su valor, las mismas que ofrece cada una: con otra, «Hazlo por mí» no podría elegirla («la lista no tiene esa opción»).
+ * Lo comprueba tests/ui/ejemplos-hazlo.test.js contra la página. Hasta la 2027.01.06 accionValida admitía cualquier papel del
+ * SEM, cualquier número de réplicas del AFE o cualquier confianza de la V de Aiken.
+ * @type {Readonly<Record<string, readonly string[]>>}
+ */
+export const OPCIONES_DE_LAS_LISTAS = Object.freeze({
+    'input[name="tipoAnalisis"]': Object.keys(TIPOS_DE_ANALISIS),
+    'input[name="tipoPrueba"]': Object.keys(PRUEBAS),
+    '#semEtiqueta': PAPELES_DEL_SEM,
+    '#semEstimador': ESTIMADORES,
+    '#afeCorrelacion': ['auto', 'policorica', 'pearson'],
+    '#afeFactores': ['paralelo', '1', '2', '3', '4', '5', '6', '7', '8'],
+    '#afeRotacion': ['oblimin', 'promax', 'varimax', 'ninguna'],
+    '#afeB': ['100', '200', '500'],
+    '#aikenConfianza': ['0.9', '0.95', '0.975', '0.99', '0.999'],
+    '#aikenV0': ['0.5', '0.7', '0.8'],
+    '#invEstimador': ESTIMADORES,
+});
+/** ¿Es una de las opciones de esa lista (o no se da)? Los números, por su texto (como el valor de la opción). @param {unknown} x @param {string} lista */
+const opcionDe = (x, lista) => x === undefined || ((typeof x === 'string' || (typeof x === 'number' && Number.isFinite(x))) && OPCIONES_DE_LAS_LISTAS[lista].includes(String(x)));
 
 // ------------------------------------------------------------------------------------------------ los planes
 
@@ -138,7 +165,7 @@ function planCompararGrupos({ grupo, numerica, covariable = '', adicionales = []
 }
 
 /** La tarjeta del SEM: el modelo, su nombre y el estimador; «¿Es adecuado usar SEM aquí?» y «Ajustar modelo». @param {Record<string, any>} d @returns {Op[]} */
-function planSEM({ sintaxis, etiqueta = 'Modelo inicial', estimador = 'ML' }) {
+function planSEM({ sintaxis, etiqueta = PAPELES_DEL_SEM[0], estimador = 'ML' }) {
     return [
         ir('analizador'),
         { op: 'poner', selector: '#semSintaxis', valor: sintaxis, nombre: 'La sintaxis del modelo' },
@@ -190,7 +217,7 @@ function planAiken({ minimo, maximo, confianza = 0.95, v0 = 0.7, criterios }) {
         { op: 'poner', selector: '#aikenMaximo', valor: String(maximo), nombre: `Escala: hasta ${maximo}` },
         { op: 'poner', selector: '#aikenConfianza', valor: String(confianza), nombre: `Confianza: ${confianza}` },
         { op: 'poner', selector: '#aikenV0', valor: String(v0), nombre: `Criterio V₀: ${v0}` },
-        { op: 'bloques', bloques, agregar: '#aikenAgregarCriterio', quitar: '.btn-delete', n: criterios.length, nombre: criterios.length === 1 ? 'Un criterio' : `${criterios.length} criterios` },
+        { op: 'bloques', bloques, agregar: '#aikenAgregarCriterio', quitar: '.btn-delete', n: criterios.length, nombre: `Criterios en total: ${criterios.length === 1 ? 'uno' : criterios.length}` },   // (2027.01.04) junto a «+ Agregar criterio», «3 criterios» parecía pedir tres más
     ];
     criterios.forEach((/** @type {{ nombre: string, archivo: string }} */ c, /** @type {number} */ k) => {
         ops.push({ op: 'ponerEnBloque', bloques, indice: k, selector: '[aria-label="Nombre del criterio"]', valor: c.nombre, nombre: `Criterio ${k + 1}: ${c.nombre}` });
@@ -235,6 +262,111 @@ function planExportar({ word = true }) {
     ];
 }
 
+// ------------------------------------------------------------------------------------------------ lo que la página puede hacer
+
+/**
+ * (2027.01.10, revisión) Los límites de la página que un guion no puede pasar (ui/ejemplos-hazlo.test.js los compara con la
+ * página): «＋ Agregar variable» y «＋ Agregar predictor» se quedan en 6 cada uno (analizador/ui/analisis.js); la escala de la
+ * V de Aiken, de números enteros y con 21 categorías como mucho (psicometria/aiken.js, validarEntrada); el AFE, con 3 ítems
+ * distintos o más (psicometria/afe-ui.js), que su campo separa por comas, puntos y comas o espacios. (2027.01.11, revisión) Y
+ * el nombre de un criterio de la V de Aiken, de 60 caracteres como mucho (su campo: psicometria/aiken-ui.js).
+ */
+export const LIMITES_DE_LA_PAGINA = Object.freeze({ variablesAdicionales: 6, predictoresAdicionales: 6, categoriasDeAiken: 21, itemsDelAFE: 3, nombreDeCriterio: 60 });
+
+/** Un análisis, en una frase («una comparación de grupos»). @param {string} tipo */
+const unAnalisis = tipo => (tipo === 'comparacion' ? 'una comparación de grupos' : tipo === 'asociacion' ? 'una asociación (χ²)' : 'una correlación');
+
+/**
+ * Lo que la página no puede hacer de un análisis (con la forma debida): el motivo, o ''. Con la misma variable dos veces no
+ * analiza; las variables y los predictores adicionales no pasan de sus límites; y la regresión, que solo hace con una
+ * correlación, la deja fuera sin que el paso falle con su variable dependiente vacía o entre los predictores, o con un
+ * predictor repetido (analizador/ui/analisis.js, ejecutarRegresionBivariadaOpcional); su interacción, solo desde dos
+ * predictores (con uno, su casilla no se ve). (2027.01.11, revisión) Las variables adicionales y la prueba unilateral, solo con
+ * una correlación (con una comparación o una asociación no las usa), y la unilateral, solo de dos variables (la matriz de
+ * correlaciones no la usa); y la regresión de Poisson, solo con los efectos principales (regresion.js, la ajusta sin la
+ * interacción ni el término cuadrático).
+ * @param {Record<string, any>} d
+ * @returns {string}
+ */
+function noPuedeAnalizar(d) {
+    const [v1, v2, ...adicionales] = /** @type {string[]} */ (d.variables), r = d.regresion, L = LIMITES_DE_LA_PAGINA;
+    if (v1 === v2) return `la misma variable dos veces (${v1}): la página no analiza («Las variables deben ser diferentes»)`;
+    if (adicionales.length > L.variablesAdicionales) return `${adicionales.length} variables adicionales: la página admite ${L.variablesAdicionales}`;
+    if (d.tipo !== 'correlacion' && adicionales.length) return `${adicionales.length === 1 ? 'una variable adicional' : `${adicionales.length} variables adicionales`} con ${unAnalisis(d.tipo)}: la página solo las usa en una correlación`;
+    if (d.prueba === 'unilateral' && d.tipo !== 'correlacion') return `una prueba unilateral con ${unAnalisis(d.tipo)}: la página la hace solo en la correlación de dos variables`;
+    if (d.prueba === 'unilateral' && adicionales.some(v => v !== v1 && v !== v2)) return 'una prueba unilateral con una matriz de correlaciones: la página la hace solo en la correlación de dos variables';
+    if (!r) return '';
+    const predictores = /** @type {string[]} */ (r.predictores);
+    if (d.tipo !== 'correlacion') return `una regresión con ${unAnalisis(d.tipo)}: la página la hace solo con una correlación`;
+    if (!r.dependiente) return 'una regresión sin su variable dependiente: la página no la hace';
+    if (predictores.includes(r.dependiente)) return `una regresión con su variable dependiente (${r.dependiente}) entre los predictores: la página no la hace («Y no puede estar entre los predictores»)`;
+    if (new Set(predictores).size < predictores.length) return 'una regresión con un predictor repetido: la página no la estima';
+    if (predictores.length - 1 > L.predictoresAdicionales) return `una regresión con ${predictores.length} predictores: la página admite ${L.predictoresAdicionales + 1}`;
+    if (r.interaccion && predictores.length < 2) return 'la interacción de una regresión con un solo predictor: la página la ofrece desde dos';
+    if (r.poisson && (r.interaccion || r.cuadratico)) return `una regresión de Poisson con ${r.interaccion && r.cuadratico ? 'la interacción y el término cuadrático' : r.interaccion ? 'la interacción' : 'el término cuadrático'}: la página la ajusta solo con los efectos principales`;
+    return '';
+}
+
+/**
+ * (2027.01.11, revisión) Lo que la página no puede hacer de una comparación entre grupos: su agrupación es una variable de
+ * texto, y la numérica, la covariable y las adicionales, de números (comparacion-grupos.js, actualizarSelects): la misma no
+ * puede estar en las dos clases de listas (el paso fallaría: «la lista no tiene esa opción»). Con la numérica como covariable
+ * no hace la ANCOVA («la covariable no puede ser la misma variable numérica que comparas»), y entre las adicionales la quita
+ * de la MANOVA; una adicional repetida, la usa una vez.
+ * @param {Record<string, any>} d
+ * @returns {string}
+ */
+function noPuedeCompararGrupos({ grupo, numerica, covariable = '', adicionales = [] }) {
+    const extra = /** @type {string[]} */ (adicionales);
+    // (2027.01.12, revisión) sin una de las dos, ese es el motivo (con la agrupación vacía y sin covariable, decía «su
+    // agrupación () como covariable»)
+    if (!grupo) return 'una comparación entre grupos sin su variable de agrupación: la página no la hace («Selecciona ambas variables»)';
+    if (!numerica) return 'una comparación entre grupos sin su variable numérica: la página no la hace («Selecciona ambas variables»)';
+    if (grupo === numerica) return `una comparación entre grupos con la misma variable (${grupo}) como agrupación y como numérica: la página no la hace (la agrupación es de texto, y la numérica, de números)`;
+    if (covariable === grupo) return `una comparación entre grupos con su agrupación (${grupo}) como covariable: la página no la hace (la agrupación es de texto, y la covariable, de números)`;
+    if (extra.includes(grupo)) return `una comparación entre grupos con su agrupación (${grupo}) entre las variables adicionales: la página no la hace (la agrupación es de texto, y las adicionales, de números)`;
+    if (covariable && covariable === numerica) return `una ANCOVA con la variable numérica (${numerica}) como covariable: la página no la hace («la covariable no puede ser la misma variable numérica que comparas»)`;
+    if (extra.includes(numerica)) return `una MANOVA con la variable numérica (${numerica}) entre las adicionales: la página la quita de ellas`;
+    if (new Set(extra).size < extra.length) return 'una MANOVA con una variable adicional repetida: la página la usa una vez';
+    return '';
+}
+
+/**
+ * Lo que la página no puede hacer de la V de Aiken: su escala (las valoraciones son de sus archivos) y (2027.01.11, revisión) el
+ * nombre de un criterio más largo que su campo, que lo cortaría.
+ * @param {Record<string, any>} d
+ */
+function noPuedeAiken({ minimo, maximo, criterios }) {
+    const largo = /** @type {Array<{ nombre: string }>} */ (criterios).find(c => c.nombre.length > LIMITES_DE_LA_PAGINA.nombreDeCriterio);
+    if (largo) return `un criterio de la V de Aiken con un nombre de ${largo.nombre.length} caracteres («${largo.nombre.slice(0, 30)}…»): su campo admite ${LIMITES_DE_LA_PAGINA.nombreDeCriterio}`;
+    if (!Number.isInteger(minimo) || !Number.isInteger(maximo)) return `una escala de ${minimo} a ${maximo}: la página la quiere de números enteros`;
+    if (maximo <= minimo) return `una escala de ${minimo} a ${maximo}: la página quiere el máximo mayor que el mínimo`;
+    const categorias = maximo - minimo + 1;
+    return categorias > LIMITES_DE_LA_PAGINA.categoriasDeAiken ? `una escala de ${categorias} categorías: la página admite ${LIMITES_DE_LA_PAGINA.categoriasDeAiken}` : '';
+}
+
+/** Lo que la página no puede hacer de un AFE con sus ítems: menos de 3 distintos, o uno que su campo partiría. @param {Record<string, any>} d */
+function noPuedeAFE({ items }) {
+    if (!items) return '';
+    const partido = /** @type {string[]} */ (items).find(it => /[,;\s]/.test(it));
+    if (partido !== undefined) return `un AFE con el ítem «${partido}»: su campo separa los ítems por comas, puntos y comas o espacios`;
+    const distintos = new Set(items).size;
+    return distintos < LIMITES_DE_LA_PAGINA.itemsDelAFE ? `un AFE de ${distintos} ${distintos === 1 ? 'ítem' : 'ítems'}: la página lo hace desde ${LIMITES_DE_LA_PAGINA.itemsDelAFE}` : '';
+}
+
+/**
+ * Lo que la página no puede hacer de la invarianza: sin su modelo, ni la estricta con WLSMV ni agrupar las categorías con ML
+ * (sus casillas están desactivadas: psicometria/invarianza-ui.js).
+ * @param {Record<string, any>} d
+ */
+function noPuedeInvarianza({ sintaxis, delSEM, estimador, estricta, agrupar }) {
+    const wlsmv = estimador === 'WLSMV';
+    if (!delSEM && !(sintaxis || '').trim()) return 'la invarianza sin su modelo (ni su sintaxis ni el de la sección SEM): la página no la evalúa';
+    if (wlsmv && estricta) return 'la invarianza estricta con WLSMV: la página la ofrece solo con ML';
+    if (!wlsmv && agrupar !== undefined) return 'agrupar las categorías sin respuestas con ML: la página lo ofrece solo con WLSMV';
+    return '';
+}
+
 /** «Guardar proyecto», en Ayuda: solo se señala. @returns {Op[]} */
 function planGuardarProyecto() {
     return [ir('ayuda'), { op: 'senalar', selector: '#btnGuardarProyecto', nombre: 'Todo, en un archivo: «Guardar proyecto»' }];
@@ -242,8 +374,9 @@ function planGuardarProyecto() {
 
 /**
  * Las acciones que puede llevar un guion: su título (lo que dice la guía al terminarla; el de una que se repite en un paso,
- * con lo que la distingue), si «Hazlo por mí» la hace, cómo se comprueban sus datos y su plan.
- * @type {Record<string, { titulo: string | ((d: Record<string, any>) => string), ejecutable: boolean, valida: (d: Record<string, any>) => boolean, plan: (d: Record<string, any>) => Op[] }>}
+ * con lo que la distingue), si «Hazlo por mí» la hace, cómo se comprueban sus datos, su plan y (2027.01.10) lo que la página no
+ * puede hacer de ella aunque tenga la forma debida (noPuede: el motivo, o '').
+ * @type {Record<string, { titulo: string | ((d: Record<string, any>) => string), ejecutable: boolean, valida: (d: Record<string, any>) => boolean, plan: (d: Record<string, any>) => Op[], noPuede?: (d: Record<string, any>) => string }>}
  */
 const ACCIONES = {
     usarBaseDelSimulador: { titulo: 'Usar los datos del Simulador', ejecutable: true, valida: d => soloClaves(d, []), plan: planUsarBase },
@@ -252,40 +385,49 @@ const ACCIONES = {
         valida: d => soloClaves(d, ['titulo', 'unidad', 'lugar']) && textoOpcional(d.titulo, 2000) && textoOpcional(d.unidad, 2000) && textoOpcional(d.lugar, 2000),
     },
     analizar: {
-        titulo: 'El análisis estadístico', ejecutable: true, plan: planAnalizar,
-        valida: d => soloClaves(d, ['tipo', 'variables', 'prueba', 'regresion']) && Object.prototype.hasOwnProperty.call(TIPOS_DE_ANALISIS, d.tipo)
-            && listaDeTextos(d.variables, 2, 12) && (d.prueba === undefined || Object.prototype.hasOwnProperty.call(PRUEBAS, d.prueba))
+        titulo: 'El análisis estadístico', ejecutable: true, plan: planAnalizar, noPuede: noPuedeAnalizar,
+        valida: d => soloClaves(d, ['tipo', 'variables', 'prueba', 'regresion']) && typeof d.tipo === 'string' && opcionDe(d.tipo, 'input[name="tipoAnalisis"]')
+            && listaDeTextos(d.variables, 2, 12)
+            && (d.prueba === undefined || (typeof d.prueba === 'string' && opcionDe(d.prueba, 'input[name="tipoPrueba"]')))
             && (d.regresion === undefined || (esObjeto(d.regresion) && soloClaves(d.regresion, ['dependiente', 'predictores', 'interaccion', 'cuadratico', 'poisson'])
                 && esTexto(d.regresion.dependiente, 200) && listaDeTextos(d.regresion.predictores, 1, 12)
                 && logicoOpcional(d.regresion.interaccion) && logicoOpcional(d.regresion.cuadratico) && logicoOpcional(d.regresion.poisson))),
     },
     compararGrupos: {
-        titulo: 'La comparación entre grupos', ejecutable: true, plan: planCompararGrupos,
+        titulo: 'La comparación entre grupos', ejecutable: true, plan: planCompararGrupos, noPuede: noPuedeCompararGrupos,
         valida: d => soloClaves(d, ['grupo', 'numerica', 'covariable', 'adicionales']) && esTexto(d.grupo, 200) && esTexto(d.numerica, 200)
             && textoOpcional(d.covariable, 200) && (d.adicionales === undefined || listaDeTextos(d.adicionales, 0, 12)),
     },
     ajustarSEM: {
-        titulo: d => `El SEM «${d.etiqueta || 'Modelo inicial'}»`, ejecutable: true, plan: planSEM,
-        valida: d => soloClaves(d, ['sintaxis', 'etiqueta', 'estimador']) && esTexto(d.sintaxis, 20000) && textoOpcional(d.etiqueta, 200)
-            && (d.estimador === undefined || ESTIMADORES.includes(d.estimador)),
+        titulo: d => `El SEM «${papelDelSEM(d)}»`, ejecutable: true, plan: planSEM,
+        noPuede: d => (d.sintaxis.trim() ? '' : 'un SEM sin su modelo (la sintaxis vacía): la página no lo ajusta'),
+        valida: d => soloClaves(d, ['sintaxis', 'etiqueta', 'estimador']) && esTexto(d.sintaxis, 20000)
+            && (d.etiqueta === undefined || (typeof d.etiqueta === 'string' && opcionDe(d.etiqueta, '#semEtiqueta')))
+            && (d.estimador === undefined || (typeof d.estimador === 'string' && opcionDe(d.estimador, '#semEstimador'))),
     },
     calcularAFE: {
-        titulo: 'El análisis factorial exploratorio', ejecutable: true, plan: planAFE,
+        titulo: 'El análisis factorial exploratorio', ejecutable: true, plan: planAFE, noPuede: noPuedeAFE,
         valida: d => soloClaves(d, ['conjunto', 'items', 'correlacion', 'factores', 'rotacion', 'replicas', 'semilla']) && textoOpcional(d.conjunto, 300)
-            && (d.items === undefined || listaDeTextos(d.items, 1, 1000)) && textoOpcional(d.correlacion, 40) && textoOpcional(d.factores, 40)
-            && textoOpcional(d.rotacion, 40) && enteroOpcional(d.replicas, 1, 100000) && enteroOpcional(d.semilla, 0, 2 ** 32),
+            && (d.items === undefined || listaDeTextos(d.items, 1, 1000))
+            && (d.correlacion === undefined || (typeof d.correlacion === 'string' && opcionDe(d.correlacion, '#afeCorrelacion')))
+            && (d.factores === undefined || (typeof d.factores === 'string' && opcionDe(d.factores, '#afeFactores')))
+            && (d.rotacion === undefined || (typeof d.rotacion === 'string' && opcionDe(d.rotacion, '#afeRotacion')))
+            && (d.replicas === undefined || (Number.isInteger(d.replicas) && opcionDe(d.replicas, '#afeB')))
+            && enteroOpcional(d.semilla, 1, 2 ** 32),   // (2027.01.07) desde 1, como su campo: con 0, la tarjeta usaba 2026
     },
     calcularAiken: {
-        titulo: 'La V de Aiken', ejecutable: true, plan: planAiken,
+        titulo: 'La V de Aiken', ejecutable: true, plan: planAiken, noPuede: noPuedeAiken,
         valida: d => soloClaves(d, ['minimo', 'maximo', 'confianza', 'v0', 'criterios']) && numero(d.minimo) && numero(d.maximo)
-            && (d.confianza === undefined || numero(d.confianza)) && (d.v0 === undefined || numero(d.v0))
+            && (d.confianza === undefined || (numero(d.confianza) && opcionDe(d.confianza, '#aikenConfianza')))
+            && (d.v0 === undefined || (numero(d.v0) && opcionDe(d.v0, '#aikenV0')))
             && Array.isArray(d.criterios) && d.criterios.length >= 1 && d.criterios.length <= 50
             && d.criterios.every((/** @type {unknown} */ c) => esObjeto(c) && soloClaves(c, ['nombre', 'archivo']) && esTexto(c.nombre, 200) && rutaDelCaso(c.archivo)),
     },
     evaluarInvarianza: {
-        titulo: 'La invarianza de medición', ejecutable: true, plan: planInvarianza,
+        titulo: 'La invarianza de medición', ejecutable: true, plan: planInvarianza, noPuede: noPuedeInvarianza,
         valida: d => soloClaves(d, ['sintaxis', 'delSEM', 'grupo', 'estimador', 'estricta', 'agrupar']) && textoOpcional(d.sintaxis, 20000) && logicoOpcional(d.delSEM)
-            && esTexto(d.grupo, 200) && (d.estimador === undefined || ESTIMADORES.includes(d.estimador)) && logicoOpcional(d.estricta) && logicoOpcional(d.agrupar),
+            && esTexto(d.grupo, 200) && (d.estimador === undefined || (typeof d.estimador === 'string' && opcionDe(d.estimador, '#invEstimador')))
+            && logicoOpcional(d.estricta) && logicoOpcional(d.agrupar),
     },
     exportarAnalisis: {
         titulo: 'Las descargas del análisis', ejecutable: false, plan: planExportar,
@@ -308,11 +450,28 @@ export function accionValida(a) {
 }
 
 /**
- * ¿Es el guion de un paso (una lista de acciones válidas, hasta 20)?
+ * (2027.01.10, revisión) Lo que la página no puede hacer de una acción válida (accionValida), tal como la pide: el motivo, en una
+ * frase («la misma variable dos veces (A): la página no analiza…»), o '' si puede. Hasta la 2027.01.09 se admitían guiones
+ * que «Hazlo por mí» no podía repetir (fallaba a medio paso) o que la página hacía a medias sin decirlo (una regresión con su
+ * variable dependiente entre los predictores salía sin regresión, y el paso, hecho). Para las reglas de los guiones
+ * (reglas.js): un caso así se lee sin sus guiones; uno con una acción que no tiene la forma debida deja el catálogo sin leer.
+ * @param {AccionDelGuion} a
+ * @returns {string}
+ */
+export function queNoPuede(a) {
+    const accion = ACCIONES[a.accion];
+    return accion && accion.noPuede ? accion.noPuede(a.datos) : '';
+}
+
+/** Las acciones que puede llevar el guion de un paso, como mucho. */
+export const MAXIMO_ACCIONES = 20;
+
+/**
+ * ¿Es el guion de un paso (una lista de acciones válidas, hasta MAXIMO_ACCIONES)?
  * @param {unknown} g
  * @returns {g is AccionDelGuion[]}
  */
-export const guionValido = g => Array.isArray(g) && g.length <= 20 && g.every(accionValida);
+export const guionValido = g => Array.isArray(g) && g.length <= MAXIMO_ACCIONES && g.every(accionValida);
 
 /**
  * El plan de una acción de un guion (comprobada antes).
@@ -357,3 +516,88 @@ export const guionEjecutable = guion => guion.some(a => !!ACCIONES[a.accion] && 
  * @param {AccionDelGuion} a
  */
 export const accionEjecutable = a => !!ACCIONES[a.accion] && ACCIONES[a.accion].ejecutable;
+
+/**
+ * @typedef {'word' | 'texto' | 'pdf'} DescargaDelAnalisis el capítulo en Word, los resultados en texto, lo impreso (el PDF)
+ */
+
+/**
+ * (2027.01.04, revisión) Cuáles de las descargas del análisis de la vista principal llevan lo que deja cada acción en su
+ * tarjeta: lo impreso (el PDF) imprime todas las tarjetas con resultados; el capítulo de Word, solo el SEM (la comparación
+ * entre grupos la rehace él con las variables del análisis; (2027.01.05) su ANCOVA y su MANOVA, en cambio, sí van:
+ * descargasQueLleva); el texto, ninguna. Los datos y la configuración de la investigación van en todas.
+ * @type {Record<string, DescargaDelAnalisis[]>}
+ */
+const EN_LAS_DESCARGAS = {
+    usarBaseDelSimulador: ['word', 'texto', 'pdf'], describirInvestigacion: ['word', 'texto', 'pdf'],
+    compararGrupos: ['pdf'], ajustarSEM: ['word', 'pdf'], calcularAFE: ['pdf'], calcularAiken: ['pdf'], evaluarInvarianza: ['pdf'],
+};
+
+/** ¿La comparación de grupos hace también una ANCOVA? Con una covariable que no es la variable que compara. @param {Record<string, any>} d */
+const conAncova = d => !!d.covariable && d.covariable !== d.numerica;
+/** ¿Y un MANOVA? Con más variables que la que compara. @param {Record<string, any>} d */
+const conManova = d => (d.adicionales || []).some((/** @type {string} */ c) => c !== d.numerica);
+/**
+ * (2027.01.05) ¿La comparación de grupos hace también una ANCOVA o un MANOVA? Como la tarjeta (comparacion-grupos.js).
+ * @param {Record<string, any>} d
+ */
+const conAncovaOManova = d => conAncova(d) || conManova(d);
+
+/**
+ * (2027.01.04, revisión) Lo que lleva una acción en las descargas del análisis (vacío: nada). (2027.01.05, revisión) La
+ * comparación de grupos con su ANCOVA o su MANOVA va también en el Word: el capítulo los trae tras la comparación entre
+ * grupos (exportador-word.js), hasta el siguiente «Ejecutar análisis» (loQueBorraOtroAnalisis). Hasta la 2027.01.04 se decía
+ * que solo en lo impreso.
+ * @param {AccionDelGuion} a
+ * @returns {DescargaDelAnalisis[]}
+ */
+export const descargasQueLleva = a => (a.accion === 'compararGrupos' && conAncovaOManova(a.datos || {}) ? ['word', 'pdf'] : EN_LAS_DESCARGAS[a.accion] || []);
+
+/**
+ * (2027.01.05) De lo que lleva una acción, lo que se lleva el siguiente «Ejecutar análisis» (olvidarAnalisisAnterior,
+ * analizador/ui/analisis.js): la ANCOVA y el MANOVA de la comparación de grupos salen del Word. (Su tarjeta se queda en la
+ * página: lo impreso la sigue llevando.)
+ * @param {AccionDelGuion} a
+ * @returns {DescargaDelAnalisis[]}
+ */
+export const loQueBorraOtroAnalisis = a => (a.accion === 'compararGrupos' ? ['word'] : []);
+
+/**
+ * (2027.01.07, revisión) Lo que se lleva del Word el siguiente «Ejecutar análisis» de lo que deja una acción (loQueBorraOtroAnalisis),
+ * en palabras: «la ANCOVA», «el MANOVA» o «la ANCOVA y el MANOVA» de la comparación de grupos; vacío si no deja nada en el Word.
+ * Para el aviso de la guía (sesion.js), que hasta la 2027.01.06 decía «lo que deja el paso 2» también con su SEM en el Word.
+ * @param {AccionDelGuion} a
+ */
+export function queBorraOtroAnalisis(a) {
+    if (a.accion !== 'compararGrupos') return '';
+    const d = a.datos || {}, ancova = conAncova(d), manova = conManova(d);
+    return ancova && manova ? 'la ANCOVA y el MANOVA' : ancova ? 'la ANCOVA' : manova ? 'el MANOVA' : '';
+}
+
+/**
+ * (2027.01.08, revisión) ¿Tiene capítulo de Word lo que deja un análisis? Solo una correlación de dos variables (con su regresión
+ * o sin ella): tras una comparación de grupos, una asociación o una matriz de tres o más variables, «Exportar capítulo a Word»
+ * solo dice por qué no lo hay (analizador/ui/index.js, SIN_CAPITULO). (2027.01.09, revisión) La matriz, como la decide la
+ * página (analizador/ui/analisis.js): alguna variable adicional que no es una de las dos primeras; una repetida no cuenta (la
+ * 2027.01.08 contaba las del guion, y con ['A', 'B', 'A'] daba por matriz la correlación de A y B). Para las reglas de los
+ * guiones (reglas.js).
+ * @param {AccionDelGuion} a (un «analizar»)
+ */
+export const tieneCapitulo = a => {
+    if (a.accion !== 'analizar' || a.datos.tipo !== 'correlacion') return false;
+    const [v1, v2, ...adicionales] = /** @type {string[]} */ (a.datos.variables);
+    return adicionales.every(v => v === v1 || v === v2);
+};
+
+/** Cada descarga del análisis, por el botón que la baja (el que señala planExportar). @type {Record<string, DescargaDelAnalisis>} */
+const DESCARGA_DEL_BOTON = { '#btnExportarWord': 'word', '#btnDescargarResultados': 'texto', '#btnImprimirAnalizador': 'pdf' };
+
+/**
+ * (2027.01.04, revisión) Cuáles de las descargas del análisis señalan unas operaciones, en orden (el Word, el texto, el PDF).
+ * @param {Op[]} ops
+ * @returns {DescargaDelAnalisis[]}
+ */
+export function descargasDelAnalisis(ops) {
+    const botones = new Set(ops.map(o => (o.op === 'senalar' ? DESCARGA_DEL_BOTON[o.selector] : undefined)));
+    return /** @type {DescargaDelAnalisis[]} */ (['word', 'texto', 'pdf']).filter(d => botones.has(d));
+}

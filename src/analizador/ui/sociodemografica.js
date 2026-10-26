@@ -8,6 +8,7 @@ import { AnalizadorEstadistico } from '../estadistica.js';
 import { fmtPApp } from './analisis.js';
 import { obtenerColumnasCategoricas } from './carga.js';
 import { descargarArchivo } from '../../shared/descargas.js';
+import { textoParaExportar } from '../../shared/texto-exportable.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { cuantilOrdenado } from '../../core/stats/orden.js';
 import { aNumero, esPerdido } from '../../core/data/celdas.js';
@@ -302,10 +303,12 @@ function mostrarReferencias(var1, var2, resultado) {
 }
 
 function descargarResultados() {
-    // Obtener el contenido de resultados (texto de cada contenedor, vacío si no existe)
+    // Obtener el contenido de resultados (texto de cada contenedor, vacío si no existe). (2027.01.04) Sin los controles ni
+    // los gráficos (antes, el texto traía «Calcular intervalos», «Copiar» y los números de los ejes) y con cada fila de una
+    // tabla en su línea
     const textoContenedor = id => {
         const elem = document.getElementById(id);
-        return elem ? elem.innerText.trim() : '';
+        return elem ? textoParaExportar(elem).trim() : '';
     };
     // El contenedor de normalidad es 'pruebasNormalidadContainer' (no 'resultadosNormalidad').
     // Las secciones opcionales (descriptivos, APA, dimensiones) se filtran si están vacías.
@@ -343,5 +346,10 @@ Fecha: ${new Date().toLocaleDateString()}
 
 export { cuantilLineal, calcularNivelesDeValores, mostrarTablaSociodemografica, mostrarNiveles, mostrarDescriptivas, formatearRApa, formatearPApa, construirLineaAPA, mostrarReporteAPA, copiarTexto, mostrarDimensionesSiAplica, mostrarTablaDimensiones, mostrarReferencias, descargarResultados };
 
-// (2026.10.09) si la fiabilidad se completa después (bootstrap), la lista de referencias visible se actualiza
-bus.on(EVENTOS.FIABILIDAD_ACTUALIZADA, () => { const c = typeof document !== 'undefined' && document.getElementById('resultadosContainer'); if (c && c.style.display !== 'none' && c.innerHTML) mostrarReferencias(); });
+// (2026.10.09) si la fiabilidad se completa después (bootstrap; (2027.01.05) y los coeficientes ordinales), la lista de
+// referencias visible se actualiza. (2027.01.05) Solo si lo que hay es esa lista: el contenedor guarda también la matriz de
+// correlaciones (análisis con más de dos variables), que no se cambia por ella
+bus.on(EVENTOS.FIABILIDAD_ACTUALIZADA, () => {
+    const c = typeof document !== 'undefined' && document.getElementById('resultadosContainer');
+    if (c && c.style.display !== 'none' && c.querySelector('.references-container')) mostrarReferencias();
+});

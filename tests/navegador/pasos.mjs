@@ -128,7 +128,7 @@ export async function describirInvestigacion(pagina, datos) {
 /**
  * @typedef {object} PedidoDeAnalisis
  * @property {'correlacion' | 'comparacion' | 'asociacion'} tipo
- * @property {string[]} variables la 1 y la 2 (y, en una correlación, las adicionales: con 3 o más, una matriz)
+ * @property {string[]} variables la 1 y la 2 (y, en una correlación, las adicionales: con una que no es una de las dos, una matriz)
  * @property {'bilateral' | 'unilateral'} [prueba]
  * @property {{ dependiente: string, predictores: string[], interaccion?: boolean, cuadratico?: boolean, poisson?: boolean }} [regresion]
  */

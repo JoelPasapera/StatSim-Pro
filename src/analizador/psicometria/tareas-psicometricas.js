@@ -6,7 +6,7 @@ import { fiabilidadOrdinal } from './ordinal.js';
 import { bootstrapGrupo } from './bootstrap.js';
 import { analizarAFE } from './afe.js';
 import { analizarInvarianza } from './invarianza.js';
-import { analizarInvarianzaOrdinal } from './invarianza-ordinal.js';
+import { analizarInvarianzaOrdinal } from './invarianza-ordinal.js';
 import { diagnosticarForma } from '../relaciones/diagnostico-forma.js';
 
 export function procesar(tipo, grupos, opciones = {}, alProgreso = null) {
@@ -23,7 +23,7 @@ export function procesar(tipo, grupos, opciones = {}, alProgreso = null) {
         });
     }
     if (tipo === 'afe') return grupos.map(g => ({ clave: g.clave, resultado: analizarAFE(g.cols, g.nombres, opciones, alProgreso) }));
-    if (tipo === 'forma') return grupos.map(g => ({ clave: g.clave, resultado: diagnosticarForma(g.x, g.y, opciones) }));
+    if (tipo === 'forma') return grupos.map(g => ({ clave: g.clave, resultado: diagnosticarForma(g.x, g.y, opciones) }));
     if (tipo === 'invarianza') {
         const analizar = opciones.estimador === 'WLSMV' ? analizarInvarianzaOrdinal : analizarInvarianza;
         return grupos.map(g => ({ clave: g.clave, resultado: analizar(g.modelo, g.filas, g.variableGrupo, opciones, alProgreso) }));

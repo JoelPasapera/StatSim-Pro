@@ -23,45 +23,13 @@ Fiabilidad y Consistencia Interna
 Consistencia interna de las escalas detectadas en la base de datos. El alfa de Cronbach se reporta en su forma bruta (con intervalo de confianza del 95 % según el procedimiento de Feldt) y estandarizada; el omega total de McDonald se estima a partir de una solución unifactorial y la lambda 2 de Guttman constituye una cota inferior alternativa de la fiabilidad. Según George y Mallery (2003), valores de α ≥ .70 indican una fiabilidad aceptable, ≥ .80 buena y ≥ .90 excelente.
 
 Escala	k	n	ω total	ω jerárquico	α [IC 95 %]	α estand.	α ordinal	ω ordinal	λ₂	r inter-ítem M [mín, máx]	Interpretación
-Postergación (EPA)	5	450	0.821	—	0.812
-[0.783, 0.838]	0.810	0.853	0.856	0.818	0.461
-[0.349, 0.612]	buena (ω)
-Distracción (EPA)	5	450	0.837	—	0.820
-[0.793, 0.845]	0.820	0.865	0.868	0.830	0.476
-[0.339, 0.632]	buena (ω)
-Desorganización (EPA)	5	450	0.799	—	0.783
-[0.750, 0.813]	0.779	0.825	0.830	0.794	0.413
-[0.285, 0.550]	aceptable (ω)
-Autoeficacia académica (EAA)	8	450	0.859	—	0.853
-[0.832, 0.873]	0.851	0.881	0.883	0.858	0.416
-[0.241, 0.550]	buena (ω)
-Escala total (EPA)	15	450	0.875	0.714	0.871
-[0.853, 0.888]	0.869	0.894	0.895	0.877	0.307
-[0.136, 0.632]	buena (ω)
+Postergación (EPA)	5	450	0.821	—	0.812 [0.783, 0.838]	0.810	0.853	0.856	0.818	0.461 [0.349, 0.612]	buena (ω)
+Distracción (EPA)	5	450	0.837	—	0.820 [0.793, 0.845]	0.820	0.865	0.868	0.830	0.476 [0.339, 0.632]	buena (ω)
+Desorganización (EPA)	5	450	0.799	—	0.783 [0.750, 0.813]	0.779	0.825	0.830	0.794	0.413 [0.285, 0.550]	aceptable (ω)
+Autoeficacia académica (EAA)	8	450	0.859	—	0.853 [0.832, 0.873]	0.851	0.881	0.883	0.858	0.416 [0.241, 0.550]	buena (ω)
+Escala total (EPA)	15	450	0.875	0.714	0.871 [0.853, 0.888]	0.869	0.894	0.895	0.877	0.307 [0.136, 0.632]	buena (ω)
 
 α y ω ordinales: calculados sobre la matriz de correlaciones policóricas (tetracóricas con ítems 0/1), que no subestima la relación entre ítems con pocas categorías como sí lo hace Pearson (Zumbo et al., 2007; Gadermann et al., 2012). Se muestran cuando los ítems son enteros con 7 categorías o menos.
-
-Intervalos de confianza por bootstrap
-Para qué sirve:
-Acota cada coeficiente con un intervalo de confianza: se remuestrean los participantes con reposición y en cada remuestra se recalculan α, ω y los coeficientes ordinales. La semilla hace el resultado reproducible: la misma semilla da siempre el mismo intervalo.
-Remuestras (B)
-500 (rápido)
-1000 (recomendado)
-2000 (más estable)
-Más remuestras estabilizan los límites; el tiempo crece en proporción.
-Método
-Percentil
-BCa (corrige sesgo y asimetría)
-BCa es más exacto con coeficientes cerca de 1, pero añade un jackknife: tarda más.
-Nivel de confianza
-90 %
-95 %
-99 %
-El 95 % es el estándar en tesis.
-Semilla
-Anótala en el informe para que el cálculo sea replicable.
-Calcular intervalos
-Cancelar
 
 En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El omega total de McDonald (ω) se reporta como coeficiente principal de fiabilidad, en consonancia con las recomendaciones psicométricas actuales: se estima a partir de las cargas de un modelo factorial congenérico, que admite que cada ítem mida el constructo con distinta precisión y pondera su contribución en consecuencia, sin exigir el supuesto de tau-equivalencia que el alfa presupone. El omega jerárquico, disponible para las escalas totales con partición conocida en dimensiones, cuantifica la proporción de varianza atribuible exclusivamente al factor general (aproximación de Schmid-Leiman): valores elevados respaldan la interpretación unidimensional de la puntuación total, y la diferencia entre el ω total y el ω jerárquico expresa la varianza aportada por las dimensiones específicas. El alfa de Cronbach (α) se conserva como referencia comparativa por su tradición en la literatura; su intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango plausible del parámetro poblacional, y el α estandarizado coincide con el bruto cuando las varianzas de los ítems son homogéneas. Discrepancias acusadas entre ω y α sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa, sistemáticamente igual o superior al α. La correlación inter-ítem media, con su mínimo y máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados. La columna de interpretación aplica los criterios convencionales (≥ .70 aceptable, ≥ .80 buena, ≥ .90 excelente; George y Mallery, 2003) al coeficiente principal disponible, señalado entre paréntesis.
 
@@ -154,95 +122,6 @@ Decisión:	Los datos NO siguen una distribución normal (p ≤ 0.05)
 
 Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.
 
-Frecuencia
-Procrastinación académica — EPA
-8
-10
-12
-14
-16
-18
-20
-0
-20
-40
-60
-80
-— Normal teórica N(14.3, 2.3)
-Distribución: Procrastinación académica — EPA
-Cuantiles observados
-Cuantiles teóricos (normal)
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
-Q-Q: Procrastinación académica — EPA
-Frecuencia
-Autoeficacia académica
-15
-20
-25
-30
-35
-40
-0
-20
-40
-60
-80
-— Normal teórica N(26.0, 4.5)
-Distribución: Autoeficacia académica
-Cuantiles observados
-Cuantiles teóricos (normal)
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
-Q-Q: Autoeficacia académica
 Interpretación Estadística
 
 Se evaluó el supuesto de normalidad de Procrastinación académica — EPA y Autoeficacia académica mediante la prueba de Kolmogorov-Smirnov (Lilliefors), seleccionada por el tamaño de la muestra (n = 450 ≥ 50), rango en el que Kolmogorov-Smirnov con la corrección de Lilliefors es el procedimiento de referencia. El criterio de decisión fue: p > 0.05 indica que la distribución no se desvía significativamente de la normal. Los resultados mostraron que ambas variables se desviaron significativamente de la normalidad (Procrastinación académica — EPA: D = 0.087, p < 0.001; Autoeficacia académica: D = 0.078, p < 0.001); en ambos casos p ≤ 0.05, incumpliéndose el supuesto exigido por la estadística paramétrica. En consecuencia, se empleó el coeficiente de correlación de Spearman (ρ), un método no paramétrico basado en rangos que no requiere normalidad y cuantifica la relación MONOTÓNICA entre las variables, evitando así conclusiones distorsionadas por la forma de las distribuciones (Hernández-Sampieri y Mendoza, 2023). Los gráficos Q-Q permiten corroborarlo visualmente: con una distribución normal los puntos se alinean sobre la recta de referencia, y la desviación que detectó la prueba en Procrastinación académica — EPA y en Autoeficacia académica se aprecia como puntos que se apartan de ella, sobre todo en las colas.
@@ -252,8 +131,6 @@ Se evaluó el supuesto de normalidad de Procrastinación académica — EPA y Au
 ¿Por qué media y desviación estándar? La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la distancia típica de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.
 
 ¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último de la fila». Robustez por diseño, no por parche.
-
-¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.
 
 4. ANÁLISIS DE CORRELACIÓN
 Análisis de Correlación
@@ -298,11 +175,62 @@ Frase lista para pegar en la sección de resultados de tu tesis o artículo (est
 
 Se halló una correlación negativa estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica, rₛ(448) = -.40, p < .001, IC 95% [-.48, -.32]; r² = .16.
 
-Copiar
-
 7. DISCUSIÓN (PLANTILLA)
 Discusión (Plantilla)
-**MARCO DE INVESTIGACIÓN** **Pregunta de Investigación:** ¿Cuál es la relación entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana? **Objetivo General:** Determinar la relación entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. **Objetivos Específicos:** 1. Identificar la relación entre la dimensión Distracción de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 2. Establecer la relación entre la dimensión Postergación de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 3. Precisar la relación entre la dimensión Desorganización de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 4. Analizar las diferencias de Procrastinación académica — EPA y Autoeficacia académica según sexo en estudiantes universitarios de Lima Metropolitana. **Hipótesis de Investigación:** Existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. **Hipótesis Nula (H₀):** No existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. **Hipótesis Alterna (H₁):** Sí existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. --- **METODOLOGÍA ESTADÍSTICA** El análisis correlacional se realizó mediante el coeficiente de Spearman (ρ), seleccionado a partir de las pruebas de normalidad. Al menos una variable se desvió significativamente de la normalidad (Procrastinación académica — EPA: p < 0.001; Autoeficacia académica: p < 0.001; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables. Se estableció un nivel de significancia de α = 0.05, mediante una prueba bilateral. --- **RESULTADOS** El análisis arrojó ρ(448) = -0.402, p < 0.001 (N = 450), IC 95% [-0.480, -0.319]. Dado que el p-valor es inferior a α (p < 0.001 frente a α = 0.05), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. La magnitud corresponde a una correlación **moderada** de dirección **negativa** (tamaño del efecto mediano según Cohen, 1988), lo que indica que a medida que aumenta una variable, la otra tiende a disminuir. El coeficiente al cuadrado (ρ² = 0.162) indica que las variables comparten aproximadamente el 16.2% de la varianza de sus rangos. --- **DISCUSIÓN E INTERPRETACIÓN** Los hallazgos confirman la hipótesis de investigación planteada. Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO]. La relación negativa observada sugiere que [INTERPRETACIÓN TEÓRICA]. Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad. **Implicaciones:** - [IMPLICACIÓN TEÓRICA] - [IMPLICACIÓN PRÁCTICA] - [IMPLICACIÓN METODOLÓGICA] **Limitaciones del estudio:** - [LIMITACIÓN MUESTRAL/METODOLÓGICA] - [LIMITACIÓN DE GENERALIZACIÓN] - El diseño correlacional de corte transversal no permite inferencias causales. **Recomendaciones para futuras investigaciones:** - [RECOMENDACIÓN 1] - [RECOMENDACIÓN 2]
+
+MARCO DE INVESTIGACIÓN
+
+Pregunta de Investigación: ¿Cuál es la relación entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana?
+
+Objetivo General: Determinar la relación entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+
+Objetivos Específicos:
+
+1. Identificar la relación entre la dimensión Distracción de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+2. Establecer la relación entre la dimensión Postergación de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+3. Precisar la relación entre la dimensión Desorganización de Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+4. Analizar las diferencias de Procrastinación académica — EPA y Autoeficacia académica según sexo en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis de Investigación: Existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis Nula (H₀): No existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis Alterna (H₁): Sí existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+
+METODOLOGÍA ESTADÍSTICA
+
+El análisis correlacional se realizó mediante el coeficiente de Spearman (ρ), seleccionado a partir de las pruebas de normalidad. Al menos una variable se desvió significativamente de la normalidad (Procrastinación académica — EPA: p < 0.001; Autoeficacia académica: p < 0.001; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables.
+
+Se estableció un nivel de significancia de α = 0.05, mediante una prueba bilateral.
+
+RESULTADOS
+
+El análisis arrojó ρ(448) = -0.402, p < 0.001 (N = 450), IC 95% [-0.480, -0.319]. Dado que el p-valor es inferior a α (p < 0.001 frente a α = 0.05), se rechaza la hipótesis nula: existe una relación estadísticamente significativa entre Procrastinación académica — EPA y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+
+La magnitud corresponde a una correlación moderada de dirección negativa (tamaño del efecto mediano según Cohen, 1988), lo que indica que a medida que aumenta una variable, la otra tiende a disminuir. El coeficiente al cuadrado (ρ² = 0.162) indica que las variables comparten aproximadamente el 16.2% de la varianza de sus rangos.
+
+DISCUSIÓN E INTERPRETACIÓN
+
+Los hallazgos confirman la hipótesis de investigación planteada. Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO].
+
+La relación negativa observada sugiere que [INTERPRETACIÓN TEÓRICA]. Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad.
+
+Implicaciones:
+
+- [IMPLICACIÓN TEÓRICA]
+- [IMPLICACIÓN PRÁCTICA]
+- [IMPLICACIÓN METODOLÓGICA]
+
+Limitaciones del estudio:
+
+- [LIMITACIÓN MUESTRAL/METODOLÓGICA]
+- [LIMITACIÓN DE GENERALIZACIÓN]
+- El diseño correlacional de corte transversal no permite inferencias causales.
+
+Recomendaciones para futuras investigaciones:
+
+- [RECOMENDACIÓN 1]
+- [RECOMENDACIÓN 2]
 ----
 Generado por StatSim Pro
 Fecha: 21/10/2026

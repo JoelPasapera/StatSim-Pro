@@ -23,48 +23,14 @@ Fiabilidad y Consistencia Interna
 Consistencia interna de las escalas detectadas en la base de datos. El alfa de Cronbach se reporta en su forma bruta (con intervalo de confianza del 95 % según el procedimiento de Feldt) y estandarizada; el omega total de McDonald se estima a partir de una solución unifactorial y la lambda 2 de Guttman constituye una cota inferior alternativa de la fiabilidad. Según George y Mallery (2003), valores de α ≥ .70 indican una fiabilidad aceptable, ≥ .80 buena y ≥ .90 excelente.
 
 Escala	k	n	ω total	ω jerárquico	α [IC 95 %]	α estand.	α ordinal	ω ordinal	λ₂	r inter-ítem M [mín, máx]	Interpretación
-Autoeficacia académica (EAA)	10	400	0.893	—	0.891
-[0.874, 0.906]	0.890	0.916	0.917	0.893	0.447
-[0.316, 0.581]	buena (ω)
-Procrastinación académica (EPA)	12	400	0.851	—	0.847
-[0.824, 0.869]	0.846	0.869	0.870	0.850	0.314
-[0.156, 0.477]	buena (ω)
-Familia (EAS)	4	400	0.861	—	0.840
-[0.813, 0.864]	0.841	0.873	0.876	0.851	0.570
-[0.449, 0.717]	buena (ω)
-Amigos (EAS)	4	400	0.869	—	0.854
-[0.829, 0.876]	0.858	0.889	0.891	0.862	0.602
-[0.507, 0.700]	buena (ω)
-Otros significativos (EAS)	4	400	0.850	—	0.826
-[0.797, 0.853]	0.831	0.870	0.872	0.838	0.551
-[0.429, 0.680]	buena (ω)
-Escala total (EAS)	12	400	0.895	0.757	0.889
-[0.873, 0.905]	0.889	0.906	0.907	0.897	0.400
-[0.140, 0.717]	buena (ω)
+Autoeficacia académica (EAA)	10	400	0.893	—	0.891 [0.874, 0.906]	0.890	0.916	0.917	0.893	0.447 [0.316, 0.581]	buena (ω)
+Procrastinación académica (EPA)	12	400	0.851	—	0.847 [0.824, 0.869]	0.846	0.869	0.870	0.850	0.314 [0.156, 0.477]	buena (ω)
+Familia (EAS)	4	400	0.861	—	0.840 [0.813, 0.864]	0.841	0.873	0.876	0.851	0.570 [0.449, 0.717]	buena (ω)
+Amigos (EAS)	4	400	0.869	—	0.854 [0.829, 0.876]	0.858	0.889	0.891	0.862	0.602 [0.507, 0.700]	buena (ω)
+Otros significativos (EAS)	4	400	0.850	—	0.826 [0.797, 0.853]	0.831	0.870	0.872	0.838	0.551 [0.429, 0.680]	buena (ω)
+Escala total (EAS)	12	400	0.895	0.757	0.889 [0.873, 0.905]	0.889	0.906	0.907	0.897	0.400 [0.140, 0.717]	buena (ω)
 
 α y ω ordinales: calculados sobre la matriz de correlaciones policóricas (tetracóricas con ítems 0/1), que no subestima la relación entre ítems con pocas categorías como sí lo hace Pearson (Zumbo et al., 2007; Gadermann et al., 2012). Se muestran cuando los ítems son enteros con 7 categorías o menos.
-
-Intervalos de confianza por bootstrap
-Para qué sirve:
-Acota cada coeficiente con un intervalo de confianza: se remuestrean los participantes con reposición y en cada remuestra se recalculan α, ω y los coeficientes ordinales. La semilla hace el resultado reproducible: la misma semilla da siempre el mismo intervalo.
-Remuestras (B)
-500 (rápido)
-1000 (recomendado)
-2000 (más estable)
-Más remuestras estabilizan los límites; el tiempo crece en proporción.
-Método
-Percentil
-BCa (corrige sesgo y asimetría)
-BCa es más exacto con coeficientes cerca de 1, pero añade un jackknife: tarda más.
-Nivel de confianza
-90 %
-95 %
-99 %
-El 95 % es el estándar en tesis.
-Semilla
-Anótala en el informe para que el cálculo sea replicable.
-Calcular intervalos
-Cancelar
 
 En la tabla, k denota el número de ítems de cada escala y n el número de casos con datos completos. El omega total de McDonald (ω) se reporta como coeficiente principal de fiabilidad, en consonancia con las recomendaciones psicométricas actuales: se estima a partir de las cargas de un modelo factorial congenérico, que admite que cada ítem mida el constructo con distinta precisión y pondera su contribución en consecuencia, sin exigir el supuesto de tau-equivalencia que el alfa presupone. El omega jerárquico, disponible para las escalas totales con partición conocida en dimensiones, cuantifica la proporción de varianza atribuible exclusivamente al factor general (aproximación de Schmid-Leiman): valores elevados respaldan la interpretación unidimensional de la puntuación total, y la diferencia entre el ω total y el ω jerárquico expresa la varianza aportada por las dimensiones específicas. El alfa de Cronbach (α) se conserva como referencia comparativa por su tradición en la literatura; su intervalo de confianza del 95 % (procedimiento de Feldt) delimita el rango plausible del parámetro poblacional, y el α estandarizado coincide con el bruto cuando las varianzas de los ítems son homogéneas. Discrepancias acusadas entre ω y α sugieren cargas factoriales heterogéneas o ítems atípicos. La lambda 2 de Guttman (λ₂) constituye una cota inferior alternativa, sistemáticamente igual o superior al α. La correlación inter-ítem media, con su mínimo y máximo, describe la covariación entre los ítems: valores medios entre .15 y .50 se consideran adecuados. La columna de interpretación aplica los criterios convencionales (≥ .70 aceptable, ≥ .80 buena, ≥ .90 excelente; George y Mallery, 2003) al coeficiente principal disponible, señalado entre paréntesis.
 
@@ -170,103 +136,6 @@ Decisión:	Los datos siguen una distribución normal (p > 0.05)
 
 Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.
 
-Frecuencia
-Autoeficacia académica
-10
-15
-20
-25
-30
-35
-40
-45
-50
-0
-20
-40
-60
-80
-100
-120
-140
-— Normal teórica N(33.0, 5.5)
-Distribución: Autoeficacia académica
-Cuantiles observados
-Cuantiles teóricos (normal)
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
-Q-Q: Autoeficacia académica
-Frecuencia
-Promedio ponderado (sociodemográfica continua, 0–20)
-6
-8
-10
-12
-14
-16
-18
-0
-20
-40
-60
-80
-— Normal teórica N(13.8, 1.9)
-Distribución: Promedio ponderado (sociodemográfica continua, 0–20)
-Cuantiles observados
-Cuantiles teóricos (normal)
--3.5
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
--3.5
--3.0
--2.5
--2.0
--1.5
--1.0
--0.5
-0.0
-0.5
-1.0
-1.5
-2.0
-2.5
-3.0
-Q-Q: Promedio ponderado (sociodemográfica continua, 0–20)
 Interpretación Estadística
 
 Se evaluó el supuesto de normalidad de Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) mediante la prueba de Kolmogorov-Smirnov (Lilliefors), seleccionada por el tamaño de la muestra (n = 400 ≥ 50), rango en el que Kolmogorov-Smirnov con la corrección de Lilliefors es el procedimiento de referencia. El criterio de decisión fue: p > 0.05 indica que la distribución no se desvía significativamente de la normal. Los resultados fueron mixtos: Autoeficacia académica se desvió significativamente de la normalidad (Autoeficacia académica: D = 0.056, p = 0.004, p ≤ 0.05), mientras que Promedio ponderado (sociodemográfica continua, 0–20) sí cumplió el supuesto (Promedio ponderado (sociodemográfica continua, 0–20): D = 0.031, p = 0.485, p > 0.05). Dado que el coeficiente de Pearson exige normalidad en ambas variables, basta con que una la incumpla para que el procedimiento paramétrico deje de ser apropiado. Por ello se optó por el coeficiente de correlación de Spearman (ρ), que al operar sobre rangos es robusto frente a desviaciones de la normalidad y a valores extremos. Los gráficos Q-Q permiten corroborarlo visualmente: con una distribución normal los puntos se alinean sobre la recta de referencia, y la desviación que detectó la prueba en Autoeficacia académica se aprecia como puntos que se apartan de ella, sobre todo en las colas.
@@ -276,8 +145,6 @@ Se evaluó el supuesto de normalidad de Autoeficacia académica y Promedio ponde
 ¿Por qué media y desviación estándar? La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la distancia típica de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.
 
 ¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último de la fila». Robustez por diseño, no por parche.
-
-¿Por qué la normalidad decide el coeficiente? Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el orden, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.
 
 4. ANÁLISIS DE CORRELACIÓN
 Análisis de Correlación
@@ -355,11 +222,65 @@ Frase lista para pegar en la sección de resultados de tu tesis o artículo (est
 
 Se halló una correlación positiva estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20), rₛ(398) = .43, p < .001, IC 95% [.34, .51]; r² = .18.
 
-Copiar
-
 7. DISCUSIÓN (PLANTILLA)
 Discusión (Plantilla)
-**MARCO DE INVESTIGACIÓN** **Pregunta de Investigación:** ¿Cuál es la relación entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana? **Objetivo General:** Determinar la relación entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. **Objetivos Específicos:** 1. Identificar la relación entre la dimensión Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 2. Establecer la relación entre la dimensión Procrastinación académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. 3. Precisar la relación entre la dimensión Apoyo social percibido — EAS y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 4. Determinar la relación entre la dimensión Familia y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 5. Indicar la relación entre la dimensión Otros significativos y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana. 6. Analizar las diferencias de Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) según sexo en estudiantes universitarios de Lima Metropolitana. 7. Comparar los niveles de Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) según riesgo de deserción en estudiantes universitarios de Lima Metropolitana. **Hipótesis de Investigación:** Existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. **Hipótesis Nula (H₀):** No existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. **Hipótesis Alterna (H₁):** Sí existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. --- **METODOLOGÍA ESTADÍSTICA** El análisis correlacional se realizó mediante el coeficiente de Spearman (ρ), seleccionado a partir de las pruebas de normalidad. Al menos una variable se desvió significativamente de la normalidad (Autoeficacia académica: p = 0.004; Promedio ponderado (sociodemográfica continua, 0–20): p = 0.485; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables. Se estableció un nivel de significancia de α = 0.05, mediante una prueba bilateral. --- **RESULTADOS** El análisis arrojó ρ(398) = 0.429, p < 0.001 (N = 400), IC 95% [0.341, 0.509]. Dado que el p-valor es inferior a α (p < 0.001 frente a α = 0.05), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana. La magnitud corresponde a una correlación **moderada** de dirección **positiva** (tamaño del efecto mediano según Cohen, 1988), lo que indica que a medida que aumenta una variable, la otra tiende a aumentar. El coeficiente al cuadrado (ρ² = 0.184) indica que las variables comparten aproximadamente el 18.4% de la varianza de sus rangos. --- **DISCUSIÓN E INTERPRETACIÓN** Los hallazgos confirman la hipótesis de investigación planteada. Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO]. La relación positiva observada sugiere que [INTERPRETACIÓN TEÓRICA]. Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad. **Implicaciones:** - [IMPLICACIÓN TEÓRICA] - [IMPLICACIÓN PRÁCTICA] - [IMPLICACIÓN METODOLÓGICA] **Limitaciones del estudio:** - [LIMITACIÓN MUESTRAL/METODOLÓGICA] - [LIMITACIÓN DE GENERALIZACIÓN] - El diseño correlacional de corte transversal no permite inferencias causales. **Recomendaciones para futuras investigaciones:** - [RECOMENDACIÓN 1] - [RECOMENDACIÓN 2]
+
+MARCO DE INVESTIGACIÓN
+
+Pregunta de Investigación: ¿Cuál es la relación entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana?
+
+Objetivo General: Determinar la relación entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+
+Objetivos Específicos:
+
+1. Identificar la relación entre la dimensión Procrastinación académica y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+2. Establecer la relación entre la dimensión Procrastinación académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+3. Precisar la relación entre la dimensión Apoyo social percibido — EAS y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+4. Determinar la relación entre la dimensión Familia y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+5. Indicar la relación entre la dimensión Otros significativos y Autoeficacia académica en estudiantes universitarios de Lima Metropolitana.
+6. Analizar las diferencias de Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) según sexo en estudiantes universitarios de Lima Metropolitana.
+7. Comparar los niveles de Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) según riesgo de deserción en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis de Investigación: Existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis Nula (H₀): No existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+
+Hipótesis Alterna (H₁): Sí existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+
+METODOLOGÍA ESTADÍSTICA
+
+El análisis correlacional se realizó mediante el coeficiente de Spearman (ρ), seleccionado a partir de las pruebas de normalidad. Al menos una variable se desvió significativamente de la normalidad (Autoeficacia académica: p = 0.004; Promedio ponderado (sociodemográfica continua, 0–20): p = 0.485; criterio p > 0.05), por lo que se optó por el método no paramétrico basado en rangos, que evalúa la relación MONOTÓNICA entre las variables.
+
+Se estableció un nivel de significancia de α = 0.05, mediante una prueba bilateral.
+
+RESULTADOS
+
+El análisis arrojó ρ(398) = 0.429, p < 0.001 (N = 400), IC 95% [0.341, 0.509]. Dado que el p-valor es inferior a α (p < 0.001 frente a α = 0.05), se rechaza la hipótesis nula: existe una relación estadísticamente significativa entre Autoeficacia académica y Promedio ponderado (sociodemográfica continua, 0–20) en estudiantes universitarios de Lima Metropolitana.
+
+La magnitud corresponde a una correlación moderada de dirección positiva (tamaño del efecto mediano según Cohen, 1988), lo que indica que a medida que aumenta una variable, la otra tiende a aumentar. El coeficiente al cuadrado (ρ² = 0.184) indica que las variables comparten aproximadamente el 18.4% de la varianza de sus rangos.
+
+DISCUSIÓN E INTERPRETACIÓN
+
+Los hallazgos confirman la hipótesis de investigación planteada. Este resultado puede interpretarse en el contexto de [MARCO TEÓRICO]. Según [AUTOR] ([AÑO]), [CONCEPTO TEÓRICO RELACIONADO].
+
+La relación positiva observada sugiere que [INTERPRETACIÓN TEÓRICA]. Esto coincide con lo reportado por [AUTOR] ([AÑO]), quien encontró [HALLAZGO SIMILAR]. Conviene recordar que, al tratarse de un diseño correlacional, la covariación documentada no permite establecer relaciones de causalidad.
+
+Implicaciones:
+
+- [IMPLICACIÓN TEÓRICA]
+- [IMPLICACIÓN PRÁCTICA]
+- [IMPLICACIÓN METODOLÓGICA]
+
+Limitaciones del estudio:
+
+- [LIMITACIÓN MUESTRAL/METODOLÓGICA]
+- [LIMITACIÓN DE GENERALIZACIÓN]
+- El diseño correlacional de corte transversal no permite inferencias causales.
+
+Recomendaciones para futuras investigaciones:
+
+- [RECOMENDACIÓN 1]
+- [RECOMENDACIÓN 2]
 ----
 Generado por StatSim Pro
 Fecha: 21/10/2026

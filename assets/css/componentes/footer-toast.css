@@ -7,19 +7,34 @@
     padding: var(--spacing-xl) 0; text-align: center; margin-top: var(--spacing-2xl);
 }
 .footer p { color: var(--color-text-secondary); font-size: 0.875rem; }
+/* (2027.01.04, revisión) Centrado con left/right y margin: auto, con el ancho de su texto (fit-content): con left: 50% y
+   translateX(-50%), su ancho no pasaba de media pantalla, y en un teléfono un aviso largo salía en una columna estrecha y muy
+   alta. Oculto, del todo: baja su propio alto y algo más (bajaba 120 px, y uno más alto seguía asomando abajo, tapando la
+   página, hasta el aviso siguiente), sin visibility: hidden, que lo sacaría del árbol de accesibilidad (es role="status": su
+   texto se anuncia al cambiar). Y nunca más alto que la pantalla: si no cabe, se desplaza dentro de su recuadro (dvh: la
+   pantalla que se ve, con la barra del navegador de un teléfono; vh, para un navegador que no lo conozca); (2027.01.05) solo
+   mientras se ve: un recuadro que se desplaza recibe el foco con el tabulador, y oculto lo recibía fuera de la pantalla.
+   (2027.01.06) Y una palabra más larga que su ancho (una lista de encabezados sin espacios, «Prueba,Escala,NumItems,…») se
+   parte: se desplaza solo hacia abajo (en la 2027.01.05 quedaba cortada a la derecha, sin poder leerse). */
 .toast {
-    position: fixed; bottom: -120px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: 2rem; left: 0; right: 0; margin: 0 auto; width: fit-content;
+    transform: translateY(calc(100% + 4rem));
     background: rgba(19, 28, 46, 0.92);
     color: var(--color-text);
     border: 1px solid var(--color-border);
     backdrop-filter: blur(10px);
     padding: 1rem 1.6rem; border-radius: var(--radius-md);
     box-shadow: var(--shadow-lg), var(--edge-light);
-    transition: bottom var(--transition-slow);
+    transition: transform var(--transition-slow), bottom var(--transition-slow);
     z-index: 1000; font-size: 0.9375rem;
-    max-width: min(90vw, 640px); line-height: 1.4; text-align: left;
+    max-width: min(90vw, 640px); max-height: calc(100vh - 4rem); max-height: calc(100dvh - 4rem); overflow: hidden;
+    line-height: 1.4; text-align: left; overflow-wrap: break-word; overflow-wrap: anywhere;
 }
-.toast.show { bottom: 2rem; }
+.toast.show { transform: none; overflow-y: auto; }
+/* (2027.01.04, revisión) en una pantalla baja (un teléfono apaisado), más compacto */
+@media (max-height: 500px) {
+    .toast { padding: 0.6rem 1rem; font-size: 0.875rem; }
+}
 .toast.success { border-color: rgba(74, 222, 128, 0.5); box-shadow: 0 12px 36px rgba(74, 222, 128, 0.12); }
 .toast.error { border-color: rgba(248, 113, 113, 0.55); box-shadow: 0 12px 36px rgba(248, 113, 113, 0.14); }
 .toast.warning { border-color: rgba(251, 191, 36, 0.55); }

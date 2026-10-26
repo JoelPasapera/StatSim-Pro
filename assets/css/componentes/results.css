@@ -39,6 +39,11 @@ body .interpretation-text { margin: 0; line-height: 1.8; text-align: justify; co
 .result-table th { padding: var(--spacing-xs) var(--spacing-sm); text-align: left; font-weight: 650; border-bottom: 1px solid var(--color-border); }
 .result-table td:first-child { font-weight: 500; color: var(--color-text-secondary); }
 .discussion-box { background-color: var(--color-bg-tertiary); padding: var(--spacing-lg); border-radius: var(--radius-md); line-height: 1.8; font-size: 0.9375rem; }
+/* (2027.01.04) la plantilla de la discusión, con la forma de su Markdown: párrafos, listas y rayas entre apartados */
+.discussion-box p { margin: 0 0 0.75rem; }
+.discussion-box ol, .discussion-box ul { margin: 0 0 0.75rem 1.5rem; }
+.discussion-box hr { border: 0; border-top: 1px solid var(--color-border); margin: 1rem 0; }
+.discussion-box > :last-child { margin-bottom: 0; }
 .apa-box { display: flex; align-items: center; gap: var(--spacing-md); flex-wrap: wrap; }
 .apa-text { margin: 0; flex: 1; min-width: 240px; font-style: italic; line-height: 1.7; }
 .reference-text { overflow-wrap: anywhere; word-break: break-word; }

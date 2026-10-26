@@ -2,7 +2,7 @@
 
 Cinco casos de uso hechos por la propia página. Cada uno se recorrió en un navegador de verdad (Chromium) como lo haría una persona: importar la configuración en el Simulador, generar la base, descargarla en todos sus formatos, pasarla al Analizador, analizar, exportar el Word, imprimir los resultados en PDF y guardar el proyecto. Lo que hay en cada carpeta es lo que descargó la página, sin retocar.
 
-En la página, la pestaña **Ejemplos** los muestra uno por uno, deja descargar cada archivo (o el caso entero en un .zip) y los abre en StatSim con un clic, con sus pasos a la vista: en cada paso, «Muéstrame» señala dónde está cada control y «Hazlo por mí» repite el análisis a la vista, como se hizo en el caso.
+En la página, la pestaña **Ejemplos** los muestra uno por uno, deja descargar cada archivo (o el caso entero en un .zip) y los abre en StatSim con un clic, con sus pasos a la vista: en cada paso, «Muéstrame» señala dónde está cada control y, en los que hay que repetir, «Hazlo por mí» repite el análisis a la vista, como se hizo en el caso.
 
 > **Datos simulados.** Todas las bases las generó el Simulador con una configuración y una semilla fijas: sirven para ver qué hace cada sección y qué entrega, no son resultados de ninguna investigación.
 
@@ -26,7 +26,7 @@ Y, junto a las carpetas, `indice.json`: el catálogo que lee la pestaña «Ejemp
 
 ## Cómo se hicieron
 
-Con `node tests/navegador/ejemplos.mjs generar` (una receta por caso en `tests/navegador/recetas/`), que abre la página en Chromium con Playwright, sin red externa, con la zona horaria de Lima y el reloj fijo en el 21 de octubre de 2026 a las 12:00 (Lima): por eso las fechas de los archivos son esas y una segunda corrida da los mismos archivos, byte a byte (los PDF, con el mismo texto impreso). Los PDF salen del motor de impresión de Chromium con los estilos de impresión de la página, como «Imprimir → Guardar como PDF».
+Con `node tests/navegador/ejemplos.mjs generar` (una receta por caso en `tests/navegador/recetas/`), que abre la página en Chromium con Playwright, sin red externa, con la zona horaria de Lima y el reloj fijo en el 21 de octubre de 2026 a las 12:00 (Lima): por eso las fechas que llevan los archivos (en el Word, el proyecto, las bases y lo impreso) son esas y una segunda corrida da los mismos archivos, byte a byte (los PDF, con el mismo texto impreso: la fecha de creación que Chromium anota dentro de un PDF es la de la corrida). Los PDF salen del motor de impresión de Chromium con los estilos de impresión de la página, como «Imprimir → Guardar como PDF».
 
 ## Cómo se comprueban
 

@@ -20,7 +20,7 @@ export const bus = {
 export const EVENTOS = {
     BASE_GENERADA: 'base:generada',        // Simulador → Analizador: { datos, etiquetas, estructura }
     FUENTES_CAMBIADAS: 'fuentes:cambiadas', // Buscador → Redactor: las fuentes seleccionadas cambiaron
-    FIABILIDAD_ACTUALIZADA: 'fiabilidad:actualizada', // Analizador: la fiabilidad se completó en segundo plano (p. ej., bootstrap)
+    FIABILIDAD_ACTUALIZADA: 'fiabilidad:actualizada', // Analizador: la fiabilidad se completó en segundo plano (los coeficientes ordinales, el bootstrap)
     // (2027.01.01) Analizador: hay otros datos cargados; lo calculado con los anteriores (cada tarjeta, el SEM) se olvida
     DATOS_CARGADOS: 'analizador:datos-cargados',
     // (2027.01.02) la cáscara mostró una sección: { id } (main.js carga entonces la de carga perezosa, como «Ejemplos»)

@@ -19,25 +19,6 @@ Decisión sobre H₀:	SE RECHAZA H₀
 
 Se comparó General_I entre los grupos de Sexo mediante la U de Mann-Whitney: U = 7818, Z = -3.78, p < .001.
 
-Copiar
-Valor
-Hombre
-Mujer
-12
-14
-16
-18
-20
-22
-24
-26
-28
-30
-32
-34
-36
-38
-Distribución por grupo
 Interpretación
 
 Existe una diferencia estadísticamente significativa en General_I entre los grupos de Sexo (U de Mann-Whitney, p < 0.001). El grupo "Sexo = Mujer" presenta los valores más altos (rango medio 163.7 frente a 126.6). La magnitud de la diferencia corresponde a r de rangos = 0.22, tamaño pequeño. Una diferencia significativa no implica causalidad cuando los grupos no se asignaron al azar.

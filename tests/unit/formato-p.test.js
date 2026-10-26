@@ -5,7 +5,7 @@
 // de una ecuación con su signo («− 0.114·x», no «+ -0.114·x»).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatoP, pConSigno, textoP, formatoMitades, numeroConMenos, terminoConSigno } from '../../src/shared/formato-numero.js';
+import { formatoP, pConSigno, textoP, formatoMitades, numeroConMenos, numeroFijo, terminoConSigno } from '../../src/shared/formato-numero.js';
 
 const lado = (/** @type {number} */ x, /** @type {number} */ t) => (Math.abs(x - t) <= 1e-9 * t ? 0 : Math.sign(x - t));
 
@@ -23,6 +23,16 @@ test('(2027.01.01) el término de una ecuación lleva su signo delante, el del n
     assert.equal(numeroConMenos(-0), '0.000');
     assert.equal(numeroConMenos(NaN), '—');
     assert.equal(numeroConMenos(-Infinity), '−∞');
+});
+
+test('(2027.01.13, revisión) un número con sus decimales, sin «-0.00» (el diagrama del SEM lo escribía en una correlación de −0,0013)', () => {
+    assert.equal(numeroFijo(-0.0013, 2), '0.00');
+    assert.equal(numeroFijo(-0.0004), '0.000');
+    assert.equal(numeroFijo(-0), '0.000');
+    assert.equal(numeroFijo(-0.0006), '-0.001', 'un negativo que no redondea a cero, con su guion');
+    assert.equal(numeroFijo(1.23456, 2), '1.23');
+    assert.equal(numeroFijo(-0.17, 2), '-0.17');
+    for (const v of [NaN, Infinity, -Infinity]) assert.equal(numeroFijo(v), '—');
 });
 
 test('tres decimales, sin el cero inicial, «< .001» y «—»', () => {

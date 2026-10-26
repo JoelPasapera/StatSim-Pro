@@ -55,7 +55,9 @@ let fallos = 0;
 const filas = [];
 const registrar = (nombre, r, resumen) => {
     filas.push(`${r.ok ? '✓' : '✗'} ${nombre}${resumen ? ' · ' + resumen : ''} (${seg(r.ms)})`);
-    if (!r.ok) { fallos++; filas.push(r.out.split('\n').filter(l => /not ok|Error|✗|FALL|Traceback|AssertionError/.test(l)).slice(0, 15).map(l => '    ' + l).join('\n')); }
+    // (2027.01.12) sin las líneas de las pruebas que pasan (TAP: «# Subtest: …» y «ok N - …»): las de nombre con «✗» llenaban
+    // las quince y el «not ok» del fallo no se veía
+    if (!r.ok) { fallos++; filas.push(r.out.split('\n').filter(l => !/^\s*(# Subtest:|ok \d+ - )/.test(l) && /not ok|Error|✗|FALL|Traceback|AssertionError/.test(l)).slice(0, 15).map(l => '    ' + l).join('\n')); }
 };
 
 // 0) versión coherente en src/version.js, index.html y version.json
@@ -109,43 +111,53 @@ if (completo) {
     if (incluye('extra')) tareas.push(correr(process.execPath, ['montecarlo/wlsmv.mjs', '600'], aqui).then(rM => {
         registrar('Monte Carlo del WLSMV (600 réplicas: Γ, EE robustos, tasa de rechazo, sesgo)', rM, (() => { try { const r = JSON.parse(rM.out.trim().split('\n')[0]); return `rechazo ${(100 * r.tasaRechazo).toFixed(1)} %, Γ ×${r.razonGammaMedia.toFixed(3)}, EE ×[${r.razonEE.map(v => v.toFixed(2)).join(', ')}]`; } catch (e) { return ''; } })());
     }));
-    // (2027.01.01) los ejemplos de ejemplos/, rehechos en Chromium pulsando los botones y comparados con su carpeta
-    // (tests/navegador/ejemplos.mjs). Sin Playwright se omite y se dice: las pruebas de Node (integration/ejemplos.test.js)
-    // comprueban siempre, sin navegador, sus archivos, sus bases y sus cifras
+    // (2027.01.04) Los bloques del navegador, uno tras otro (cada uno abre su Chromium): a la vez, y con los oráculos, el fuzz y
+    // las pruebas de Node en paralelo, se quitaban tanto tiempo que en una máquina de dos núcleos agotaban sus esperas.
+    /** (2027.01.04, revisión) ¿Falló solo por esperas agotadas? (Ningún ✗ que no lo sea.) @param {string} salida */
+    const seRepite = salida => /Timeout \d+ms exceeded/.test(salida) && salida.split('\n').filter(l => /^✗/.test(l)).every(l => /Timeout \d+ms exceeded/.test(l));
+    /**
+     * Un bloque del navegador: su script y lo que dice la batería (✓ o ✗ por línea; si falla, sus últimas líneas).
+     * @param {string} script en tests/navegador/ @param {string[]} args @param {string} nombre
+     * @param {(bien: number, mal: number, salida: string) => string} resumen
+     */
+    const enElNavegador = async (script, args, nombre, resumen) => {
+        let r = await correr(process.execPath, [path.join('navegador', script), ...args], aqui);
+        // una espera de Playwright agotada (la máquina, cargada con los demás bloques) no es un fallo de la página: se repite
+        // una vez, y se dice. Lo que compara (✗ distinto) no se repite: (2027.01.04, revisión) con una línea ✗ que no sea una
+        // espera agotada, el bloque falla con ella (antes se repetía igual y, si la segunda vez pasaba, el ✗ se perdía)
+        if (!r.ok && seRepite(r.out)) {
+            const otra = await correr(process.execPath, [path.join('navegador', script), ...args], aqui);
+            r = { ...otra, out: otra.out + '\n(repetido: la primera vez se agotó una espera de Playwright)', ms: r.ms + otra.ms };
+        }
+        const bien = (r.out.match(/^✓/gm) || []).length, mal = (r.out.match(/^✗/gm) || []).length;
+        const ok = r.ok && mal === 0 && bien > 0;
+        // (2027.01.01) si falla, las últimas líneas de su salida (un error de Playwright no siempre dice «Error»)
+        const cola = ok ? '' : '\n' + r.out.trim().split('\n').filter(l => !/^✓/.test(l)).slice(-6).map(l => (/^✗/.test(l) ? l : `✗ ${l}`)).join('\n');
+        registrar(nombre, { ...r, out: r.out + cola, ok }, resumen(bien, mal, r.out));
+    };
     if (incluye('navegador')) tareas.push((async () => {
         const { prepararChromium } = await import('./navegador/entorno.mjs');
         const { pw, motivo } = await prepararChromium();
         if (!pw) { filas.push(`· ejemplos en el navegador omitidos: ${motivo}; las pruebas de Node ya comprueban sus archivos, sus bases y sus cifras`); return; }
-        const r = await correr(process.execPath, [path.join('navegador', 'ejemplos.mjs'), 'comprobar'], aqui);
-        const iguales = (r.out.match(/^✓/gm) || []).length, distintos = (r.out.match(/^✗/gm) || []).length, sinDibujo = /salvo el dibujo/.test(r.out);
-        const ok = r.ok && distintos === 0 && iguales > 0;
-        // (2027.01.01) si falla, las últimas líneas de su salida (un error de Playwright no siempre dice «Error»)
-        const cola = ok ? '' : '\n' + r.out.trim().split('\n').slice(-6).map(l => `✗ ${l}`).join('\n');
-        registrar('ejemplos rehechos en Chromium (los cinco casos de ejemplos/, comparados con su carpeta)', { ...r, out: r.out + cola, ok }, `${iguales} iguales${distintos ? ` · ${distintos} distintos` : ''}${sinDibujo ? ' · PDF y figuras del Word sin comparar byte a byte (otro dibujo: otras fuentes u otro Chromium)' : ''}`);
-    })());
-    // (2027.01.02) la pestaña «Ejemplos» en Chromium: la galería, cada caso con sus descargas, el .zip, «Abrir en StatSim» y
-    // la guía, en el escritorio y en un teléfono (tests/navegador/pestana-ejemplos.mjs)
-    if (incluye('navegador')) tareas.push((async () => {
-        const { prepararChromium } = await import('./navegador/entorno.mjs');
-        const { pw } = await prepararChromium();
-        if (!pw) return;   // el bloque de los ejemplos ya dijo por qué se omite
-        const r = await correr(process.execPath, [path.join('navegador', 'pestana-ejemplos.mjs')], aqui);
-        const bien = (r.out.match(/^✓/gm) || []).length, mal = (r.out.match(/^✗/gm) || []).length;
-        const ok = r.ok && mal === 0 && bien > 0;
-        const cola = ok ? '' : '\n' + r.out.trim().split('\n').filter(l => !/^✓/.test(l)).slice(-6).map(l => (/^✗/.test(l) ? l : `✗ ${l}`)).join('\n');
-        registrar('la pestaña «Ejemplos» en Chromium (galería, descargas, .zip, «Abrir en StatSim», guía; escritorio y teléfono)', { ...r, out: r.out + cola, ok }, `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
-    })());
-    // (2027.01.03) «Hazlo por mí» en Chromium: los cinco casos repetidos con los botones de su guía, y lo que se descarga tras
-    // cada paso, byte a byte el de su carpeta; «Muéstrame», a la vista en el escritorio y en un teléfono (tests/navegador/hazlo-por-mi.mjs)
-    if (incluye('navegador')) tareas.push((async () => {
-        const { prepararChromium } = await import('./navegador/entorno.mjs');
-        const { pw } = await prepararChromium();
-        if (!pw) return;   // el bloque de los ejemplos ya dijo por qué se omite
-        const r = await correr(process.execPath, [path.join('navegador', 'hazlo-por-mi.mjs')], aqui);
-        const bien = (r.out.match(/^✓/gm) || []).length, mal = (r.out.match(/^✗/gm) || []).length;
-        const ok = r.ok && mal === 0 && bien > 0;
-        const cola = ok ? '' : '\n' + r.out.trim().split('\n').filter(l => !/^✓/.test(l)).slice(-6).map(l => (/^✗/.test(l) ? l : `✗ ${l}`)).join('\n');
-        registrar('«Hazlo por mí» en Chromium (los cinco casos con su guía, comparados byte a byte con su carpeta; «Muéstrame» a la vista)', { ...r, out: r.out + cola, ok }, `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+        // (2027.01.01) los ejemplos de ejemplos/, rehechos en Chromium pulsando los botones y comparados con su carpeta
+        // (tests/navegador/ejemplos.mjs). Sin Playwright se omite y se dice: las pruebas de Node (integration/ejemplos.test.js)
+        // comprueban siempre, sin navegador, sus archivos, sus bases y sus cifras
+        await enElNavegador('ejemplos.mjs', ['comprobar'], 'ejemplos rehechos en Chromium (los cinco casos de ejemplos/, comparados con su carpeta)', (bien, mal, salida) => `${bien} iguales${mal ? ` · ${mal} distintos` : ''}${/salvo el dibujo/.test(salida) ? ' · PDF y figuras del Word sin comparar byte a byte (otro dibujo: otras fuentes u otro Chromium)' : ''}`);
+        // (2027.01.02) la pestaña «Ejemplos»: la galería, cada caso con sus descargas, el .zip, «Abrir en StatSim» y la guía, en
+        // el escritorio y en un teléfono (tests/navegador/pestana-ejemplos.mjs)
+        await enElNavegador('pestana-ejemplos.mjs', [], 'la pestaña «Ejemplos» en Chromium (galería, descargas, .zip, «Abrir en StatSim», guía; escritorio y teléfono)', (bien, mal) => `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+        // (2027.01.03) «Hazlo por mí»: los cinco casos repetidos con los botones de su guía, y lo que se descarga tras cada paso,
+        // byte a byte el de su carpeta; «Muéstrame», a la vista en el escritorio y en un teléfono (tests/navegador/hazlo-por-mi.mjs)
+        await enElNavegador('hazlo-por-mi.mjs', [], '«Hazlo por mí» en Chromium (los cinco casos con su guía, comparados byte a byte con su carpeta y lo impreso por su texto; los casos 4 y 5, dos veces; «Muéstrame» a la vista)', (bien, mal) => `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+        // (2027.01.10, revisión) los gráficos del Analizador en papel: caben en su lienzo, y al imprimir y en las figuras del Word
+        // sus textos salen en tinta (tests/navegador/graficos-en-papel.mjs)
+        await enElNavegador('graficos-en-papel.mjs', [], 'los gráficos en papel en Chromium (casos 1, 3 y 5: cada uno cabe en su lienzo, con su proporción y sin textos montados ni tapados; impresos y en el Word, legibles y con tinta en su dibujo; el diagrama de rutas del SEM, legible en el Word)', (bien, mal) => `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+        // (2027.01.12, revisión) los gráficos con datos y nombres extremos, en marcos como los de la página, a 1280 y a 360: sin
+        // textos montados, a su tamaño, iguales dibujados ocultos y sin trabajar mientras no se ven (tests/navegador/graficos-extremos.mjs)
+        await enElNavegador('graficos-extremos.mjs', [], 'los gráficos con datos y nombres extremos en Chromium (a 1280 y a 360: sin textos montados, a su tamaño, iguales dibujados ocultos, quietos mientras no se ven; las cards, a todo su ancho en un teléfono)', (bien, mal) => `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
+        // (2027.01.04) «Recargar sin caché» trae los módulos nuevos de la pestaña «Ejemplos» aunque esa vez no se haya abierto
+        // (tests/navegador/recargar-sin-cache.mjs)
+        await enElNavegador('recargar-sin-cache.mjs', [], '«Recargar sin caché» en Chromium (los módulos de una pestaña que aún no se abrió, también)', (bien, mal) => `${bien} comprobaciones${mal ? ` · ${mal} fallan` : ''}`);
     })());
     if (incluye('oraculos')) tareas.push((async () => {
         const py = await python();

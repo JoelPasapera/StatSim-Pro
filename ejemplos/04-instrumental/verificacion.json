@@ -1,6 +1,6 @@
 {
   "caso": "04-instrumental",
-  "version": "2027.01.03",
+  "version": "2027.01.15",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
@@ -2036,6 +2036,28 @@
           "DE5": 1,
           "Procrastinacion": 0.5210640751500548
         },
+        "varianzasResiduales": {
+          "P1": 0.7284922295880181,
+          "P2": 0.5313446860427481,
+          "P3": 0.6401651872761915,
+          "P4": 0.5130320021594362,
+          "P5": 0.5656708189588078,
+          "D1": 0.6010877975060137,
+          "D2": 0.4807812385695842,
+          "D3": 0.6954234102804064,
+          "D4": 0.649557676988981,
+          "D5": 0.42032341530477424,
+          "DE1": 0.5524657682313461,
+          "DE2": 0.6146070521697438,
+          "DE3": 0.8145605156882437,
+          "DE4": 0.6203848332699368,
+          "DE5": 0.7207781419752035
+        },
+        "chi2DWLS": 757.3041472382325,
+        "correccion": {
+          "a": 54.84085581730782,
+          "b": 65.29661588264736
+        },
         "optimizacion": {
           "metodo": "BFGS",
           "iteraciones": 55,
@@ -2598,6 +2620,28 @@
           "Postergacion": 0.6142180704088911,
           "Distraccion": 0.7366449351502233,
           "Desorganizacion": 0.8159850342127983
+        },
+        "varianzasResiduales": {
+          "P1": 0.6227361619831786,
+          "P2": 0.3810586525357478,
+          "P3": 0.48264330520483467,
+          "P4": 0.3271536182017897,
+          "P5": 0.4245651622514558,
+          "D1": 0.4573542395175233,
+          "D2": 0.33289632550181314,
+          "D3": 0.5803431759311128,
+          "D4": 0.5362341695118708,
+          "D5": 0.2363417624871006,
+          "DE1": 0.3341684239407383,
+          "DE2": 0.4138253930711687,
+          "DE3": 0.7237131614524921,
+          "DE4": 0.4444766197379596,
+          "DE5": 0.5899703681503803
+        },
+        "chi2DWLS": 78.68229854355786,
+        "correccion": {
+          "a": 50.09211517900134,
+          "b": 48.90642644894916
         },
         "optimizacion": {
           "metodo": "BFGS",
@@ -14397,12 +14441,12 @@
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 19761,
-      "sha256": "c060dd848365815a7b60cdfc49f5c073a44db7b656a5d7215f812c214bca0480",
+      "sha256": "63bdb9ebbff6d62e90bd032a51795339ecb50b37138055b80d9047502fa995a0",
       "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 50358,
-      "sha256": "19aa6f76724223d81963915fec8b6c41d4ddebd3687b7db37aca6f5a0cfeede5",
+      "sha256": "92f9b51e37b9882a59124702fc584e2a927a7a72a0bf2fce07d8809c6e08b2b0",
       "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
@@ -14416,10 +14460,10 @@
       "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 73045,
-      "sha256": "36506c09dd75620b09fe29a6a2d88ba18312ead46b465db3622d76519e826c97",
+      "bytes": 73048,
+      "sha256": "0309629da62b33e129e88e5b3e39df0923863d930184b8fa419c9a1b3a2314f6",
       "paginas": 2,
-      "impreso": "a9100ec5073a4fce9cd45fbad91bd828762073b915ff4bbf6e4d61096b93f28c",
+      "impreso": "aac3b96f020711741c51e51e96345c175ec44ce82ee91fc172235ca2ac026b00",
       "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-validez-de-contenido/valoraciones_claridad.csv": {
@@ -14463,25 +14507,25 @@
       "descripcion": "La invarianza de medición redactada en APA, con sus tablas: botón «Word» de la tarjeta."
     },
     "analizador/4-capitulo/capitulo_resultados_APA.docx": {
-      "bytes": 786320,
-      "sha256": "f8e17c2949c093d0da07ff3db5db186b44671475e3c7a254ed41885bd1cc15c5",
+      "bytes": 958517,
+      "sha256": "e22d1bc9d6bbe7d5d59cd98887240ee35d2f39ef5356f842cc280e49cc110647",
       "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/4-capitulo/resultados_analisis.txt": {
-      "bytes": 28067,
-      "sha256": "83662bd4a63f19b776770fee4345fb8fe9034fd31e9bff3552960fc29ecbbfee",
+      "bytes": 25815,
+      "sha256": "e8075766d79c59b5f754fcaa9fe339aefe569c8c28996d81172d9dd5bc7fd4cf",
       "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/4-capitulo/resultados.pdf": {
-      "bytes": 1499452,
-      "sha256": "0edb74df79cbee51cbbb25acdf084d5b66583e13b3808c96c52a419652e85389",
-      "paginas": 38,
-      "impreso": "18fcfb370e112f8e93ae9ac74a9a3578e10a1b7113dc7e0f9d05e372b2551584",
+      "bytes": 1511167,
+      "sha256": "bb0ed8e07286115111f394a81e477e36b9259cf71e54b3bedd5bf6f4a8cc34eb",
+      "paginas": 39,
+      "impreso": "0a7e1c6dc6c5b851cec53469e820d1affbfaeb3f03d25841f6356ed8906e9c01",
       "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
       "bytes": 24647,
-      "sha256": "e2d7df795bc553e6f1ba1be50c5a6df4bb4e09ec91a847ffd89d6838f9a2129e",
+      "sha256": "8244c36fdbaaa3d5ecf52f87aaa26da9d70970b565a3da341becc86033e7816f",
       "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }

@@ -63,11 +63,28 @@ if (typeof fetch === 'function' && typeof sessionStorage !== 'undefined') compro
 // profundo, «index.html#ejemplos»), por eso se escucha antes de montar la navegación. Si su módulo no se pudo cargar, lo dice
 // en la propia sección (en su elemento [data-estado-carga]) y ofrece recargar sin caché: el navegador recuerda el fallo de un
 // módulo, y volver a importarlo sin recargar no lo arregla.
+/**
+ * (2027.01.04, revisión) Por qué no se pudo cargar una pestaña, por su error: un archivo que no llegó (el navegador lo dice
+ * así: «Failed to fetch dynamically imported module», «error loading dynamically imported module», «Importing a module
+ * script failed»), uno que no encaja con los demás (un SyntaxError: lo que importa no está, lo normal con una copia vieja en
+ * la caché) o uno que dio un error al ponerse en marcha. Hasta la revisión, cualquiera se achacaba a la red.
+ * @param {unknown} e
+ */
+const porQueNoCargo = e => {
+    const mensaje = e instanceof Error ? e.message : String(e);
+    if (e instanceof TypeError && /Failed to fetch dynamically imported module|error loading dynamically imported module|Importing a module script failed/i.test(mensaje)) {
+        return 'el navegador no pudo traer uno de sus archivos (sin conexión, o con una copia vieja en su caché). Vuelve a cargar la página sin caché';
+    }
+    if (e instanceof SyntaxError) return 'uno de sus archivos no encaja con los demás (lo normal tras una actualización: una copia vieja en la caché del navegador). Vuelve a cargar la página sin caché';
+    return 'uno de sus archivos dio un error al ponerse en marcha (el detalle, en la consola del navegador). Prueba a cargar la página sin caché';
+};
 /** @param {string} id @param {unknown} e */
 const avisarFalloDeCarga = (id, e) => {
     const aviso = document.querySelector(`#${id} [data-estado-carga]`);
     if (!aviso) return;
-    aviso.textContent = `No se pudo cargar esta pestaña (${e instanceof Error ? e.message : e}). Vuelve a cargar la página sin caché (no se borra nada tuyo): `;
+    // (2027.01.04) en castellano (el detalle del navegador, en inglés, queda en la consola) y sin prometer lo que no es: recargar
+    // pierde lo que no se haya guardado (lo guardado en el navegador, como la tabla de la V de Aiken, se queda)
+    aviso.textContent = `No se pudo cargar esta pestaña: ${porQueNoCargo(e)}; se pierde lo que no hayas guardado con «Guardar proyecto»: `;
     const boton = document.createElement('button');
     boton.type = 'button';
     boton.className = 'btn btn-outline';

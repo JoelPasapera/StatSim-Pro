@@ -10,7 +10,9 @@
 // siempre revalida todos los recursos. Aquí se hace explícitamente:
 //   1. cada recurso de la página (scripts, hojas de estilo, favicon) y el propio
 //      HTML se vuelven a pedir con `cache: 'reload'`: el navegador los descarga
-//      de nuevo y SUSTITUYE su copia en la caché HTTP;
+//      de nuevo y SUSTITUYE su copia en la caché HTTP; (2027.01.04) y todo lo que
+//      importan, módulo a módulo (shared/modulos-del-sitio.js): también los de
+//      las pestañas que aún no se abrieron esta vez (la de Ejemplos);
 //   2. si algún día hubiera Cache Storage o service workers, se vacían y se dan
 //      de baja (hoy el sitio no los usa; queda por si acaso);
 //   3. opcionalmente (restablecer) se borran localStorage, sessionStorage e
@@ -21,6 +23,8 @@
 // Lo que NO se pierde: los archivos que el usuario haya descargado. Lo que SÍ:
 // la configuración que tenga a medias en el Simulador (vive en la página).
 // ============================================================================
+
+import { recorrerSitio } from './modulos-del-sitio.js';
 
 const ESTADO = { enCurso: false };
 
@@ -46,20 +50,18 @@ function recursosDeLaPagina() {
     return Array.from(urls);
 }
 
+// (2027.01.04) Los recursos de la página y todo lo que importan (shared/modulos-del-sitio.js), de cuatro en cuatro para no
+// saturar: hasta la 2027.01.03 solo los que el navegador había anotado al cargar (un registro de 250, que la página llena
+// antes de terminar de arrancar), y los módulos de una pestaña que se carga después (la de Ejemplos) seguían viejos.
 async function revalidar(urls, log) {
-    let ok = 0, fallos = 0;
-    // de cuatro en cuatro para no saturar
-    for (let i = 0; i < urls.length; i += 4) {
-        await Promise.all(urls.slice(i, i + 4).map(async url => {
-            try {
-                // los recursos de otros dominios (CDN) se piden en modo opaco: refrescan su caché igual
-                const mismoOrigen = new URL(url, location.href).origin === location.origin;
-                const r = await fetch(url, mismoOrigen ? { cache: 'reload', credentials: 'same-origin' } : { cache: 'reload', mode: 'no-cors' });
-                if (r.ok || r.type === 'opaque') ok++; else fallos++;
-            } catch (e) { fallos++; }
-        }));
-    }
-    escribir(log, `Recursos vueltos a descargar: ${ok}${fallos ? ` (${fallos} no disponibles)` : ''}`);
+    const delSitio = url => new URL(url, location.href).origin === location.origin;
+    const { pedidas, fallidas } = await recorrerSitio(urls.map(u => new URL(u, location.href).href), {
+        delSitio,
+        // los recursos de otros dominios (CDN) se piden en modo opaco: refrescan su caché igual
+        obtener: url => fetch(url, delSitio(url) ? { cache: 'reload', credentials: 'same-origin' } : { cache: 'reload', mode: 'no-cors' }),
+        aLaVez: 4,
+    });
+    escribir(log, `Recursos vueltos a descargar: ${pedidas.length}${fallidas.length ? ` (${fallidas.length} no disponibles)` : ''}`);
 }
 
 async function vaciarCaches(log) {

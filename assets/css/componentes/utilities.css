@@ -541,7 +541,6 @@ body:has(.hero-portada:not(.oculto)) .footer { display: none; }
     gap: 0.8rem;
     margin: 0.6rem 0 0.2rem;
 }
-.progreso-generacion[hidden] { display: none; }
 .progreso-generacion__barra {
     flex: 1;
     height: 8px;

@@ -1,5 +1,5 @@
 // @ts-check
-// tests/unit/ejemplos-markdown.test.js — (2027.01.02) el Markdown de los README de ejemplos/ en HTML (src/ejemplos/markdown.js),
+// tests/unit/ejemplos-markdown.test.js — (2027.01.02) el Markdown de los README de ejemplos/ en HTML (src/shared/markdown.js),
 // el que pinta la pestaña «Ejemplos»: lo que escriben las recetas (títulos, párrafos, listas con bloques dentro, tablas,
 // citas, código, negritas y enlaces) y, sobre todo, que nada se cuele sin escapar ni un enlace vaya adonde no debe; y las
 // piezas con que el generador saca los pasos de cada README (seccionDe, elementosDeLista).
@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { elementosDeLista, enLinea, markdownAHtml, partirEnSecciones, seccionDe, sinSecciones } from '../../src/ejemplos/markdown.js';
+import { elementosDeLista, enLinea, markdownAHtml, partirEnSecciones, seccionDe, sinSecciones } from '../../src/shared/markdown.js';
 
 const ejemplos = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'ejemplos');
 
@@ -95,4 +95,15 @@ test('los README de ejemplos/: sus pasos salen enteros y todo su HTML, escapado 
         assert.ok(pedidas.length > 0 && pedidas.every(r => fs.existsSync(path.join(ejemplos, caso, ...r.split('/')))), `${caso}: cada enlace relativo es un archivo del caso`);
         assert.ok(!/\]\(|\*\*/.test(html.replace(/<pre>[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>/g, '')), `${caso}: no quedan marcas de Markdown sin convertir`);
     }
+});
+
+test('(2027.01.04) una raya entre apartados («---», «***», «___», «- - -») es un <hr>: corta un párrafo y una lista; en un código o en medio de una línea, es texto', () => {
+    assert.equal(markdownAHtml('uno\n\n---\n\ndos'), '<p>uno</p>\n<hr>\n<p>dos</p>');
+    assert.equal(markdownAHtml('uno\n***\ndos'), '<p>uno</p>\n<hr>\n<p>dos</p>', 'corta el párrafo');
+    assert.equal(markdownAHtml('- a\n- - -\n- b'), '<ul><li>a</li></ul>\n<hr>\n<ul><li>b</li></ul>', 'antes que un elemento de lista');
+    assert.equal(markdownAHtml('1. a\n---'), '<ol><li>a</li></ol>\n<hr>', 'y que la continuación de un elemento');
+    assert.equal(markdownAHtml('___'), '<hr>');
+    assert.equal(markdownAHtml('--'), '<p>--</p>', 'dos no bastan');
+    assert.equal(markdownAHtml('```\n---\n```'), '<pre><code>---</code></pre>');
+    assert.equal(markdownAHtml('a --- b'), '<p>a --- b</p>');
 });

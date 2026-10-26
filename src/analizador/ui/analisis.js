@@ -62,6 +62,9 @@ function ejecutarAnalisis() {
             // correlación anterior (que ya no estaba en pantalla) o decía «Primero ejecuta un análisis» (analizador/ui/index.js)
             olvidarAnalisisAnterior();
             window.ultimoTipoAnalisis = tipoAnalisis === 'correlacion' && _variablesExtra().some(v => v !== var1 && v !== var2) ? 'matriz' : tipoAnalisis;
+            // (2027.01.05) la tarjeta de fiabilidad es de la correlación de dos variables: con otro análisis no se muestra, y lo
+            // que se calculaba para ella se cancela (si no, un bootstrap en marcha la pintaba al terminar dentro de este)
+            if (window.ultimoTipoAnalisis !== 'correlacion' && typeof Fiabilidad !== 'undefined' && Fiabilidad.retirar) Fiabilidad.retirar();
             if (tipoAnalisis === 'comparacion') {
                 ejecutarComparacion(var1, var2);
             } else if (tipoAnalisis === 'asociacion') {

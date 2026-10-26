@@ -3,7 +3,8 @@
 // en cualquier sección, con los pasos que se dieron en el Analizador (los de su README) para marcarlos según se hacen. Los
 // que ya trajo el proyecto (los datos y la configuración de la investigación) salen marcados; los que hay que repetir (los
 // análisis no se guardan en el proyecto), resaltados; los de después (las descargas, guardar el proyecto), como opcionales.
-// Se pliega a su cabecera (en un teléfono empieza plegada: desplegada taparía media pantalla) y se cierra; no se imprime.
+// Se pliega a su cabecera (en un teléfono, también apaisado, empieza plegada: desplegada taparía media pantalla) y se
+// cierra; no se imprime.
 // Lo marcado vive lo que dure la página: no se guarda. Si después se abre otro proyecto, se cierra sola (ya no es lo que hay
 // en la página); «Abrir en StatSim» la pone después de abrir el suyo.
 // (2027.01.03) Con el guion de cada paso (los ejemplos lo traen en su índice), cada uno con «Muéstrame» (señala en la página
@@ -14,15 +15,16 @@
 
 import { escaparHTML } from '../shared/html.js';
 import { bus, EVENTOS } from '../shared/eventos.js';
-import { markdownAHtml } from './markdown.js';
+import { markdownAHtml } from '../shared/markdown.js';
 import { estadoDelPaso, numeroDe, pasosEnPalabras } from './catalogo.js';
 import { conGuiones, crearSesion, listaDePasos, pasosQueSeHacen, seHace, seMuestra } from './hazlo/sesion.js';
 import { quitarSenalado } from './hazlo/resaltado.js';
 
 /** El id del panel (hay uno a la vez). */
 export const ID_GUIA = 'guiaEjemplo';
-/** Las pantallas en que la guía empieza plegada (las de ejemplos.css, donde ocupa todo el ancho). */
-const PANTALLA_ESTRECHA = '(max-width: 640px)';
+/** Las pantallas en que la guía empieza plegada: las estrechas (las de ejemplos.css, donde ocupa todo el ancho) y (2027.01.04)
+ * las bajas, como un teléfono apaisado (desplegada, tapaba el menú y empujaba los avisos fuera de la pantalla). */
+const PANTALLA_ESTRECHA = '(max-width: 640px), (max-height: 500px)';
 
 // (2027.01.03) en catalogo.js: también lo usa «Hazlo por mí»
 export { estadoDelPaso };
@@ -124,15 +126,31 @@ export function htmlDeLaGuia(e) {
 const panel = () => document.getElementById(ID_GUIA);
 /** (2027.01.03) La sesión de «Hazlo por mí» de la guía que está a la vista. @type {import('./hazlo/sesion.js').SesionDeLaGuia | null} */
 let sesion = null;
-/** (2027.01.03) Lo que mide el alto de la guía mientras está abierta (los avisos salen encima: ejemplos.css). @type {ResizeObserver | null} */
+/** (2027.01.03) Lo que mide la guía (y la cabecera de la página) mientras está abierta (ejemplos.css). @type {ResizeObserver | null} */
 let medidor = null;
+/** (2027.01.04, revisión) La medida pendiente (requestAnimationFrame): 0 si no hay. */
+let medidaPendiente = 0;
+/** (2027.01.04, revisión) Lo que mide medirGuia. */
+const MEDIDAS = ['--alto-guia', '--alto-guia-cabeza', '--alto-cabecera'];
 
-/** El alto de la guía, en --alto-guia: los avisos (toast) salen encima de ella, sin taparla. @param {HTMLElement | null} aside */
+/**
+ * Lo que ejemplos.css necesita para que ni la guía ni los avisos (toast) tapen el menú, ni los avisos la guía: --alto-guia,
+ * su alto (los avisos salen encima o a su lado); (2027.01.04, revisión) --alto-guia-cabeza, el de lo que no es su lista de
+ * pasos (un aviso puede tapar sus pasos; su cabecera y su línea de estado, no), y --alto-cabecera, dónde acaba la cabecera
+ * de la página. Sin guía, se quitan.
+ * @param {HTMLElement | null} aside
+ */
 function medirGuia(aside) {
     const raiz = document.documentElement;
     if (!raiz || !raiz.style) return;
-    if (aside) raiz.style.setProperty('--alto-guia', `${Math.ceil(aside.getBoundingClientRect().height)}px`);
-    else raiz.style.removeProperty('--alto-guia');
+    if (!aside) { MEDIDAS.forEach(m => raiz.style.removeProperty(m)); return; }
+    const alto = aside.getBoundingClientRect().height;
+    const cuerpo = /** @type {HTMLElement | null} */ (aside.querySelector('.guia-cuerpo'));
+    const pasos = cuerpo && !cuerpo.hidden ? cuerpo.getBoundingClientRect().height : 0;
+    const cabecera = document.querySelector('.header');
+    raiz.style.setProperty('--alto-guia', `${Math.ceil(alto)}px`);
+    raiz.style.setProperty('--alto-guia-cabeza', `${Math.ceil(alto - pasos)}px`);
+    raiz.style.setProperty('--alto-cabecera', `${cabecera ? Math.ceil(Math.max(0, cabecera.getBoundingClientRect().bottom)) : 0}px`);
 }
 
 /** Cuenta los pasos marcados y lo pinta (el texto y la barra). @param {HTMLElement} aside */
@@ -169,6 +187,8 @@ export function cerrarGuia() {
     sesion = null;
     if (medidor) medidor.disconnect();
     medidor = null;
+    if (medidaPendiente > 0 && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(medidaPendiente);
+    medidaPendiente = 0;
     medirGuia(null);
     quitarSenalado();
     const aside = panel();
@@ -223,6 +243,7 @@ function vistaDeLaGuia(aside, origen) {
             casilla.checked = true;
             actualizarProgreso(aside);
         },
+        marcado: n => !!(/** @type {HTMLInputElement | null} */ (aside.querySelector(`#guiaPaso${n}`))?.checked),
         plegar(plegada) { plegarGuia(aside, plegada); },
         plegada: () => aside.classList.contains('plegada'),
         contiene: nodo => !!nodo && nodo instanceof Node && aside.contains(nodo),
@@ -271,7 +292,24 @@ export function mostrarGuia(e, { alVerCaso, archivo }) {
     });
     document.body.appendChild(aside);
     medirGuia(aside);
-    if (typeof ResizeObserver === 'function') { medidor = new ResizeObserver(() => medirGuia(aside)); medidor.observe(aside); }
+    if (typeof ResizeObserver === 'function') {
+        // (2027.01.04, revisión) la medida, en el cuadro siguiente: hecha en el aviso, cambia el alto de la guía en el mismo cuadro
+        // (por --alto-cabecera) y el navegador lo dice como un error («ResizeObserver loop completed with undelivered
+        // notifications») al cambiar el tamaño de la ventana
+        medidor = new ResizeObserver(() => {
+            if (medidaPendiente) return;
+            medidaPendiente = -1;   // (un requestAnimationFrame que llamara en el acto no la dejaría pendiente para siempre)
+            const id = requestAnimationFrame(() => { medidaPendiente = 0; if (panel() === aside) medirGuia(aside); });
+            if (medidaPendiente === -1) medidaPendiente = id;
+        });
+        medidor.observe(aside);
+        // (2027.01.04, revisión) también lo que cambia dentro de la guía sin cambiar su alto (con la guía en su alto máximo, una
+        // línea de estado más larga encoge la lista de pasos: --alto-guia-cabeza) y la cabecera de la página, cuyo alto cambia
+        // con el ancho (el menú se parte)
+        for (const sel of ['.guia-cuerpo', '.guia-conduccion']) { const el = aside.querySelector(sel); if (el) medidor.observe(el); }
+        const cabecera = document.querySelector('.header');
+        if (cabecera) medidor.observe(cabecera);
+    }
     actualizarProgreso(aside);
     if (typeof window.matchMedia === 'function' && window.matchMedia(PANTALLA_ESTRECHA).matches) plegarGuia(aside, true);
     const titulo = /** @type {HTMLElement | null} */ (aside.querySelector('.guia-titulo'));

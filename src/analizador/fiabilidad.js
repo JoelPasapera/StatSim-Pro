@@ -4,7 +4,7 @@
 import { fiabilidadOrdinal, coeficientesOrdinales, invertirSignos, tipoDeItems } from './psicometria/ordinal.js';
 import { omegaUnifactorial, omegaObservado } from './psicometria/clasica.js';
 import { hayWorker, ejecutarTarea } from './psicometria/servicio-psicometrico.js';
-import { montarBloqueBootstrap, filasBootstrap, notaBootstrap, fraseBootstrap, CABECERA_BOOTSTRAP } from './psicometria/bootstrap-ui.js';
+import { montarBloqueBootstrap, filasBootstrap, notaBootstrap, fraseBootstrap, CABECERA_BOOTSTRAP, cancelarBootstrap, cancelarBootstrapDeOtros } from './psicometria/bootstrap-ui.js';
 import { bus, EVENTOS } from '../shared/eventos.js';
 import { AnalizadorEstadistico } from './estadistica.js';
 import { EtiquetasVariables } from '../shared/etiquetas-variables.js';
@@ -471,6 +471,7 @@ const Fiabilidad = {
     _pendientesOrdinal: [],         // grupos cuyo ordinal calculará el Worker
     _colsDe: new WeakMap(),         // resultado de un grupo → sus columnas (para el bootstrap)
     _bootstrap: null,               // { opciones, porClave: Map(huella → intervalos) }
+    _tareaOrdinal: null,            // (2027.01.04, revisión) los coeficientes ordinales en curso: { promesa, cancelar }
     // Huella FNV-1a de las columnas: identifica los datos exactos de un grupo (orden y valores)
     _huella(cols) {
         let h = 0x811c9dc5;
@@ -580,6 +581,20 @@ const Fiabilidad = {
     },
 
     // ---------- sección de la interfaz ----------
+    /**
+     * (2027.01.05) La tarjeta ya no está a la vista (otro tipo de análisis, u otros datos): lo que se calculaba para ella (el
+     * bootstrap, los coeficientes ordinales) se cancela, y un cálculo que termine igual (uno que el Worker no pudo hacer y
+     * siguió en el hilo principal) no la vuelve a pintar. Hasta la 2027.01.04, un bootstrap en marcha seguía tras una
+     * comparación o una asociación, y al terminar pintaba la fiabilidad dentro de ella (y en su texto y su PDF).
+     */
+    retirar() {
+        cancelarBootstrap();
+        const ordinal = this._tareaOrdinal;
+        this._tareaOrdinal = null;
+        if (ordinal) ordinal.cancelar();
+        this._datosMostrados = null;
+    },
+
     mostrar(idContenedor, datos) {
         const cont = (typeof document !== 'undefined') ? document.getElementById(idContenedor) : null;
         if (!cont) return null;
@@ -587,6 +602,7 @@ const Fiabilidad = {
         // con Worker, las policóricas se calculan en segundo plano y la tabla se repinta al terminar
         const res = this.analizarTodo(datos, { ordinal: hayWorker() ? 'diferido' : true });
         if (!res.validos.length) {
+            cancelarBootstrapDeOtros([]);   // (2027.01.04, revisión) sin escalas, uno en marcha ya no es de nadie
             cont.style.display = 'none';
             cont.innerHTML = '';
             return res;
@@ -651,21 +667,36 @@ const Fiabilidad = {
                 </div>
             </div>`;
         cont.style.display = 'block';
+        const grupos = res.validos.filter(r => !r.dudosa && this._colsDe.has(r)).map(r => ({ clave: r.huella, etiqueta: r.etiqueta, cols: this._colsDe.get(r) }));
+        // (2027.01.04, revisión) un bootstrap en marcha de otros grupos (otras dimensiones, con los mismos datos) ya no es de
+        // nadie: se cancela antes de pedir los coeficientes ordinales de los nuevos, que si no lo esperarían en el mismo Worker
+        cancelarBootstrapDeOtros(grupos);
         const pendientes = this._pendientesOrdinal.splice(0);
         if (pendientes.length) {
-            ejecutarTarea('ordinal', pendientes).promesa.then(lista => {
+            const tarea = ejecutarTarea('ordinal', pendientes);
+            this._tareaOrdinal = tarea;
+            const soltar = () => { if (this._tareaOrdinal === tarea) this._tareaOrdinal = null; };
+            tarea.promesa.then(lista => {
+                soltar();
                 lista.forEach(x => this._guardarOrdinal(x.clave, x.ordinal));
-                if (this._datosMostrados === datos) this.mostrar(idContenedor, datos);   // sin repetir: ya está en caché
-            }).catch(e => { if (!e.cancelado) console.warn('Fiabilidad ordinal en segundo plano:', e.message); });
+                // (2027.01.05) solo si la tarjeta sigue en la página: antes de cada análisis se vacía, y si ese análisis falla
+                // antes de volver a mostrarla (una correlación con una variable constante), no vuelve sola
+                if (this._datosMostrados !== datos || !cont.innerHTML) return;
+                this.mostrar(idContenedor, datos);   // sin repetir: ya está en caché
+                // (2027.01.05) y lo que depende de ellos, también: la lista de referencias (la del α y el ω ordinales). Hasta la
+                // 2027.01.04 solo la avisaba el bootstrap, y el texto y el PDF citaban (Gadermann et al., 2012) sin su referencia
+                bus.emit(EVENTOS.FIABILIDAD_ACTUALIZADA, { ordinal: true });
+            }).catch(e => { soltar(); if (!e.cancelado) console.warn('Fiabilidad ordinal en segundo plano:', e.message); });
         }
-        const grupos = res.validos.filter(r => !r.dudosa && this._colsDe.has(r)).map(r => ({ clave: r.huella, etiqueta: r.etiqueta, cols: this._colsDe.get(r) }));
         montarBloqueBootstrap(cont.querySelector('#bootstrapFiabilidad'), {
             grupos, esperando: pendientes.length > 0,
             opciones: this._bootstrap && this._bootstrap.opciones,
             resultados: this._bootstrap && this._bootstrap.porClave,
             alTerminar: (opciones, porClave) => {
+                // (2027.01.04) solo si son aún los datos de la página: si mientras tanto se cargaron otros, se descarta
+                if (this._datosMostrados !== datos) return;
                 this._bootstrap = { opciones, porClave };
-                if (this._datosMostrados === datos) this.mostrar(idContenedor, datos);
+                this.mostrar(idContenedor, datos);
                 bus.emit(EVENTOS.FIABILIDAD_ACTUALIZADA, { bootstrap: true });   // p. ej., la lista de referencias
             }
         });
@@ -764,4 +795,15 @@ const Fiabilidad = {
         return { bloques, tablas, parrafos, conOrdinal: reportables.some(r => r.ordinal), conDicotomico: reportables.some(r => r.dicotomico), conBootstrap: filasIC.length > 0 };
     }
 };
+// (2027.01.04) Los intervalos del bootstrap son de los datos con que se calcularon y de quien los pidió: con datos cargados
+// de nuevo (otra base, un proyecto, un caso de la pestaña «Ejemplos» abierto otra vez) se olvidan, como lo que calculan las
+// demás tarjetas. Hasta la 2027.01.03 seguían (iban por la huella de los datos, que es la misma al volver a abrir el mismo
+// caso), y el texto, el Word y el PDF del análisis los traían aunque nadie los hubiera pedido con estos datos.
+// Y lo que estaba a la vista ya no lo está, y lo que se calculaba con esos datos (los coeficientes ordinales, el bootstrap)
+// se cancela, como el AFE y la invarianza lo suyo: (revisión) hasta entonces seguía ocupando el Worker de la fiabilidad, y lo
+// de los datos nuevos lo esperaba.
+bus.on(EVENTOS.DATOS_CARGADOS, () => {
+    Fiabilidad.retirar();
+    Fiabilidad._bootstrap = null;
+});
 export { Fiabilidad };

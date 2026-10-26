@@ -18,9 +18,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { compararCarpetas, paginasDelPDF, pdfSinFechas } from './comparar.mjs';
 import { abrirPagina, FECHA_FIJA, huellaDeDibujo, prepararChromium } from './entorno.mjs';
-import { elementosDeLista, seccionDe } from '../../src/ejemplos/markdown.js';
+import { elementosDeLista, seccionDe } from '../../src/shared/markdown.js';
 import { FORMATO_INDICE, leerCatalogo } from '../../src/ejemplos/catalogo.js';
-import { accionEjecutable, accionValida } from '../../src/ejemplos/hazlo/planes.js';
+import { accionValida } from '../../src/ejemplos/hazlo/planes.js';
+import { loQueNoCumple } from '../../src/ejemplos/hazlo/reglas.js';
 import * as P from './pasos.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
@@ -239,7 +240,11 @@ async function correrEn(receta, destino) {
  * de su README), cuáles se repiten tras abrir el proyecto y lo que guarda cada carpeta de análisis. Falla si falta algo de
  * eso. (2027.01.03) Y el guion de cada paso (lo que hizo la receta en él: caso.hacer), comprobado con lo que dice el README:
  * cada paso tiene el suyo; los de antes de los que se repiten, solo lo que trae el proyecto (los datos y la configuración);
- * los que se repiten, algún análisis; y los de después, ninguno (solo descargas o guardar el proyecto).
+ * los que se repiten, algún análisis; y los de después, ninguno (solo descargas o guardar el proyecto). (2027.01.06) Y las
+ * descargas del análisis, tras un análisis de su mismo paso (las de un paso opcional, tras uno del último que se repite): si
+ * no, serían las del análisis de otro paso, y la guía no sabría qué aconsejar de ellas. (2027.01.07) Todo eso, y el resto de
+ * las reglas de la guía (cada tarjeta una vez, el SEM en un paso…), con src/ejemplos/hazlo/reglas.js, el mismo que usa la
+ * página al leer el catálogo: el caso las cumple todas, o no se escribe.
  * @param {Receta} receta
  * @param {Caso} caso
  * @param {string} leeme
@@ -261,13 +266,8 @@ function fichaDelCaso(receta, caso, leeme) {
     const fuera = [...caso.guiones.keys()].filter(n => n > pasos.length);
     if (fuera.length) throw new Error(`${receta.carpeta}: la receta anota los pasos ${fuera.join(', ')}, y su README tiene ${pasos.length}`);
     const guiones = pasos.map((_, i) => caso.guiones.get(i + 1) || []);
-    guiones.forEach((g, i) => {
-        const n = i + 1, nombres = g.map(a => a.accion).join(', ') || 'nada';
-        if (!g.length) throw new Error(`${receta.carpeta}: el paso ${n} de su README no tiene guion (caso.hacer)`);
-        if (n < r.desde && !g.every(a => a.accion === 'usarBaseDelSimulador' || a.accion === 'describirInvestigacion')) throw new Error(`${receta.carpeta}: el paso ${n} lo trae el proyecto («repetir»), pero hace ${nombres}`);
-        if (n >= r.desde && n <= r.hasta && !g.some(accionEjecutable)) throw new Error(`${receta.carpeta}: el paso ${n} se repite («repetir») y no hace ningún análisis (${nombres})`);
-        if (n > r.hasta && g.some(accionEjecutable)) throw new Error(`${receta.carpeta}: el paso ${n} es opcional («repetir»), pero hace un análisis (${nombres})`);
-    });
+    const malos = loQueNoCumple({ pasos, repetir: r, guiones });
+    if (malos.length) throw new Error(`${receta.carpeta}: no cumple las reglas de la guía (src/ejemplos/hazlo/reglas.js): ${malos.map(m => m.texto).join('; ')} (caso.hacer, «repetir»)`);
     return {
         destacados: caso.destacados, pasos: pasos.map(p => p.replace(/\r\n/g, '\n')), repetir: { desde: r.desde, hasta: r.hasta, nota: r.nota || '' }, guiones,
         carpetas: enCarpetas.map(ruta => ({ ruta, titulo: receta.carpetas[ruta] })),
@@ -292,7 +292,9 @@ export function indiceDeLosEjemplos(recetas, carpetaEjemplos) {
     });
     const version = casos.map(c => c.version).sort().pop() || '';
     const texto = conCRLF(JSON.stringify({ formato: FORMATO_INDICE, version, casos }, null, 2) + '\n');
-    leerCatalogo(texto);   // con la forma que lee la página
+    // con la forma que lee la página y (2027.01.07) con sus guiones: la página no lee los de un caso que no cumple las reglas
+    const sinGuiones = leerCatalogo(texto).casos.filter((c, i) => !!casos[i].guiones && !c.guiones).map(c => c.carpeta);
+    if (sinGuiones.length) throw new Error(`ejemplos/${sinGuiones.join(', ')}: sus guiones no cumplen las reglas de la guía (src/ejemplos/hazlo/reglas.js): rehazlo con «npm run ejemplos»`);
     return texto;
 }
 
@@ -307,7 +309,7 @@ export function indice(recetas) {
 
 Cinco casos de uso hechos por la propia página. Cada uno se recorrió en un navegador de verdad (Chromium) como lo haría una persona: importar la configuración en el Simulador, generar la base, descargarla en todos sus formatos, pasarla al Analizador, analizar, exportar el Word, imprimir los resultados en PDF y guardar el proyecto. Lo que hay en cada carpeta es lo que descargó la página, sin retocar.
 
-En la página, la pestaña **Ejemplos** los muestra uno por uno, deja descargar cada archivo (o el caso entero en un .zip) y los abre en StatSim con un clic, con sus pasos a la vista: en cada paso, «Muéstrame» señala dónde está cada control y «Hazlo por mí» repite el análisis a la vista, como se hizo en el caso.
+En la página, la pestaña **Ejemplos** los muestra uno por uno, deja descargar cada archivo (o el caso entero en un .zip) y los abre en StatSim con un clic, con sus pasos a la vista: en cada paso, «Muéstrame» señala dónde está cada control y, en los que hay que repetir, «Hazlo por mí» repite el análisis a la vista, como se hizo en el caso.
 
 > **Datos simulados.** Todas las bases las generó el Simulador con una configuración y una semilla fijas: sirven para ver qué hace cada sección y qué entrega, no son resultados de ninguna investigación.
 
@@ -327,7 +329,7 @@ Y, junto a las carpetas, \`indice.json\`: el catálogo que lee la pestaña «Eje
 
 ## Cómo se hicieron
 
-Con \`node tests/navegador/ejemplos.mjs generar\` (una receta por caso en \`tests/navegador/recetas/\`), que abre la página en Chromium con Playwright, sin red externa, con la zona horaria de Lima y el reloj fijo en el ${FECHA_TEXTO}: por eso las fechas de los archivos son esas y una segunda corrida da los mismos archivos, byte a byte (los PDF, con el mismo texto impreso). Los PDF salen del motor de impresión de Chromium con los estilos de impresión de la página, como «Imprimir → Guardar como PDF».
+Con \`node tests/navegador/ejemplos.mjs generar\` (una receta por caso en \`tests/navegador/recetas/\`), que abre la página en Chromium con Playwright, sin red externa, con la zona horaria de Lima y el reloj fijo en el ${FECHA_TEXTO}: por eso las fechas que llevan los archivos (en el Word, el proyecto, las bases y lo impreso) son esas y una segunda corrida da los mismos archivos, byte a byte (los PDF, con el mismo texto impreso: la fecha de creación que Chromium anota dentro de un PDF es la de la corrida). Los PDF salen del motor de impresión de Chromium con los estilos de impresión de la página, como «Imprimir → Guardar como PDF».
 
 ## Cómo se comprueban
 

@@ -149,9 +149,17 @@
 .ejemplo-sin-leeme { color: var(--color-text); }
 
 /* ---- Guía flotante de un caso abierto ---- */
+/* (2027.01.04, revisión) --ancho-guia: su ancho, que también usan los avisos que salen a su lado; --alto-cabecera (dónde acaba
+   la cabecera de la página, que mide guia.js): la guía no llega a ella, desplegada ni plegada (abajo, con las pantallas), salvo
+   en una pantalla tan baja que no quepa ni lo mínimo (desplegada, 12rem; plegada, 9rem: su cabecera y tres líneas de su
+   estado), como 568 × 320 con su cabecera de 180 px. Con dvh (la pantalla que se ve, con la barra del navegador de un
+   teléfono) y, antes, vh, para un navegador que no lo conozca. A un lado, como mucho la mitad del ancho */
+:root { --ancho-guia: min(400px, 50vw); }
 .guia-ejemplo {
     position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 950;
-    width: min(400px, calc(100vw - 2.5rem)); max-height: min(72vh, 660px);
+    width: var(--ancho-guia);
+    max-height: min(72vh, 660px, max(12rem, calc(100vh - var(--alto-cabecera, 0px) - 2.25rem)));
+    max-height: min(72dvh, 660px, max(12rem, calc(100dvh - var(--alto-cabecera, 0px) - 2.25rem)));
     display: flex; flex-direction: column; overflow: hidden;
     background: rgba(19, 28, 46, 0.97);
     border: 1px solid var(--color-border); border-top: 3px solid var(--color-accent); border-radius: var(--radius-lg);
@@ -195,18 +203,22 @@
 .guia-marca-opcional { color: var(--color-text-secondary); background: rgba(148, 163, 197, 0.12); }
 .guia-paso.marcado .guia-paso-texto > :not(.guia-paso-cabeza) { opacity: 0.6; }
 .guia-pie { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.8rem; }
-.guia-ejemplo.plegada { max-height: none; }
+.guia-ejemplo.plegada {
+    max-height: max(9rem, calc(100vh - var(--alto-cabecera, 0px) - 2.25rem));
+    max-height: max(9rem, calc(100dvh - var(--alto-cabecera, 0px) - 2.25rem));
+}
 .guia-ejemplo.plegada .guia-titulo { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* (2027.01.03) «Muéstrame» y «Hazlo por mí»: los botones de cada paso, la línea de estado con «Detener» (fuera del cuerpo de
    la guía: se ve con ella plegada) y, en la página, el control que se está usando o señalando y las descargas que quedan
    señaladas para la persona */
-.guia-conduccion { display: flex; align-items: flex-start; gap: 0.6rem; margin: 0 1rem; }
+/* (2027.01.04, revisión) si la guía no cabe, se encoge antes su lista de pasos y, solo cuando ya no queda nada de ella (o está
+   plegada), la línea de estado, que entonces se desplaza: su flex-shrink, ínfimo, la deja para el final */
+.guia-conduccion { display: flex; align-items: flex-start; gap: 0.6rem; margin: 0 1rem; min-height: 0; overflow-y: auto; flex-shrink: 0.001; }
 .guia-estado { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.82rem; line-height: 1.45; color: var(--color-text); overflow-wrap: anywhere; max-height: 7.5em; overflow-y: auto; }
 .guia-estado:not(:empty) { padding: 0.55rem 0 0.2rem; }
 .guia-estado-error { color: #fca5a5; }
 .btn.guia-detener { flex-shrink: 0; margin: 0.4rem 0 0.2rem; padding: 0.3rem 0.85rem; font-size: 0.8rem; border-radius: var(--radius-sm); }
-.btn.guia-detener[hidden] { display: none; }   /* (.btn es inline-flex: sin esto, hidden no lo ocultaría) */
 .guia-hazlo-ayuda { margin: 0 0 0.6rem; font-size: 0.8rem; line-height: 1.5; }
 .guia-hazlo-todo { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; margin: 0 0 0.85rem; }
 .guia-hazlo-todo .btn { padding: 0.45rem 1rem; font-size: 0.85rem; border-radius: var(--radius-sm); }
@@ -224,18 +236,53 @@
 @keyframes guia-latido { 50% { box-shadow: 0 0 0 11px rgba(230, 185, 63, 0.1); } }
 @media print {
     .guia-resaltado, .guia-senalado { outline: none !important; box-shadow: none !important; animation: none; }
+    /* (2027.01.04) la vista de un caso en papel, también con «Gráficos de fondo»: filas blancas, y el tipo y el tamaño de
+       cada archivo en gris oscuro (con el fondo oscuro de la pantalla y su gris claro, no se leían) */
+    .ejemplo-archivo { background: #ffffff !important; }
+    .ejemplo-meta, .ejemplo-archivo-meta { color: var(--color-text-tertiary) !important; }
 }
-/* Con la guía a la vista, los avisos (toast) no la tapan: en una pantalla ancha salen abajo a la izquierda (la guía está a
-   la derecha); en las demás, encima de ella (--alto-guia: su alto, que mide guia.js mientras está abierta) */
-@media (min-width: 1100px) {
-    body:has(.guia-ejemplo) .toast { left: 1.25rem; transform: none; max-width: min(calc(100vw - 400px - 3.75rem), 640px); }
+/* Con la guía a la vista, ni ella ni los avisos (toast) tapan el menú ni se salen de la pantalla, y los avisos no la tapan.
+   guia.js mide, mientras está abierta: --alto-cabecera (dónde acaba la cabecera de la página), --alto-guia (su alto) y
+   --alto-guia-cabeza (el de lo que no es su lista de pasos: la cabecera, la barra y la línea de estado de la guía). Con la guía
+   a un lado (desde 641 px de ancho; en una pantalla baja, como un teléfono apaisado, desde 560 px), los avisos salen abajo a la
+   izquierda, a su lado. Con la guía a todo lo ancho (una pantalla estrecha y alta), encima de ella si está plegada y, si está
+   desplegada, sobre su lista de pasos (encima no cabían). Un aviso que no cabe en su sitio se desplaza dentro de su recuadro.
+   (2027.01.04, revisión: hasta entonces, a 568 × 320, 640 × 360 o 667 × 375, con la guía plegada y más aún tras un paso, el
+   aviso tapaba el menú o se salía por arriba; y a 800 × 520 o 880 × 540 la guía desplegada llegaba al menú.) Las dos formas
+   se reparten las pantallas sin hueco entre ellas, también con anchos de fracción de píxel (con el zoom del navegador). */
+@media (min-width: 640.02px), (min-width: 560px) and (max-height: 500px) {
+    body:has(.guia-ejemplo) .toast {
+        left: 1.25rem; right: auto; margin: 0;
+        max-width: min(calc(100vw - var(--ancho-guia) - 3.75rem), 640px);
+        max-height: max(4.5rem, calc(100vh - var(--alto-cabecera, 0px) - 3rem));
+        max-height: max(4.5rem, calc(100dvh - var(--alto-cabecera, 0px) - 3rem));
+    }
 }
-@media (max-width: 1099px) {
-    body:has(.guia-ejemplo) .toast.show { bottom: calc(var(--alto-guia, 0px) + 2rem); }
+@media (max-width: 640px) and (min-height: 500.02px), (max-width: 559.98px) {
+    .guia-ejemplo {
+        left: 0.75rem; right: 0.75rem; bottom: 0.75rem; width: auto;
+        max-height: min(55vh, max(12rem, calc(100vh - var(--alto-cabecera, 0px) - 1.75rem)));
+        max-height: min(55dvh, max(12rem, calc(100dvh - var(--alto-cabecera, 0px) - 1.75rem)));
+    }
+    .guia-ejemplo.plegada {
+        max-height: max(9rem, calc(100vh - var(--alto-cabecera, 0px) - 1.75rem));
+        max-height: max(9rem, calc(100dvh - var(--alto-cabecera, 0px) - 1.75rem));
+    }
+    body:has(.guia-ejemplo) .toast { max-height: max(3.5rem, calc(var(--alto-guia, 0px) - var(--alto-guia-cabeza, 0px) - 1.75rem)); }
+    /* (2027.01.07, revisión) Con la guía plegada y poco alto entre ella y la cabecera (a menos de 560 px de ancho y unos 320 de
+       alto, con la cabecera en dos líneas, unos 55 px), el aviso se queda en lo que quepa hasta un mínimo de 2,75rem (una
+       línea, que se desplaza) y, si ni así cabe, baja sobre la guía: nunca sube sobre la cabecera. Hasta la 2027.01.06, su
+       mínimo de 3,5rem lo subía 14 px sobre ella a 480 × 320. */
+    body:has(.guia-ejemplo.plegada) .toast {
+        max-height: max(2.75rem, calc(100vh - var(--alto-cabecera, 0px) - var(--alto-guia, 0px) - 2.5rem));
+        max-height: max(2.75rem, calc(100dvh - var(--alto-cabecera, 0px) - var(--alto-guia, 0px) - 2.5rem));
+    }
+    body:has(.guia-ejemplo.plegada) .toast.show {
+        bottom: max(0.5rem, min(calc(var(--alto-guia, 0px) + 1.5rem), calc(100vh - var(--alto-cabecera, 0px) - 3.25rem)));
+        bottom: max(0.5rem, min(calc(var(--alto-guia, 0px) + 1.5rem), calc(100dvh - var(--alto-cabecera, 0px) - 3.25rem)));
+    }
 }
 @media (max-width: 640px) {
-    .guia-ejemplo { left: 0.75rem; right: 0.75rem; bottom: 0.75rem; width: auto; max-height: 55vh; }
-    body:has(.guia-ejemplo) .toast.show { bottom: calc(var(--alto-guia, 0px) + 1.5rem); }
     .ejemplo-caso .ejemplo-cabecera, .ejemplo-caso .ejemplo-archivos, .ejemplo-caso .ejemplo-leeme { padding: var(--spacing-md); }
 }
 @media (prefers-reduced-motion: reduce) {

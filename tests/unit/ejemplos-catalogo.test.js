@@ -4,7 +4,8 @@
 // (galeria.js, caso.js y guia.js): todo el texto escapado, ninguna ruta fuera de la carpeta del caso, los botones con su
 // caso, y la guía con lo que trajo el proyecto, lo que hay que repetir y lo opcional, dicho igual que en el README.
 // (2027.01.03) Y los guiones de los pasos («Hazlo por mí»): uno por paso, con acciones que esta versión sabe hacer y que
-// solo suben archivos del caso; sin ellos (unos ejemplos de la 2027.01.02), el catálogo se lee igual.
+// solo suben archivos del caso; sin ellos (unos ejemplos de la 2027.01.02), el catálogo se lee igual. (2027.01.07) Los de un
+// caso que no cumple las reglas de la guía (hazlo/reglas.js), no: ese caso se lee sin ellos.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -19,6 +20,7 @@ import { htmlDeLaGaleria } from '../../src/ejemplos/galeria.js';
 import { htmlDelCaso, resolverRutasDelCaso } from '../../src/ejemplos/caso.js';
 import { estadoDelPaso, htmlDeLaGuia, notaDeLaGuia } from '../../src/ejemplos/guia.js';
 import { accionEjecutable } from '../../src/ejemplos/hazlo/planes.js';
+import { loQueNoCumple } from '../../src/ejemplos/hazlo/reglas.js';
 import { glifoDelDiseno } from '../../src/ejemplos/glifos.js';
 import { paqueteDelCaso, rutasDelPaquete } from '../../src/ejemplos/paquete.js';
 import { listarZip, extraerZip } from '../../src/core/data/zip/lector.js';
@@ -92,6 +94,31 @@ test('el catálogo con otra forma se rechaza, con un mensaje que dice qué hacer
         assert.equal(catalogoValido(c), false, que);
         assert.throws(() => leido(c), /no tiene la forma que esta versión sabe leer: vuelve a generarlos o recarga sin caché/, que);
     }
+    // (2027.01.10, revisión) y la consola dice qué es lo que esta versión no sabe hacer de los guiones, y de qué caso
+    /** @type {string[]} */
+    const avisos = [];
+    const avisar = console.warn;
+    console.warn = (/** @type {any[]} */ ...x) => { avisos.push(x.join(' ')); };
+    try {
+        for (const que of ['un guion con una acción que no existe', 'guiones que no son una lista', 'menos guiones que pasos', 'un guion que sube un archivo que no es del caso', 'carpeta repetida']) {
+            assert.throws(() => leido(/** @type {Record<string, any>} */ (malos)[que]), /no tiene la forma/, que);
+        }
+        assert.throws(() => leido(catalogo(caso({ guiones: [...guiones().slice(0, 2), {}, []] }))), /no tiene la forma/);
+        assert.throws(() => leido(catalogo(caso({ guiones: [...guiones().slice(0, 3), Array(21).fill(accion('guardarProyecto'))] }))), /no tiene la forma/);
+        assert.equal(leido(catalogo(caso({ guiones: [...guiones().slice(0, 3), Array(20).fill(accion('guardarProyecto'))] }))).casos.length, 1, 'con 20, sí');
+        assert.throws(() => leido(catalogo(caso(), caso({ carpeta: '02-comparativo', guiones: [[], [], [accion('analizar', { tipo: 'correlacion', variables: ['A'] })], []] }))), /no tiene la forma/);
+    } finally {
+        console.warn = avisar;
+    }
+    assert.deepEqual(avisos, [
+        '[StatSim] ejemplos/01-correlacional: el paso 4 tiene una acción que esta versión no sabe hacer: {"accion":"borrarTodo","datos":{}}.',
+        '[StatSim] ejemplos/01-correlacional: sus guiones no son una lista.',
+        '[StatSim] ejemplos/01-correlacional: trae 3 guiones para sus 4 pasos.',
+        '[StatSim] ejemplos/01-correlacional: el paso 3 sube «analizador/x/otro.csv», que no está entre los archivos del caso.',
+        '[StatSim] ejemplos/01-correlacional: el paso 3 no trae una lista de acciones.',
+        '[StatSim] ejemplos/01-correlacional: el paso 4 trae 21 acciones: esta versión hace hasta 20.',
+        '[StatSim] ejemplos/02-comparativo: el paso 3 tiene una acción que esta versión no sabe hacer: {"accion":"analizar","datos":{"tipo":"correlacion","variables":["A"]}}.',
+    ], 'de cada catálogo, lo primero que no sabe hacer (el del segundo caso, también); sin guiones mal formados (otra forma: la carpeta repetida), nada que decir');
     assert.throws(() => leerCatalogo('{ no es json'), /no es JSON válido/);
     assert.throws(() => leerCatalogo(' '.repeat(1024 * 1024 + 1)), /demasiado grande/);
 });
@@ -112,6 +139,9 @@ test('el catálogo real (ejemplos/indice.json) tiene la forma que lee la página
             else if (estado === 'repetir') assert.ok(acciones.some(accionEjecutable), `${e.carpeta}, paso ${n}: algún análisis`);
             else assert.ok(!acciones.some(accionEjecutable), `${e.carpeta}, paso ${n}: nada que hacer por ti`);
         });
+        // (2027.01.06) y las descargas del análisis, tras un análisis de su mismo paso (o del último que se repite); (2027.01.07) y
+        // el resto de las reglas de la guía (cada tarjeta una vez, el SEM en un paso…): si no, la página los leería sin guiones
+        assert.deepEqual(loQueNoCumple(e), [], `${e.carpeta}: cumple las reglas de la guía`);
     }
 });
 
@@ -126,6 +156,27 @@ test('los guiones de los pasos: uno por paso, con lo que sube del propio caso; s
     assert.equal(leido(catalogo(caso({ guiones: guiones() }))).casos[0].guiones?.[2][0].accion, 'analizar');
 });
 
+test('(2027.01.07, revisión) un caso cuyos guiones no cumplen las reglas de la guía se lee sin ellos (con un aviso en la consola); los demás, con los suyos', () => {
+    const cg = (/** @type {string} */ grupo) => accion('compararGrupos', { grupo, numerica: 'A' });
+    const dosComparaciones = caso({ carpeta: '02-dos', repetir: { desde: 3, hasta: 4, nota: '' }, pasos: ['Usar datos', 'Configurar', 'Comparar', 'Analizar', 'Guardar'],
+        guiones: [...guiones().slice(0, 2), [cg('G')], [cg('H'), ...guiones()[2]], [accion('guardarProyecto')]] });
+    assert.equal(catalogoValido(catalogo(caso({ guiones: guiones() }), dosComparaciones)), true, 'la forma, buena');
+    /** @type {string[]} */
+    const avisos = [];
+    const avisar = console.warn;
+    console.warn = (/** @type {any[]} */ ...x) => { avisos.push(x.join(' ')); };
+    try {
+        const c = leido(catalogo(caso({ guiones: guiones() }), dosComparaciones));
+        assert.equal(c.casos.length, 2, 'los dos casos');
+        assert.equal(c.casos[0].guiones?.length, 4, 'el que cumple, con sus guiones');
+        assert.equal(c.casos[1].guiones, undefined, 'el otro, sin ellos: su guía no ofrece «Muéstrame» ni «Hazlo por mí»');
+        assert.deepEqual(c.casos[1].pasos, dosComparaciones.pasos, 'lo demás, igual');
+    } finally {
+        console.warn = avisar;
+    }
+    assert.deepEqual(avisos, ['[StatSim] ejemplos/02-dos: sin «Muéstrame» ni «Hazlo por mí» (sus guiones no cumplen las reglas de la guía): compararGrupos calcula 2 veces (en los pasos 3 y 4): en la página, cada vez reemplaza a la anterior.']);
+});
+
 test('pedir el catálogo: sin la carpeta (404), SinEjemplos; otro fallo o sin red, el error con lo que pasó', async () => {
     /** @type {string[]} */
     const pedidas = [];
@@ -136,7 +187,8 @@ test('pedir el catálogo: sin la carpeta (404), SinEjemplos; otro fallo o sin re
     assert.deepEqual(pedidas, [`${CARPETA_EJEMPLOS}/indice.json?v=2027.01.02`], 'con la versión, para que la caché no sirva otro');
     await assert.rejects(cargarCatalogo(respuesta(404), 'v'), e => e instanceof SinEjemplos && /falta la carpeta «ejemplos\/»/.test(e.message));
     await assert.rejects(cargarCatalogo(respuesta(500), 'v'), /el sitio respondió 500/);
-    await assert.rejects(cargarCatalogo(async () => { throw new TypeError('Failed to fetch'); }, 'v'), /No se pudo pedir el índice de los ejemplos: Failed to fetch/);
+    // (2027.01.04) en castellano, sin el «Failed to fetch» del navegador
+    await assert.rejects(cargarCatalogo(async () => { throw new TypeError('Failed to fetch'); }, 'v'), e => e instanceof Error && e.message === 'No se pudo pedir el índice de los ejemplos: comprueba la conexión y vuelve a intentarlo.');
     await assert.rejects(cargarCatalogo(respuesta(200, '{"formato":1}'), 'v'), /no tiene la forma/);
 });
 
@@ -155,6 +207,8 @@ test('un archivo del caso se comprueba con el tamaño del catálogo', async () =
     assert.equal((await bytesDelArchivo(e, 'README.md', { obtener: de(7), version: 'v' })).length, 7, 'el README no está en el catálogo: sin comprobar');
     await assert.rejects(bytesDelArchivo(e, 'simulador/base.sav', { obtener: de(2000), version: 'v' }), /no es el de este caso .*Recargar sin caché/);
     await assert.rejects(bytesDelArchivo(e, 'simulador/base.sav', { obtener: async () => ({ ok: false, status: 404, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) }), version: 'v' }), /el sitio respondió 404/);
+    await assert.rejects(bytesDelArchivo(e, 'simulador/base.sav', { obtener: async () => { throw new TypeError('Failed to fetch'); }, version: 'v' }),
+        er => er instanceof Error && er.message === 'No se pudo descargar «simulador/base.sav»: comprueba la conexión y vuelve a intentarlo.', '(2027.01.04) sin conexión, en castellano');
 });
 
 test('tipos, tamaños, número del caso y pasos en palabras', () => {

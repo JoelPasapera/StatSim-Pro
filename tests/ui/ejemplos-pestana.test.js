@@ -84,9 +84,26 @@ test('(revisión) si el código de la pestaña no se pudo cargar, lo dice en ell
         q('.nav-link[href="#ejemplos"]').click();
         await esperar(() => q('#ejemplosEstado').classList.contains('aviso-error'));
     } finally { s.cargar = cargar; console.error = errores; }
-    assert.match(q('#ejemplosEstado').textContent, /^No se pudo cargar esta pestaña \(Failed to fetch dynamically imported module\)\. Vuelve a cargar la página sin caché/);
+    // (2027.01.04) en castellano (sin el error del navegador) y sin prometer que no se pierde nada
+    assert.equal(q('#ejemplosEstado').textContent.replace(/Recargar sin caché$/, ''), 'No se pudo cargar esta pestaña: el navegador no pudo traer uno de sus archivos (sin conexión, o con una copia vieja en su caché). Vuelve a cargar la página sin caché; se pierde lo que no hayas guardado con «Guardar proyecto»: ');
     const boton = q('#ejemplosEstado button');
     assert.ok(boton && boton.textContent === 'Recargar sin caché', 'con el botón para recargar');
+    // (2027.01.04, revisión) y por su causa: no todo es la red
+    for (const [error, causa] of /** @type {Array<[Error, string]>} */ ([
+        [new SyntaxError("The requested module './catalogo.js' does not provide an export named 'leerCatalogo'"), 'uno de sus archivos no encaja con los demás (lo normal tras una actualización: una copia vieja en la caché del navegador). Vuelve a cargar la página sin caché'],
+        [new TypeError("Cannot read properties of undefined (reading 'import')"), 'uno de sus archivos dio un error al ponerse en marcha (el detalle, en la consola del navegador). Prueba a cargar la página sin caché'],
+        [new TypeError('Importing a module script failed.'), 'el navegador no pudo traer uno de sus archivos (sin conexión, o con una copia vieja en su caché). Vuelve a cargar la página sin caché'],
+    ])) {
+        q('.nav-link[href="#ayuda"]').click();
+        s.cargar = () => Promise.reject(error);
+        console.error = () => {};
+        try {
+            q('#ejemplosEstado').classList.remove('aviso-error');
+            q('.nav-link[href="#ejemplos"]').click();
+            await esperar(() => q('#ejemplosEstado').classList.contains('aviso-error'));
+        } finally { s.cargar = cargar; console.error = errores; }
+        assert.equal(q('#ejemplosEstado').textContent.replace(/Recargar sin caché$/, ''), `No se pudo cargar esta pestaña: ${causa}; se pierde lo que no hayas guardado con «Guardar proyecto»: `, error.message);
+    }
     // la próxima vez que se muestra, se vuelve a pedir (tras recargar, ya sin el fallo)
     q('.nav-link[href="#ayuda"]').click();
     q('.nav-link[href="#ejemplos"]').click();

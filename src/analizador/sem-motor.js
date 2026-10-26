@@ -3,11 +3,11 @@
 
 import { AnalizadorEstadistico } from './estadistica.js';
 import { bfgs } from './psicometria/optimizacion.js';
-import { gradienteFML, erroresInformacion, implicada, aplicarTheta } from './psicometria/ram.js';
+import { gradienteFML, inferenciaInformacion, implicada, aplicarTheta } from './psicometria/ram.js';
 import { validezConstructo } from './psicometria/validez.js';
 import { inversaYLogDet } from '../core/linalg/cholesky.js';
 import { ceros, identidad, multiplicar, traspuesta } from '../core/linalg/matrices.js';
-import { gaussJordan } from '../core/linalg/gauss.js';
+import { gaussJordan } from '../core/linalg/gauss.js';
 import { cdfChi2NoCentral, ncpParaProbabilidad } from '../core/stats/numerico.js';
 import { estadisticosOrdinales, ajustarDWLS, inferenciaWLSMV, parametrosWLSMV } from './psicometria/wlsmv.js';
 import { pChiCuadrado, colaSuperiorNormal } from '../core/stats/numerico.js';
@@ -55,7 +55,22 @@ import { matrizCovarianzas } from '../core/stats/descriptivos.js';
 
 const SEM = {
 
-    _ultimos: [],          // historial de modelos ajustados (para comparación)
+    _ultimos: [],          // historial de modelos ajustados (para comparación): uno por papel (_recordar; en la página, tres: el inicial, el alternativo y el final), cinco como mucho
+
+    /**
+     * (2027.01.06) Guarda un modelo ajustado en el historial de la comparación de modelos (la de la tarjeta y la del capítulo
+     * de Word), en lugar del de su mismo papel (su etiqueta: «Modelo inicial», «Modelo alternativo» o «Modelo final»), que
+     * sale de él: volver a ajustar un papel lo reemplaza. Va al final: es el último ajustado, el que muestran la tarjeta y el
+     * capítulo. Hasta la 2027.01.05 se sumaba: repetir un paso del SEM de un ejemplo (o «Ajustar modelo» con el mismo papel)
+     * dejaba dos «Modelo final» en la comparación y en el capítulo.
+     * @param {{ etiquetaModelo: string }} R el modelo ajustado
+     */
+    _recordar(R) {
+        const i = this._ultimos.findIndex(M => M.etiquetaModelo === R.etiquetaModelo);
+        if (i >= 0) this._ultimos.splice(i, 1);
+        this._ultimos.push(R);
+        if (this._ultimos.length > 5) this._ultimos.shift();
+    },
 
     // ═════════════════ ÁLGEBRA MATRICIAL BÁSICA ═════════════════
     // (2026.12.25) Del núcleo único (core/linalg/): envoltorios de una línea con los nombres de siempre.
@@ -74,14 +89,22 @@ const SEM = {
     },
 
     // ═════════════════ PARSER DE SINTAXIS (subconjunto lavaan) ═════════════════
-    // Devuelve { latentes:{F1:[ind…]}, regresiones:[{y, xs:[…]}], covars:[[a,b]…] }
+    // Devuelve { latentes:{F1:[ind…]}, regresiones:[{y, xs:[…]}], covars:[[a,b]…], repetidos:[…] }
+    // (2027.01.13, revisión) Dos líneas «=~» de un mismo factor se suman, como en lavaan (la segunda reemplazaba a la primera,
+    // y los indicadores de esta salían del modelo sin decirlo); y un indicador escrito dos veces en un factor cuenta una vez, y
+    // se dice (repetidos): hasta la 2027.01.12, el primero (el marcador, fijado en 1) escrito otra vez se liberaba como un
+    // parámetro más, y el modelo quedaba sin identificar (errores estándar de 10⁶) sin ningún aviso.
     parsear(sintaxis) {
-        const modelo = { latentes: {}, regresiones: [], covars: [] };
+        const modelo = { latentes: {}, regresiones: [], covars: [], repetidos: [] };
         const lineas = String(sintaxis || '').split(/\n|;/).map(l => l.replace(/#.*$/, '').trim()).filter(Boolean);
         for (const l of lineas) {
             let m;
             if ((m = l.match(/^(\S+)\s*=~\s*(.+)$/))) {
-                modelo.latentes[m[1]] = m[2].split('+').map(s => s.trim()).filter(Boolean);
+                const inds = modelo.latentes[m[1]] || (modelo.latentes[m[1]] = []);
+                for (const ind of m[2].split('+').map(s => s.trim()).filter(Boolean)) {
+                    if (inds.includes(ind)) modelo.repetidos.push(`La sintaxis escribe dos veces «${m[1]} =~ ${ind}»: cuenta una sola vez (si querías otro indicador, corrígela).`);
+                    else inds.push(ind);
+                }
             } else if ((m = l.match(/^(\S+)\s*~~\s*(\S+)$/))) {
                 modelo.covars.push([m[1], m[2]]);
             } else if ((m = l.match(/^(\S+)\s*~\s*(.+)$/))) {
@@ -104,6 +127,28 @@ const SEM = {
         const A = this._zeros(nv, nv);       // valores actuales
         const S = this._zeros(nv, nv);
         const libres = [];                    // [{mat:'A'|'S', i, j, nombre, ini}]
+        // (2027.01.12) Cada celda libre, una sola vez: una covarianza que el modelo ya estima (entre latentes exógenas, o entre
+        // observadas exógenas del bloque estructural) escrita también en la sintaxis (`F1 ~~ F2`, como en lavaan), la misma
+        // escrita dos veces (o al revés), o una varianza escrita como `F1 ~~ F1`, entraban como un parámetro más sobre la misma
+        // celda: los grados de libertad bajaban en uno por cada una (y con ellos la p del χ², el CFI, el TLI y el RMSEA), la
+        // matriz de información quedaba singular (todos los EE, NaN) y la tabla repetía el parámetro con otro valor. Se queda el
+        // primero (el que el modelo ya estimaba): en lavaan, escribir una covarianza que estima por omisión tampoco añade otra.
+        // (2027.01.13, revisión) La celda del marcador (fijada en 1) también está ocupada: una regresión escrita sobre ella
+        // (`x1 ~ F1` con `F1 =~ x1 + …`) la liberaba. Y si las dos son de la sintaxis (no una que el modelo estima por omisión),
+        // se dice: «x1 ~ F1» es la misma flecha que «F1 =~ x1», `b ~~ a` la misma covarianza que `a ~~ b`.
+        const ocupadas = new Map(), repetidos = [];
+        const celdaDe = p => (p.mat === 'A' ? `A${p.i},${p.j}` : `S${Math.min(p.i, p.j)},${Math.max(p.i, p.j)}`);
+        const libre = (p, escrito = false) => {
+            const celda = celdaDe(p), previo = ocupadas.get(celda);
+            if (previo) {
+                if (escrito && previo.escrito) repetidos.push(previo.nombre === p.nombre
+                    ? `La sintaxis escribe dos veces «${p.nombre}»: cuenta una sola vez.`
+                    : `«${p.nombre}» es ${p.mat === 'A' ? 'la misma flecha' : 'la misma covarianza'} que «${previo.nombre}»: cuenta una sola vez.`);
+                return;
+            }
+            ocupadas.set(celda, { nombre: p.nombre, escrito });
+            libres.push(p);
+        };
         const varMedia = nombresObs.map((_, j) => S_obs[j][j]);
 
         // Endógenas: las que reciben alguna flecha (indicadores o 'y' de ~).
@@ -114,8 +159,8 @@ const SEM = {
             inds.forEach((ind, k) => {
                 if (!(ind in idx)) throw new Error(`El indicador «${ind}» no existe en los datos.`);
                 endogenas.add(ind);
-                if (k === 0) A[idx[ind]][idx[F]] = 1; // marcador (Rosseel, 2012)
-                else libres.push({ mat: 'A', i: idx[ind], j: idx[F], nombre: `${F} =~ ${ind}`, ini: 0.7 });
+                if (k === 0) { A[idx[ind]][idx[F]] = 1; ocupadas.set(`A${idx[ind]},${idx[F]}`, { nombre: `${F} =~ ${ind}`, escrito: true }); } // marcador (Rosseel, 2012)
+                else libre({ mat: 'A', i: idx[ind], j: idx[F], nombre: `${F} =~ ${ind}`, ini: 0.7 }, true);
             });
         }
         // 2) Estructural: y ~ x1 + x2…
@@ -124,7 +169,7 @@ const SEM = {
             endogenas.add(r.y);
             for (const x of r.xs) {
                 if (!(x in idx)) throw new Error(`El predictor «${x}» no existe.`);
-                libres.push({ mat: 'A', i: idx[r.y], j: idx[x], nombre: `${r.y} ~ ${x}`, ini: 0 });
+                libre({ mat: 'A', i: idx[r.y], j: idx[x], nombre: `${r.y} ~ ${x}`, ini: 0 }, true);
             }
         }
         // 3) S: varianzas — residual si endógena, total si exógena. Latentes
@@ -133,7 +178,7 @@ const SEM = {
             const esLat = i >= nombresObs.length;
             const base = esLat ? 0.5 : varMedia[i];
             const ini = endogenas.has(v) ? base * 0.5 : base;
-            libres.push({ mat: 'S', i, j: i, nombre: endogenas.has(v) ? `var residual (${v})` : `var (${v})`, ini: Math.max(ini, 0.05) });
+            libre({ mat: 'S', i, j: i, nombre: endogenas.has(v) ? `var residual (${v})` : `var (${v})`, ini: Math.max(ini, 0.05) });
         });
         // 4) Covarianzas libres declaradas (~~) + covarianzas entre exógenas
         //    observadas del bloque estructural (convención lavaan: exógenas
@@ -142,18 +187,18 @@ const SEM = {
         modelo.regresiones.forEach(r => r.xs.forEach(x => { if (idx[x] < nombresObs.length && !endogenas.has(x)) exogObs.add(x); }));
         const exo = [...exogObs];
         for (let a = 0; a < exo.length; a++) for (let b = a + 1; b < exo.length; b++) {
-            libres.push({ mat: 'S', i: idx[exo[a]], j: idx[exo[b]], nombre: `${exo[a]} ~~ ${exo[b]}`, ini: S_obs[idx[exo[a]]][idx[exo[b]]] });
+            libre({ mat: 'S', i: idx[exo[a]], j: idx[exo[b]], nombre: `${exo[a]} ~~ ${exo[b]}`, ini: S_obs[idx[exo[a]]][idx[exo[b]]] });
         }
         // Latentes exógenas múltiples: correlación libre entre factores (CFA estándar).
         const latExo = latentes.filter(F => !endogenas.has(F));
         for (let a = 0; a < latExo.length; a++) for (let b = a + 1; b < latExo.length; b++) {
-            libres.push({ mat: 'S', i: idx[latExo[a]], j: idx[latExo[b]], nombre: `${latExo[a]} ~~ ${latExo[b]}`, ini: 0.2 });
+            libre({ mat: 'S', i: idx[latExo[a]], j: idx[latExo[b]], nombre: `${latExo[a]} ~~ ${latExo[b]}`, ini: 0.2 });
         }
         for (const [a, b] of modelo.covars) {
             if (!(a in idx) || !(b in idx)) throw new Error(`Covarianza ~~ con variable inexistente (${a}, ${b}).`);
-            libres.push({ mat: 'S', i: idx[a], j: idx[b], nombre: `${a} ~~ ${b}`, ini: 0.1 });
+            libre({ mat: 'S', i: idx[a], j: idx[b], nombre: `${a} ~~ ${b}`, ini: 0.1 }, true);
         }
-        return { vars, idx, nObs: nombresObs.length, A, S, libres, latentes };
+        return { vars, idx, nObs: nombresObs.length, A, S, libres, latentes, repetidos: [...new Set(repetidos)] };
     },
 
     // Σ(θ) del modelo RAM (las observadas, primeras por construcción), con la condición de admisibilidad del objetivo: null si
@@ -258,9 +303,11 @@ const SEM = {
     // Solución completamente estandarizada a partir de la matriz implicada E (observadas y latentes): λ* = λ·√φ/√σ_jj y
     // θ* = θ/σ_jj; con WLSMV, σ_jj = 1 (escala de y*) y θ* = 1 − comunalidad. Rcorr: correlaciones entre ítems (Pearson o
     // policóricas) para el HTMT.
+    // (2027.01.12) Solo los factores de primer orden (con todos sus indicadores observados): uno de segundo orden no tiene ítems
+    // para el HTMT, y lo rompía.
     _validez(modelo, est, theta, E, Rcorr, esWLSMV) {
         const { A, S } = aplicarTheta(est, theta), idx = Object.fromEntries(est.vars.map((v, i) => [v, i]));
-        const factores = Object.entries(modelo.latentes).filter(([, inds]) => inds.length >= 2).map(([F, inds]) => {
+        const factores = Object.entries(modelo.latentes).filter(([, inds]) => inds.length >= 2 && inds.every(it => idx[it] < est.nObs)).map(([F, inds]) => {
             const f = idx[F];
             return { nombre: F, items: inds, lambdas: inds.map(it => A[idx[it]][f] * Math.sqrt(E[f][f]) / (esWLSMV ? 1 : Math.sqrt(E[idx[it]][idx[it]]))),
                      thetas: inds.map(it => (esWLSMV ? 1 - E[idx[it]][idx[it]] : S[idx[it]][idx[it]] / E[idx[it]][idx[it]])) };
@@ -268,6 +315,46 @@ const SEM = {
         if (!factores.length) return null;
         const corr = factores.map(F => factores.map(G => E[idx[F.nombre]][idx[G.nombre]] / Math.sqrt(E[idx[F.nombre]][idx[F.nombre]] * E[idx[G.nombre]][idx[G.nombre]])));
         return validezConstructo(factores, corr, Rcorr, est.vars.slice(0, est.nObs));
+    },
+
+    /**
+     * (2027.01.13, revisión) Los avisos de la especificación: lo que la sintaxis repite (cuenta una vez) y, con la información
+     * (o la Δᵀ·W·Δ del WLSMV) singular o casi, que el modelo no parece identificado. Hasta la 2027.01.12, un modelo así
+     * (un marcador escrito dos veces, un factor de segundo orden de dos factores) daba sus errores estándar (de 26 a 10⁶) y
+     * sus p sin aviso. (2027.01.14, revisión) Con su causa probable (`_causaDeLaSingularidad`): hasta la 2027.01.13 daba
+     * siempre las de las latentes, también en un modelo de rutas sin latentes con dos predictores casi iguales.
+     * @param {{ latentes: Record<string, string[]>, repetidos?: string[] }} modelo @param {{ repetidos: string[] }} est
+     * @param {boolean} singular @param {number[][]} R las correlaciones de las observadas (con WLSMV, las policóricas)
+     * @param {string[]} nombres las observadas
+     * @returns {string[]}
+     */
+    _avisosDeLaSintaxis(modelo, est, singular, R, nombres) {
+        const avisos = [...new Set([...(modelo.repetidos || []), ...est.repetidos])];
+        if (singular) avisos.push(`El modelo no parece identificado: su matriz de información es singular (o casi), así que hay parámetros que los datos no determinan, y sus errores estándar, sus z y sus p no son fiables. ${this._causaDeLaSingularidad(modelo, R, nombres)}`);
+        return avisos;
+    },
+
+    /**
+     * (2027.01.14, revisión) La causa probable de una información singular: dos observadas casi perfectamente correlacionadas
+     * (|r| > 0,999, como un total y su media redondeada) o una casi combinación lineal de las demás (R² > 0,999 con ellas), que
+     * el modelo no puede separar aunque esté identificado; si no, las de las latentes (un factor de dos indicadores que no se
+     * relaciona con nada más, un factor de segundo orden de dos factores) o, sin latentes, unas rutas recíprocas.
+     * @param {{ latentes: Record<string, string[]> }} modelo @param {number[][]} R @param {string[]} nombres
+     * @returns {string}
+     */
+    _causaDeLaSingularidad(modelo, R, nombres) {
+        const p = nombres.length;
+        // la observada mejor explicada por las demás: R²ⱼ = 1 − 1/(R⁻¹)ⱼⱼ (sin inversa, una de una pareja con r de ±1)
+        const ri = p > 1 ? this._invLogDet(R) : null;
+        let j = -1, R2 = 1;
+        if (ri) for (let k = 0; k < p; k++) { const r2 = 1 - 1 / ri.inv[k][k]; if (j < 0 || r2 > R2) { j = k; R2 = r2; } }
+        let a = -1, b = -1, r = 0;
+        for (let x = 0; x < p; x++) for (let y = x + 1; y < p; y++) if ((j < 0 || x === j || y === j) && Math.abs(R[x][y]) > Math.abs(r)) { a = x; b = y; r = R[x][y]; }
+        if (a >= 0 && Math.abs(r) > 0.999) return `«${nombres[a]}» y «${nombres[b]}» están casi perfectamente correlacionadas (r = ${r.toFixed(4)}): el modelo no puede separar lo que aporta cada una (como un total y su media). Deja solo una.`;
+        if (j >= 0 && R2 > 0.999) return `«${nombres[j]}» es casi una combinación lineal de otras variables del modelo (R² = ${R2.toFixed(4)} con ellas): el modelo no puede separar lo que aporta cada una. Quita alguna.`;
+        return Object.keys(modelo.latentes).length
+            ? 'Suele deberse a un factor de solo dos indicadores que no se relaciona con nada más o a un factor de segundo orden con solo dos factores; revisa la especificación.'
+            : 'Revisa la especificación: en un modelo de rutas, suele deberse a unas rutas recíprocas sin variables que las identifiquen.';
     },
 
     // ═════════════════ WLSMV (ítems ordinales; 2026.10.15) ═════════════════
@@ -311,6 +398,7 @@ const SEM = {
             if (Math.abs(r) > 1) avisos.push(`La correlación implicada entre «${est.vars[i]}» y «${est.vars[j]}» es ${r.toFixed(3)}: solución no admisible.`);
         }
         const admisible = avisos.length === 0;
+        avisos.push(...this._avisosDeLaSintaxis(modelo, est, inf.singular, sm.R, nombresObs));
         const pobres = sm.corregidas.filter(c => c[2] < 0.5);
         if (pobres.length) avisos.push(`En ${pobres.length === 1 ? 'la pareja' : `${pobres.length} parejas`} ${pobres.slice(0, 4).map(([a, b]) => `${nombresObs[a]}–${nombresObs[b]}`).join(', ')}${pobres.length > 4 ? '…' : ''} la celda vacía es esperable incluso sin relación entre los ítems (una categoría con muy pocos casos): su correlación tetracórica apenas está determinada por los datos. Revisa esos ítems (p. ej., uno que casi todos aciertan o fallan) y considera excluirlos.`);
         if (sm.corregidas.length) avisos.push(`Se sumó 0,5 a la celda vacía de ${sm.corregidas.length === 1 ? 'una tabla' : `${sm.corregidas.length} tablas`} 2 × 2 (${sm.corregidas.slice(0, 4).map(([a, b]) => `${nombresObs[a]}–${nombresObs[b]}`).join(', ')}${sm.corregidas.length > 4 ? '…' : ''}), conservando los márgenes, como hace lavaan por defecto: sin esa corrección la correlación tetracórica queda en ±1 y el WLSMV no puede estimarse.`);
@@ -318,10 +406,13 @@ const SEM = {
         const R = { sintaxis, etiquetaModelo, n, p, q, gl, Fmin: fit.Fmin, chi2, pChi2, avisos, admisible, validez, tablasCorregidas: sm.corregidas.length,
                     chi2b: inf.chi2b, glb: inf.glb, CFI, TLI, RMSEA, rmseaIC, SRMR, parametros, vars: est.vars, latentes: est.latentes,
                     convergio: fit.opt.convergio, S_obs: sm.R, nombresObs, estimador: 'WLSMV',
-                    desviaciones: Object.fromEntries(est.vars.map((v, i) => [v, i < est.nObs ? 1 : Math.sqrt(fit.E[i][i])])),   // y* con varianza 1 chi2DWLS: inf.T, correccion: inf.correccion,
+                    desviaciones: Object.fromEntries(est.vars.map((v, i) => [v, i < est.nObs ? 1 : Math.sqrt(fit.E[i][i])])),   // y* con varianza 1
+                    // (2027.01.13, revisión) la varianza residual de cada ítem (1 − su comunalidad), que no es un parámetro: con ella, el
+                    // diagrama da la correlación de una covarianza entre dos ítems
+                    varianzasResiduales: Object.fromEntries(nombresObs.map((v, j) => [v, 1 - fit.E[j][j]])),
+                    chi2DWLS: inf.T, correccion: inf.correccion,   // (2027.01.04) estaban dentro del comentario de arriba: la página decía «DWLS sin corregir: NaN»
                     optimizacion: { metodo: 'BFGS', iteraciones: fit.opt.iteraciones, gradienteMax: fit.opt.gradienteMax, estado: fit.opt.estado } };
-        this._ultimos.push(R);
-        if (this._ultimos.length > 5) this._ultimos.shift();
+        this._recordar(R);
         return R;
     },
 
@@ -341,7 +432,9 @@ const SEM = {
         // Variables observadas del modelo (todas las mencionadas que no sean latentes).
         const latentes = new Set(Object.keys(modelo.latentes));
         const mencionadas = new Set();
-        Object.values(modelo.latentes).forEach(inds => inds.forEach(i => mencionadas.add(i)));
+        // (2027.01.12) un indicador que es una latente (un factor de segundo orden: G =~ F1 + F2) no es una columna de los datos:
+        // hasta la 2027.01.11 se buscaba como tal, y el modelo fallaba con «Casos insuficientes (0)»
+        Object.values(modelo.latentes).forEach(inds => inds.forEach(i => { if (!latentes.has(i)) mencionadas.add(i); }));
         modelo.regresiones.forEach(r => { if (!latentes.has(r.y)) mencionadas.add(r.y); r.xs.forEach(x => { if (!latentes.has(x)) mencionadas.add(x); }); });
         modelo.covars.forEach(([a, b]) => { if (!latentes.has(a)) mencionadas.add(a); if (!latentes.has(b)) mencionadas.add(b); });
         const nombresObs = columnas || [...mencionadas];
@@ -408,7 +501,8 @@ const SEM = {
 
         // Errores estándar, z y p por parámetro.
         // Errores estándar por la información esperada (analítica); si no es invertible, hessiano numérico como respaldo
-        const se = erroresInformacion(est, theta, n) || this._errores(est, theta, S_obs, ilS.logDet, n);
+        const info = inferenciaInformacion(est, theta, n);
+        const se = info.se || this._errores(est, theta, S_obs, ilS.logDet, n);
         const parametros = est.libres.map((pl, k) => {
             const z = theta[k] / se[k];
             return { nombre: pl.nombre, tipo: pl.mat === 'A' ? 'coeficiente' : 'var/cov',
@@ -431,13 +525,14 @@ const SEM = {
         const validez = mImp ? this._validez(modelo, est, theta, mImp.E, Rcorr, false) : null;
         // (2026.10.18) desviaciones típicas implicadas: la de una latente endógena incluye la varianza explicada, no solo la perturbación
         const desviaciones = mImp ? Object.fromEntries(est.vars.map((v, i) => [v, Math.sqrt(mImp.E[i][i])])) : null;
-        const R = { sintaxis, etiquetaModelo, n, p, q, gl, Fmin, chi2, pChi2, avisos, admisible: avisos.length === 0, validez, desviaciones,
+        const admisible = avisos.length === 0;
+        avisos.push(...this._avisosDeLaSintaxis(modelo, est, info.singular, Rcorr, nombresObs));
+        const R = { sintaxis, etiquetaModelo, n, p, q, gl, Fmin, chi2, pChi2, avisos, admisible, validez, desviaciones,
                     chi2b, glb, CFI, TLI, RMSEA, rmseaIC, SRMR,
                     parametros, vars: est.vars, latentes: est.latentes,
                     convergio: opt.convergio && Fmin < 1e9, S_obs, nombresObs,
                     estimador: 'ML', optimizacion: { metodo: opt.respaldo ? 'BFGS (tras Nelder–Mead)' : 'BFGS', iteraciones: opt.iteraciones, gradienteMax: opt.gradienteMax, estado: opt.estado } };
-        this._ultimos.push(R);
-        if (this._ultimos.length > 5) this._ultimos.shift();
+        this._recordar(R);
         return R;
     }
 };

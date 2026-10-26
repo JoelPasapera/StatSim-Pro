@@ -8,6 +8,7 @@ import { AnalizadorEstadistico } from '../estadistica.js';
 import { Fiabilidad } from '../fiabilidad.js';
 import { RegresionMultiple } from '../regresion.js';
 import { ejecutarAnalisis, olvidarAnalisisAnterior } from './analisis.js';
+import { ocultarGraficos } from './graficos.js';
 import { bus, EVENTOS } from '../../shared/eventos.js';
 import { EtiquetasVariables } from '../../shared/etiquetas-variables.js';
 import { obtenerEtiquetaOpcion } from '../../shared/etiquetas.js';
@@ -423,15 +424,19 @@ function poblarSelectsVariables(datos) {
     if (valor2) select2.value = valor2;
 }
 
-// Oculta y vacía todos los contenedores de resultados antes de cada análisis,
-// para que no se mezclen salidas de correlación y de comparación de grupos.
+// Oculta y vacía todos los contenedores de resultados antes de cada análisis (y al cargar otros datos), para que no se
+// mezclen salidas de correlación y de comparación de grupos. (2027.01.05) También lo que solo dibuja la correlación: la
+// matriz de consistencia, la tabla sociodemográfica, los niveles, los hallazgos sociodemográficos y los gráficos. Hasta la
+// 2027.01.04 seguían a la vista tras una comparación o una asociación (y en su PDF), con las variables de la correlación de
+// antes (y, tras cargar otros datos, con los de antes).
 function limpiarResultados() {
     const ids = [
         'marcoMetodologicoContainer', 'resultadosDescriptivas', 'resultadosFiabilidad',
         'pruebasNormalidadContainer', 'resultadosCorrelacion', 'resultadosRegresion',
         'resultadosDispersion', 'resultadosDecision', 'resultadosReporteAPA',
         'resultadosDimensiones', 'resultadosDiscusion', 'resultadosContainer',
-        'resultadosComparacion', 'resultadosChiCuadrado'
+        'resultadosComparacion', 'resultadosChiCuadrado',
+        'resultadosMatrizConsistencia', 'resultadosSociodemografica', 'resultadosNiveles', 'resultadosHallazgosSocio'
     ];
     ids.forEach(id => {
         const elem = document.getElementById(id);
@@ -440,6 +445,7 @@ function limpiarResultados() {
             elem.innerHTML = '';
         }
     });
+    ocultarGraficos();
 }
 
 // Columnas categóricas del dataset cargado (texto, sin contar ID), para los

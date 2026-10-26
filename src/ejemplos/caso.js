@@ -7,7 +7,7 @@
 // markdown.js); los botones los atiende index.js por su data-accion-ejemplo. Sin DOM.
 
 import { escaparHTML } from '../shared/html.js';
-import { enLinea, markdownAHtml, partirEnSecciones } from './markdown.js';
+import { enLinea, markdownAHtml, partirEnSecciones } from '../shared/markdown.js';
 import { ACOMPANANTES, PROYECTO_DEL_CASO, bytesDelCaso, gruposDeArchivos, numeroDe, tamanoDe, tipoDeArchivo, urlDelArchivo } from './catalogo.js';
 import { listaDeDestacados } from './galeria.js';
 
@@ -22,7 +22,7 @@ const NIVEL_DEL_CASO = 3;
  * El README de un caso en HTML: lo que va antes de su primera sección, sin su título («# Caso N · …»), y cada sección en
  * un <details> con su título como encabezado.
  * @param {string} leeme
- * @param {import('./markdown.js').OpcionesMarkdown} op
+ * @param {import('../shared/markdown.js').OpcionesMarkdown} op
  * @returns {string}
  */
 export function htmlDelLeeme(leeme, op) {
@@ -122,7 +122,7 @@ export function htmlDelCaso(e, leeme, version, aviso = '') {
     <p class="ejemplo-progreso" role="status" aria-live="polite"></p>
     <div class="orden-guia" role="note" aria-label="Qué hace «Abrir en StatSim»">
         <span class="orden-guia-titulo">Para qué sirve:</span>
-        <span class="orden-nota">«Abrir en StatSim» carga el proyecto del caso —el Simulador con su configuración y su base, el Analizador con sus datos— y te deja a la vista sus pasos para que repitas el análisis y veas los mismos resultados. Reemplaza lo que tengas ahora en la página: si tienes trabajo sin guardar, guárdalo antes con Ayuda → «Guardar proyecto». «Descargar todo» baja la carpeta entera del caso en un .zip.</span>
+        <span class="orden-nota">«Abrir en StatSim» carga el proyecto del caso —el Simulador con su configuración y su base, el Analizador con sus datos— y te deja a la vista sus pasos para que repitas el análisis y veas los mismos resultados. Reemplaza lo que tengas en las secciones que trae el caso (te las nombra antes de abrirlo); las demás quedan como están. Si tienes trabajo sin guardar, guárdalo antes con Ayuda → «Guardar proyecto». «Descargar todo» baja la carpeta entera del caso en un .zip.</span>
     </div>
     <p class="ejemplo-meta">${e.archivos.length} archivos · hecho por la versión ${escaparHTML(e.version)} de StatSim Pro, con datos simulados</p>
 </header>

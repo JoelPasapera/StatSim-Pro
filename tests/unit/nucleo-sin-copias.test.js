@@ -110,6 +110,7 @@ const PRIMITIVAS = [
             'src/simulador/dominio/autotest.js': ['el autotest del Simulador: su Pearson es independiente por diseño', 1],
             'src/simulador/dominio/formas-relacion.js': ['la κ de una forma: una correlación ponderada con los pesos de cuadratura de la curva teórica', 1],
             'src/simulador/dominio/informe.js': ['la correlación dentro de las personas de los niveles: la de los residuos de un ANOVA de dos factores, de sus sumas', 1],
+            'src/analizador/sem-ui.js': ['(2027.01.12) la correlación de una covarianza que estima el SEM, para su diagrama: la estandariza con las varianzas del modelo (no es la r de unos datos)', 1],
         },
         antes: ['const r = (u, v) => { const k = u.length, mu = u.reduce((s, x) => s + x, 0) / k, mv = v.reduce((s, x) => s + x, 0) / k; let a = 0, b = 0, c = 0; for (let i = 0; i < k; i++) { a += (u[i] - mu) * (v[i] - mv); b += (u[i] - mu) ** 2; c += (v[i] - mv) ** 2; } return a / Math.sqrt(b * c); };',
             'const r = (u, v) => { let su = 0, sv = 0, k = 0; for (let i = 0; i < u.length; i++) { su += u[i]; sv += v[i]; k++; } const mu = su / k, mv = sv / k; let suv = 0, suu = 0, svv = 0; for (let i = 0; i < u.length; i++) { const du = u[i] - mu, dv = v[i] - mv; suv += du * dv; suu += du * du; svv += dv * dv; } return suv / Math.sqrt(suu * svv); };']

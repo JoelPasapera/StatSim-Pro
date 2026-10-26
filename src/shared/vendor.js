@@ -20,7 +20,7 @@ export function cargarScript(url, comprobar) {
 export function asegurarHtmlDocx() {
     return cargarScript('assets/vendor/html-docx.min.js', () => typeof htmlDocx !== 'undefined' && !!htmlDocx.asBlob).then(() => (typeof htmlDocx !== 'undefined' ? htmlDocx : null)).catch(() => null);
 }
-
+
 
 // ExcelJS (leer y escribir .xlsx) solo cuando se exporta o importa una hoja: el Buscador, el Ranking de revistas y las
 // fuentes del Redactor, todos con la copia local (2026.12.30: hasta entonces, un cargador por módulo —el del Redactor,

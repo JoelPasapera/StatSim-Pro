@@ -92,9 +92,9 @@ El capítulo de Word reúne todo lo anterior con el marco metodológico (pregunt
 
 | Archivo | Qué es | Tamaño |
 | --- | --- | --- |
-| [analizador/1-correlacion/capitulo_resultados_APA.docx](analizador/1-correlacion/capitulo_resultados_APA.docx) | El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma). | 720 KB |
+| [analizador/1-correlacion/capitulo_resultados_APA.docx](analizador/1-correlacion/capitulo_resultados_APA.docx) | El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma). | 726 KB |
 | [analizador/1-correlacion/resultados.pdf](analizador/1-correlacion/resultados.pdf) | La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador. | 1.1 MB |
-| [analizador/1-correlacion/resultados_analisis.txt](analizador/1-correlacion/resultados_analisis.txt) | Los resultados en texto plano: botón «Descargar resultados». | 32 KB |
+| [analizador/1-correlacion/resultados_analisis.txt](analizador/1-correlacion/resultados_analisis.txt) | Los resultados en texto plano: botón «Descargar resultados». | 30 KB |
 | [proyecto.statsim](proyecto.statsim) | El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto». | 29 KB |
 | [simulador/base_datos_simulada.sav](simulador/base_datos_simulada.sav) | La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)». | 22 KB |
 | [simulador/base_datos_simulada.xlsx](simulador/base_datos_simulada.xlsx) | La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)». | 56 KB |

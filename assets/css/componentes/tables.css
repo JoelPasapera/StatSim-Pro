@@ -2,6 +2,9 @@
    TABLES
    ======================================== */
 .table-container { overflow-x: auto; border-radius: var(--radius-md); border: 1px solid var(--border-soft); }
+/* (2027.01.14, revisión) las tablas de resultados más anchas que su recuadro (las del SEM, las de la regresión): desplazables
+   dentro de él; en un teléfono, la de parámetros del SEM hacía la página de 515 de ancho, y las de la regresión, de 557 */
+.tabla-ancha { overflow-x: auto; max-width: 100%; }
 .table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; background: rgba(14, 21, 36, 0.35); }
 .table thead { background-color: var(--surface-2); }
 .table th {

@@ -72,7 +72,7 @@
     .table tbody tr:nth-child(even):hover { background: #fafbfc !important; }
     .tabla-desplazable .table tbody tr:hover { --tinte-fila: transparent !important; }
     .tabla-desplazable .table tbody tr:nth-child(even):hover { --tinte-fila: rgba(148, 163, 197, 0.03) !important; }
-    .table-scroll, .table-container { max-height: none !important; overflow: visible !important; }
+    .table-scroll, .table-container, .tabla-ancha { max-height: none !important; overflow: visible !important; }
     th, td { color: inherit; }
 
     /* Gráficos: a lo ancho del papel, uno por fila, sin cortarse entre páginas; los vacíos, fuera */
@@ -80,9 +80,30 @@
     .chart-container { padding: 6pt !important; margin: 0 0 9pt !important; border: 0.75pt solid var(--border-soft); }
     .chart-container:has(.chart-wrapper:empty) { display: none !important; }
     svg, img, canvas { max-width: 100% !important; height: auto !important; }
-    /* los textos de los gráficos y de sus análisis vienen en tonos claros, pensados para el fondo oscuro: en papel, tinta */
-    .chart-wrapper svg text[fill="#e2e8f0"], .chart-wrapper svg text[fill="#cbd5e1"], .chart-wrapper svg text[fill="#94a3b8"] { fill: #2a2f38 !important; }
-    .chart-wrapper svg [stroke="#e2e8f0"] { stroke: #9aa1ac !important; }
+    /* los textos de los gráficos y de sus análisis vienen en tonos claros, pensados para el fondo oscuro: en papel, tinta.
+       (2027.01.10, revisión) De todos los gráficos (también los de fuera de .chart-wrapper: los histogramas, los Q-Q y la
+       dispersión), y también los que heredan el color del lienzo (graficas.js lo pone claro en su raíz, y así salían el título,
+       los ejes y las leyendas: casi blancos en el papel). Lo mismo hace exportador-word.js con las figuras del Word
+       (graficos-en-papel.js); los blancos sobre celdas de color siguen blancos */
+    svg[fill="#e2e8f0"], svg[fill="#cbd5e1"], svg[fill="#94a3b8"],
+    svg text[fill="#e2e8f0"], svg text[fill="#cbd5e1"], svg text[fill="#94a3b8"],
+    svg tspan[fill="#e2e8f0"], svg tspan[fill="#cbd5e1"], svg tspan[fill="#94a3b8"] { fill: #2a2f38 !important; }
+    svg [stroke="#e2e8f0"] { stroke: #9aa1ac !important; }
+    /* (2027.01.11, revisión) los recuadros oscuros de un gráfico (las anotaciones de la dispersión, las leyendas), blancos con un
+       borde gris: su texto va en tinta (en la 2027.01.10, tinta sobre la caja oscura: ilegible). Y la cruz que sigue al ratón,
+       que es de la pantalla, fuera. Lo mismo, en las figuras del Word (graficos-en-papel.js) */
+    svg .recuadro { fill: #ffffff !important; fill-opacity: 1 !important; opacity: 1 !important; stroke: #9aa1ac !important; }
+    svg .crosshair-capa { display: none !important; }
+    /* (2027.01.12, revisión) los colores claros de las series (las curvas del gráfico de las distribuciones), más oscuros: en la
+       2027.01.11, en el papel, el ámbar quedaba a 1,7:1 del blanco. Los mismos que en las figuras del Word (graficos-en-papel.js) */
+    svg [stroke="#60a5fa"] { stroke: #1d4ed8 !important; } svg [fill="#60a5fa"] { fill: #1d4ed8 !important; }
+    svg [stroke="#f87171"] { stroke: #b91c1c !important; } svg [fill="#f87171"] { fill: #b91c1c !important; }
+    svg [stroke="#34d399"] { stroke: #047857 !important; } svg [fill="#34d399"] { fill: #047857 !important; }
+    svg [stroke="#fbbf24"] { stroke: #a16207 !important; } svg [fill="#fbbf24"] { fill: #a16207 !important; }
+    svg [stroke="#c084fc"] { stroke: #7e22ce !important; } svg [fill="#c084fc"] { fill: #7e22ce !important; }
+    svg [stroke="#22d3ee"] { stroke: #0e7490 !important; } svg [fill="#22d3ee"] { fill: #0e7490 !important; }
+    svg [stroke="#fb923c"] { stroke: #c2410c !important; } svg [fill="#fb923c"] { fill: #c2410c !important; }
+    svg [stroke="#a3e635"] { stroke: #4d7c0f !important; } svg [fill="#a3e635"] { fill: #4d7c0f !important; }
     .chart-desc { color: #3b414c !important; }
     .analisis-grafico { border-top-color: var(--color-border) !important; }
     .analisis-grafico h5 { color: #8a6300 !important; }
@@ -114,6 +135,9 @@
     #semCard:not(:has(#semOut:not(:empty))) { display: none !important; }
     #semCard > :not(h3):not(#semSintaxis):not(#semDecision):not(#semOut) { display: none !important; }
     #semSintaxis { display: block !important; width: 100% !important; field-sizing: content; resize: none; border: 0.75pt solid var(--border-soft); background: #f6f7f9; color: #15171c; font: 9pt ui-monospace, Consolas, monospace; padding: 4pt 6pt; }
+    /* (2027.01.13, revisión) el diagrama de rutas, sin pasar del alto de una página (uno en columna puede ser más alto que
+       ancho: a lo ancho del papel, se cortaba por abajo); más bajo, se encoge entero, centrado */
+    #semOut svg.sem-diagrama { max-height: 245mm !important; }
     /* (2027.01.01) lo que en pantalla se desplaza dentro de su caja (el resumen de la fiabilidad, de doce columnas, lleva el
        desplazamiento en su estilo), entero en el papel: se cortaba a la derecha. Sus tablas, a lo ancho y con los textos
        partidos en varias líneas */

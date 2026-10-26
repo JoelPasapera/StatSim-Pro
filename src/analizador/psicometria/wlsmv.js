@@ -11,7 +11,7 @@
 import { cuantilNormal, cdfNormal, densidadNormal, cdfNormalBivariada, densidadNormalBivariada } from '../../core/stats/numerico.js';
 import { policorica } from './policorica.js';
 import { multiplicar, traspuesta, inversaDefinidaPositiva } from './algebra.js';
-import { implicada, derivadasSigma } from './ram.js';
+import { implicada, derivadasSigma, informacionSingular } from './ram.js';
 import { bfgs } from './optimizacion.js';
 
 // ---------------------------------------------------------------- umbrales e influencia de cada ítem
@@ -181,5 +181,6 @@ export function inferenciaWLSMV(sm, fit) {
     const TLI = gl > 0 ? ((chi2b / P) - (chi2 / gl)) / ((chi2b / P) - 1) : NaN;
     const RMSEA = gl > 0 ? Math.sqrt(Math.max(chi2 - gl, 0) / (gl * n)) : 0;
     const SRMR = Math.sqrt(fit.residuos.reduce((s, e) => s + e * e, 0) / P);
-    return { se, T, chi2, gl, chi2b, glb: P, CFI, TLI, RMSEA, SRMR, correccion: { a, b }, Tb };
+    // (2027.01.13, revisión) y si Δᵀ·W·Δ es casi singular: un modelo sin identificar que se invertía por poco salía sin aviso
+    return { se, T, chi2, gl, chi2b, glb: P, CFI, TLI, RMSEA, SRMR, correccion: { a, b }, Tb, singular: informacionSingular(H) };
 }

@@ -338,6 +338,17 @@ test('las vistas usan el núcleo: la logística simple del mejor modelo, la múl
     const RS = RM.regresionAvanzada('c', ['x'], 'c', ['x'], { poisson: true });
     assert.ok(RS.dispersion > 1.5 && RS.sobredispersion === true, `dispersión ${RS.dispersion}`);
     assert.ok(RS.avisos.some((/** @type {string} */ a) => a.startsWith(`Sobredispersión detectada (χ²/gl = ${RM._fx(RS.dispersion, 2)} > 1.5)`)), 'el aviso de sobredispersión');
+    // (2027.01.11, revisión) la interacción y el término cuadrático pedidos con Poisson: se dice que no se aplican, como en la
+    // logística (hasta la 2027.01.10, se dejaban fuera sin decirlo); con un predictor, la interacción no se pide (su casilla
+    // no se ve) y no se dice nada de ella
+    A.cargarDatos(filas);
+    const RI = RM.regresionAvanzada('c', ['fecha', 'g2'], 'c', ['fecha', 'g2'], { poisson: true, interaccion: true, cuadratico: true });
+    assert.equal(RI.familia, 'poisson', RI.error);
+    assert.ok(RI.avisos.includes('Con el modelo de Poisson se ajustaron los efectos principales: la interacción y el término cuadrático no se aplican a este modelo.'), RI.avisos.join(' | '));
+    assert.match(RM.renderMultiple(RI).html, /Con el modelo de Poisson se ajustaron los efectos principales/, 'en la pantalla');
+    const RC = RM.regresionAvanzada('c', ['fecha'], 'c', ['fecha'], { poisson: true, interaccion: true, cuadratico: true });
+    assert.deepEqual(RC.avisos.filter((/** @type {string} */ a) => a.startsWith('Con el modelo de Poisson')), ['Con el modelo de Poisson se ajustaron los efectos principales: el término cuadrático no se aplica a este modelo.']);
+    assert.ok(!RM.regresionAvanzada('c', ['fecha', 'g2'], 'c', ['fecha', 'g2'], { poisson: true }).avisos.some((/** @type {string} */ a) => a.startsWith('Con el modelo de Poisson')), 'sin pedirlos, nada');
     // los avisos del ajuste llegan a la pantalla (el mejor modelo y la avanzada)
     const { u, nor } = generador(31);
     const xg = Array.from({ length: 100 }, nor), yg = xg.map(v => u() < 1 / (1 + Math.exp(-2 * v)) ? 1 : 0);

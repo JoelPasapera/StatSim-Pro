@@ -1,5 +1,8 @@
 // analizador/graficas.js — gráficas científicas (ScientificCharts).
 // Origen: graficas.js (Fase 3), sin cambios de comportamiento; dependencias explícitas.
+// (2027.01.13, revisión) Las marcas de los datos de cada gráfico (las barras de un histograma, los puntos de una dispersión o
+// de un Q-Q, las curvas de las distribuciones, las celdas de la matriz, las cajas, los violines) llevan `data-marca`: las
+// pruebas de lo impreso (tests/navegador/graficos-medidas.mjs) miran que se vean y que sus líneas no salgan claras.
 
 import { d3 } from '../shared/statviz.js';
 import { cuantilNormal, densidadNormal } from '../core/stats/numerico.js';
@@ -7,6 +10,7 @@ import { pCorrelacion, icCorrelacion } from '../core/stats/correlacion.js';
 import { regresionSimple, bandaConfianzaRecta } from '../core/stats/regresion-simple.js';
 import { fuerzaCorrelacionGrafico } from './motor/magnitudes.js';
 import { formatoP, numeroConMenos, terminoConSigno } from '../shared/formato-numero.js';
+import { SERIES_EN_PAPEL } from './graficos-en-papel.js';
 /**
  * ScientificCharts - Librería de Visualización Científica
  * Arquitectura: Patrón Builder con Clases ES6
@@ -81,16 +85,24 @@ class ScientificCharts {
      * que el gráfico ocupe el ancho disponible SIN desbordar nunca su card
      * (ni en ancho ni en alto; se reserva un pequeño espacio para el
      * subtítulo/caption que pueda haber debajo). El dibujo escala por viewBox.
+     * (2027.01.11, revisión) Si el contenedor aún no tiene ancho, otra vez en el cuadro siguiente con el lienzo de entonces (hasta
+     * la 2027.01.10, con las medidas de esta llamada: deshacía lo que hubiera ampliado _lienzoAlContenido, o lo que ajusta el
+     * diagrama de caja a sus cajas, y la figura quedaba con otra proporción que su lienzo). Y el alto que limita es el de una
+     * card con alto propio (_altoDelMarco); en un marco que crece con lo que tiene dentro, el gráfico va a su tamaño (más
+     * estrecho si el marco lo es): hasta la 2027.01.10 se medía ese marco con el gráfico dentro, y cada ajuste lo achicaba.
+     * (2027.01.12, revisión) Sin ancho aún, lo rehace cuando se vea (_cuandoSeVea), una vez: hasta la 2027.01.11 lo pedía otra
+     * vez en cada cuadro mientras el contenedor no tuviera ancho (con el Analizador oculto, unas 240 veces por segundo, y para
+     * siempre si el gráfico ya no estaba en la página). `despues`: es esa segunda vez. Y una card a lo ancho de la fila, en una
+     * pantalla estrecha (menos de 640), a todo su ancho (en un teléfono, la matriz quedaba diminuta).
      * @private
+     * @param {number} vbW @param {number} vbH @param {boolean} [despues]
      */
-    _ajustarTamanoCSS(vbW, vbH) {
+    _ajustarTamanoCSS(vbW, vbH, despues = false) {
         const cw = (this.container && this.container.clientWidth) || 0;
-        if (cw < 40 && this.container && typeof requestAnimationFrame === 'function' && !this._reintentoTam) {
-            this._reintentoTam = true;
-            requestAnimationFrame(() => { this._reintentoTam = false; this._ajustarTamanoCSS(vbW, vbH); });
-        }
-        const chDisp = (this.container && this.container.clientHeight) || 0;
-        let w = cw > 40 ? (this._cardExpandida ? Math.min(cw * 0.82, vbW * 1.9) : Math.min(cw, vbW * 1.3)) : vbW;
+        if (cw < 40 && this.container && !despues) this._cuandoSeVea();
+        const chDisp = this._altoDelMarco();
+        const crece = chDisp > 80 ? 1.3 : 1;   // (2027.01.11) sin alto propio, a su tamaño como mucho
+        let w = cw > 40 ? (this._cardExpandida ? Math.min(cw * (cw < 640 ? 1 : 0.82), vbW * 1.9) : Math.min(cw, vbW * crece)) : vbW;
         let h = w * vbH / vbW;
         // Si la card tiene alto definido, no sobrepasarlo (dejando ~34 px
         // para el caption); se reduce manteniendo la proporción. Las cards
@@ -110,12 +122,235 @@ class ScientificCharts {
             .style('height', `${Math.round(h)}px`);
     }
     /**
+     * (2027.01.11, revisión) El alto que el marco le da al gráfico, si es suyo: el de una card con alto propio, que no crece
+     * cuando el gráfico se hace más alto que ella (lo prueba un momento). Uno que crece con lo que tiene dentro (también el que
+     * estira una fila flexible) no lo limita: 0. Hasta la 2027.01.10 se medía con el gráfico dentro, y cada vez que se volvía a
+     * ajustar el tamaño el gráfico se achicaba (en la dispersión del caso 3, a 356 × 260).
+     * @private
+     * @returns {number}
+     */
+    _altoDelMarco() {
+        const c = this.container, nodo = this.svg && this.svg.node();
+        if (!c) return 0;
+        const alto = c.clientHeight || 0;
+        if (!nodo || !nodo.style || alto <= 0) return alto;
+        const antes = nodo.style.height;
+        nodo.style.height = `${alto + 200}px`;
+        const conMas = c.clientHeight || 0;
+        nodo.style.height = antes;
+        return conMas === alto ? alto : 0;
+    }
+    /**
+     * (2027.01.11) El lienzo del gráfico (su viewBox, o el de su tamaño): [x, y, ancho, alto].
+     * @private
+     * @returns {number[]}
+     */
+    _cajaDelLienzo() {
+        const vb = this.svg && this.svg.attr('viewBox');
+        const n = (vb || `0 0 ${this.config.width} ${this.config.height}`).split(/[\s,]+/).map(Number);
+        return n.length === 4 && n.every(Number.isFinite) ? n : [0, 0, this.config.width, this.config.height];
+    }
+    /**
+     * (2027.01.10, revisión) Amplía el lienzo (viewBox) a todo lo que dibujó el gráfico: el título, las etiquetas en diagonal de
+     * un eje o una leyenda podían salirse de él, y lo que queda fuera del lienzo no sale al imprimir ni en las figuras del Word
+     * (en la pantalla, a veces, tampoco: las etiquetas del diagrama de caja salían cortadas). Solo amplía, y solo por el lado
+     * que se sale (con un margen de 4). (2027.01.11, revisión) Y centra el título en el lienzo que queda (ampliado por un solo
+     * lado, se apartaba del centro). Sin poder medir (un gráfico que no se ve: dibujado con su sección oculta, o un DOM sin
+     * medidas), lo hace cuando se vea (_cuandoSeVea); `despues`: es ese segundo intento, y no espera otro. Dice si cambió el
+     * lienzo (y, con él, el tamaño).
+     * @private
+     * @param {boolean} [despues]
+     * @returns {boolean}
+     */
+    _lienzoAlContenido(despues = false) {
+        const nodo = this.svg && this.svg.node();
+        if (!nodo || typeof nodo.getBBox !== 'function') return false;
+        let b = null;
+        try { b = nodo.getBBox(); } catch (e) { b = null; }   // (Firefox lanza con un SVG que no se dibuja)
+        if (!b || !(b.width > 0) || !(b.height > 0)) {
+            if (!despues) this._cuandoSeVea();
+            return false;
+        }
+        this._apartarNombreDelEjeY();   // (2027.01.12) antes de medir: si se mueve, el lienzo lo abarca
+        b = nodo.getBBox();
+        const vb = this._cajaDelLienzo();
+        const MARGEN = 4;
+        const x0 = b.x < vb[0] - 0.5 ? Math.floor(b.x - MARGEN) : vb[0];
+        const y0 = b.y < vb[1] - 0.5 ? Math.floor(b.y - MARGEN) : vb[1];
+        const x1 = b.x + b.width > vb[0] + vb[2] + 0.5 ? Math.ceil(b.x + b.width + MARGEN) : vb[0] + vb[2];
+        const y1 = b.y + b.height > vb[1] + vb[3] + 0.5 ? Math.ceil(b.y + b.height + MARGEN) : vb[1] + vb[3];
+        this._centrarTitulo(x0 + (x1 - x0) / 2);
+        if (x0 === vb[0] && y0 === vb[1] && x1 === vb[0] + vb[2] && y1 === vb[1] + vb[3]) return false;
+        this.svg.attr('viewBox', `${x0} ${y0} ${x1 - x0} ${y1 - y0}`);
+        this._ajustarTamanoCSS(x1 - x0, y1 - y0, despues);
+        return true;
+    }
+    /**
+     * (2027.01.12, revisión) El nombre del eje Y, a la izquierda de los valores de su eje: con valores largos (de 7 cifras o más,
+     * en la dispersión), se montaban. Lo mueve a la izquierda lo que haga falta (el lienzo lo abarca después); sin medidas (un
+     * gráfico que no se ve), lo deja para cuando se vea.
+     * @private
+     */
+    _apartarNombreDelEjeY() {
+        if (!this.svg || typeof this.svg.select !== 'function') return;
+        const nombre = this.svg.select('.nombre-eje-y');
+        if (nombre.empty()) return;
+        let izquierda = Infinity;
+        // los ejes verticales de la izquierda: grupos del área de datos con sus marcas en x = 0 (d3, axisLeft) y sin moverse a
+        // la derecha (el de la derecha de un gráfico iría trasladado a su ancho)
+        for (const eje of this.svg.selectAll('.chart-content > g').nodes()) {
+            const marcas = [...eje.children].filter(n => n.classList && n.classList.contains('tick'));
+            if (!marcas.length || !marcas.every(n => /^translate\(0,/.test(n.getAttribute('transform') || ''))) continue;
+            try {
+                const b = eje.getBBox(), t = eje.transform && eje.transform.baseVal;
+                const m = t && t.numberOfItems ? t.consolidate().matrix : null;
+                if (m && m.e > 1) continue;
+                if (b.width > 0) izquierda = Math.min(izquierda, b.x + (m ? m.e : 0));
+            } catch (e) { /* sin medidas */ }
+        }
+        if (!Number.isFinite(izquierda)) return;
+        const fs = Number(nombre.attr('font-size')) || this.config.fontSize;
+        nombre.attr('y', Math.min(-this.config.margin.left, Math.floor(izquierda - 4 - 1.2 * fs)));
+    }
+    /**
+     * (2027.01.12, revisión) Un nombre de eje más largo que su eje: más pequeño (hasta 9) y, si aún no cabe, cortado con «…» (el
+     * nombre entero, en su <title>, que el navegador muestra al pasar el ratón). Hasta la 2027.01.11, el del eje Y pasaba del
+     * alto del gráfico y se montaba con un título en dos líneas. Mide el texto si el gráfico se ve; si no, lo estima, y lo
+     * rehace cuando se vea (_rehacerNombresDeEjes), como el título.
+     * @private
+     * @param {any} t el texto (d3)
+     * @param {string} texto
+     * @param {number} maximo
+     */
+    _nombreDelEjeACaber(t, texto, maximo) {
+        const fs0 = this.config.fontSize;
+        let ancho = 0;
+        try { ancho = t.node().getComputedTextLength(); } catch (e) { ancho = 0; }
+        if (!(ancho > 0)) {
+            ancho = texto.length * fs0 * 0.55;
+            this._nombresEstimados = true;
+            t.attr('data-nombre', texto).attr('data-maximo', maximo);
+        }
+        if (ancho <= maximo) return;
+        const fs = Math.max(9, Math.floor(fs0 * maximo / ancho));
+        t.attr('font-size', fs);
+        const anchoConFs = ancho * fs / fs0;
+        if (anchoConFs <= maximo) return;
+        const letras = Math.max(4, Math.floor(texto.length * maximo / anchoConFs) - 1);
+        t.text(`${texto.slice(0, letras).trimEnd()}…`);
+        t.append('title').text(texto);
+    }
+    /**
+     * (2027.01.12, revisión) Los nombres de los ejes que se ajustaron con su ancho estimado (el gráfico no se veía): otra vez,
+     * enteros y medidos.
+     * @private
+     */
+    _rehacerNombresDeEjes() {
+        this._nombresEstimados = false;
+        for (const n of this.svg.selectAll('[data-nombre]').nodes()) {
+            const t = d3.select(n), texto = String(t.attr('data-nombre')), maximo = Number(t.attr('data-maximo'));
+            t.attr('data-nombre', null).attr('data-maximo', null).attr('font-size', this.config.fontSize).text(texto);
+            this._nombreDelEjeACaber(t, texto, maximo);
+        }
+    }
+    /**
+     * (2027.01.11, revisión) Lo que no se pudo medir porque el gráfico no se ve, cuando se vea: con ResizeObserver, cuando el
+     * lienzo toma tamaño en la pantalla; sin él, en el cuadro siguiente. Entonces amplía el lienzo y ajusta el tamaño. Hasta la
+     * 2027.01.10, solo en el cuadro siguiente: un gráfico dibujado con su sección oculta (otra pestaña en los 300 ms antes de
+     * que el Analizador analice) quedaba cortado.
+     * @private
+     */
+    _cuandoSeVea() {
+        const nodo = this.svg && this.svg.node();
+        if (!nodo || this._esperandoVerse) return;
+        const rehacer = () => {
+            this._esperandoVerse = false;
+            if (this._tituloEstimado) this._rehacerTitulo();   // (2027.01.12) partido por la estimación: otra vez, medido
+            if (this._nombresEstimados) this._rehacerNombresDeEjes();   // (2027.01.12) y los nombres de los ejes
+            if (!this._lienzoAlContenido(true)) {
+                const [, , w, h] = this._cajaDelLienzo();
+                this._ajustarTamanoCSS(w, h, true);
+            }
+        };
+        if (typeof ResizeObserver === 'function') {
+            this._esperandoVerse = true;
+            const obs = new ResizeObserver(entradas => {
+                const r = entradas.length ? entradas[entradas.length - 1].contentRect : null;
+                if (!r || !(r.width > 0) || !(r.height > 0)) return;
+                obs.disconnect();
+                rehacer();
+            });
+            obs.observe(nodo);
+        } else if (typeof requestAnimationFrame === 'function') {
+            this._esperandoVerse = true;
+            requestAnimationFrame(rehacer);
+        }
+    }
+    /**
+     * (2027.01.12, revisión) El título otra vez, entero, y partido o no según lo que mide ya a la vista: oculto, _partirTitulo lo
+     * estima por sus letras, y un título de casi el ancho del gráfico podía quedar en dos líneas (o en una) distinto que a la vista.
+     * @private
+     */
+    _rehacerTitulo() {
+        this._tituloEstimado = false;
+        const t = this.svg.select('.titulo-grafico');
+        if (t.empty()) return;
+        const titulo = String(this.svg.attr('aria-label') || t.text());
+        t.text(titulo);
+        this._partirTitulo(t, titulo);
+    }
+    /**
+     * (2027.01.11, revisión) El título (y sus líneas, si va en dos: _partirTitulo), centrado en x.
+     * @private
+     * @param {number} x
+     */
+    _centrarTitulo(x) {
+        if (!this.svg || typeof this.svg.select !== 'function') return;
+        const t = this.svg.select('.titulo-grafico');
+        if (t.empty()) return;
+        t.attr('x', x);
+        t.selectAll('tspan').attr('x', x);
+    }
+    /**
+     * (2027.01.11, revisión) Un título más ancho que el gráfico, en dos líneas: tras « vs » (el de la dispersión: «X vs Y») si
+     * así caben, y si no, por el espacio que mejor las iguala. La segunda va donde iba él, y la primera encima, de modo que el
+     * lienzo crece un poco por arriba (_lienzoAlContenido). Hasta la 2027.01.10 el lienzo se ensanchaba por los dos lados y el
+     * gráfico entero se achicaba (la dispersión de los casos 2 y 3). Mide el texto si el gráfico se ve; si no, lo estima por
+     * sus letras.
+     * @private
+     * @param {any} t el texto del título (d3)
+     * @param {string} titulo
+     */
+    _partirTitulo(t, titulo) {
+        const disponible = this.config.width - 16;
+        let ancho = 0;
+        try { ancho = t.node().getComputedTextLength(); } catch (e) { ancho = 0; }
+        this._tituloEstimado = !(ancho > 0);   // (2027.01.12) sin medidas: se rehace cuando se vea (_cuandoSeVea)
+        if (!(ancho > 0)) ancho = titulo.length * this.config.titleFontSize * 0.55;
+        if (ancho <= disponible) return;
+        /** @type {number[]} */
+        const espacios = [];
+        for (let i = 0; i < titulo.length; i++) if (titulo[i] === ' ') espacios.push(i);
+        if (!espacios.length) return;
+        const peor = (/** @type {number} */ i) => Math.max(i, titulo.length - i - 1);
+        const vs = titulo.indexOf(' vs ');
+        const corte = vs > 0 && peor(vs + 3) * ancho / titulo.length <= disponible ? vs + 3
+            : espacios.reduce((mejor, i) => (peor(i) < peor(mejor) ? i : mejor), espacios[0]);
+        const x = t.attr('x'), alto = Math.round(this.config.titleFontSize * 1.2);
+        t.text(null);
+        t.append('tspan').attr('x', x).attr('dy', -alto).text(titulo.slice(0, corte));
+        t.append('tspan').attr('x', x).attr('dy', alto).text(titulo.slice(corte + 1));
+    }
+    /**
      * Expande la card del gráfico a la fila completa del layout (el espacio
      * de dos gráficos) y libera su alto para que crezca con el contenido.
      * Inofensivo si el layout no es un grid. Reajusta el tamaño después.
+     * (2027.01.12, revisión) Solo una card de la rejilla de gráficos (.chart-wrapper): la caja por grupos, que no lo es, salía a
+     * 1,83 veces su tamaño (807 × 660 para un lienzo de 440 × 360).
      * @private
      */
     _expandirCard() {
+        if (!this.container || !this.container.classList || !this.container.classList.contains('chart-wrapper')) return;
         this._cardExpandida = true;
         if (this.container && this.container.style) {
             this.container.style.gridColumn = '1 / -1';
@@ -124,8 +359,8 @@ class ScientificCharts {
             this.container.style.height = 'auto';
             this.container.style.maxHeight = 'none';
         }
-        const vb = (this.svg.attr('viewBox') || `0 0 ${this.config.width} ${this.config.height}`).split(' ');
-        this._ajustarTamanoCSS(+vb[2], +vb[3]);
+        const [, , w, h] = this._cajaDelLienzo();
+        this._ajustarTamanoCSS(w, h);
     }
     /**
      * Rejilla de referencia muy tenue. Dibuja líneas horizontales según los
@@ -161,25 +396,29 @@ class ScientificCharts {
             .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
         capa.append('line').attr('class', 'ch-h').attr('x1', 0).attr('x2', W)
             .attr('stroke', '#94a3b8').attr('stroke-width', 1).attr('stroke-dasharray', '3,3');
-        const chFondo = capa.append('rect')
+        const chFondo = capa.append('rect').attr('class', 'recuadro')
             .attr('height', 20).attr('rx', 4)
             .attr('fill', 'rgba(15, 23, 42, 0.92)').attr('stroke', '#475569');
         const chTexto = capa.append('text')
             .attr('font-size', 12).attr('fill', '#e2e8f0');
         const svgNode = this.svg.node();
-        const self = this;
         // Los eventos se escuchan en el SVG completo (no en un rect captor):
         // así el crosshair convive con los elementos interactivos de debajo
         // (cajas, outliers), que reciben sus propios eventos por burbujeo.
         this.svg
             .style('cursor', 'crosshair')
             .on('mousemove', function (event) {
-                const rect = svgNode.getBoundingClientRect();
-                const vb = (self.svg.attr('viewBox') || `0 0 ${self.config.width} ${self.config.height}`).split(' ').map(Number);
-                const fx = rect.width > 0 ? vb[2] / rect.width : 1;
-                const fy = rect.height > 0 ? vb[3] / rect.height : 1;
-                const px = (event.clientX - rect.left) * fx - self.config.margin.left;
-                const py = (event.clientY - rect.top) * fy - self.config.margin.top;
+                // (2027.01.11, revisión) el puntero, en el área de datos, con la transformación que la página le da de verdad
+                // (getScreenCTM): el origen del lienzo, que _lienzoAlContenido puede mover, y el margen que deja un tamaño en
+                // pantalla con otra proporción que el lienzo. Hasta la 2027.01.10 se calculaba a mano, sin ese margen: en la
+                // caja por grupos, la cruz caía a 35–42 px del puntero
+                const m = typeof g.node().getScreenCTM === 'function' ? g.node().getScreenCTM() : null;
+                if (!m) return;
+                const punto = svgNode.createSVGPoint();
+                punto.x = event.clientX;
+                punto.y = event.clientY;
+                const enDatos = punto.matrixTransform(m.inverse());
+                const px = enDatos.x, py = enDatos.y;
                 if (px < 0 || px > W || py < 0 || py > H) { capa.style('display', 'none'); return; }
                 capa.style('display', '');
                 capa.select('.ch-v').attr('x1', px).attr('x2', px);
@@ -361,7 +600,7 @@ class ScientificCharts {
         // Título
         if (title) {
             this.svg.attr('aria-label', title);
-            this.svg.append('text')
+            const t = this.svg.append('text')
                 .attr('x', this.config.width / 2)
                 .attr('y', 25)
                 .attr('text-anchor', 'middle')
@@ -369,13 +608,15 @@ class ScientificCharts {
                 .attr('font-weight', 'bold')
                 .attr('class', 'titulo-grafico')
                 .text(title);
+            this._partirTitulo(t, String(title));   // (2027.01.11) uno largo, en dos líneas
         }
         // Dimensiones del área de contenido (dentro de los márgenes)
         const anchoContenido = this.config.width - this.config.margin.left - this.config.margin.right;
         const altoContenido = this.config.height - this.config.margin.top - this.config.margin.bottom;
         // Etiquetas de ejes
         if (yLabel) {
-            g.append('text')
+            const t = g.append('text')
+                .attr('class', 'nombre-eje-y')
                 .attr('transform', 'rotate(-90)')
                 .attr('y', 0 - this.config.margin.left)
                 .attr('x', 0 - altoContenido / 2)
@@ -383,15 +624,18 @@ class ScientificCharts {
                 .style('text-anchor', 'middle')
                 .attr('font-size', this.config.fontSize)
                 .text(yLabel);
+            this._nombreDelEjeACaber(t, String(yLabel), altoContenido);   // (2027.01.12) uno largo, a lo alto del gráfico
         }
         if (xLabel) {
             // Posición relativa al área de contenido, con holgura suficiente bajo
             // las etiquetas de los ticks del eje X (que quedan en altoContenido).
-            g.append('text')
+            const t = g.append('text')
+                .attr('class', 'nombre-eje-x')
                 .attr('transform', `translate(${anchoContenido / 2}, ${altoContenido + 42})`)
                 .style('text-anchor', 'middle')
                 .attr('font-size', this.config.fontSize)
                 .text(xLabel);
+            this._nombreDelEjeACaber(t, String(xLabel), this.config.width - 2 * Math.abs(this.config.margin.left - this.config.margin.right) - 8);
         }
         return g;
     }
@@ -449,6 +693,7 @@ class ScientificCharts {
             .curve(d3.curveBasis);
         g.append('path')
             .datum(gaussianData)
+            .attr('data-marca', '')
             .attr('fill', 'none')
             .attr('stroke', this.config.primaryColor)
             .attr('stroke-width', 2)
@@ -488,6 +733,7 @@ class ScientificCharts {
                 .attr('font-size', this.config.fontSize)
                 .text(text);
         });
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -504,7 +750,7 @@ class ScientificCharts {
         if (!Array.isArray(datasets) || !datasets.length || !Array.isArray(datasets[0])) {
             throw new Error('datasets debe ser un array de arrays numéricos');
         }
-        const PALETA = ['#60a5fa', '#f87171', '#34d399', '#fbbf24', '#c084fc', '#22d3ee', '#fb923c', '#a3e635'];
+        const PALETA = Object.keys(SERIES_EN_PAPEL);   // (2027.01.12) claros en la pantalla; en papel, los suyos, más oscuros
         const series = datasets.map((d, i) => {
             const mu = d3.mean(d);
             const sigma = d3.deviation(d) || 1;
@@ -553,12 +799,12 @@ class ScientificCharts {
             g.append('path').datum(curva)
                 .attr('fill', s.color).attr('fill-opacity', 0.12)
                 .attr('d', d3.area().x(d => xScale(d.x)).y0(H).y1(d => yScale(d.y)).curve(d3.curveBasis));
-            g.append('path').datum(curva)
+            g.append('path').datum(curva).attr('data-marca', '')
                 .attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 2.2)
                 .attr('d', d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
             // Densidad empírica (datos reales): línea punteada del mismo color
             g.append('path').datum(s.kde)
-                .attr('class', 'kde-empirica')
+                .attr('class', 'kde-empirica').attr('data-marca', '')
                 .attr('fill', 'none').attr('stroke', s.color).attr('stroke-width', 1.6)
                 .attr('stroke-dasharray', '6,4').attr('opacity', 0.9)
                 .attr('d', d3.line().x(d => xScale(d.x)).y(d => yScale(d.y)).curve(d3.curveBasis));
@@ -594,6 +840,7 @@ class ScientificCharts {
         this._agregarCrosshair(g, W, H,
             px => xScale.invert(px).toFixed(1),
             py => yScale.invert(py).toFixed(4));
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -702,7 +949,7 @@ class ScientificCharts {
             .attr('class', 'cell')
             .attr('transform', d => `translate(${d.j * cellSize}, ${d.i * cellSize})`);
         // Rectángulos de las celdas
-        cells.append('rect')
+        cells.append('rect').attr('data-marca', '')
             .attr('width', cellSize)
             .attr('height', cellSize)
             .attr('fill', d => colorScale(d.value))
@@ -783,6 +1030,7 @@ class ScientificCharts {
         legend.append('g')
             .attr('transform', `translate(0, ${legendHeight})`)
             .call(legendAxis);
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -851,7 +1099,7 @@ class ScientificCharts {
             const x = xScale(d.label);
             const width = xScale.bandwidth();
             // Caja principal (con tooltip de estadísticos al pasar el cursor)
-            g.append('rect')
+            g.append('rect').attr('data-marca', '')
                 .attr('x', x)
                 .attr('y', yScale(d.q3))
                 .attr('width', width)
@@ -954,12 +1202,15 @@ class ScientificCharts {
         this._agregarCrosshair(g, Wb, Hb,
             px => String(dominioBox[Math.max(0, Math.min(dominioBox.length - 1, Math.floor(px / Wb * dominioBox.length)))]),
             py => yScale.invert(py).toFixed(1));
-        // Lienzo ajustado al contenido real (ancho proporcional a las cajas)
+        // Lienzo ajustado al contenido real (ancho proporcional a las cajas), con el título en su centro (2027.01.10: seguía en el
+        // del ancho de antes, fuera del lienzo, y no salía impreso)
         const vbWBox = this.config.margin.left + Wb + this.config.margin.right;
         if (this.svg) {
             this.svg.attr('viewBox', `0 0 ${vbWBox} ${this.config.height}`);
+            this.svg.select('.titulo-grafico').attr('x', vbWBox / 2);
             this._ajustarTamanoCSS(vbWBox, this.config.height);
         }
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1047,12 +1298,12 @@ class ScientificCharts {
                 .y(d => yScale(d.x))
                 .curve(d3.curveBasis);
             // Área del violín
-            g.append('path')
+            g.append('path').attr('data-marca', '')
                 .datum(density)
                 .attr('d', areaLeft)
                 .attr('fill', this.config.primaryColor)
                 .attr('opacity', 0.3);
-            g.append('path')
+            g.append('path').attr('data-marca', '')
                 .datum(density)
                 .attr('d', areaRight)
                 .attr('fill', this.config.primaryColor)
@@ -1088,6 +1339,7 @@ class ScientificCharts {
             .call(d3.axisBottom(xScale));
         g.append('g')
             .call(d3.axisLeft(yScale));
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1147,7 +1399,7 @@ class ScientificCharts {
         g.selectAll('.dot')
             .data(xData.map((x, i) => ({ x, y: yData[i] })))
             .enter().append('circle')
-            .attr('class', 'dot')
+            .attr('class', 'dot').attr('data-marca', '')
             .attr('cx', d => xScale(d.x))
             .attr('cy', d => yScale(d.y))
             .attr('r', 4)
@@ -1159,10 +1411,10 @@ class ScientificCharts {
             .call(d3.axisBottom(xScale));
         g.append('g')
             .call(d3.axisLeft(yScale));
-        // Leyenda con ecuación y R²
+        // Leyenda con ecuación y R² (en un recuadro: en papel, blanco; graficos-en-papel.js)
         const legend = g.append('g')
             .attr('transform', `translate(${this.config.width - this.config.margin.left - this.config.margin.right - 150}, 20)`);
-        legend.append('rect')
+        legend.append('rect').attr('class', 'recuadro')
             .attr('width', 140)
             .attr('height', 60)
             .attr('fill', 'rgba(15, 23, 42, 0.88)')
@@ -1178,6 +1430,7 @@ class ScientificCharts {
             .attr('y', 40)
             .attr('font-size', this.config.fontSize)
             .text(`R² = ${rSquared.toFixed(3)}`);
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1216,6 +1469,13 @@ class ScientificCharts {
             .attr('y1', 0).attr('y2', H)
             .attr('x1', d => xScale(d)).attr('x2', d => xScale(d))
             .attr('stroke', '#94a3b8').attr('stroke-opacity', 0.12);
+        // (2027.01.11) Los ejes, con sus marcas numéricas en las líneas de la rejilla: hasta la 2027.01.10 la dispersión no decía
+        // sus valores (ni en la pantalla, ni impresa, ni en la figura del Word)
+        const ejeX = g.append('g').attr('class', 'eje-x').attr('transform', `translate(0,${H})`)
+            .call(d3.axisBottom(xScale).ticks(6).tickSizeOuter(0));
+        const ejeY = g.append('g').attr('class', 'eje-y')
+            .call(d3.axisLeft(yScale).ticks(6).tickSizeOuter(0));
+        [ejeX, ejeY].forEach(e => e.selectAll('text').attr('font-size', 10).attr('fill', '#cbd5e1'));
         // Recta de mínimos cuadrados y banda de confianza 95% de la recta (media condicional)
         const dominio = xScale.domain(), { a, b, banda } = this._rectaDispersion(xData, yData, dominio);
         if (banda.length) {
@@ -1224,7 +1484,7 @@ class ScientificCharts {
                 .attr('d', d3.area().x(d => xScale(d.x)).y0(d => yScale(d.inferior)).y1(d => yScale(d.superior)));
         }
         // Puntos
-        g.selectAll('.punto').data(xData).enter().append('circle')
+        g.selectAll('.punto').data(xData).enter().append('circle').attr('data-marca', '')
             .attr('cx', (d, i) => xScale(xData[i])).attr('cy', (d, i) => yScale(yData[i]))
             .attr('r', 4).attr('fill', this.config.primaryColor).attr('fill-opacity', 0.55)
             .attr('stroke', '#ffffff').attr('stroke-width', 0.8);
@@ -1240,7 +1500,8 @@ class ScientificCharts {
             const altoCaja = 14 + lineas.length * 17;
             const cx = b >= 0 ? 10 : W - anchoCaja - 10;
             const caja = g.append('g').attr('transform', `translate(${cx},8)`);
-            caja.append('rect').attr('width', anchoCaja).attr('height', altoCaja)
+            // (2027.01.11, revisión) un recuadro: en papel, blanco con su texto en tinta (graficos-en-papel.js, impresion.css)
+            caja.append('rect').attr('class', 'recuadro').attr('width', anchoCaja).attr('height', altoCaja)
                 .attr('rx', 6).attr('fill', 'rgba(15, 23, 42, 0.92)')
                 .attr('stroke', '#475569');
             lineas.forEach((l, i) => {
@@ -1248,26 +1509,39 @@ class ScientificCharts {
                     .attr('font-size', 12).attr('fill', '#e2e8f0').text(l);
             });
         }
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     // ----------------------------------------------------------------
     // HISTOGRAMA CON CURVA NORMAL TEÓRICA N(μ, σ) superpuesta, escalada a
     // frecuencias esperadas. Acompaña al Q-Q en el panel de normalidad.
     // ----------------------------------------------------------------
+    /**
+     * (2027.01.10) Las barras de un histograma y su curva normal teórica, sin dibujar: la curva es n·Δ·φ(x), con Δ el ancho de
+     * las barras enteras (d3 corta las de los extremos en el mínimo y el máximo de los datos, y pueden ser más estrechas). Hasta
+     * la 2027.01.09 se tomaba el ancho de la primera, y con un mínimo que no caía en una marca la curva salía más baja que las
+     * barras, en la proporción de la primera a las demás (en el caso estructural de los ejemplos, a la mitad: su máximo en 31,6
+     * frente a barras de 63).
+     * @param {number[]} data
+     * @private
+     */
+    _histogramaConNormal(data) {
+        const n = data.length;
+        const media = d3.mean(data), de = d3.deviation(data) || 1;
+        const binCount = Math.ceil(Math.log2(n)) + 1;
+        const bins = d3.histogram().domain(d3.extent(data)).thresholds(binCount)(data);
+        const anchoBin = d3.max(bins, d => d.x1 - d.x0) || 1;
+        const pdf = (/** @type {number} */ x) => densidadNormal((x - media) / de) / de;   // (2026.12.25) la densidad del núcleo único
+        return { n, media, de, bins, anchoBin, pdf };
+    }
     createHistogramNormal(data, options = {}) {
         if (!Array.isArray(data) || data.length < 3) {
             throw new Error('Se necesitan al menos 3 datos');
         }
-        const n = data.length;
-        const media = d3.mean(data), de = d3.deviation(data) || 1;
-        const binCount = Math.ceil(Math.log2(n)) + 1;
-        const histo = d3.histogram().domain(d3.extent(data)).thresholds(binCount);
-        const bins = histo(data);
-        const anchoBin = bins.length ? (bins[0].x1 - bins[0].x0) : 1;
+        const { n, media, de, bins, anchoBin, pdf } = this._histogramaConNormal(data);
         const W = this.config.width - this.config.margin.left - this.config.margin.right;
         const H = this.config.height - this.config.margin.top - this.config.margin.bottom;
         const xScale = d3.scaleLinear().domain(d3.extent(data)).range([0, W]).nice();
-        const pdf = x => densidadNormal((x - media) / de) / de;   // (2026.12.25) la densidad del núcleo único
         const maxY = Math.max(d3.max(bins, d => d.length), n * anchoBin * pdf(media)) * 1.08;
         const yScale = d3.scaleLinear().domain([0, maxY]).range([H, 0]);
         const g = this._createChartBase(options.title || 'Histograma con curva normal',
@@ -1279,7 +1553,7 @@ class ScientificCharts {
         const ejeY = g.append('g')
             .call(d3.axisLeft(yScale).ticks(5).tickFormat(d3.format('d')).tickSizeOuter(0));
         [ejeX, ejeY].forEach(e => e.selectAll('text').attr('font-size', 10).attr('fill', '#cbd5e1'));
-        g.selectAll('.barra').data(bins).enter().append('rect')
+        g.selectAll('.barra').data(bins).enter().append('rect').attr('data-marca', '')
             .attr('x', d => xScale(d.x0) + 0.5)
             .attr('width', d => Math.max(xScale(d.x1) - xScale(d.x0) - 1, 1))
             .attr('y', d => yScale(d.length))
@@ -1298,6 +1572,7 @@ class ScientificCharts {
         g.append('text').attr('x', W - 6).attr('y', 14).attr('text-anchor', 'end')
             .attr('font-size', 11).attr('fill', '#b91c1c')
             .text(`— Normal teórica N(${media.toFixed(1)}, ${de.toFixed(1)})`);
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     createQQPlot(data, options = {}) {
@@ -1334,7 +1609,7 @@ class ScientificCharts {
         // Puntos
         g.selectAll('.qq-dot')
             .data(puntos).enter().append('circle')
-            .attr('class', 'qq-dot')
+            .attr('class', 'qq-dot').attr('data-marca', '')
             .attr('cx', d => xScale(d.teorico))
             .attr('cy', d => yScale(d.observado))
             .attr('r', 3)
@@ -1345,6 +1620,7 @@ class ScientificCharts {
             .attr('transform', `translate(0,${contentHeight})`)
             .call(d3.axisBottom(xScale));
         g.append('g').call(d3.axisLeft(yScale));
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1388,7 +1664,7 @@ class ScientificCharts {
         g.selectAll('.bar')
             .data(binsData)
             .enter().append('rect')
-            .attr('class', 'bar')
+            .attr('class', 'bar').attr('data-marca', '')
             .attr('x', d => xScale(d.x0))
             .attr('width', d => xScale(d.x1) - xScale(d.x0) - 1)
             .attr('y', d => yScale(d.length))
@@ -1435,6 +1711,7 @@ class ScientificCharts {
                 .attr('font-size', this.config.fontSize)
                 .text(text);
         });
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1470,7 +1747,7 @@ class ScientificCharts {
         g.selectAll('.bar')
             .data(values)
             .enter().append('rect')
-            .attr('class', 'bar')
+            .attr('class', 'bar').attr('data-marca', '')
             .attr('x', (d, i) => xScale(categories[i]))
             .attr('width', xScale.bandwidth())
             .attr('y', d => yScale(d))
@@ -1514,6 +1791,7 @@ class ScientificCharts {
             .call(d3.axisBottom(xScale));
         g.append('g')
             .call(d3.axisLeft(yScale));
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1576,7 +1854,7 @@ class ScientificCharts {
         g.selectAll('.dot')
             .data(averages.map((avg, i) => ({ x: avg, y: differences[i] })))
             .enter().append('circle')
-            .attr('class', 'dot')
+            .attr('class', 'dot').attr('data-marca', '')
             .attr('cx', d => xScale(d.x))
             .attr('cy', d => yScale(d.y))
             .attr('r', 4)
@@ -1588,10 +1866,10 @@ class ScientificCharts {
             .call(d3.axisBottom(xScale));
         g.append('g')
             .call(d3.axisLeft(yScale));
-        // Leyenda con estadísticas
+        // Leyenda con estadísticas (en un recuadro: en papel, blanco)
         const legend = g.append('g')
             .attr('transform', `translate(${this.config.width - this.config.margin.left - this.config.margin.right - 200}, 20)`);
-        legend.append('rect')
+        legend.append('rect').attr('class', 'recuadro')
             .attr('width', 190)
             .attr('height', 80)
             .attr('fill', 'rgba(15, 23, 42, 0.88)')
@@ -1612,6 +1890,7 @@ class ScientificCharts {
             .attr('y', 60)
             .attr('font-size', this.config.fontSize)
             .text(`N = ${method1.length}`);
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1701,7 +1980,7 @@ class ScientificCharts {
             .x(d => d.x)
             .y(d => d.y)
             .curve(d3.curveLinearClosed);
-        g.append('path')
+        g.append('path').attr('data-marca', '')
             .datum(dataPoints)
             .attr('fill', this.config.primaryColor)
             .attr('fill-opacity', 0.3)
@@ -1723,6 +2002,7 @@ class ScientificCharts {
                 .attr('font-size', this.config.fontSize - 2)
                 .text(values[i].toFixed(1));
         });
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**
@@ -1764,7 +2044,7 @@ class ScientificCharts {
         g.selectAll('.residual')
             .data(predicted.map((pred, i) => ({ x: pred, y: residuals[i] })))
             .enter().append('circle')
-            .attr('class', 'residual')
+            .attr('class', 'residual').attr('data-marca', '')
             .attr('cx', d => xScale(d.x))
             .attr('cy', d => yScale(d.y))
             .attr('r', 4)
@@ -1780,10 +2060,10 @@ class ScientificCharts {
         const mse = d3.mean(residuals.map(r => r * r));
         const rmse = Math.sqrt(mse);
         const mae = d3.mean(residuals.map(r => Math.abs(r)));
-        // Leyenda
+        // Leyenda (en un recuadro: en papel, blanco)
         const legend = g.append('g')
             .attr('transform', `translate(${this.config.width - this.config.margin.left - this.config.margin.right - 150}, 20)`);
-        legend.append('rect')
+        legend.append('rect').attr('class', 'recuadro')
             .attr('width', 140)
             .attr('height', 80)
             .attr('fill', 'rgba(15, 23, 42, 0.88)')
@@ -1804,6 +2084,7 @@ class ScientificCharts {
             .attr('y', 60)
             .attr('font-size', this.config.fontSize)
             .text(`N = ${predicted.length}`);
+        this._lienzoAlContenido();   // (2027.01.10) que el lienzo abarque todo lo dibujado
         return this;
     }
     /**

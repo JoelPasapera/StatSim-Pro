@@ -47,6 +47,20 @@ export function terminoConSigno(v, sufijo = '', decimales = 3) {
 }
 
 /**
+ * (2027.01.13, revisión) Un número con sus decimales («—» si no es finito), sin el signo de un valor que redondea a cero: «0.00»,
+ * no «-0.00» (el diagrama de rutas del SEM escribía «-0.00» en una correlación de −0,0013, y sus tablas, «-0.000»). Con el
+ * guion de siempre en los negativos (numeroConMenos pone el signo menos tipográfico).
+ * @param {number} v
+ * @param {number} [decimales] 3 por omisión
+ * @returns {string}
+ */
+export function numeroFijo(v, decimales = 3) {
+    if (!Number.isFinite(v)) return '—';
+    const texto = v.toFixed(decimales);
+    return Number(texto) === 0 ? texto.replace('-', '') : texto;
+}
+
+/**
  * Un estadístico que es entero o semientero, como la U de Mann-Whitney (con empates, los rangos medios la dejan en x.5):
  * «24» o «24.5», sin perder el medio (2026.12.30: la frase APA escribía «U = 25» con U = 24.5, y la tabla, «24.0» con U = 24).
  * Si no es múltiplo de 0.5, con dos decimales.

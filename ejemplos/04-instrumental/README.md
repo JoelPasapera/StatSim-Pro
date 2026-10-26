@@ -122,9 +122,9 @@ El modelo de tres factores se ajusta bien y el de un factor, no: la escala es mu
 | [analizador/2-afe/afe_APA.docx](analizador/2-afe/afe_APA.docx) | El AFE redactado en APA, con sus tablas: botón «Word» del AFE. | 17 KB |
 | [analizador/2-afe/afe_cargas.csv](analizador/2-afe/afe_cargas.csv) | Las cargas factoriales, las comunalidades y la MSA de cada ítem: botón «CSV» del AFE. | 1 KB |
 | [analizador/3-invarianza/invarianza_APA.docx](analizador/3-invarianza/invarianza_APA.docx) | La invarianza de medición redactada en APA, con sus tablas: botón «Word» de la tarjeta. | 20 KB |
-| [analizador/4-capitulo/capitulo_resultados_APA.docx](analizador/4-capitulo/capitulo_resultados_APA.docx) | El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma). | 768 KB |
+| [analizador/4-capitulo/capitulo_resultados_APA.docx](analizador/4-capitulo/capitulo_resultados_APA.docx) | El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma). | 936 KB |
 | [analizador/4-capitulo/resultados.pdf](analizador/4-capitulo/resultados.pdf) | La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador. | 1.4 MB |
-| [analizador/4-capitulo/resultados_analisis.txt](analizador/4-capitulo/resultados_analisis.txt) | Los resultados en texto plano: botón «Descargar resultados». | 27 KB |
+| [analizador/4-capitulo/resultados_analisis.txt](analizador/4-capitulo/resultados_analisis.txt) | Los resultados en texto plano: botón «Descargar resultados». | 25 KB |
 | [proyecto.statsim](proyecto.statsim) | El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto». | 24 KB |
 | [simulador/base_datos_simulada.sav](simulador/base_datos_simulada.sav) | La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)». | 19 KB |
 | [simulador/base_datos_simulada.xlsx](simulador/base_datos_simulada.xlsx) | La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)». | 49 KB |

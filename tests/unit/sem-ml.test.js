@@ -144,3 +144,200 @@ test('revisión de la 2026.12.09: con WLSMV, el valor p de la χ² es finito y e
     cerca(R.pChi2, pChiCuadrado(R.chi2, R.gl), 1e-12, 'p de la χ² (WLSMV)');
 });
 
+
+test('(2027.01.06, revisión) la comparación de modelos, uno por papel: volver a ajustar uno con la misma etiqueta lo reemplaza (al final, el último); los de otro papel se suman', () => {
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    SEM._ultimos.length = 0;
+    const papeles = () => SEM._ultimos.map(M => M.etiquetaModelo);
+    const uno = 'F1 =~ X1 + X2 + X3 + X4', tres = MODELO;
+    SEM.ajustar(uno, null, 'Modelo alternativo');
+    SEM.ajustar(tres, null, 'Modelo final');
+    assert.deepEqual(papeles(), ['Modelo alternativo', 'Modelo final']);
+    // repetir los dos (como «Hazlo por mí» del paso del SEM de un ejemplo, otra vez): la misma comparación, no cuatro modelos
+    const otraVez = [SEM.ajustar(uno, null, 'Modelo alternativo'), SEM.ajustar(tres, null, 'Modelo final')];
+    assert.deepEqual(papeles(), ['Modelo alternativo', 'Modelo final']);
+    assert.ok(SEM._ultimos[0] === otraVez[0] && SEM._ultimos[1] === otraVez[1], 'los de ahora (no los de antes)');
+    // otro papel se suma; el que se vuelve a ajustar pasa al final (es el que muestran la tarjeta y el capítulo de Word)
+    SEM.ajustar(uno, null, 'Modelo inicial');
+    SEM.ajustar(uno, null, 'Modelo alternativo');
+    assert.deepEqual(papeles(), ['Modelo final', 'Modelo inicial', 'Modelo alternativo']);
+    // (los cinco últimos, como antes, con papeles distintos)
+    for (const p of ['A', 'B', 'C']) SEM.ajustar(uno, null, p);
+    assert.deepEqual(papeles(), ['Modelo inicial', 'Modelo alternativo', 'A', 'B', 'C']);
+    SEM._ultimos.length = 0;
+});
+
+test('(2027.01.12) una covarianza que el modelo ya estima, escrita también en la sintaxis (F1 ~~ F2 entre factores exógenos, como en lavaan; dos veces o al revés; entre predictores observados), o una varianza escrita como F1 ~~ F1: un solo parámetro, con ML y con WLSMV (antes, uno más sobre la misma celda: un grado de libertad menos, con él la p, el CFI, el TLI y el RMSEA, y todos los EE, NaN)', () => {
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    /** El mismo ajuste que sin lo añadido: grados de libertad, índices, parámetros (uno por celda) y sus EE. */
+    const igual = (/** @type {string} */ sx, /** @type {string} */ extra, /** @type {object} */ op = {}) => {
+        const a = SEM.ajustar(sx, null, 'x', op), b = SEM.ajustar(sx + extra, null, 'x', op);
+        assert.ok(!a.error && !b.error, `${a.error || ''} ${b.error || ''}`);
+        assert.equal(b.gl, a.gl, `gl con «${extra.trim()}»`);
+        for (const k of ['chi2', 'pChi2', 'CFI', 'TLI', 'RMSEA']) cerca(b[k], a[k], 1e-6 * Math.max(1, Math.abs(a[k])), `${k} con «${extra.trim()}»`);
+        assert.deepEqual(b.parametros.map((/** @type {any} */ p) => p.nombre), a.parametros.map((/** @type {any} */ p) => p.nombre), `los mismos parámetros, una vez cada uno, con «${extra.trim()}»`);
+        b.parametros.forEach((/** @type {any} */ p, /** @type {number} */ k) => {
+            cerca(p.estimado, a.parametros[k].estimado, 1e-6, `${p.nombre} con «${extra.trim()}»`);
+            assert.ok(Number.isFinite(p.se), `EE de ${p.nombre} con «${extra.trim()}»: ${p.se}`);
+        });
+    };
+    for (const extra of ['\nF1 ~~ F2', '\nF2 ~~ F1\nF1 ~~ F2', '\nF1 ~~ F1', '\nF3 ~~ F1\nF2 ~~ F3\nX1 ~~ X1']) igual(MODELO, extra);
+    igual('X12 ~ X1 + X2 + X3\nX11 ~ X12', '\nX1 ~~ X2\nX3 ~~ X1');   // (con grados de libertad: X11 solo por X12)
+    // con WLSMV (ítems de cinco categorías), igual
+    let s = 2027 >>> 0;
+    const u = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    const cat = (/** @type {number} */ z) => (z < -1.2 ? 1 : z < -0.4 ? 2 : z < 0.4 ? 3 : z < 1.2 ? 4 : 5);
+    AnalizadorEstadistico.cargarDatos(Array.from({ length: 400 }, () => { const f = nrm(), g = 0.5 * f + 0.87 * nrm(), it = (/** @type {number} */ x) => cat(0.75 * x + 0.66 * nrm()); return { a: it(f), b: it(f), c: it(f), d: it(g), e: it(g), f: it(g) }; }));
+    igual('F1 =~ a + b + c\nF2 =~ d + e + f', '\nF1 ~~ F2', { estimador: 'WLSMV' });
+});
+
+test('(2027.01.12) el diagrama de rutas dibuja todas las covarianzas que estima el modelo (también las que no escribe la sintaxis: entre factores exógenos), con su correlación; las escritas, una vez', async () => {
+    const { SEMUI } = await import('../../src/analizador/sem-ui.js');
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    for (const sx of [MODELO, MODELO + '\nF2 ~~ F1']) {
+        const R = SEM.ajustar(sx, null, 'x');
+        const svg = SEMUI.diagramaSVG(R);
+        assert.equal((svg.match(/stroke-dasharray="5,4"/g) || []).length, 3, `tres covarianzas entre los factores, con «${sx.split('\n').pop()}»`);
+        const varDe = (/** @type {string} */ F) => R.parametros.find((/** @type {any} */ p) => p.nombre === `var (${F})`).estimado;
+        for (const [a, b] of [['F1', 'F2'], ['F1', 'F3'], ['F2', 'F3']]) {
+            const cov = R.parametros.find((/** @type {any} */ p) => p.nombre === `${a} ~~ ${b}`).estimado, r = cov / Math.sqrt(varDe(a) * varDe(b));
+            assert.ok(r > 0 && r < 1 && svg.includes(`>${r.toFixed(2)}</text>`), `${a} ~~ ${b}: su correlación (${r.toFixed(2)}) en el diagrama`);
+        }
+    }
+});
+
+test('(2027.01.12) un factor de segundo orden (G =~ F1 + F2 + F3): se estima (hasta la 2027.01.11, sus factores se buscaban como columnas de los datos: «Casos insuficientes (0)»), con el mismo ajuste que los tres factores correlacionados (es equivalente), la validez de los de primer orden y el «¿es adecuado?» con sus casos', async () => {
+    const { SEMUI } = await import('../../src/analizador/sem-ui.js');
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    const primero = SEM.ajustar(MODELO, null, 'x'), segundo = SEM.ajustar(MODELO + '\nG =~ F1 + F2 + F3', null, 'x');
+    assert.ok(!segundo.error, segundo.error);
+    assert.deepEqual([segundo.nombresObs.length, segundo.gl], [12, primero.gl], 'doce observadas (no quince), y los grados de libertad del modelo de primer orden');
+    for (const k of ['chi2', 'CFI', 'TLI', 'RMSEA', 'SRMR']) cerca(segundo[k], primero[k], 1e-5 * Math.max(1, Math.abs(primero[k])), k);
+    assert.ok(segundo.convergio && segundo.parametros.every((/** @type {any} */ p) => Number.isFinite(p.se)), 'converge, con sus errores estándar');
+    assert.deepEqual(segundo.validez.porFactor.map((/** @type {any} */ f) => f.nombre), ['F1', 'F2', 'F3'], 'la validez, de los factores de primer orden');
+    const v = SEMUI.evaluarViabilidad(MODELO + '\nG =~ F1 + F2 + F3');
+    assert.deepEqual([v.n, v.p], [afe.cols[0].length, 12], 'sus casos y sus doce observadas (no n = 0)');
+    // y el diagrama: G, con sus cargas en F1, F2 y F3, con su coeficiente en medio de cada una
+    const svg = SEMUI.diagramaSVG(segundo);
+    assert.equal((svg.match(/<ellipse/g) || []).length, 4);
+});
+
+test('(2027.01.13, revisión) un indicador escrito dos veces en su factor (también el primero, el marcador) y una regresión sobre la flecha de una carga cuentan una vez, y se dice; dos líneas «=~» de un factor se suman (hasta la 2027.01.12, el marcador repetido se liberaba: errores estándar de 10⁶, sin aviso; y la segunda línea reemplazaba a la primera)', async () => {
+    const { SEMUI } = await import('../../src/analizador/sem-ui.js');
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    const base = SEM.ajustar(MODELO, null, 'x');
+    assert.deepEqual(base.avisos, [], 'sin avisos, el modelo de siempre');
+    const flechasDe = (/** @type {any} */ R) => (SEMUI.diagramaSVG(R).match(/marker-end=/g) || []).length;
+    /** La validez (CR, AVE, HTMT…) con 10 cifras, para compararla. @param {any} v */
+    const comoTexto = v => JSON.stringify(v, (_, x) => (typeof x === 'number' ? Number(x.toPrecision(10)) : x));
+    /** @type {Array<[string, RegExp | null]>} */
+    const casos = [
+        [MODELO.replace('X3 + X4', 'X3 + X4 + X1'), /dos veces «F1 =~ X1»/],
+        [MODELO.replace('X3 + X4', 'X3 + X4 + X3'), /dos veces «F1 =~ X3»/],
+        [MODELO.replace('F1 =~ X1 + X2 + X3 + X4', 'F1 =~ X1 + X2\nF1 =~ X3 + X4'), null],
+        [MODELO + '\nX2 ~ F1', /«X2 ~ F1» es la misma flecha que «F1 =~ X2»/],
+        [MODELO + '\nX1 ~ F1', /«X1 ~ F1» es la misma flecha que «F1 =~ X1»/],
+        [MODELO + '\nX5 ~~ X6\nX6 ~~ X5', /«X6 ~~ X5» es la misma covarianza que «X5 ~~ X6»/],
+    ];
+    for (const [sx, aviso] of casos) {
+        const R = SEM.ajustar(sx, null, 'x'), que = sx.replace(/\n/g, ' ; ');
+        const otro = sx.includes('X5 ~~ X6') ? SEM.ajustar(MODELO + '\nX5 ~~ X6', null, 'x') : base;
+        assert.equal(R.gl, otro.gl, `gl con «${que}»`);
+        cerca(R.chi2, otro.chi2, 1e-6 * otro.chi2, `χ² con «${que}»`);
+        assert.deepEqual(R.parametros.map((/** @type {any} */ p) => p.nombre), otro.parametros.map((/** @type {any} */ p) => p.nombre), `los mismos parámetros con «${que}»`);
+        assert.ok(R.parametros.every((/** @type {any} */ p, /** @type {number} */ k) => Math.abs(p.se - otro.parametros[k].se) < 1e-6), `los mismos errores estándar con «${que}»`);
+        if (aviso) assert.ok(R.avisos.some((/** @type {string} */ a) => aviso.test(a)), `«${que}»: ${JSON.stringify(R.avisos)}`);
+        else assert.deepEqual(R.avisos, [], que);
+        assert.ok(!R.avisos.some((/** @type {string} */ a) => /no parece identificado/.test(a)), `«${que}», identificado`);
+        assert.equal(flechasDe(R), flechasDe(otro), `«${que}»: las mismas flechas en el diagrama (sin otra con «0.00»)`);
+        // (un indicador escrito dos veces que solo se descartara al construir el modelo seguiría dos veces entre los de su factor:
+        // en su CR, su AVE y su HTMT)
+        assert.ok(R.validez && comoTexto(R.validez) === comoTexto(otro.validez), `«${que}»: la misma validez convergente y discriminante`);
+    }
+});
+
+test('(2027.01.13, revisión) un modelo sin identificar (un factor de segundo orden de dos factores; un factor de dos indicadores que no se relaciona con nada) lo dice, con ML y con WLSMV; uno identificado, no', () => {
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]))));   // (otras pruebas cargan otros)
+    const noIdentificado = (/** @type {any} */ R) => R.avisos.some((/** @type {string} */ a) => /no parece identificado/.test(a));
+    for (const sx of ['F1 =~ X1 + X2 + X3 + X4\nF2 =~ X5 + X6 + X7 + X8\nG =~ F1 + F2', 'F1 =~ X1 + X2\nX12 ~ X11']) {
+        const R = SEM.ajustar(sx, null, 'x');
+        assert.ok(!R.error && noIdentificado(R), `«${sx.replace(/\n/g, ' ; ')}»: ${JSON.stringify(R.avisos)}`);
+    }
+    for (const sx of [MODELO, MODELO + '\nG =~ F1 + F2 + F3', 'X12 ~ X1 + X2 + X3\nX11 ~ X12', 'F1 =~ X1 + X2\nF2 =~ X3 + X4'])
+        assert.ok(!noIdentificado(SEM.ajustar(sx, null, 'x')), `«${sx.replace(/\n/g, ' ; ')}», identificado`);
+    let s = 2027 >>> 0;
+    const u = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    const cat = (/** @type {number} */ z) => (z < -1.2 ? 1 : z < -0.4 ? 2 : z < 0.4 ? 3 : z < 1.2 ? 4 : 5);
+    AnalizadorEstadistico.cargarDatos(Array.from({ length: 400 }, () => { const f = nrm(), g = 0.5 * f + 0.87 * nrm(), it = (/** @type {number} */ x) => cat(0.75 * x + 0.66 * nrm()); return { a: it(f), b: it(f), c: it(f), d: it(g), e: it(g), f: it(g) }; }));
+    // (con WLSMV, si Δᵀ·W·Δ no llega a invertirse, ya era un error que lo decía; si se invierte por poco, el aviso)
+    const W = SEM.ajustar('F1 =~ a + b + c\nF2 =~ d + e + f\nG =~ F1 + F2', null, 'x', { estimador: 'WLSMV' });
+    assert.ok(W.error ? /no está identificado/.test(W.error) : noIdentificado(W), `WLSMV, segundo orden de dos factores: ${W.error || JSON.stringify(W.avisos)}`);
+    assert.ok(!noIdentificado(SEM.ajustar('F1 =~ a + b + c\nF2 =~ d + e + f', null, 'x', { estimador: 'WLSMV' })), 'WLSMV, dos factores: identificado');
+    // un factor de dos ítems casi sin relación con el otro (r = 0,02 en la población): con estos datos, su solución se va al borde
+    // (errores estándar de 10⁸ con WLSMV y de 10⁶ con ML) y Δᵀ·W·Δ (la información, con ML) se invierte por poco: el aviso, con
+    // los dos
+    s = 99 >>> 0;
+    const filas = (/** @type {number} */ rho) => Array.from({ length: 500 }, () => { const f = nrm(), g = rho * f + Math.sqrt(1 - rho * rho) * nrm(), it = (/** @type {number} */ x) => cat(0.75 * x + 0.66 * nrm()); return { a: it(f), b: it(f), c: it(g), d: it(g), e: it(g), f: it(g) }; });
+    filas(0);
+    AnalizadorEstadistico.cargarDatos(filas(0.02));
+    for (const estimador of ['WLSMV', 'ML']) {
+        const R = SEM.ajustar('F1 =~ a + b\nF2 =~ c + d + e + f', null, 'x', { estimador });
+        assert.ok(!R.error && noIdentificado(R), `${estimador}, un factor de dos ítems sin relación con el otro: ${R.error || JSON.stringify(R.avisos)}`);
+    }
+});
+
+test('(2027.01.14, revisión) el aviso de identificación, con su causa: dos predictores casi iguales (un total y su media con dos decimales) lo dicen, sin hablar de factores; uno que es casi una combinación lineal de otros, con su R²; un segundo orden de dos factores, de factores; unas rutas recíprocas sin variables que las identifiquen, de rutas; y una información que no se calcula cuenta como singular', async () => {
+    const { inferenciaInformacion } = await import('../../src/analizador/psicometria/ram.js');
+    // el total de seis ítems y su media guardada con dos decimales: r = 0,99999… (hasta la 2027.01.13, el aviso decía «un factor
+    // de solo dos indicadores… o un factor de segundo orden» en un modelo sin latentes)
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => {
+        const fila = Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]));
+        const T = [0, 1, 2, 3, 4, 5].reduce((s, j) => s + afe.cols[j][i], 0);
+        return { ...fila, T, M: Number((T / 6).toFixed(2)), M3: Number(((afe.cols[0][i] + afe.cols[1][i] + afe.cols[2][i]) / 3).toFixed(2)) };
+    }));
+    const aviso = (/** @type {any} */ R) => R.avisos.find((/** @type {string} */ a) => /no parece identificado/.test(a)) || '';
+    const colineal = SEM.ajustar('X12 ~ T + M + X11', null, 'x');
+    assert.match(aviso(colineal), /«T» y «M» están casi perfectamente correlacionadas \(r = 1\.0000\)/, JSON.stringify(colineal.avisos));
+    assert.doesNotMatch(aviso(colineal), /factor/, 'sin latentes, no habla de factores');
+    assert.equal(aviso(SEM.ajustar('X12 ~ T + X11', null, 'x')), '', 'con solo uno de los dos, identificado');
+    // la media de tres ítems (con dos decimales) junto a los tres: ninguna pareja casi igual, pero ella es casi una combinación
+    // lineal de ellos
+    const combinacion = SEM.ajustar('X12 ~ M3 + X1 + X2 + X3', null, 'x');
+    assert.match(aviso(combinacion), /«M3» es casi una combinación lineal de otras variables del modelo \(R² = 1\.0000 con ellas\)/, JSON.stringify(combinacion.avisos));
+    assert.doesNotMatch(aviso(combinacion), /casi perfectamente correlacionadas|factor/);
+    assert.equal(aviso(SEM.ajustar('X12 ~ M3 + X1 + X2', null, 'x')), '', 'con dos de los tres, identificado');
+    assert.match(aviso(SEM.ajustar('F1 =~ X1 + X2 + X3 + X4\nF2 =~ X5 + X6 + X7 + X8\nG =~ F1 + F2', null, 'x')), /factor de segundo orden con solo dos factores/);
+    // sin latentes ni variables casi iguales: dos rutas recíprocas cuyas ecuaciones tienen las mismas exógenas (ninguna las
+    // identifica); con una exógena propia en cada una, identificado
+    const reciprocas = aviso(SEM.ajustar('X1 ~ X2 + X5 + X6\nX2 ~ X1 + X5 + X6\nX3 ~ X5', null, 'x'));
+    assert.match(reciprocas, /en un modelo de rutas, suele deberse a unas rutas recíprocas sin variables que las identifiquen/);
+    assert.doesNotMatch(reciprocas, /factor/);
+    assert.equal(aviso(SEM.ajustar('X1 ~ X2 + X5\nX2 ~ X1 + X6\nX3 ~ X5', null, 'x')), '', 'cada una con su exógena, identificado');
+    // una información que no se puede calcular (con θ = 0, la Σ implicada es nula: no se invierte), singular: sus errores estándar
+    // no son fiables (hasta la 2027.01.13 lo decidía aparte el motor, y ninguna prueba lo veía)
+    const est = SEM._construir(SEM.parsear('F1 =~ X1 + X2 + X3'), [[1, 0.5, 0.5], [0.5, 1, 0.5], [0.5, 0.5, 1]], ['X1', 'X2', 'X3']);
+    assert.deepEqual(inferenciaInformacion(est, est.libres.map(() => 0), 400), { se: null, singular: true });
+});
+
+test('(2027.01.13, revisión) el diagrama: con WLSMV, una covarianza entre dos ítems con su correlación (con la varianza residual de cada uno, 1 − su comunalidad; salía «↔»), y nada con «-0.00»', async () => {
+    const { SEMUI } = await import('../../src/analizador/sem-ui.js');
+    let s = 2027 >>> 0;
+    const u = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    const cat = (/** @type {number} */ z) => (z < -1.2 ? 1 : z < -0.4 ? 2 : z < 0.4 ? 3 : z < 1.2 ? 4 : 5);
+    AnalizadorEstadistico.cargarDatos(Array.from({ length: 400 }, () => { const f = nrm(), g = 0.5 * f + 0.87 * nrm(), e = nrm(), it = (/** @type {number} */ x, k = 0) => cat(0.7 * x + 0.3 * k * e + 0.62 * nrm()); return { a: it(f, 1), b: it(f, 1), c: it(f), d: it(g), e: it(g), f: it(g) }; }));
+    const R = SEM.ajustar('F1 =~ a + b + c\nF2 =~ d + e + f\na ~~ b', null, 'x', { estimador: 'WLSMV' });
+    assert.ok(!R.error, R.error);
+    const valor = (/** @type {string} */ n) => R.parametros.find((/** @type {any} */ p) => p.nombre === n).estimado;
+    // las varianzas residuales de a y b (en la escala de y*, de varianza 1): 1 − λ²·var(F1), con λ = 1 la de a (el marcador)
+    const thetaA = 1 - valor('var (F1)'), thetaB = 1 - valor('F1 =~ b') ** 2 * valor('var (F1)'), r = valor('a ~~ b') / Math.sqrt(thetaA * thetaB);
+    const svg = SEMUI.diagramaSVG(R);
+    assert.ok(Math.abs(r) > 0.05 && svg.includes(`>${r.toFixed(2)}</text>`) && !svg.includes('>↔</text>'), `a ~~ b: ${r.toFixed(2)} en el diagrama`);
+    // un coeficiente y una correlación que redondean a cero, sin signo
+    const casiCero = { sintaxis: 'y ~ x1 + x2', estimador: 'ML', latentes: [], nombresObs: ['y', 'x1', 'x2'], desviaciones: { y: 1, x1: 1, x2: 1 },
+        parametros: [['y ~ x1', 0.5], ['y ~ x2', -0.0004], ['var (x1)', 1], ['var (x2)', 1], ['x1 ~~ x2', -0.0013], ['var residual (y)', 0.75]].map(([nombre, estimado]) => ({ nombre, estimado, tipo: /~~|var/.test(String(nombre)) ? 'var/cov' : 'coeficiente' })) };
+    const svg0 = SEMUI.diagramaSVG(casiCero);
+    assert.ok(!svg0.includes('-0.00') && (svg0.match(/>0\.00<\/text>/g) || []).length === 2, 'sin «-0.00»: «0.00» en y ~ x2 y en x1 ~~ x2');
+});

@@ -28,6 +28,12 @@ import { codificacionBinaria } from './motor/dependiente-binaria.js';
 // Las distribuciones, del núcleo único (core/stats/numerico.js; antes las pedía a ComparacionGrupos, en un ciclo de importaciones).
 // ========================================
 
+/**
+ * (2027.01.14, revisión) El ancho mínimo, en la pantalla, de la figura de la regresión bivariada (de 640): en un teléfono, sus
+ * textos de 11 px quedan de 8 o más, y se desplaza dentro de su recuadro.
+ */
+const FIGURA_EN_UN_TELEFONO = 480;
+
 const RegresionMultiple = {
 
     _ultimaRegresion: null,
@@ -488,7 +494,8 @@ const RegresionMultiple = {
         if (!el) return [];
         return [...el.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
     },
-    _tab(rows) { return `<table style="border-collapse:collapse;margin:0.4rem 0 0.8rem;font-size:0.92em;">${rows}</table>`; },
+    // (2027.01.14, revisión) desplazable dentro de su recuadro (en un teléfono, hacía la página más ancha que la pantalla)
+    _tab(rows) { return `<div class="tabla-ancha"><table style="border-collapse:collapse;margin:0.4rem 0 0.8rem;font-size:0.92em;">${rows}</table></div>`; },
     _tr(cells, th) { return `<tr>${cells.map(c => th ? `<th style="border:1px solid #ddd;padding:0.35rem 0.5rem;background:#f5f5f5;">${c}</th>` : `<td style="border:1px solid #ddd;padding:0.35rem 0.5rem;">${c}</td>`).join('')}</tr>`; },
 
     _onMatriz() {
@@ -575,8 +582,13 @@ const RegresionMultiple = {
 
     // Dibuja dispersión + curva del modelo elegido en un canvas y devuelve
     // {url (PNG dataURL), w, h}. Guarda el resultado en _ultimoGrafico.
+    // (2027.01.13, revisión) El margen izquierdo, a la medida de los valores del eje Y (con 60 fijo, uno de 7 cifras salía
+    // cortado, «0530356.7» por «10530356.7», y montado con el nombre del eje), y los nombres de los ejes, más pequeños (hasta 9
+    // px) o cortados con «…» si no caben a lo largo de su eje: lo mismo que se corrigió en la dispersión en la 2027.01.12.
+    // (2027.01.14, revisión) Y los márgenes de los lados, a la medida del primer y del último valor del eje X, centrados en su
+    // marca: con 20 fijo a la derecha, uno de 10 cifras salía cortado («2456500000.0» se leía «24565000», cien veces menos).
     graficoModelo(x, y, MM, etX, etY) {
-        const W = 640, H = 400, mL = 60, mR = 20, mT = 40, mB = 50;
+        const W = 640, H = 400, mT = 40, mB = 50;
         const cv = document.createElement('canvas');
         cv.width = W; cv.height = H;
         const g = cv.getContext('2d');
@@ -588,8 +600,32 @@ const RegresionMultiple = {
         let ymin = Math.min(...yv), ymax = Math.max(...yv);
         if (ymax === ymin) { ymax += 1; ymin -= 1; }
         const padY = (ymax - ymin) * 0.06; ymin -= padY; ymax += padY;
+        // (el nombre del eje Y, girado, ocupa hasta x = 21: los valores, a su derecha, terminan 7 antes del eje)
+        g.font = '11px sans-serif';
+        const valoresY = [0, 1, 2, 3, 4, 5].map(i => (ymin + (ymax - ymin) * i / 5).toFixed(1));
+        const valoresX = [0, 1, 2, 3, 4, 5].map(i => (xmin + (xmax - xmin) * i / 5).toFixed(1));
+        const mitadX = (/** @type {string} */ v) => Math.ceil(g.measureText(v).width / 2) + 6;
+        const mL = Math.max(60, Math.ceil(Math.max(...valoresY.map(v => g.measureText(v).width))) + 30, mitadX(valoresX[0]));
+        const mR = Math.max(20, mitadX(valoresX[5]));
+        /** El texto en 11 px, o más pequeño (hasta 9) o cortado con «…» para que quepa en `maximo`; deja puesta su letra. */
+        const aCaber = (texto, maximo) => {
+            for (let px = 11; px >= 9; px--) { g.font = `${px}px sans-serif`; if (g.measureText(texto).width <= maximo) return texto; }
+            let t = String(texto);
+            while (t.length > 1 && g.measureText(t + '…').width > maximo) t = t.slice(0, -1);
+            return t + '…';
+        };
         const sx = v => mL + (v - xmin) / (xmax - xmin || 1) * (W - mL - mR);
         const sy = v => H - mB - (v - ymin) / (ymax - ymin) * (H - mT - mB);
+        // (2027.01.14, revisión) cada valor del eje X, escrito si no se monta con el anterior escrito ni con el último (el primero
+        // y el último van siempre): con 13 cifras o más se montaban unos con otros
+        const anchosX = valoresX.map(v => g.measureText(v).width), enX = valoresX.map((_, i) => sx(xmin + (xmax - xmin) * i / 5));
+        let hastaX = -Infinity;
+        const seEscribeX = valoresX.map((_, i) => {
+            const desde = enX[i] - anchosX[i] / 2, fin = enX[i] + anchosX[i] / 2;
+            const cabe = i === 0 || i === 5 || (desde >= hastaX + 6 && fin <= enX[5] - anchosX[5] / 2 - 6);
+            if (cabe) hastaX = fin;
+            return cabe;
+        });
         // Ejes y ticks
         g.strokeStyle = '#444'; g.lineWidth = 1;
         g.beginPath(); g.moveTo(mL, mT); g.lineTo(mL, H - mB); g.lineTo(W - mR, H - mB); g.stroke();
@@ -597,14 +633,16 @@ const RegresionMultiple = {
         for (let i = 0; i <= 5; i++) {
             const vx = xmin + (xmax - xmin) * i / 5, px = sx(vx);
             g.beginPath(); g.moveTo(px, H - mB); g.lineTo(px, H - mB + 4); g.stroke();
-            g.fillText(vx.toFixed(1), px, H - mB + 16);
+            if (seEscribeX[i]) g.fillText(valoresX[i], px, H - mB + 16);
             const vy = ymin + (ymax - ymin) * i / 5, py = sy(vy);
             g.beginPath(); g.moveTo(mL - 4, py); g.lineTo(mL, py); g.stroke();
-            g.textAlign = 'right'; g.fillText(vy.toFixed(1), mL - 7, py + 3); g.textAlign = 'center';
+            g.textAlign = 'right'; g.fillText(valoresY[i], mL - 7, py + 3); g.textAlign = 'center';
         }
-        g.fillText(etX || 'X', (mL + W - mR) / 2, H - 12);
+        g.fillText(aCaber(etX || 'X', W - mL - mR), (mL + W - mR) / 2, H - 12);
+        const nombreY = aCaber(etY || 'Y', H - mT - mB);
         g.save(); g.translate(14, (mT + H - mB) / 2); g.rotate(-Math.PI / 2);
-        g.fillText(etY || 'Y', 0, 0); g.restore();
+        g.fillText(nombreY, 0, 0); g.restore();
+        g.font = '11px sans-serif';
         // Puntos
         g.fillStyle = 'rgba(46,91,186,0.55)';
         for (let i = 0; i < x.length; i++) {
@@ -675,7 +713,9 @@ const RegresionMultiple = {
         // (2026.12.22) sin modelo (una separación en la logística, pocos casos): el motivo, en lugar de omitir la sección
         else html += `<div class="result-box"><h4 style="margin:0.6rem 0 0.2rem;">🔍 ¿Qué modelo explica mejor esta relación?</h4>`
             + `<p style="margin:0.5rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ ${MM.error}</p></div>`;
-        if (img) html += `<div class="result-box" style="display: flex; justify-content: center;"><img src="${img.url}" style="max-width:100%;border-radius:0.4rem;" alt="Modelo ajustado"></div>`;
+        // (2027.01.14, revisión) en un teléfono, de 480 de ancho como poco, desplazable dentro de su recuadro (como el diagrama
+        // del SEM): a lo ancho de una caja de 242, sus textos de 11 px quedaban de 4,2
+        if (img) html += `<div class="result-box" style="overflow-x:auto;"><img src="${img.url}" style="display:block;margin:0 auto;width:100%;max-width:${img.w}px;min-width:${FIGURA_EN_UN_TELEFONO}px;border-radius:0.4rem;" alt="Modelo ajustado"></div>`;
         html += `</div>`;
         return { html };
     },
@@ -754,6 +794,10 @@ const RegresionMultiple = {
         if (opciones.poisson) {
             const R = this._poissonK(y, colsX.map((_, j) => filas.map(f => f[j + 1])), ets);
             if (R.error) return R;
+            // (2027.01.11, revisión) lo que se pidió y el modelo de Poisson no aplica, dicho como en la logística (hasta la
+            // 2027.01.10, la interacción y el término cuadrático se dejaban fuera sin decirlo)
+            const sinAplicar = [opciones.interaccion && k0 >= 2 && 'la interacción', opciones.cuadratico && 'el término cuadrático'].filter(Boolean);
+            if (sinAplicar.length) avisos.push(`Con el modelo de Poisson se ajustaron los efectos principales: ${sinAplicar.join(' y ')} no se ${sinAplicar.length > 1 ? 'aplican' : 'aplica'} a este modelo.`);
             R.etY = etY || colY; R.etsX = ets; R.avisos = [...avisos, ...(R.avisosAjuste || [])];
             R.notaFamilia = 'Modelo de Poisson (declarado por el investigador como conteo de eventos): los coeficientes exponenciados (IRR) indican por cuánto se multiplica la tasa esperada por cada unidad del predictor.';
             if (R.sobredispersion) R.avisos.push(`Sobredispersión detectada (χ²/gl = ${this._fx(R.dispersion, 2)} > 1.5): la varianza excede a la media, patrón típico de conductas agrupadas. El modelo recomendado es la regresión binomial negativa (R: MASS::glm.nb; SPSS: GENLIN), pues Poisson subestima los errores estándar en este escenario.`);

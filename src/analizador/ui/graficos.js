@@ -277,7 +277,12 @@ function agregarAyudasGraficos() {
         document.body.appendChild(modal);
         modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
         modal.querySelector('#modalAyudaCerrar').addEventListener('click', () => { modal.style.display = 'none'; });
-        document.addEventListener('keydown', e => { if (e.key === 'Escape') modal.style.display = 'none'; });
+        // (2027.01.04) Esc la cierra si está abierta, y lo marca como usado: la guía de un ejemplo no se detiene por él
+        document.addEventListener('keydown', e => {
+            if (e.key !== 'Escape' || modal.style.display === 'none') return;
+            modal.style.display = 'none';
+            e.preventDefault();
+        });
     }
     Object.entries(ayudas).forEach(([id, ayuda]) => {
         const wrapper = document.getElementById(id);
@@ -303,4 +308,24 @@ function agregarAyudasGraficos() {
     });
 }
 
-export { inicializarGraficos, MAX_COLUMNAS_GRAFICOS, seleccionarColumnasGraficos, prepararDatosParaGraficos, renderizarSelectorGraficos, insertarDescripcionesGraficos, agregarAyudasGraficos };
+/**
+ * (2027.01.05) Oculta los gráficos y los vacía, con lo que llevan debajo (su análisis) y su selector de variables: los dibuja
+ * la correlación, y antes de cada análisis y al cargar otros datos lo de antes se va (carga.js, limpiarResultados). Hasta la
+ * 2027.01.04 seguían a la vista tras otro tipo de análisis, y salían en su PDF (también con los datos de antes, tras cargar
+ * otros).
+ */
+function ocultarGraficos() {
+    for (const id of ['distribucion-gaussiana', 'matriz-correlacion', 'diagrama-caja']) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    }
+    const grid = document.getElementById('contenedorGraficos');
+    if (grid) {
+        grid.classList.remove('show');
+        grid.querySelectorAll('.analisis-grafico').forEach(n => n.remove());
+    }
+    const panel = document.getElementById('selectorVarsGraficos');
+    if (panel) panel.remove();
+}
+
+export { inicializarGraficos, ocultarGraficos, MAX_COLUMNAS_GRAFICOS, seleccionarColumnasGraficos, prepararDatosParaGraficos, renderizarSelectorGraficos, insertarDescripcionesGraficos, agregarAyudasGraficos };

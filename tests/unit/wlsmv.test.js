@@ -45,6 +45,10 @@ test('motor: SEM.ajustar con estimador WLSMV (2 factores, 8 ítems) — converge
     assert.ok(!R.error && R.convergio && R.estimador === 'WLSMV' && R.gl === 28 - 9, R.error || JSON.stringify(R.optimizacion));
     assert.ok(R.CFI > 0.95 && R.RMSEA < 0.06 && R.SRMR < 0.06 && R.parametros.every(p => p.se > 0), `CFI ${R.CFI} RMSEA ${R.RMSEA}`);
     assert.ok(Math.abs(R.parametros.find(p => p.nombre === 'FA ~~ FB').estimado) < 0.15, 'factores simulados independientes');
+    // (2027.01.04) el χ² de DWLS sin corregir y la corrección en media y varianza, en el resultado: la página los cita (hasta
+    // la 2027.01.03 estaban dentro de un comentario de sem-motor.js, y decía «DWLS sin corregir: NaN»)
+    assert.ok(Number.isFinite(R.chi2DWLS) && R.chi2DWLS > 0 && R.correccion && R.correccion.a > 0 && R.correccion.b > 0, `χ² DWLS ${R.chi2DWLS}`);
+    assert.ok(Math.abs(R.chi2DWLS - R.chi2) > 1e-9, 'el corregido no es el mismo número');
     assert.match(SEM.ajustar('FA =~ A1 + A2 + A3\nA4 ~ FA', null, 'x', { estimador: 'WLSMV' }).error, /toda variable observada debe ser indicador/);
     AnalizadorEstadistico.cargarDatos(cols[0].map((_, i) => ({ A1: cols[0][i] + 0.5, A2: cols[1][i], A3: cols[2][i] })));
     assert.match(SEM.ajustar('FA =~ A1 + A2 + A3', null, 'x', { estimador: 'WLSMV' }).error, /ítems ordinales.*A1/);

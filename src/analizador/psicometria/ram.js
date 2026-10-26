@@ -3,7 +3,7 @@
 // Gradiente analítico: con W = Σ⁻¹ − Σ⁻¹·S_obs·Σ⁻¹, G = Fᵀ·W·F y E = B·S·Bᵀ,
 //   ∂F/∂A_ij = 2·(Bᵀ·G·E)_ij   y   ∂F/∂S_ij = (Bᵀ·G·B)_ij (×2 fuera de la diagonal, por simetría)
 // Información esperada (ML): I_ab = (n − 1)/2 · tr(Σ⁻¹·Δ_a·Σ⁻¹·Δ_b), con Δ_a = ∂Σ/∂θ_a.
-import { multiplicar, traspuesta, inversaGeneral, inversaDefinidaPositiva } from './algebra.js';
+import { multiplicar, traspuesta, inversaGeneral, inversaDefinidaPositiva, cholesky } from './algebra.js';
 import { gaussJordan } from '../../core/linalg/gauss.js';
 
 export function aplicarTheta(est, theta) {
@@ -66,8 +66,25 @@ export function informacionEsperada(est, theta, n) {
     return I;
 }
 
-// Errores estándar = √diag(I⁻¹); null si la información no es invertible (modelo no identificado empíricamente)
-export function erroresInformacion(est, theta, n) {
-    const I = informacionEsperada(est, theta, n), inv = I && inversaDefinidaPositiva(I);
-    return inv ? inv.map((f, i) => (f[i] > 0 ? Math.sqrt(f[i]) : NaN)) : null;
+/**
+ * (2027.01.13, revisión) Una matriz de información (o la Δᵀ·W·Δ del WLSMV) es singular, o casi, si su factor de Cholesky tiene
+ * un pivote menor que esta fracción de su elemento de la diagonal: hay una combinación de parámetros que los datos no
+ * determinan (un modelo sin identificar). En los modelos identificados de las pruebas, el menor es de 10⁻² o más; en uno sin
+ * identificar (un marcador escrito dos veces, un factor de segundo orden de dos factores), de 10⁻¹⁵.
+ */
+export const TOLERANCIA_DE_IDENTIFICACION = 1e-8;
+/** ¿Es la matriz de información (casi) singular? @param {number[][]} I */
+export const informacionSingular = I => !cholesky(I, { tolerancia: TOLERANCIA_DE_IDENTIFICACION });
+
+// Errores estándar = √diag(I⁻¹) (null si la información no es invertible: modelo no identificado empíricamente) y
+// (2027.01.13, revisión) si es (casi) singular: hasta la 2027.01.12, un modelo sin identificar cuya información se invertía por
+// poco (con errores estándar de 10⁶) salía sin aviso. (2027.01.14, revisión) También es `singular` una información que no se
+// puede calcular (la Σ de θ no se invierte) o no se invierte: sus errores estándar no son fiables; hasta la 2027.01.13 lo
+// decidía sem-motor.js aparte (`info.singular || !info.se`), y ninguna prueba lo veía.
+export function inferenciaInformacion(est, theta, n) {
+    const I = informacionEsperada(est, theta, n);
+    if (!I) return { se: null, singular: true };
+    const inv = inversaDefinidaPositiva(I);
+    return { se: inv ? inv.map((f, i) => (f[i] > 0 ? Math.sqrt(f[i]) : NaN)) : null, singular: !inv || informacionSingular(I) };
 }
+export function erroresInformacion(est, theta, n) { return inferenciaInformacion(est, theta, n).se; }

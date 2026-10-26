@@ -10,6 +10,7 @@ import { asociacionCramerV } from '../motor/magnitudes.js';   // (2026.12.24) la
 import { desplazarHacia } from '../../shared/tabla-datos.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { formatoMitades, formatoNumero, textoP } from '../../shared/formato-numero.js';
+import { markdownAHtml } from '../../shared/markdown.js';
 
 function mostrarChiCuadrado(var1, var2, resultado) {
     const container = document.getElementById('resultadosChiCuadrado');
@@ -164,15 +165,7 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
                 </table>
             </div>
             <!-- Gráficos Q-Q para evaluar visualmente la normalidad -->
-            <div class="result-box">
-                <p class="result-subtitle" style="margin-bottom: 0.5rem;">Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.</p>
-                <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
-                    <div id="histVariable1" style="flex: 1 1 46%; min-width: 320px;"></div>
-                    <div id="qqVariable1" style="flex: 1 1 46%; min-width: 320px;"></div>
-                    <div id="histVariable2" style="flex: 1 1 46%; min-width: 320px;"></div>
-                    <div id="qqVariable2" style="flex: 1 1 46%; min-width: 320px;"></div>
-                </div>
-            </div>
+            ${panelDeNormalidad()}
             <!-- Interpretación de Normalidad -->
             <div class="result-box interpretation-box interpretation-box--normalidad">
                 <h5 class="interpretation-title">
@@ -190,7 +183,6 @@ function mostrarPruebasNormalidad(var1, var2, resultado) {
             <h5 style="margin:0 0 0.4rem;">💡 Los porqués detrás de estos números</h5>
             <p style="margin:0 0 0.4rem;"><b>¿Por qué media y desviación estándar?</b> La media es el centro de gravedad de la distribución — el punto exacto donde los datos se equilibran, y por eso los valores extremos la arrastran hacia sí. La desviación estándar es la <i>distancia típica</i> de una persona a ese centro, la unidad natural de la variable: bajo normalidad, cerca del 68 % de los casos queda a ±1 DE de la media y el 95 % a ±2 DE, de modo que dos números se convierten en un mapa completo de dónde está casi todo el mundo. La asimetría cuenta la historia de las colas (positiva: una cola derecha larga arrastra la media por encima de la mediana) y la curtosis mide la propensión a valores extremos. El detalle crucial: ese mapa de «media ± DE» solo es honesto si la forma es normal — con distribuciones deformadas, los mismos dos números engañan. Por eso la app comprueba la normalidad antes de decidir nada.</p>
             <p style="margin:0;"><b>¿Por qué la normalidad decide el coeficiente?</b> Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el <i>orden</i>, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último de la fila». Robustez por diseño, no por parche.</p>
-            <p style="margin:0;"><b>¿Por qué la normalidad decide el coeficiente?</b> Pearson se construye multiplicando desviaciones — (xᵢ−x̄)(yᵢ−ȳ) — y ahí vive su talón de Aquiles: un solo participante extremo aporta un producto gigantesco que puede dominar toda la suma, y la validez de su p-valor se deriva asumiendo normalidad; además solo captura relaciones lineales. Spearman aplica una cirugía elegante: convierte cada valor en su rango (1.º, 2.º, 3.º…) y calcula sobre esos rangos. Al quedarse solo con el <i>orden</i>, las distancias — donde habitan los atípicos y las deformidades de la distribución — desaparecen: el valor más extremo del mundo pasa a ser simplemente «el último». Robustez por diseño, no por parche.</p>
         </div>
     `;
     container.innerHTML = html;
@@ -361,6 +353,18 @@ function mostrarDecision(var1, var2, resultado) {
     container.style.display = 'block';
 }
 
+/**
+ * (2027.01.04) La plantilla de la discusión, en HTML: su Markdown (negritas, listas y rayas entre apartados) como se lee —antes
+ * se veían los «**» y los «---», y todo en un solo párrafo— y todo escapado (los nombres de las variables vienen de la base).
+ * Se resaltan solo los huecos por llenar, en mayúsculas («[AUTOR]», «[AÑO]», «[RECOMENDACIÓN 1]»), no un intervalo de
+ * confianza («[-0.491, -0.299]»).
+ * @param {string} texto
+ * @returns {string}
+ */
+function plantillaDiscusionHtml(texto) {
+    return markdownAHtml(texto).replace(/\[([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ0-9 /.,-]*)\]/g, '<span class="highlight">[$1]</span>');
+}
+
 function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, marco) {
     const container = document.getElementById('resultadosDiscusion');
     if (!container) return;
@@ -376,7 +380,7 @@ function mostrarDiscusion(var1, var2, resultado, unidadAnalisis, lugarContexto, 
         <div class="result-section">
             <h3 class="section-title">Discusión (Plantilla)</h3>
             <div class="discussion-box">
-                ${discusion.replace(/\[(.*?)\]/g, '<span class="highlight">[$1]</span>')}
+                ${plantillaDiscusionHtml(discusion)}
             </div>
         </div>
     `;
@@ -483,9 +487,7 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
                 </table>
             </div>
             ${bloqueApaComparacionHTML(lineaApa)}
-            <div class="result-box" style="display: flex; justify-content: center;">
-                <div id="cajaGrupos"></div>
-            </div>
+            ${marcoDeGrafico('cajaGrupos')}
             <div class="result-box interpretation-box interpretation-box--hipotesis">
                 <h5 class="interpretation-title">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -498,6 +500,35 @@ function mostrarComparacion(varCuantitativa, varAgrupacion, resultado) {
     dibujarCajaGrupos(resultado);
     conectarCopiaComparacion(lineaApa);
     desplazarHacia(container);
+}
+
+/**
+ * El recuadro de los histogramas y los Q-Q de las dos variables de la correlación. (2027.01.13, revisión) Cada uno, de 320 de
+ * ancho como mínimo o, en un recuadro más estrecho (un teléfono), del de él: con 320 fijo, a 360 px se salían 40 de su caja.
+ * @returns {string}
+ */
+function panelDeNormalidad() {
+    const marco = (/** @type {string} */ id) => `<div id="${id}" style="flex: 1 1 46%; min-width: min(320px, 100%);"></div>`;
+    return `<div class="result-box">
+                <p class="result-subtitle" style="margin-bottom: 0.5rem;">Gráficos Q-Q: si los puntos se alinean con la recta de referencia, la distribución es aproximadamente normal.</p>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+                    ${['histVariable1', 'qqVariable1', 'histVariable2', 'qqVariable2'].map(marco).join('\n                    ')}
+                </div>
+            </div>`;
+}
+
+/**
+ * (2027.01.12, revisión) El recuadro de un gráfico fuera de la rejilla (la caja por grupos, la dispersión) y, dentro, su marco:
+ * a lo ancho del recuadro, con el gráfico en el centro. Hasta la 2027.01.11 el marco no tenía ancho propio (un hijo flexible
+ * toma el de lo que lleva dentro, el gráfico): un gráfico cuyo lienzo se ensanchaba (un título largo sin espacios) no crecía
+ * del ancho con que se dibujó primero, y se achicaba.
+ * @param {string} id el del marco (el contenedor del gráfico)
+ * @returns {string}
+ */
+function marcoDeGrafico(id) {
+    return `<div class="result-box" style="display: flex; justify-content: center;">
+                <div id="${id}" style="width: 100%; display: flex; justify-content: center;"></div>
+            </div>`;
 }
 
 // Dibuja un diagrama de caja por grupo en el contenedor #cajaGrupos usando los
@@ -583,9 +614,7 @@ function mostrarComparacionVarios(varCuantitativa, varAgrupacion, resultado) {
             </div>
             ${postHocHtml}
             ${bloqueApaComparacionHTML(lineaApa)}
-            <div class="result-box" style="display: flex; justify-content: center;">
-                <div id="cajaGrupos"></div>
-            </div>
+            ${marcoDeGrafico('cajaGrupos')}
             <div class="result-box interpretation-box interpretation-box--hipotesis">
                 <h5 class="interpretation-title">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z"/></svg>
@@ -613,9 +642,7 @@ function mostrarDispersion(var1, var2, resultado) {
         <div class="result-section">
             <h3 class="section-title">Diagrama de Dispersión</h3>
             <p class="result-subtitle">Relación entre ${var1} y ${var2}, con la recta de regresión por mínimos cuadrados y el coeficiente de determinación R². Permite valorar visualmente la forma, dirección y dispersión de la asociación.</p>
-            <div class="result-box" style="display: flex; justify-content: center;">
-                <div id="graficoDispersion"></div>
-            </div>
+            ${marcoDeGrafico('graficoDispersion')}
         </div>`;
     container.style.display = 'block';
     // El gráfico se dibuja con la librería ScientificCharts (D3); si fallara,
@@ -683,4 +710,4 @@ function mostrarRegresion(var1, var2, resultado) {
     container.style.display = 'block';
 }
 
-export { mostrarChiCuadrado, mostrarMarcoMetodologico, mostrarPruebasNormalidad, dibujarGraficosQQ, mostrarCorrelacion, mostrarDecision, mostrarDiscusion, mostrarFiabilidad, bloqueFiabilidad, mostrarComparacion, dibujarCajaGrupos, mostrarComparacionVarios, mostrarDispersion, mostrarRegresion };
+export { marcoDeGrafico, panelDeNormalidad, mostrarChiCuadrado, mostrarMarcoMetodologico, mostrarPruebasNormalidad, dibujarGraficosQQ, mostrarCorrelacion, mostrarDecision, mostrarDiscusion, plantillaDiscusionHtml, mostrarFiabilidad, bloqueFiabilidad, mostrarComparacion, dibujarCajaGrupos, mostrarComparacionVarios, mostrarDispersion, mostrarRegresion };

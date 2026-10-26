@@ -7,8 +7,9 @@ import { SEM } from './sem-motor.js';
 import { obtenerColumnasNumericas } from './ui/carga.js';
 import { pChiCuadrado } from '../core/stats/numerico.js';
 import { aNumero } from '../core/data/celdas.js';
-import { formatoP, pConSigno } from '../shared/formato-numero.js';
+import { formatoP, pConSigno, numeroFijo } from '../shared/formato-numero.js';
 import { bus, EVENTOS } from '../shared/eventos.js';   // (revisión 2026.12.30) también los p del χ² y del Δχ²
+import { disposicionDelDiagrama, svgDelDiagrama, tamanoDelDiagrama, tamanoEnLaPagina } from './sem-diagrama.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -39,7 +40,7 @@ const SEMUI = {
 
         // Recuento de variables observadas y de parámetros aproximados.
         const obs = new Set();
-        Object.values(modelo.latentes).forEach(is => is.forEach(i => obs.add(i)));
+        Object.values(modelo.latentes).forEach(is => is.forEach(i => { if (!lat.includes(i)) obs.add(i); }));   // (2027.01.12) no un factor de segundo orden
         modelo.regresiones.forEach(r => { if (!lat.includes(r.y)) obs.add(r.y); r.xs.forEach(x => { if (!lat.includes(x)) obs.add(x); }); });
         const p = obs.size;
         const nombres = [...obs];
@@ -111,7 +112,7 @@ const SEMUI = {
     },
 
     _pedagogiaIndice(clave, R) {
-        const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
+        const fx = numeroFijo;
         const D = {
             chi2: {
                 titulo: `χ²(${R.gl}) = ${fx(R.chi2, 2)}, p ${pConSigno(R.pChi2)}`,
@@ -194,63 +195,72 @@ const SEMUI = {
         return est;
     },
 
+    // (2027.01.12) La correlación de una covarianza del modelo: la covarianza entre las raíces de las dos varianzas de su celda
+    // (la total de una exógena, la residual de una endógena: la estandarización completa de lavaan). null sin ellas.
+    // (2027.01.13, revisión) Con WLSMV, la varianza residual de un ítem no es un parámetro (1 − su comunalidad: la escala de y*):
+    // la da el motor (varianzasResiduales); hasta la 2027.01.12, una covarianza entre dos ítems salía sin su correlación («↔»)
+    _correlacion(R, a, b, cov) {
+        const v = x => {
+            const p = R.parametros.find(q => q.nombre === `var (${x})` || q.nombre === `var residual (${x})`);
+            const s = p ? p.estimado : R.varianzasResiduales ? R.varianzasResiduales[x] : undefined;
+            return s > 0 ? s : null;
+        };
+        const va = v(a), vb = v(b);
+        return va && vb && Number.isFinite(cov) ? cov / Math.sqrt(va * vb) : null;
+    },
+
     // ═════════ (4) DIAGRAMA DE RUTAS SVG ═════════
+    // (2027.01.12, revisión) La disposición y el SVG, de sem-diagrama.js: aquí, el modelo y sus coeficientes estandarizados.
+    // Las covarianzas, todas las que estima el modelo (también las que estima sin que la sintaxis las escriba: entre latentes
+    // exógenas y entre predictores observados), con su correlación: hasta la 2027.01.11, solo las escritas (`~~`), sin valor.
+    // (2027.01.13, revisión) Solo lo que el modelo estima: una regresión escrita sobre la flecha de una carga (`x1 ~ F` con
+    // `F =~ x1`), o repetida, que el motor cuenta una vez, se dibujaba otra vez, con «0.00»; y sin «-0.00»
     diagramaSVG(R) {
-        const lat = R.latentes || [];
         const modelo = SEM.parsear(R.sintaxis);
-        const indicadores = [];
-        Object.values(modelo.latentes).forEach(is => is.forEach(i => { if (!indicadores.includes(i)) indicadores.push(i); }));
-        const estructurales = R.nombresObs.filter(v => !indicadores.includes(v));
-        const W = Math.max(640, 110 * Math.max(indicadores.length, lat.length * 2, estructurales.length));
-        const H = 150 + (lat.length ? 130 : 0) + (estructurales.length ? 120 : 0);
-        const pos = {};
-        indicadores.forEach((v, i) => { pos[v] = { x: (i + 0.5) * W / Math.max(indicadores.length, 1), y: 55 }; });
-        lat.forEach((F, i) => { pos[F] = { x: (i + 0.5) * W / Math.max(lat.length, 1), y: 185 }; });
-        estructurales.forEach((v, i) => { pos[v] = { x: (i + 0.5) * W / Math.max(estructurales.length, 1), y: lat.length ? 300 : 170 }; });
         const coef = {};
         R.parametros.forEach(p => { coef[p.nombre] = this._std(R, p.nombre, p.estimado); });
-        let s = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" style="max-width:100%;background:#fff;">
-        <defs><marker id="fle" markerWidth="9" markerHeight="9" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#333"/></marker></defs>`;
-        const flecha = (a, b, txt, dash) => {
-            const A0 = pos[a], B0 = pos[b];
-            if (!A0 || !B0) return '';
-            const mx = (A0.x + B0.x) / 2, my = (A0.y + B0.y) / 2;
-            return `<line x1="${A0.x}" y1="${A0.y}" x2="${B0.x}" y2="${B0.y}" stroke="#333" stroke-width="1.4" marker-end="url(#fle)" ${dash ? 'stroke-dasharray="5,4"' : ''}/>
-            <rect x="${mx - 20}" y="${my - 9}" width="40" height="15" fill="#fff" opacity="0.85"/>
-            <text x="${mx}" y="${my + 3}" text-anchor="middle" font-size="11" fill="#b03030">${txt}</text>`;
-        };
-        // Flechas latente → indicador y estructurales x → y
+        const rutas = [], flechas = new Set();
+        /** La flecha de x a y, una sola vez. */
+        const nueva = (x, y) => !flechas.has(`${x}\u0000${y}`) && flechas.add(`${x}\u0000${y}`);
+        // latente → indicador (la primera carga, el marcador: su estandarizada); estructurales x → y; covarianzas
         Object.entries(modelo.latentes).forEach(([F, is]) => is.forEach((ind, k) => {
-            const c = k === 0 ? this._std(R, `${F} =~ ${ind}`, 1) : coef[`${F} =~ ${ind}`];
-            s += flecha(F, ind, (c ?? 1).toFixed(2));
+            const c = k === 0 ? this._std(R, `${F} =~ ${ind}`, 1) : coef[`${F} =~ ${ind}`] ?? coef[`${ind} ~ ${F}`];
+            if (c !== undefined && nueva(F, ind)) rutas.push({ de: F, a: ind, tipo: 'carga', texto: numeroFijo(c, 2) });
         }));
-        modelo.regresiones.forEach(r => r.xs.forEach(x => { s += flecha(x, r.y, (coef[`${r.y} ~ ${x}`] ?? 0).toFixed(2)); }));
-        modelo.covars.forEach(([a, b]) => { s += flecha(a, b, '↔', true); });
-        // Nodos: rectángulos (observadas) y elipses (latentes)
-        R.nombresObs.forEach(v => { const P = pos[v]; if (!P) return;
-            s += `<rect x="${P.x - 42}" y="${P.y - 16}" width="84" height="32" rx="4" fill="#eef4ff" stroke="#2E5BBA"/>
-            <text x="${P.x}" y="${P.y + 4}" text-anchor="middle" font-size="12">${v}</text>`; });
-        lat.forEach(F => { const P = pos[F];
-            s += `<ellipse cx="${P.x}" cy="${P.y}" rx="52" ry="24" fill="#fff6e8" stroke="#c07820"/>
-            <text x="${P.x}" y="${P.y + 4}" text-anchor="middle" font-size="12" font-weight="bold">${F}</text>`; });
-        s += `<text x="${W - 6}" y="${H - 6}" text-anchor="end" font-size="10" fill="#777">Coeficientes estandarizados</text></svg>`;
-        return s;
+        modelo.regresiones.forEach(r => r.xs.forEach(x => {
+            const c = coef[`${r.y} ~ ${x}`];
+            if (c !== undefined && nueva(x, r.y)) rutas.push({ de: x, a: r.y, tipo: 'regresion', texto: numeroFijo(c, 2) });
+        }));
+        R.parametros.forEach(p => {
+            const m = /^(\S+) ~~ (\S+)$/.exec(p.nombre);
+            if (!m || m[1] === m[2]) return;
+            const r = this._correlacion(R, m[1], m[2], p.estimado);
+            rutas.push({ de: m[1], a: m[2], tipo: 'covarianza', texto: r === null ? '↔' : numeroFijo(r, 2) });
+        });
+        return svgDelDiagrama(disposicionDelDiagrama({ latentes: R.latentes || [], indicadoresDe: modelo.latentes, observadas: R.nombresObs, rutas }));
     },
 
     // Rasteriza el SVG a PNG (solo navegador) y lo guarda para el Word. (2027.01.01, revisión) Solo si su modelo sigue siendo
-    // el último cuando la imagen termina de cargarse: con otros datos (u otro modelo) entretanto, la imagen ya no es la suya
+    // el último cuando la imagen termina de cargarse: con otros datos (u otro modelo) entretanto, la imagen ya no es la suya.
+    // (2027.01.12, revisión) A lo ancho de la página y con la proporción del diagrama (rasterizado al doble, para que se lea):
+    // hasta la 2027.01.11 el SVG no llevaba ancho ni alto, la imagen tomaba 300 de ancho y la figura salía de 450 × 63, ilegible.
+    // (2027.01.13, revisión) Y sin pasar del alto de la página (tamanoEnLaPagina): un diagrama en columna puede ser más alto que
+    // ancho
     _rasterizar(svg, modelo = null) {
         try {
+            const { w, h } = tamanoEnLaPagina(tamanoDelDiagrama(svg) || { ancho: 960, alto: 480 });
             const img = new Image();
-            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+            // (su ancho y su alto escritos, sin el estilo de la pantalla: el 100 % y el mínimo de un teléfono)
+            const fijo = svg.replace(/ style="[^"]*"/, ' style="background:#fff;"').replace('<svg ', `<svg width="${2 * w}" height="${2 * h}" `);
+            const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(fijo);
             img.onload = () => {
                 if (modelo && SEM._ultimos[SEM._ultimos.length - 1] !== modelo) return;
                 const cv = document.createElement('canvas');
-                cv.width = img.width * 1.5 || 960; cv.height = img.height * 1.5 || 480;
+                cv.width = 2 * w; cv.height = 2 * h;
                 const g = cv.getContext('2d');
                 g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height);
                 g.drawImage(img, 0, 0, cv.width, cv.height);
-                SEM._ultimoDiagramaPNG = { url: cv.toDataURL('image/png'), w: cv.width, h: cv.height };
+                SEM._ultimoDiagramaPNG = { url: cv.toDataURL('image/png'), w, h };
             };
             img.src = url;
         } catch (e) { /* el Word usará solo tablas */ }
@@ -264,19 +274,19 @@ const SEMUI = {
     htmlComparacion() {
         const M = SEM._ultimos;
         if (M.length < 2) return '';
-        const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
+        const fx = numeroFijo;
         let h = `<h4 style="margin:0.8rem 0 0.2rem;">📊 Comparación de modelos</h4>
-        <table style="border-collapse:collapse;font-size:0.92em;">
+        <div class="tabla-ancha"><table style="border-collapse:collapse;font-size:0.92em;">
         <tr>${['Modelo', 'χ²', 'gl', 'CFI', 'TLI', 'RMSEA', 'SRMR', 'AIC'].map(c => `<th style="border:1px solid #ddd;padding:0.3rem 0.5rem;background:#f5f5f5;">${c}</th>`).join('')}</tr>`;
         // (2026.10.17) Con WLSMV no hay verosimilitud (sin AIC) y la diferencia de χ² corregidos no sigue una χ²
         const esW = m => m.estimador === 'WLSMV', ml = M.filter(m => !esW(m));
         const mejorAIC = ml.length ? Math.min(...ml.map(m => this._aic(m))) : NaN;
         M.forEach(m => {
             const esMejor = !esW(m) && Math.abs(this._aic(m) - mejorAIC) < 1e-9;
-            h += `<tr>${[esMejor ? `<b>${m.etiquetaModelo} ★</b>` : m.etiquetaModelo, fx(m.chi2, 1), m.gl, fx(m.CFI, 3), fx(m.TLI, 3), fx(m.RMSEA, 3), fx(m.SRMR, 3), esW(m) ? '— (WLSMV)' : fx(this._aic(m), 1)]
+            h += `<tr>${[esMejor ? `<b>${esc(m.etiquetaModelo)} ★</b>` : esc(m.etiquetaModelo), fx(m.chi2, 1), m.gl, fx(m.CFI, 3), fx(m.TLI, 3), fx(m.RMSEA, 3), fx(m.SRMR, 3), esW(m) ? '— (WLSMV)' : fx(this._aic(m), 1)]
                 .map(c => `<td style="border:1px solid #ddd;padding:0.3rem 0.5rem;">${c}</td>`).join('')}</tr>`;
         });
-        h += `</table>`;
+        h += `</table></div>`;
         // Δχ² por pares consecutivos anidados; si no, AIC.
         for (let i = 1; i < M.length; i++) {
             const Ra = M[i - 1], Rb = M[i];
@@ -294,11 +304,11 @@ const SEMUI = {
             if (this._anidados(Ra, Rb)) {
                 const dChi = simple.chi2 - complejo.chi2, dGl = simple.gl - complejo.gl;
                 const pD = (dGl > 0) ? pChiCuadrado(Math.max(dChi, 0), dGl) : NaN;
-                h += `<p style="margin:0.4rem 0 0;"><b>${simple.etiquetaModelo} vs ${complejo.etiquetaModelo} (anidados):</b> Δχ²(${dGl}) = ${fx(Math.max(dChi, 0), 2)}, p ${pConSigno(pD)}. ${pD < 0.05
-                    ? `La mejora del modelo más complejo es real: sus parámetros adicionales compran ajuste genuino, no ruido. Preferible: <b>${complejo.etiquetaModelo}</b>.`
-                    : `El modelo complejo NO mejora significativamente al simple: sus parámetros extra no se justifican y, por parsimonia, es preferible <b>${simple.etiquetaModelo}</b>.`} <i>¿Por qué Δχ²?</i> Cuando un modelo es un caso particular del otro, la diferencia de sus χ² sigue a su vez una χ² con gl = diferencia de gl — una prueba formal de si la complejidad extra vale la pena.</p>`;
+                h += `<p style="margin:0.4rem 0 0;"><b>${esc(simple.etiquetaModelo)} vs ${esc(complejo.etiquetaModelo)} (anidados):</b> Δχ²(${dGl}) = ${fx(Math.max(dChi, 0), 2)}, p ${pConSigno(pD)}. ${pD < 0.05
+                    ? `La mejora del modelo más complejo es real: sus parámetros adicionales compran ajuste genuino, no ruido. Preferible: <b>${esc(complejo.etiquetaModelo)}</b>.`
+                    : `El modelo complejo NO mejora significativamente al simple: sus parámetros extra no se justifican y, por parsimonia, es preferible <b>${esc(simple.etiquetaModelo)}</b>.`} <i>¿Por qué Δχ²?</i> Cuando un modelo es un caso particular del otro, la diferencia de sus χ² sigue a su vez una χ² con gl = diferencia de gl — una prueba formal de si la complejidad extra vale la pena.</p>`;
             } else {
-                h += `<p style="margin:0.4rem 0 0;"><b>${Ra.etiquetaModelo} vs ${Rb.etiquetaModelo}:</b> no son anidados (uno no es caso particular del otro), así que el Δχ² no aplica; se comparan por AIC — menor es mejor, y la estrella ★ marca al preferido.</p>`;
+                h += `<p style="margin:0.4rem 0 0;"><b>${esc(Ra.etiquetaModelo)} vs ${esc(Rb.etiquetaModelo)}:</b> no son anidados (uno no es caso particular del otro), así que el Δχ² no aplica; se comparan por AIC — menor es mejor, y la estrella ★ marca al preferido.</p>`;
             }
         }
         return h;
@@ -333,7 +343,7 @@ const SEMUI = {
           <textarea id="semSintaxis" class="input" rows="5" style="width:100%;font-family:monospace;" placeholder="Factor =~ item1 + item2 + item3&#10;resultado ~ Factor + edad&#10;item1 ~~ item2"></textarea>
           <p class="help-text" style="margin:0.3rem 0 0.5rem; font-size:0.85em;"><b>=~</b> «se mide con» (latente =~ indicadores) · <b>~</b> «es predicho por» · <b>~~</b> covarianza libre · <b>#</b> comentario.</p>
           <div style="display:flex; gap:0.8rem; flex-wrap:wrap; align-items:flex-end;">
-            <div><div class="orden-guia" role="note" style="margin:0 0 0.3rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">nombrar el modelo para compararlo con los siguientes.</span></div><label class="label" for="semEtiqueta" style="font-weight:normal;">¿Qué papel juega este modelo?</label><br>
+            <div><div class="orden-guia" role="note" style="margin:0 0 0.3rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">nombrar el modelo para compararlo con los de los otros papeles: hay uno de cada papel, y ajustar otra vez uno lo reemplaza.</span></div><label class="label" for="semEtiqueta" style="font-weight:normal;">¿Qué papel juega este modelo?</label><br>
               <select id="semEtiqueta" class="input"><option>Modelo inicial</option><option>Modelo alternativo</option><option>Modelo final</option></select></div>
             <div><div class="orden-guia" role="note" style="margin:0 0 0.3rem;"><span class="orden-guia-titulo">Para qué sirve:</span><span class="orden-nota">elegir cómo se estima según el tipo de respuesta de tus variables.</span></div><label class="label" for="semEstimador" style="font-weight:normal;">Estimador</label><br>
               <select id="semEstimador" class="input" title="ML supone variables continuas; WLSMV es el recomendado con ítems Likert o 0/1"><option value="ML">ML (variables continuas)</option><option value="WLSMV">WLSMV (ítems ordinales)</option></select>
@@ -360,7 +370,7 @@ const SEMUI = {
         const sx = (document.getElementById('semSintaxis') || {}).value || '';
         const out = document.getElementById('semDecision');
         const E = this.evaluarViabilidad(sx);
-        if (E.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${E.error}</p>`; return; }
+        if (E.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${esc(E.error)}</p>`; return; }
         const color = { ok: '#e8f6ee|#2e8b57', aviso: '#fff8e1|#f0ad4e', alto: '#fdecea|#c0392b' };
         let h = `<h4 style="margin:0 0 0.3rem;">Motor de decisión: ${E.nivelGlobal === 'ok' ? '🟢 adelante' : E.nivelGlobal === 'aviso' ? '🟡 adelante con cautelas' : '🔴 reconsidera antes de ajustar'}</h4>`;
         E.veredictos.forEach(v => {
@@ -376,31 +386,41 @@ const SEMUI = {
         const estimador = (document.getElementById('semEstimador') || {}).value || 'ML';
         const out = document.getElementById('semOut');
         if (out) out.innerHTML = `<p class="help-text">Estimando por ${estimador === 'WLSMV' ? 'WLSMV' : 'máxima verosimilitud'}…</p>`;
+        // (2027.01.07, revisión) uno por papel (sem-motor.js, _recordar): si ya había uno de este, el nuevo lo reemplaza en la
+        // comparación de modelos y en el capítulo de Word, y se dice (hasta ahora se reemplazaba sin decirlo). (2027.01.08,
+        // revisión) Solo en pantalla: en la 2027.01.07 salía también en lo impreso, y repetido el paso del SEM de un ejemplo, su
+        // PDF ya no era el del caso
+        const reemplaza = SEM._ultimos.some(M => M.etiquetaModelo === etiqueta);
         const R = SEM.ajustar(sx, null, etiqueta, { estimador });
-        if (R.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${R.error}</p>`; return; }
-        const fx = (x, d = 3) => Number.isFinite(x) ? x.toFixed(d) : '—';
+        if (R.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${esc(R.error)}</p>`; return; }
+        const fx = numeroFijo;   // (2027.01.13, revisión) sin «-0.000»
         const fp = p => formatoP(p);
         const grupos = { coeficiente: 'Cargas y coeficientes estructurales', 'var/cov': 'Varianzas y covarianzas' };
-        const avisosModelo = (R.avisos || []).map(a => `<p class="help-text" style="margin:0 0 0.3rem;color:var(--color-warning);">⚠️ ${a}</p>`).join('');
-        let h = `<h4 style="margin:0 0 0.2rem;">${etiqueta} — parámetros estimados (n = ${R.n})</h4>`;
+        // (2027.01.14, revisión) los avisos y los errores, escapados: los de lo que la sintaxis repite llevan sus nombres (una
+        // columna «A<b>» dejaba en negrita lo que seguía); la tabla ya los escapaba
+        const avisosModelo = (R.avisos || []).map(a => `<p class="help-text" style="margin:0 0 0.3rem;color:var(--color-warning);">⚠️ ${esc(a)}</p>`).join('');
+        let h = `<h4 style="margin:0 0 0.2rem;">${esc(etiqueta)} — parámetros estimados (n = ${R.n})</h4>`;
+        if (reemplaza) h += `<p class="help-text sem-reemplaza solo-pantalla" role="note" style="margin:0 0 0.4rem;">Reemplaza en la comparación de modelos (y en el capítulo de Word) al «${esc(etiqueta)}» que ajustaste antes: hay un modelo de cada papel. Para compararlos, ajusta cada uno con un papel distinto en «¿Qué papel juega este modelo?».</p>`;
         const op = R.optimizacion || {};
         h += R.convergio
             ? `<p class="help-text" style="margin:0 0 0.4rem;">${R.estimador === 'WLSMV'
-                ? `WLSMV · DWLS sobre correlaciones policóricas con ${op.metodo} y gradiente analítico · convergió en ${op.iteraciones} iteraciones · errores estándar robustos · χ² corregido en media y varianza (DWLS sin corregir: ${Number(R.chi2DWLS).toFixed(2)})`
+                ? `WLSMV · DWLS sobre correlaciones policóricas con ${op.metodo} y gradiente analítico · convergió en ${op.iteraciones} iteraciones · errores estándar robustos · χ² corregido en media y varianza (DWLS sin corregir: ${fx(R.chi2DWLS, 2)})`
                 : `Máxima verosimilitud · ${op.metodo} con gradiente analítico · convergió en ${op.iteraciones} iteraciones (gradiente escalado máx. = ${Number(op.gradienteMax).toExponential(1)}) · errores estándar por la información esperada`}.</p>`
             : `<p class="help-text" style="margin:0 0 0.4rem;color:var(--color-warning);">⚠️ La estimación no convergió (${op.estado || 'motivo desconocido'}): los resultados no son interpretables. Revisa la identificación del modelo o simplifícalo.</p>`;
         h += avisosModelo;
         for (const [tipo, titulo] of Object.entries(grupos)) {
             const ps = R.parametros.filter(p => p.tipo === tipo);
             if (!ps.length) continue;
+            // (2027.01.14, revisión) cada tabla, desplazable dentro de su recuadro: en un teléfono (360), la de parámetros hacía la
+            // página de 515 de ancho
             h += `<p style="margin:0.4rem 0 0.1rem;"><b>${titulo}</b></p>
-            <table style="border-collapse:collapse;font-size:0.92em;">
+            <div class="tabla-ancha"><table style="border-collapse:collapse;font-size:0.92em;">
             <tr>${['Parámetro', 'Estimado', 'Estandarizado', 'EE', 'z', 'p'].map(c => `<th style="border:1px solid #ddd;padding:0.3rem 0.5rem;background:#f5f5f5;">${c}</th>`).join('')}</tr>`
             + ps.map(p => `<tr>${[esc(p.nombre), fx(p.estimado), p.tipo === 'coeficiente' ? fx(this._std(R, p.nombre, p.estimado), 2) : '—', fx(p.se), fx(p.z, 2), fp(p.pValor)]
-                .map(c => `<td style="border:1px solid #ddd;padding:0.3rem 0.5rem;">${c}</td>`).join('')}</tr>`).join('') + `</table>`;
+                .map(c => `<td style="border:1px solid #ddd;padding:0.3rem 0.5rem;">${c}</td>`).join('')}</tr>`).join('') + `</table></div>`;
         }
         if (R.validez) {   // (2026.10.16) validez convergente y discriminante
-            const tabla = (cab, filas) => `<table style="border-collapse:collapse;font-size:0.92em;"><tr>${cab.map(c => `<th style="border:1px solid #ddd;padding:0.3rem 0.5rem;background:#f5f5f5;">${esc(c)}</th>`).join('')}</tr>${filas.map(f => `<tr>${f.map(c => `<td style="border:1px solid #ddd;padding:0.3rem 0.5rem;">${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`;
+            const tabla = (cab, filas) => `<div class="tabla-ancha"><table style="border-collapse:collapse;font-size:0.92em;"><tr>${cab.map(c => `<th style="border:1px solid #ddd;padding:0.3rem 0.5rem;background:#f5f5f5;">${esc(c)}</th>`).join('')}</tr>${filas.map(f => `<tr>${f.map(c => `<td style="border:1px solid #ddd;padding:0.3rem 0.5rem;">${esc(c)}</td>`).join('')}</tr>`).join('')}</table></div>`;
             h += `<h4 style="margin:0.7rem 0 0.2rem;">Validez convergente y discriminante</h4>${tabla(CABECERA_VALIDEZ, filasValidez(R.validez))}`;
             if (R.validez.porFactor.length > 1) h += `<p style="margin:0.4rem 0 0.1rem;"><b>HTMT</b></p>${tabla(cabeceraHTMT(R.validez), filasHTMT(R.validez))}`;
             h += `<p class="help-text" style="margin:0.3rem 0;"><em>Nota.</em> ${NOTA_VALIDEZ}</p><p style="margin:0.3rem 0;">${esc(redactarValidez(R.validez))}</p>`;

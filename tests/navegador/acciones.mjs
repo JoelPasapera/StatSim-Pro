@@ -81,7 +81,9 @@ export async function subirArchivo(pagina, selector, { nombre, bytes, tipo = 'ap
 
 /**
  * @typedef {{ bytes: Buffer, texto: string }} Impreso
- *   bytes: el PDF; texto: lo que dice el papel (el texto de la página con los estilos de impresión: sin lo que estos ocultan)
+ *   bytes: el PDF; texto: lo que dice el papel (el texto de la página con los estilos de impresión: sin lo que estos ocultan) y,
+ *   (2027.01.09) al final, lo que llevan los recuadros de texto que se imprimen (la sintaxis del SEM), cada uno en su línea: su
+ *   contenido no está en innerText, y hasta la 2027.01.08 lo impreso se comparaba sin él
  */
 
 /**
@@ -97,7 +99,10 @@ export async function imprimirPDF(pagina) {
     await pagina.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
     await pagina.emulateMedia({ media: 'print' });
     try {
-        const texto = await pagina.evaluate(() => document.fonts.ready.then(() => document.body.innerText));
+        const texto = await pagina.evaluate(() => document.fonts.ready.then(() => {
+            const recuadros = [...document.querySelectorAll('textarea')].filter(t => t.getClientRects().length > 0).map(t => t.value);
+            return [document.body.innerText, ...recuadros].join('\n');
+        }));
         const bytes = await pagina.pdf({ format: 'A4', printBackground: true, preferCSSPageSize: true });
         return { bytes, texto };
     } finally {
