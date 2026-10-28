@@ -1,6 +1,6 @@
 # 📊 StatSim Pro
 
-Entra a la página web dando el el siguiente enlace: https://joelpasapera.github.io/StatSim-Pro/
+Entra a la página web dando click en el siguiente enlace: https://joelpasapera.github.io/StatSim-Pro/
 
 > *El pensamiento crítico no se reemplaza; se potencia. Como cualquier herramienta, esto existe para ampliar nuestras capacidades, no para sustituirlas. Al hacerse cargo de las tareas más mecánicas y repetitivas, nos libera para concentrarnos en aquello que genera verdadero valor: pensar, cuestionar, crear e innovar.*
 
