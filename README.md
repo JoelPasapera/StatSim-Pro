@@ -10,7 +10,7 @@ StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investiga
 
 <p align="center">
   <a href="https://joelpasapera.github.io/StatSim-Pro/" title="Abrir StatSim Pro en el navegador">
-    <img src="docs/img/abrir-statsim-pro.svg" width="440" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
+    <img src="abrir-statsim-pro.svg" width="440" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
   </a>
 </p>
 
@@ -427,7 +427,7 @@ StatSim Pro se distribuye con la [licencia Apache 2.0](LICENSE.txt). Quien parti
 
 <p align="center">
   <a href="https://joelpasapera.github.io/StatSim-Pro/" title="Abrir StatSim Pro en el navegador">
-    <img src="docs/img/abrir-statsim-pro.svg" width="360" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
+    <img src="abrir-statsim-pro.svg" width="440" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
   </a>
 </p>
 
