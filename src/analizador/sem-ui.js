@@ -373,9 +373,11 @@ const SEMUI = {
         if (E.error) { if (out) out.innerHTML = `<p class="help-text">⚠️ ${esc(E.error)}</p>`; return; }
         const color = { ok: '#e8f6ee|#2e8b57', aviso: '#fff8e1|#f0ad4e', alto: '#fdecea|#c0392b' };
         let h = `<h4 style="margin:0 0 0.3rem;">Motor de decisión: ${E.nivelGlobal === 'ok' ? '🟢 adelante' : E.nivelGlobal === 'aviso' ? '🟡 adelante con cautelas' : '🔴 reconsidera antes de ajustar'}</h4>`;
+        // (2027.01.16, revisión) escapados: los títulos llevan el nombre de los factores tal como lo escribe la sintaxis («El
+        // factor F1<u>…» subrayaba lo que seguía, y un <img onerror> se ejecutaba al pulsar el botón)
         E.veredictos.forEach(v => {
             const [bg, bd] = color[v.nivel].split('|');
-            h += `<div style="margin:0.35rem 0;padding:0.5rem 0.7rem;background:${bg};border-left:3px solid ${bd};border-radius:0.3rem;font-size:0.92em;"><b>${v.titulo}.</b> ${v.texto}</div>`;
+            h += `<div style="margin:0.35rem 0;padding:0.5rem 0.7rem;background:${bg};border-left:3px solid ${bd};border-radius:0.3rem;font-size:0.92em;"><b>${esc(v.titulo)}.</b> ${esc(v.texto)}</div>`;
         });
         if (out) out.innerHTML = h;
     },

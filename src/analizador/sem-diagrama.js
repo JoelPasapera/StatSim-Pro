@@ -831,7 +831,54 @@ function trazar(nodos, rutas, { lado, cargasDeLado, celda }) {
         }
         if (!movidos) break;
     }
+    // (2027.01.16, revisión) Dos coeficientes que siguen uno sobre otro, los dos a la vez: la pareja de sitios que menos tapa
+    // entre los dos. Dos regresiones cortas que se cruzan por su medio dejaban el primero en el centro del cruce, tapando todos
+    // los sitios del segundo; y al recolocar, cada uno, probado con el otro quieto, no se movía (en 3 de 250 modelos de rutas).
+    for (const [f, g] of flechas.flatMap((f, i) => flechas.slice(i + 1).filter(g => solapan(f.etiqueta, g.etiqueta)).map(g => [f, g]))) {
+        if (solapan(f.etiqueta, g.etiqueta)) separar(f, g);
+    }
     return flechas;
+
+    /**
+     * Mueve a la vez los coeficientes de dos flechas a la pareja de sus sitios que menos tapa entre los dos (si tapa menos que
+     * donde están). Lo que tapa cada uno en cada uno de sus sitios se mide una vez, con el otro coeficiente apartado: en una
+     * pareja de sitios solo cambia si los dos se montan (cada uno cuenta el otro coeficiente, 20, en lugar del trazo de su
+     * flecha, 1, si pasaba por él). Da lo mismo que medir cada pareja, con una medida por sitio en lugar de dos por pareja (midiendo
+     * cada pareja, con 24 factores correlacionados el diagrama tardaba la mitad más).
+     * @param {Flecha} f @param {Flecha} g
+     */
+    function separar(f, g) {
+        const ef = f.etiqueta, eg = g.etiqueta;
+        let mejor = { qf: { x: ef.x, y: ef.y }, qg: { x: eg.x, y: eg.y }, coste: costeDe(ef, f) + costeDe(eg, g) };
+        const sf = /** @type {Punto[]} */ (sitiosDe.get(f)), sg = /** @type {Punto[]} */ (sitiosDe.get(g));
+        const cf = aSolas(f, g, sf), cg = aSolas(g, f, sg);
+        for (let i = 0; i < sf.length; i++) {
+            for (let j = 0; j < sg.length; j++) {
+                const juntos = solapan({ ...sf[i], w: ef.w, h: ef.h }, { ...sg[j], w: eg.w, h: eg.h });
+                const coste = cf[i].coste + cg[j].coste + (juntos ? 40 - cf[i].trazo - cg[j].trazo : 0);
+                if (coste < mejor.coste) mejor = { qf: sf[i], qg: sg[j], coste };
+            }
+        }
+        Object.assign(ef, { x: mejor.qf.x, y: mejor.qf.y });
+        Object.assign(eg, { x: mejor.qg.x, y: mejor.qg.y });
+    }
+    /**
+     * Lo que tapa el coeficiente de una flecha en cada uno de sus sitios con el de la otra apartado, y si pasa por él el trazo
+     * de esa otra (1 o 0). Deja los dos coeficientes donde estaban.
+     * @param {Flecha} propia @param {Flecha} otra @param {Punto[]} sitios
+     * @returns {{ coste: number, trazo: number }[]}
+     */
+    function aSolas(propia, otra, sitios) {
+        const e = propia.etiqueta, o = otra.etiqueta, antes = { x: e.x, y: e.y }, antesOtra = { x: o.x, y: o.y };
+        Object.assign(o, { x: -1e9, y: -1e9 });
+        const medidas = sitios.map(q => {
+            Object.assign(e, { x: q.x, y: q.y });
+            return { coste: costeDe(e, propia), trazo: toca(otra.limites, e) && pasaPor(otra.trozos, e) ? 1 : 0 };
+        });
+        Object.assign(e, antes);
+        Object.assign(o, antesOtra);
+        return medidas;
+    }
 
     /**
      * Lo que tapa el coeficiente de una flecha en ese sitio: 0, nada (ni una variable, ni otro coeficiente, ni el trazo de otra

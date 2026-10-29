@@ -312,13 +312,45 @@ test('(2027.01.14, revisión) el aviso de identificación, con su causa: dos pre
     // sin latentes ni variables casi iguales: dos rutas recíprocas cuyas ecuaciones tienen las mismas exógenas (ninguna las
     // identifica); con una exógena propia en cada una, identificado
     const reciprocas = aviso(SEM.ajustar('X1 ~ X2 + X5 + X6\nX2 ~ X1 + X5 + X6\nX3 ~ X5', null, 'x'));
-    assert.match(reciprocas, /en un modelo de rutas, suele deberse a unas rutas recíprocas sin variables que las identifiquen/);
+    assert.match(reciprocas, /unas rutas recíprocas \(«X[12]» ⇄ «X[12]»\) sin variables que las identifiquen/);
     assert.doesNotMatch(reciprocas, /factor/);
     assert.equal(aviso(SEM.ajustar('X1 ~ X2 + X5\nX2 ~ X1 + X6\nX3 ~ X5', null, 'x')), '', 'cada una con su exógena, identificado');
     // una información que no se puede calcular (con θ = 0, la Σ implicada es nula: no se invierte), singular: sus errores estándar
     // no son fiables (hasta la 2027.01.13 lo decidía aparte el motor, y ninguna prueba lo veía)
     const est = SEM._construir(SEM.parsear('F1 =~ X1 + X2 + X3'), [[1, 0.5, 0.5], [0.5, 1, 0.5], [0.5, 0.5, 1]], ['X1', 'X2', 'X3']);
     assert.deepEqual(inferenciaInformacion(est, est.libres.map(() => 0), 400), { se: null, singular: true });
+});
+
+test('(2027.01.16, revisión) la causa del aviso de identificación: lo que tiene el modelo, con sus nombres (unas rutas recíprocas, también con latentes); los umbrales de 0,999 (una pareja a r = 0,97 o un R² de 0,98 no son la causa); y ningún R² fuera de [0, 1] con una matriz no definida positiva', () => {
+    // las columnas del fixture, más X1b (X1 con ruido: r = 0,97 con ella) y M3r (la media de X1 a X3 con ruido: R² = 0,98 con ellas)
+    let s = 20271016 >>> 0;
+    const u = () => { s = (s + 0x6D2B79F5) >>> 0; let x = s; x = Math.imul(x ^ (x >>> 15), x | 1); x ^= x + Math.imul(x ^ (x >>> 7), x | 61); return ((x ^ (x >>> 14)) >>> 0) / 4294967296; };
+    const nrm = () => Math.sqrt(-2 * Math.log(u() || 1e-12)) * Math.cos(2 * Math.PI * u());
+    AnalizadorEstadistico.cargarDatos(afe.cols[0].map((_, i) => {
+        const fila = Object.fromEntries(nombres.map((nm, j) => [nm, afe.cols[j][i]]));
+        return { ...fila, X1b: Number((afe.cols[0][i] + 0.32 * nrm()).toFixed(3)), M3r: Number(((afe.cols[0][i] + afe.cols[1][i] + afe.cols[2][i]) / 3 + 0.13 * nrm()).toFixed(3)) };
+    }));
+    const aviso = (/** @type {any} */ R) => R.avisos.find((/** @type {string} */ a) => /no parece identificado/.test(a)) || '';
+    // un segundo orden de dos factores (sin identificar) con dos ítems a r = 0,97, o con uno que es casi la media de otros tres
+    // (R² = 0,98): la causa es el segundo orden, no ellos (con los umbrales a 0,9, se los culpaba)
+    for (const sx of ['F1 =~ X1 + X1b + X3 + X4\nF2 =~ X5 + X6 + X7 + X8\nG =~ F1 + F2', 'F1 =~ X1 + X2 + X3 + M3r\nF2 =~ X5 + X6 + X7 + X8\nG =~ F1 + F2']) {
+        const a = aviso(SEM.ajustar(sx, null, 'x'));
+        assert.match(a, /Suele deberse a un factor de segundo orden con solo dos factores \(«G»\)/, sx);
+        assert.doesNotMatch(a, /casi perfectamente correlacionadas|combinación lineal/, sx);
+    }
+    // un factor de cuatro ítems aparte y unas rutas recíprocas entre observadas: las rutas, con sus nombres (hasta la 2027.01.15,
+    // con alguna latente decía siempre «un factor de solo dos indicadores… o un factor de segundo orden», que el modelo no tiene)
+    const mixto = aviso(SEM.ajustar('F =~ X7 + X8 + X9 + X10\nX1 ~ X2 + X5 + X6\nX2 ~ X1 + X5 + X6', null, 'x'));
+    assert.match(mixto, /Suele deberse a unas rutas recíprocas \(«X[12]» ⇄ «X[12]»\) sin variables que las identifiquen/, mixto);
+    assert.doesNotMatch(mixto, /factor/);
+    // un bucle de tres regresiones, con su orden
+    assert.deepEqual(SEM._bucleDeRegresiones([{ y: 'B', xs: ['A'] }, { y: 'C', xs: ['B', 'X'] }, { y: 'A', xs: ['C'] }]), ['A', 'B', 'C']);
+    assert.equal(SEM._bucleDeRegresiones([{ y: 'B', xs: ['A'] }, { y: 'C', xs: ['B', 'A'] }]), null, 'sin bucle');
+    // una matriz de correlaciones no definida positiva de determinante positivo (dos autovalores negativos, posible en una
+    // policórica): sin R² (daba «R² = 4.4806 con ellas»)
+    const R = [[1, -0.196, 0.225, -0.933, 0.665], [-0.196, 1, -0.55, 0.299, -0.895], [0.225, -0.55, 1, 0.457, 0.183], [-0.933, 0.299, 0.457, 1, -0.746], [0.665, -0.895, 0.183, -0.746, 1]];
+    const causa = SEM._causaDeLaSingularidad({ latentes: { F: ['i1', 'i2', 'i3', 'i4', 'i5'] }, regresiones: [] }, R, ['i1', 'i2', 'i3', 'i4', 'i5']);
+    assert.doesNotMatch(causa, /R² =/, causa);
 });
 
 test('(2027.01.13, revisión) el diagrama: con WLSMV, una covarianza entre dos ítems con su correlación (con la varianza residual de cada uno, 1 − su comunalidad; salía «↔»), y nada con «-0.00»', async () => {

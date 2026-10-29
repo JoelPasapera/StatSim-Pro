@@ -1,13 +1,13 @@
 {
   "formato": 1,
-  "version": "2027.01.15",
+  "version": "2027.01.16",
   "casos": [
     {
       "carpeta": "01-correlacional",
       "titulo": "Estrés académico y bienestar psicológico",
       "diseno": "Correlacional",
       "resumen": "Dos instrumentos de tres dimensiones: normalidad, correlación de Spearman, objetivos específicos por dimensiones con Holm, fiabilidad y el capítulo de Word completo.",
-      "version": "2027.01.15",
+      "version": "2027.01.16",
       "destacados": [
         "Estrés y bienestar: ρ = −.40, p < .001",
         "5 de 5 objetivos específicos significativos tras Holm",
@@ -94,7 +94,7 @@
         },
         {
           "ruta": "proyecto.statsim",
-          "bytes": 29894,
+          "bytes": 29893,
           "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
         },
         {
@@ -114,7 +114,7 @@
         },
         {
           "ruta": "simulador/base_datos_simulada.xlsx",
-          "bytes": 56944,
+          "bytes": 56942,
           "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
         },
         {
@@ -139,7 +139,7 @@
       "titulo": "Ansiedad ante los exámenes según el sexo y el grado",
       "diseno": "Comparativo",
       "resumen": "Diferencias pedidas como d de Cohen: Mann-Whitney por sexo, Kruskal-Wallis por grado con post hoc de Holm, χ² del nivel con el sexo y una base con respuestas perdidas.",
-      "version": "2027.01.15",
+      "version": "2027.01.16",
       "destacados": [
         "Según el sexo: U = 7818, p < .001",
         "Según el grado: H(2) = 12.39, p = .002",
@@ -270,7 +270,7 @@
         },
         {
           "ruta": "analizador/1-capitulo/resultados.pdf",
-          "bytes": 1024209,
+          "bytes": 1024208,
           "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
         },
         {
@@ -330,7 +330,7 @@
         },
         {
           "ruta": "simulador/verificacion_de_la_base.pdf",
-          "bytes": 76665,
+          "bytes": 76666,
           "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
         }
       ]
@@ -340,7 +340,7 @@
       "titulo": "Predictores del rendimiento y del riesgo de deserción",
       "diseno": "Predictivo",
       "resumen": "Regresión lineal múltiple del promedio (β, VIF, R²) y regresión logística del riesgo de deserción, el desenlace binario «No/Sí» del Simulador (OR con su intervalo).",
-      "version": "2027.01.15",
+      "version": "2027.01.16",
       "destacados": [
         "Regresión múltiple del promedio: R² = .255, p < .001",
         "Regresión logística del riesgo: pseudo-R² = .180",
@@ -511,7 +511,7 @@
         },
         {
           "ruta": "simulador/verificacion_de_la_base.pdf",
-          "bytes": 78800,
+          "bytes": 78799,
           "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
         }
       ]
@@ -521,7 +521,7 @@
       "titulo": "Propiedades psicométricas de una escala de procrastinación académica",
       "diseno": "Instrumental",
       "resumen": "V de Aiken con 7 jueces, AFE con correlaciones policóricas y análisis paralelo, AFC por WLSMV frente a un modelo rival, invarianza según el sexo, fiabilidad α y ω y validez convergente.",
-      "version": "2027.01.15",
+      "version": "2027.01.16",
       "destacados": [
         "V de Aiken: 7 de 15 ítems válidos",
         "AFE: 3 factores, KMO = .91",
@@ -720,12 +720,12 @@
         },
         {
           "ruta": "analizador/4-capitulo/resultados.pdf",
-          "bytes": 1511167,
+          "bytes": 1511169,
           "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
         },
         {
           "ruta": "proyecto.statsim",
-          "bytes": 24647,
+          "bytes": 24646,
           "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
         },
         {
@@ -760,7 +760,7 @@
         },
         {
           "ruta": "simulador/verificacion_de_la_base.pdf",
-          "bytes": 73048,
+          "bytes": 73050,
           "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
         }
       ]
@@ -770,7 +770,7 @@
       "titulo": "Apoyo social, autoeficacia y engagement académico",
       "diseno": "Explicativo (SEM)",
       "resumen": "Modelo de ecuaciones estructurales con tres variables latentes por WLSMV, comparado con un rival de mediación completa; validez convergente (AVE y fiabilidad compuesta) y la regresión de los puntajes.",
-      "version": "2027.01.15",
+      "version": "2027.01.16",
       "destacados": [
         "Mediación parcial: CFI = .997, RMSEA = .019",
         "Camino directo del apoyo al engagement: 0.13, p = .016"
@@ -896,7 +896,7 @@
         },
         {
           "ruta": "simulador/base_datos_simulada.xlsx",
-          "bytes": 36177,
+          "bytes": 36175,
           "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
         },
         {

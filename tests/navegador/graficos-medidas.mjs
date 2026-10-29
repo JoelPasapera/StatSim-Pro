@@ -280,12 +280,19 @@ export const PIXELES_DE_DIBUJO = 20;
  * histograma tapado por un rectángulo blanco, el 1 %).
  */
 export const PARTE_VISIBLE_DEL_DIBUJO = 0.25;
+/**
+ * (2027.01.16, revisión) Y la parte de su tinta (lo que cambian la luminancia, sumado) que debe verse en el gráfico como sale:
+ * un velo blanco translúcido pintado encima deja el 40 % con el 60 % de opacidad y el 30 % con el 70 %, pero cambia lo bastante
+ * casi todos sus píxeles, así que contándolos no se veía.
+ */
+export const PARTE_DE_LA_TINTA = 0.5;
 
 /**
  * (2027.01.14, revisión) Los píxeles en que difieren dos capturas del mismo tamaño (con una luminancia que cambia en más de
- * 20): los de lo que se ve de las marcas de datos, entre el gráfico como sale y el mismo sin ellas. -1 si no miden lo mismo.
+ * 20): los de lo que se ve de las marcas de datos, entre el gráfico como sale y el mismo sin ellas; y (2027.01.16, revisión) lo
+ * que cambia la luminancia, sumado en todos (`suma`, la tinta de lo que difiere). -1 en los dos si no miden lo mismo.
  * @param {any} pagina @param {string} a @param {string} b en base64
- * @returns {Promise<number>}
+ * @returns {Promise<{ n: number, suma: number }>}
  */
 const pixelesDistintos = (pagina, a, b) => pagina.evaluate(async (/** @type {{ a: string, b: string }} */ { a, b }) => {
     /** @param {string} b64 */
@@ -303,12 +310,14 @@ const pixelesDistintos = (pagina, a, b) => pagina.evaluate(async (/** @type {{ a
         return x.getImageData(0, 0, c.width, c.height).data;
     };
     const [da, db] = await Promise.all([leer(a), leer(b)]);
-    if (da.length !== db.length) return -1;
-    let n = 0;
+    if (da.length !== db.length) return { n: -1, suma: -1 };
+    let n = 0, suma = 0;
     for (let i = 0; i < da.length; i += 4) {
-        if (Math.abs((0.2126 * da[i] + 0.7152 * da[i + 1] + 0.0722 * da[i + 2]) - (0.2126 * db[i] + 0.7152 * db[i + 1] + 0.0722 * db[i + 2])) > 20) n++;
+        const d = Math.abs((0.2126 * da[i] + 0.7152 * da[i + 1] + 0.0722 * da[i + 2]) - (0.2126 * db[i] + 0.7152 * db[i + 1] + 0.0722 * db[i + 2]));
+        suma += d;
+        if (d > 20) n++;
     }
-    return n;
+    return { n, suma };
 }, { a, b });
 
 /**
@@ -365,12 +374,15 @@ export async function graficosSinTinta(pagina, raizSel) {
                 // (lo que cambian solas, sobre nada). Midiendo las marcas solas, algo opaco pintado encima de ellas (un rectángulo
                 // blanco sobre el histograma) no contaba
                 await conEstilo(ESTILOS.nada);
-                const ocupan = await pixelesDistintos(pagina, solas, (await zona.screenshot()).toString('base64'));
+                const solasSobreNada = await pixelesDistintos(pagina, solas, (await zona.screenshot()).toString('base64'));
                 await conEstilo('');
                 const entero = (await zona.screenshot()).toString('base64');
                 await conEstilo(ESTILOS.sinMarcas);
-                const visibles = await pixelesDistintos(pagina, entero, (await zona.screenshot()).toString('base64'));
+                const aLaVista = await pixelesDistintos(pagina, entero, (await zona.screenshot()).toString('base64'));
+                const ocupan = solasSobreNada.n, visibles = aLaVista.n;
                 if (visibles < Math.max(PIXELES_DE_DIBUJO, PARTE_VISIBLE_DEL_DIBUJO * ocupan)) blancos.push(`${g.nombre} (sus marcas de datos, tapadas: se ven ${Math.max(0, visibles)} de sus ${ocupan} píxeles)`);
+                // (2027.01.16, revisión) y con su tinta: bajo un velo blanco translúcido se ven casi todos sus píxeles, desvaídos
+                else if (aLaVista.suma < PARTE_DE_LA_TINTA * solasSobreNada.suma) blancos.push(`${g.nombre} (sus marcas de datos, tapadas por un velo: se ve el ${(100 * Math.max(0, aLaVista.suma) / solasSobreNada.suma).toFixed(0)} % de su tinta)`);
             } else {
                 await conEstilo('');
                 const tinta = await conTinta(pagina, (await zona.screenshot()).toString('base64'));

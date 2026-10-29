@@ -44,9 +44,17 @@ test('(2027.01.14) los avisos y los errores del SEM, escapados, en la tarjeta y 
     SEMUI._onAjustar();
     assert.equal(out.querySelectorAll('img').length, 0, out.innerHTML);
     assert.match(out.textContent, /Línea no reconocida en la sintaxis del modelo: «<img src=x onerror=alert\(1\)>»/);
-    // y el motor de decisión («Evaluar el modelo»), con el mismo error
+    // y el motor de decisión («¿Es adecuado usar SEM aquí?»), con el mismo error
     SEMUI._onEvaluar();
     const decision = /** @type {any} */ (document.getElementById('semDecision'));
     assert.equal(decision.querySelectorAll('img').length, 0, decision.innerHTML);
     assert.match(decision.textContent, /«<img src=x onerror=alert\(1\)>»/);
+    // (2027.01.16, revisión) y sus veredictos, que nombran los factores como los escribe la sintaxis: hasta la 2027.01.15 iban sin
+    // escapar («El factor F1<u>…» subrayaba lo que seguía; un factor llamado «<img/src/onerror=…>» ejecutaba su onerror)
+    for (const nombre of ['F1<u>', '<img/src/onerror=alert(1)>']) {
+        sintaxis.value = `${nombre} =~ X2 + X3 + X4`;
+        SEMUI._onEvaluar();
+        assert.equal(decision.querySelectorAll('u, img').length, 0, decision.innerHTML);
+        assert.ok(decision.textContent.includes(`El factor ${nombre} está justo identificado (3 indicadores)`), decision.textContent.slice(0, 400));
+    }
 });

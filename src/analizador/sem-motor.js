@@ -323,7 +323,8 @@ const SEM = {
      * (un marcador escrito dos veces, un factor de segundo orden de dos factores) daba sus errores estándar (de 26 a 10⁶) y
      * sus p sin aviso. (2027.01.14, revisión) Con su causa probable (`_causaDeLaSingularidad`): hasta la 2027.01.13 daba
      * siempre las de las latentes, también en un modelo de rutas sin latentes con dos predictores casi iguales.
-     * @param {{ latentes: Record<string, string[]>, repetidos?: string[] }} modelo @param {{ repetidos: string[] }} est
+     * @param {{ latentes: Record<string, string[]>, regresiones: Array<{ y: string, xs: string[] }>, repetidos?: string[] }} modelo
+     * @param {{ repetidos: string[] }} est
      * @param {boolean} singular @param {number[][]} R las correlaciones de las observadas (con WLSMV, las policóricas)
      * @param {string[]} nombres las observadas
      * @returns {string[]}
@@ -337,24 +338,75 @@ const SEM = {
     /**
      * (2027.01.14, revisión) La causa probable de una información singular: dos observadas casi perfectamente correlacionadas
      * (|r| > 0,999, como un total y su media redondeada) o una casi combinación lineal de las demás (R² > 0,999 con ellas), que
-     * el modelo no puede separar aunque esté identificado; si no, las de las latentes (un factor de dos indicadores que no se
-     * relaciona con nada más, un factor de segundo orden de dos factores) o, sin latentes, unas rutas recíprocas.
-     * @param {{ latentes: Record<string, string[]> }} modelo @param {number[][]} R @param {string[]} nombres
+     * el modelo no puede separar aunque esté identificado; si no, lo que tiene el modelo que suele dejarlo sin identificar
+     * (_causasDeLaEspecificacion).
+     * @param {{ latentes: Record<string, string[]>, regresiones: Array<{ y: string, xs: string[] }> }} modelo
+     * @param {number[][]} R @param {string[]} nombres
      * @returns {string}
      */
     _causaDeLaSingularidad(modelo, R, nombres) {
         const p = nombres.length;
-        // la observada mejor explicada por las demás: R²ⱼ = 1 − 1/(R⁻¹)ⱼⱼ (sin inversa, una de una pareja con r de ±1)
-        const ri = p > 1 ? this._invLogDet(R) : null;
+        // la observada mejor explicada por las demás: R²ⱼ = 1 − 1/(R⁻¹)ⱼⱼ, solo con R definida positiva (2027.01.16, revisión:
+        // una policórica con dos autovalores negativos tiene determinante positivo y daba un R² de 4,48); sin ella, una pareja
+        const ri = p > 1 ? inversaYLogDet(R) : null;
         let j = -1, R2 = 1;
         if (ri) for (let k = 0; k < p; k++) { const r2 = 1 - 1 / ri.inv[k][k]; if (j < 0 || r2 > R2) { j = k; R2 = r2; } }
         let a = -1, b = -1, r = 0;
         for (let x = 0; x < p; x++) for (let y = x + 1; y < p; y++) if ((j < 0 || x === j || y === j) && Math.abs(R[x][y]) > Math.abs(r)) { a = x; b = y; r = R[x][y]; }
         if (a >= 0 && Math.abs(r) > 0.999) return `«${nombres[a]}» y «${nombres[b]}» están casi perfectamente correlacionadas (r = ${r.toFixed(4)}): el modelo no puede separar lo que aporta cada una (como un total y su media). Deja solo una.`;
         if (j >= 0 && R2 > 0.999) return `«${nombres[j]}» es casi una combinación lineal de otras variables del modelo (R² = ${R2.toFixed(4)} con ellas): el modelo no puede separar lo que aporta cada una. Quita alguna.`;
-        return Object.keys(modelo.latentes).length
-            ? 'Suele deberse a un factor de solo dos indicadores que no se relaciona con nada más o a un factor de segundo orden con solo dos factores; revisa la especificación.'
-            : 'Revisa la especificación: en un modelo de rutas, suele deberse a unas rutas recíprocas sin variables que las identifiquen.';
+        return this._causasDeLaEspecificacion(modelo);
+    },
+
+    /**
+     * (2027.01.16, revisión) Lo que tiene el modelo que suele dejarlo sin identificar, con sus nombres: unas rutas recíprocas
+     * (un bucle de regresiones), un factor de solo dos indicadores, un factor de segundo orden de solo dos factores; sin nada
+     * de eso, una frase neutra con las tres. Hasta la 2027.01.15, con alguna latente daba siempre las dos de las latentes
+     * (también con un factor de cuatro ítems y unas rutas recíprocas entre observadas), y sin latentes, las rutas recíprocas.
+     * @param {{ latentes: Record<string, string[]>, regresiones: Array<{ y: string, xs: string[] }> }} modelo
+     * @returns {string}
+     */
+    _causasDeLaEspecificacion(modelo) {
+        const latentes = modelo.latentes, nombres = Object.keys(latentes);
+        /** @type {string[]} */
+        const causas = [];
+        const bucle = this._bucleDeRegresiones(modelo.regresiones || []);
+        if (bucle) causas.push(`unas rutas recíprocas (${bucle.length === 2 ? `«${bucle[0]}» ⇄ «${bucle[1]}»` : [...bucle, bucle[0]].map(v => `«${v}»`).join(' → ')}) sin variables que las identifiquen`);
+        const deDos = nombres.filter(F => latentes[F].length === 2 && !latentes[F].some(v => v in latentes));
+        if (deDos.length) causas.push(`un factor de solo dos indicadores (${deDos.map(F => `«${F}»`).join(', ')}), que solo se identifica si se relaciona con otro`);
+        const segundo = nombres.filter(G => latentes[G].length === 2 && latentes[G].every(v => v in latentes));
+        if (segundo.length) causas.push(`un factor de segundo orden con solo dos factores (${segundo.map(G => `«${G}»`).join(', ')})`);
+        if (!causas.length) return 'Revisa la especificación: hay parámetros que el modelo no puede separar (suele deberse a un factor de solo dos indicadores que no se relaciona con nada más, a un factor de segundo orden con solo dos factores o a unas rutas recíprocas sin variables que las identifiquen).';
+        const lista = causas.length === 1 ? causas[0] : `${causas.slice(0, -1).join(', ')} o ${causas[causas.length - 1]}`;
+        return `Suele deberse a ${lista}; revisa la especificación.`;
+    },
+
+    /**
+     * (2027.01.16, revisión) Un bucle de regresiones (rutas recíprocas: «y1 ~ y2» y «y2 ~ y1», o uno más largo), con sus
+     * variables en orden, o null. Búsqueda en profundidad sobre el grafo de las regresiones (de cada predictora a su variable).
+     * @param {Array<{ y: string, xs: string[] }>} regresiones
+     * @returns {string[] | null}
+     */
+    _bucleDeRegresiones(regresiones) {
+        /** @type {Map<string, string[]>} */
+        const sale = new Map();
+        for (const r of regresiones) for (const x of r.xs) sale.set(x, [...(sale.get(x) || []), r.y]);
+        /** @type {Map<string, number>} 1: en el camino; 2: terminada */
+        const estado = new Map();
+        /** @type {string[]} */
+        const camino = [];
+        /** @param {string} v @returns {string[] | null} */
+        const visitar = v => {
+            estado.set(v, 1); camino.push(v);
+            for (const w of sale.get(v) || []) {
+                if (estado.get(w) === 1) return camino.slice(camino.indexOf(w));
+                if (!estado.has(w)) { const b = visitar(w); if (b) return b; }
+            }
+            estado.set(v, 2); camino.pop();
+            return null;
+        };
+        for (const v of sale.keys()) if (!estado.has(v)) { const b = visitar(v); if (b) return b; }
+        return null;
     },
 
     // ═════════════════ WLSMV (ítems ordinales; 2026.10.15) ═════════════════

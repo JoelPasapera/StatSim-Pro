@@ -1,6 +1,6 @@
 {
   "caso": "04-instrumental",
-  "version": "2027.01.15",
+  "version": "2027.01.16",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
@@ -14441,12 +14441,12 @@
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 19761,
-      "sha256": "63bdb9ebbff6d62e90bd032a51795339ecb50b37138055b80d9047502fa995a0",
+      "sha256": "0d068dd788e6d9dc063654779ca329d8a29950ccc45d4b8b1090620cc3fe1a55",
       "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 50358,
-      "sha256": "92f9b51e37b9882a59124702fc584e2a927a7a72a0bf2fce07d8809c6e08b2b0",
+      "sha256": "3cb1f292e7191ce7a003dc568e4238ada24b61382ddda9e681ba160fd2154566",
       "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
@@ -14460,10 +14460,10 @@
       "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 73048,
-      "sha256": "0309629da62b33e129e88e5b3e39df0923863d930184b8fa419c9a1b3a2314f6",
+      "bytes": 73050,
+      "sha256": "129e55a831c0c194387180f8eeedbf810ac38026b0ad56afa0bf606e2e929148",
       "paginas": 2,
-      "impreso": "aac3b96f020711741c51e51e96345c175ec44ce82ee91fc172235ca2ac026b00",
+      "impreso": "5a6ba0afbd7c11332bc5df4e4127286b1ef6132caff561af915ee4dd616c67dd",
       "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-validez-de-contenido/valoraciones_claridad.csv": {
@@ -14517,15 +14517,15 @@
       "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/4-capitulo/resultados.pdf": {
-      "bytes": 1511167,
-      "sha256": "bb0ed8e07286115111f394a81e477e36b9259cf71e54b3bedd5bf6f4a8cc34eb",
+      "bytes": 1511169,
+      "sha256": "ecba47e610d4073e35eeac1b4da0d1e9540c818898ff54afc989b424123356be",
       "paginas": 39,
-      "impreso": "0a7e1c6dc6c5b851cec53469e820d1affbfaeb3f03d25841f6356ed8906e9c01",
+      "impreso": "1d1e03d6a62c587109a3091e9c5629811d97891160cdfa69d811d09973831f77",
       "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 24647,
-      "sha256": "8244c36fdbaaa3d5ecf52f87aaa26da9d70970b565a3da341becc86033e7816f",
+      "bytes": 24646,
+      "sha256": "62d83be6e17c2cb28934d45055bd32ed2da9aa5efbab2d46ff8d00f129a865fe",
       "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }

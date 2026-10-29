@@ -493,3 +493,37 @@ test('(2027.01.15, revisión) en columna, una escala larga de nombres medios (un
         assert.deepEqual(rectas, [], `${que}: cargas rectas`);
     }
 });
+
+test('(2027.01.16, revisión) dos coeficientes que se montan donde se cruzan dos flechas cortas: se mueven los dos a la vez, a la pareja de sus sitios que menos tapa, y ninguno queda bajo el otro (sin perder letra)', () => {
+    // al recolocarlos, cada uno se probaba con el otro quieto: en el centro del cruce, el primero tapaba todos los sitios del
+    // segundo y ninguno se movía (el modelo de rutas de la revisión, de 9 variables: «1.00», de Variable_7 → Variable_8, entero
+    // bajo «-0.14», de Variable_6 → Variable_9; y otro de 8, con las covarianzas de x3 y de x4 con x5, una sobre otra)
+    /**
+     * Un modelo de rutas sin latentes, con sus rutas escritas «x>y:coef» (una regresión) o «x~y:coef» (una covarianza).
+     * @param {string[]} observadas @param {string} rutas @param {{ celda?: number }} [op]
+     */
+    const deRutas = (observadas, rutas, op) => disposicionDelDiagrama({ latentes: [], indicadoresDe: {}, observadas, rutas: rutas.trim().split(/\s+/).map(t => {
+        const m = /^(\w+)([>~])(\w+):(-?[\d.]+)$/.exec(t);
+        assert.ok(m, t);
+        return /** @type {import('../../src/analizador/sem-diagrama.js').Ruta} */ ({ de: m[1], a: m[3], tipo: m[2] === '>' ? 'regresion' : 'covarianza', texto: m[4] });
+    }) }, op);
+    const casos = /** @type {Array<[string, string[], string, number]>} */ ([
+        ['9 variables (el de la revisión)', serie('Variable_', 9), `
+            Variable_2>Variable_6:0.11 Variable_4>Variable_6:-0.94 Variable_1>Variable_7:0.07 Variable_2>Variable_7:0.63 Variable_3>Variable_7:0.25
+            Variable_4>Variable_7:0.16 Variable_4>Variable_8:0.57 Variable_5>Variable_8:0.42 Variable_7>Variable_8:1.00 Variable_1>Variable_9:0.77
+            Variable_2>Variable_9:0.22 Variable_3>Variable_9:0.73 Variable_4>Variable_9:0.67 Variable_6>Variable_9:-0.14
+            Variable_1~Variable_2:0.42 Variable_1~Variable_3:0.07 Variable_1~Variable_4:0.33 Variable_1~Variable_5:-0.69 Variable_2~Variable_3:0.44
+            Variable_2~Variable_4:0.74 Variable_2~Variable_5:0.85 Variable_3~Variable_4:0.05 Variable_3~Variable_5:0.07 Variable_4~Variable_5:1.00`, 6.9],
+        ['8 variables, seis correlacionadas', serie('x', 8), `
+            x1>x7:0.19 x2>x7:0.29 x3>x7:0.60 x1>x8:0.31 x3>x8:0.67 x6>x8:0.43
+            x1~x2:0.72 x1~x3:0.06 x1~x4:0.18 x1~x5:0.05 x1~x6:0.53 x2~x3:0.91 x2~x4:0.21 x2~x5:0.23 x2~x6:0.73 x3~x4:0.88 x3~x5:-0.59
+            x3~x6:0.17 x4~x5:0.39 x4~x6:0.60 x5~x6:0.52`, 8.4],
+    ]);
+    for (const [que, observadas, rutas, letra] of casos) {
+        const D = deRutas(observadas, rutas);
+        assert.deepEqual(loQueSeMonta(D).filter(m => /uno sobre otro/.test(m)), [], que);
+        // con la misma disposición que antes de moverlos a la vez (la letra en el Word, la de entonces)
+        assert.ok(puntosEnElWord(D) >= letra, `${que}: ${D.ancho} × ${D.alto}, ${puntosEnElWord(D).toFixed(2)} puntos`);
+        assert.equal(svgDelDiagrama(D), svgDelDiagrama(deRutas(observadas, rutas, { celda: 1e9 })), `${que}: con la rejilla, otro diagrama que mirándolo todo`);
+    }
+});
