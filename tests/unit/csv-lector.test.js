@@ -198,3 +198,13 @@ test('(revisión 2026.12.30) sin el apóstrofo con que las exportaciones neutral
     }
 });
 
+test('(2027.01.19) la celda del CSV en español: vacía si falta, coma decimal, y el texto entrecomillado y sin fórmulas', async () => {
+    const { celdaCSVEs, parsearLineaCSVCon } = await import('../../src/shared/csv.js');
+    for (const v of [undefined, null, '', '  ', NaN, Infinity, -Infinity]) assert.equal(celdaCSVEs(v), '', String(v));
+    assert.equal(celdaCSVEs(3), '3');
+    assert.equal(celdaCSVEs(-0.125), '-0,125');
+    assert.equal(celdaCSVEs('Lima; Perú'), '"Lima; Perú"');
+    assert.equal(celdaCSVEs('=HYPERLINK("x")'), '"\'=HYPERLINK(""x"")"');
+    const linea = [1.5, 'a;b', null, 'Él dijo "sí"'].map(celdaCSVEs).join(';');
+    assert.deepEqual(parsearLineaCSVCon(linea, ';'), ['1,5', 'a;b', '', 'Él dijo "sí"']);
+});

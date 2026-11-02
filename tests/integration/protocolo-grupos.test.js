@@ -183,3 +183,33 @@ test('Monte Carlo: sin diferencias entre los grupos, Holm mantiene la tasa de er
     }
     for (const [metodo, f] of Object.entries(fallos)) assert.ok(f / R > 0.025 && f / R < 0.06, `${metodo}: ${f / R}`);   // ≈ 0,04 en los tres (Python, 4 000 réplicas)
 });
+
+test('(2027.01.17) el intervalo del tamaño del efecto en cada rama: el de la d (t no central) con la g, el de η² (F no central) con la ω², y ninguno en las de rangos', async () => {
+    const { protocoloGrupos, intervaloEfecto } = await import('../../src/core/stats/protocolo-grupos.js');
+    const { intervaloDDosGrupos, intervaloEta2, omega2 } = await import('../../src/core/stats/efectos.js');
+    const a = [12.1, 13.4, 11.8, 14.2, 12.9, 13.7, 12.2, 13.1, 14.0, 12.6], b = [13.9, 14.8, 15.2, 14.1, 15.9, 14.6, 15.3, 14.0, 16.1, 15.0];
+    const P = protocoloGrupos([a, b]);
+    assert.equal(P.prueba, 'student');
+    const t = P.global.d / Math.sqrt(1 / a.length + 1 / b.length), r = intervaloDDosGrupos(t, a.length, b.length);
+    assert.ok(P.efectoIC && P.efectoIC.clave === 'd');
+    assert.deepEqual([P.efectoIC.inferior, P.efectoIC.superior, P.efectoIC.g], [r.inferior, r.superior, r.g]);
+    assert.ok(P.efectoIC.inferior < P.global.d && P.global.d < P.efectoIC.superior, 'el intervalo contiene la d');
+    const c = [16.2, 17.1, 15.8, 16.9, 17.4, 16.0, 16.6, 17.8, 16.3, 17.0], Q = protocoloGrupos([a, b, c]);
+    assert.equal(Q.prueba, 'anova');
+    const ic = intervaloEta2(Q.global.F, Q.global.gl1, Q.global.gl2);
+    assert.ok(Q.efectoIC && Q.efectoIC.clave === 'eta2');
+    assert.deepEqual([Q.efectoIC.inferior, Q.efectoIC.superior, Q.efectoIC.omega2], [ic.inferior, ic.superior, omega2(Q.global.F, Q.global.gl1, Q.global.gl2)]);
+    assert.equal(intervaloEfecto('mann-whitney', [a, b], P.global), null);
+    assert.equal(intervaloEfecto('student', [[1, 1, 1], [2, 2, 2]], { t: Infinity, gl: 4, pValor: 0, d: Infinity }), null, 'grupos constantes y distintos: sin intervalo');
+    // y en la pestaña de grupos, la columna del efecto con su intervalo
+    assert.match(CG._efectoTxt({ efecto: { valor: P.global.d, ic: P.efectoIC } }), /^-?\d+\.\d{3} \[-?\d+\.\d{2}, -?\d+\.\d{2}\]$/);
+    assert.equal(CG._efectoCabecera({ efecto: { nombre: 'd de Cohen', ic: P.efectoIC } }), 'Efecto (d de Cohen) [IC 95 %]');
+});
+
+test('(2027.01.20) en la pestaña de grupos, los coeficientes acotados (η², ε², ω², r) sin el cero inicial; la d y la g, con él', () => {
+    assert.equal(CG._efectoTxt({ efecto: { nombre: 'η²', valor: 0.1234, ic: { clave: 'eta2', inferior: 0.02, superior: 0.25 } } }), '.123 [.02, .25]');
+    assert.equal(CG._efectoTxt({ efecto: { nombre: 'd de Cohen', valor: 0.5123, ic: { clave: 'd', inferior: 0.1, superior: 0.92 } } }), '0.512 [0.10, 0.92]');
+    assert.equal(CG._efectoTxt({ efecto: { nombre: 'r', valor: -0.3456, ic: null } }), '-.346');
+    assert.equal(CG._efectoTxt({ efecto: { nombre: 'ε²', valor: 1, ic: null } }), '1.000', 'el 1, entero');
+    assert.equal(CG._coefTxt('ω²', 0.0412, 3), '.041');
+});

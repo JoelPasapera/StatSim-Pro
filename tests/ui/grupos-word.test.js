@@ -120,6 +120,10 @@ test('(2026.12.22) grupos constantes y distintos: la diferencia es perfecta, d =
     const t = A.pruebaTStudent(k5, k7);
     assert.equal(lineaApaComparacion('Puntaje', 'Grupo', { prueba: t, tamanoEfecto: A.calcularCohenD(k5, k7), tamanoEfectoRangos: null }),
         'Se comparó Puntaje entre los grupos de Grupo mediante la t de Student: t(6) = −∞, p < .001, d de Cohen = −∞.');
+    // (2027.01.20) la d no está acotada: con el cero inicial, como la t («−0.46», no «−.46»)
+    const t2 = A.pruebaTStudent([4, 5, 6, 5, 7], [5, 6, 7, 6, 8]);
+    assert.match(lineaApaComparacion('Puntaje', 'Grupo', { prueba: t2, tamanoEfecto: { d: -0.4567 }, tamanoEfectoIC: { inferior: -1.234, superior: 0.0567 }, tamanoEfectoRangos: null }),
+        /, d de Cohen = -0\.46, IC 95 % \[-1\.23, 0\.06\]\.$/);
     const F = A.anovaUnaVia([k5, k7, [9, 9, 9, 9]]);
     assert.match(lineaApaComparacion('Puntaje', 'Grupo', { prueba: F }), /^Un ANOVA de un factor comparó Puntaje entre los grupos de Grupo: F\(2, 9\) = ∞, p < \.001, η² = 1\.00\.$/);
     assert.equal(CG._fx(-Infinity, 3), '−∞'); assert.equal(CG._fx(Infinity), '∞'); assert.equal(CG._fx(NaN), '—'); assert.equal(CG._fx(1.23456, 3), '1.235');

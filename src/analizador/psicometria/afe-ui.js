@@ -36,8 +36,8 @@ const PLANTILLA = () => `
             <label for="afeConjunto">Ítems a analizar</label>
             <div style="display:flex; gap:0.5rem;">${selector('afeConjunto', [['', 'Carga una base primero']], '')}
                 <button type="button" id="afeActualizar" class="btn btn-outline" title="Actualizar la lista con la base cargada" aria-label="Actualizar la lista de escalas">↻</button></div>
-            <span class="help-text">Las escalas se detectan en la base cargada; «Lista propia» permite escribir los ítems.</span>
             <textarea id="afeItems" class="input" rows="2" hidden aria-label="Ítems separados por comas" placeholder="Ej: PE1, PE2, PE3, CE1, CE2, CE3"></textarea>
+            <span class="help-text">Las escalas se detectan en la base cargada; «Lista propia» permite escribir los ítems.</span>
         </div>
         <div class="form-group">
             ${guia('Qué correlación resume la relación entre ítems. Con respuestas Likert o sí/no conviene la policórica.')}

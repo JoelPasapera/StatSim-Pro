@@ -63,7 +63,12 @@ test('la vista de la χ²: tabla ordenada sin perdidos, el estadístico de la AP
     assert.deepEqual(filasTabla.map(m => m[1]), ['1', '2', '10'], 'las filas en orden numérico');
     filasTabla.forEach((m, i) => assert.deepEqual([...m[2].matchAll(/<td>(\d+)<\/td>/g)].map(x => Number(x[1])), R.observadas[i], `fila ${m[1]}`));
     assert.ok(html.includes(`χ²(${R.gl}) = ${R.chiCuadrado.toFixed(3)}`), 'el estadístico de la API');
-    assert.ok(html.includes(`<strong>${R.cramerV.toFixed(3)}</strong> (${asociacionCramerV(R.cramerV)})`), 'la V con su banda');
+    // (2027.01.17) con su intervalo por la χ² no central entre el valor y la banda
+    const v3 = (/** @type {number} */ v) => v.toFixed(3).replace(/^0\./, '.');
+    assert.ok(html.includes(`<strong>${v3(R.cramerV)}</strong> [IC 95 %: ${v3(R.cramerVIC.inferior)}, ${v3(R.cramerVIC.superior)}] (${asociacionCramerV(R.cramerV)})`), 'la V con su intervalo y su banda (sin el cero inicial)');
+    // y la exacta de Fisher (en esta tabla 3 × 2, exacta), los residuos de Haberman y que con estas esperadas decide la χ²
+    assert.ok(R.fisher.metodo === 'exacta' && !R.usarFisher && /Prueba exacta de Fisher:<\/td><td><strong>p [=<] /.test(html), 'la exacta de Fisher, de comprobación');
+    assert.match(html, /Residuos tipificados corregidos \(Haberman\)/);
     assert.ok(R.decision === 'rechazar' && html.includes('SE RECHAZA H₀') && html.includes(`indica una ${asociacionCramerV(R.cramerV)}`), 'asociación significativa con α = .05');
     const original = A.configuracionInvestigacion.nivelSignificancia;
     try {
@@ -71,4 +76,52 @@ test('la vista de la χ²: tabla ordenada sin perdidos, el estadístico de la AP
         const estricto = await ejecutar();
         assert.ok(estricto.includes('NO SE RECHAZA H₀') && estricto.includes('pueden considerarse independientes'), 'la decisión usa el α del estudio');
     } finally { A.configurarMarcoInvestigacion({ nivelSignificancia: original }); }
+});
+
+test('(2027.01.17) con esperadas bajas decide la exacta de Fisher (regla de Cochran), con la razón de odds de la 2 × 2', async () => {
+    // 2 × 2 con 14 casos: todas las esperadas por debajo de 5; la χ² sería significativa y la exacta, no
+    const pocas = [];
+    for (let i = 0; i < 14; i++) pocas.push({ Nivel: i < 7 ? 1 : 2, Turno: (i < 7 ? i < 6 : i < 9) ? 'mañana' : 'tarde', Puntaje: i });
+    const R = A.chiCuadradoIndependencia(pocas.map(f => f.Nivel), pocas.map(f => f.Turno));
+    assert.ok(R.usarFisher && R.fisher.metodo === 'exacta' && R.fisher.dosPorDos, 'decide Fisher, exacta y con la 2 × 2');
+    assert.ok(R.pValor < 0.05 && R.fisher.pValor > 0.05 && R.decision === 'no_rechazar', `la decisión es la de Fisher (χ² p = ${R.pValor}, Fisher p = ${R.fisher.pValor})`);
+    A.cargarDatos(pocas); carga.mostrarDatosCargados(pocas);
+    try {
+        q('input[name="tipoAnalisis"][value="correlacion"]').checked = false;
+        q('input[name="tipoAnalisis"][value="asociacion"]').checked = true;
+        carga.poblarSelectsVariables(pocas);
+        q('#variable1').value = 'Nivel'; q('#variable2').value = 'Turno';
+        const contenedor = q('#resultadosChiCuadrado'); contenedor.innerHTML = '';
+        analisis.ejecutarAnalisis();
+        await esperar(() => /Chi-cuadrado de Pearson/.test(contenedor.innerHTML));
+        const html = contenedor.innerHTML;
+        assert.match(html, /la decisión se toma con la prueba exacta de Fisher/);
+        assert.match(html, /la que decide/); assert.match(html, /Razón de odds \(tabla 2 × 2\)/);
+        assert.ok(html.includes('NO SE RECHAZA H₀') && /prueba exacta de Fisher, p = /.test(html), 'la interpretación cita la exacta');
+    } finally { A.cargarDatos(filas); carga.mostrarDatosCargados(filas); }
+});
+
+test('(2027.01.20) con todas las esperadas ≥ 5 en una tabla grande, sin el Monte Carlo de Fisher (la vista dice que no hace falta); con alguna baja, sí', async () => {
+    // 5 × 5 con 500 casos: todas las esperadas ≥ 5; sus tablas no se enumeran enseguida
+    const grande = [];
+    for (let i = 0; i < 5; i++) for (let j = 0; j < 5; j++) for (let r = 0; r < 15 + ((i * 7 + j * 3) % 11); r++) grande.push({ Nivel: `N${i}`, Turno: `T${j}`, Puntaje: r });
+    const t0 = Date.now(), R = A.chiCuadradoIndependencia(grande.map(f => f.Nivel), grande.map(f => f.Turno));
+    assert.equal(R.esperadasBajas, 0); assert.equal(R.fisher, null, 'sin Fisher');
+    assert.ok(Date.now() - t0 < 400, `rápida: ${Date.now() - t0} ms`);
+    A.cargarDatos(grande); carga.mostrarDatosCargados(grande);
+    try {
+        q('input[name="tipoAnalisis"][value="correlacion"]').checked = false;
+        q('input[name="tipoAnalisis"][value="asociacion"]').checked = true;
+        carga.poblarSelectsVariables(grande);
+        q('#variable1').value = 'Nivel'; q('#variable2').value = 'Turno';
+        const contenedor = q('#resultadosChiCuadrado'); contenedor.innerHTML = '';
+        analisis.ejecutarAnalisis();
+        await esperar(() => /Chi-cuadrado de Pearson/.test(contenedor.innerHTML));
+        assert.match(contenedor.innerHTML, /Prueba exacta de Fisher:<\/td><td>no hace falta: todas las frecuencias esperadas son 5 o más/);
+        assert.doesNotMatch(contenedor.innerHTML, /undefined|NaN/);
+    } finally { A.cargarDatos(filas); carga.mostrarDatosCargados(filas); }
+    // con una esperada baja, Fisher (la comprobación), aunque la tabla sea grande
+    const conBaja = grande.filter(f => !(f.Nivel === 'N4' && f.Turno !== 'T0') || f.Puntaje < 1);
+    const Q = A.chiCuadradoIndependencia(conBaja.map(f => f.Nivel), conBaja.map(f => f.Turno));
+    assert.ok(Q.esperadasBajas > 0 && Q.fisher !== null, 'con esperadas bajas, Fisher');
 });

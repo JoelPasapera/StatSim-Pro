@@ -11,6 +11,16 @@
  */
 
 /**
+ * (2027.01.18) La semilla del generador número l de una familia (las cadenas de una imputación, las réplicas de una
+ * simulación): la del análisis más l + 1 veces la constante de Weyl de 32 bits, así cada una es independiente de las demás y
+ * se puede calcular sola (en un Worker o en otro) con el mismo resultado.
+ * @param {number} semilla
+ * @param {number} l
+ * @returns {number}
+ */
+export function semillaCadena(semilla, l) { return (semilla + Math.imul(l + 1, 0x9e3779b1)) >>> 0; }
+
+/**
  * Generador sfc32 con semilla (12 valores de arranque descartados).
  * @param {number} [semilla]
  * @returns {GeneradorSfc32}

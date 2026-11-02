@@ -11,14 +11,23 @@ Alta	27	56	83
 Baja	42	30	72
 Moderada	73	62	135
 Total	142	148	290
+Residuos tipificados corregidos (Haberman)
+Nivel_I \ Sexo	Hombre	Mujer
+Alta	−3.55 *	3.55 *
+Baja	1.83	−1.83
+Moderada	1.62	−1.62
+
+En negrita, |z| > 1.96: la combinación aparece más (positivo) o menos (negativo) de lo que se esperaría si las variables fueran independientes. Con *, también con la corrección de Bonferroni para las 6 casillas (|z| > 2.64).
+
 Chi-cuadrado de Pearson:	χ²(2) = 12.910
 p-valor:	.002
-V de Cramér (tamaño del efecto):	0.211 (asociación débil)
+Prueba exacta de Fisher:	p = .001 (exacta)
+V de Cramér (tamaño del efecto):	.211 [IC 95 %: .083, .319] (asociación débil)
 N:	290
 Decisión sobre H₀:	SE RECHAZA H₀
 Interpretación
 
-Existe una asociación estadísticamente significativa entre Nivel_I y Sexo (χ²(2) = 12.91, p = .002). La V de Cramér (0.211) indica una asociación débil. Las dos variables no son independientes.
+Existe una asociación estadísticamente significativa entre Nivel_I y Sexo (χ²(2) = 12.91, p = .002). La V de Cramér (.211 [IC 95 %: .083, .319]) indica una asociación débil. Las dos variables no son independientes; los residuos corregidos señalan las combinaciones que más se apartan de la independencia.
 ----
 Generado por StatSim Pro
 Fecha: 21/10/2026

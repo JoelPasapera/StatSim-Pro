@@ -19,6 +19,7 @@
 import { pruebaNormalidad } from './normalidad.js';
 import { levene, tStudent, tWelch, mannWhitney, anova, anovaWelch, kruskal, comparacionesPorPares } from './contrastes.js';
 import { ajustarHolm } from './multiples.js';
+import { intervaloDDosGrupos, intervaloEta2, omega2 } from './efectos.js';
 
 /** Nivel al que se contrastan los supuestos: la normalidad de cada grupo y la homogeneidad de varianzas (Levene). */
 export const ALFA_SUPUESTOS = 0.05;
@@ -100,6 +101,37 @@ function ejecutar(prueba, grupos) {
 }
 
 /**
+ * (2027.01.17) El intervalo de confianza del tamaño del efecto de la prueba global, como pide APA 7, por el método de la no
+ * centralidad (Steiger y Fouladi, 1997; Steiger, 2004): el de la d de Cohen (y la g de Hedges) de dos grupos, por la t no
+ * central de la d con la DE combinada (la que informan la t de Student y la de Welch: t = d/√(1/n₁ + 1/n₂), con n₁ + n₂ − 2
+ * gl); el de η² de tres o más, por la F no central del ANOVA clásico (también tras el de Welch, cuyo η² es el descriptivo del
+ * clásico: con varianzas desiguales, aproximado), con la ω² de Hays, menos sesgada. Las pruebas de rangos no tienen uno por
+ * esta vía: null. También null si el efecto no es finito (grupos constantes).
+ * @param {ClavePrueba} prueba
+ * @param {ArrayLike<number>[]} grupos
+ * @param {ResultadoGlobal} global
+ * @param {number} [nivel]
+ * @returns {{ clave: 'd', inferior: number, superior: number, g: number, gInferior: number, gSuperior: number, nivel: number }
+ *   | { clave: 'eta2', inferior: number, superior: number, omega2: number, nivel: number } | null}
+ */
+export function intervaloEfecto(prueba, grupos, global, nivel = 0.95) {
+    if (prueba === 'student' || prueba === 'welch') {
+        const [a, b] = /** @type {[ArrayLike<number>, ArrayLike<number>]} */ (grupos), d = /** @type {{ d: number }} */ (global).d;
+        const t = d / Math.sqrt(1 / a.length + 1 / b.length);
+        if (!Number.isFinite(t)) return null;
+        const r = intervaloDDosGrupos(t, a.length, b.length, nivel);
+        return { clave: 'd', inferior: r.inferior, superior: r.superior, g: r.g, gInferior: r.gInferior, gSuperior: r.gSuperior, nivel };
+    }
+    if (prueba === 'anova' || prueba === 'anova-welch') {
+        const c = prueba === 'anova' ? /** @type {ReturnType<typeof anova>} */ (global) : anova(grupos);
+        if (!Number.isFinite(c.F)) return null;
+        const ic = intervaloEta2(c.F, c.gl1, c.gl2, nivel);
+        return { clave: 'eta2', inferior: ic.inferior, superior: ic.superior, omega2: omega2(c.F, c.gl1, c.gl2), nivel };
+    }
+    return null;
+}
+
+/**
  * El protocolo completo: supuestos, elección, prueba global y, con tres o más grupos y la global significativa, el post-hoc
  * con Holm. Cada vista traduce el resultado a su formato y a su redacción.
  * @param {ArrayLike<number>[]} grupos dos o más grupos de al menos tres casos; qué hacer con los pequeños lo decide quien llama
@@ -107,7 +139,7 @@ function ejecutar(prueba, grupos) {
  * @param {{ alfa?: number }} [opciones] alfa: el nivel de significación del estudio (0.05 por defecto)
  * @returns {{ k: number, normalidad: ReturnType<typeof pruebaNormalidad>[], todasNormales: boolean,
  *   levene: ReturnType<typeof levene>, homogeneas: boolean, prueba: ClavePrueba, rama: 'parametrica' | 'noparametrica',
- *   global: ResultadoGlobal, significativa: boolean,
+ *   global: ResultadoGlobal, significativa: boolean, efectoIC: ReturnType<typeof intervaloEfecto>,
  *   postHoc: { metodo: ClavePostHoc, nombre: string, ajuste: 'Holm', pares: ParPostHoc[] } | null }}
  */
 export function protocoloGrupos(grupos, { alfa = 0.05 } = {}) {
@@ -121,7 +153,7 @@ export function protocoloGrupos(grupos, { alfa = 0.05 } = {}) {
     const significativa = global.pValor < alfa, metodo = k >= 3 && significativa ? postHocDe(prueba) : null;
     return {
         k, normalidad, todasNormales, levene: lev, homogeneas, prueba, rama: todasNormales ? 'parametrica' : 'noparametrica',
-        global, significativa,
+        global, significativa, efectoIC: intervaloEfecto(prueba, grupos, global),
         postHoc: metodo ? { metodo, nombre: NOMBRE_POSTHOC[metodo], ajuste: 'Holm', pares: postHocHolm(grupos, metodo, { alfa }) } : null
     };
 }

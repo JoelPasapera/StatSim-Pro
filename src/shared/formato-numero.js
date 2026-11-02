@@ -32,6 +32,19 @@ export function numeroConMenos(v, decimales = 3) {
 }
 
 /**
+ * (2027.01.20, revisión) Un límite de un intervalo de confianza: como numeroConMenos, pero un valor que no es 0 y que redondea a
+ * cero se escribe con dos cifras significativas («−0.00041», no «0.000»), para que se vea de qué lado del 0 queda: la mediación
+ * escribía «IC 95 % [0.000, 0.092] (no significativo)» con el límite inferior en −0,0004.
+ * @param {number} v
+ * @param {number} [decimales] 3 por omisión
+ * @returns {string}
+ */
+export function limiteIntervalo(v, decimales = 3) {
+    if (!Number.isFinite(v) || Math.abs(v) < 1e-10 || Number(v.toFixed(decimales)) !== 0) return numeroConMenos(v, decimales);
+    return numeroConMenos(v, Math.min(12, 1 - Math.floor(Math.log10(Math.abs(v)))));
+}
+
+/**
  * (2027.01.01) Un término de una ecuación con su signo delante: «+ 0.114·x», «− 0.114·x». Hasta la 2026.12.31, las
  * ecuaciones de la regresión y del diagrama de dispersión escribían «+ -0.114·x». El signo es el del número ya redondeado:
  * −0.0001 con tres decimales es «+ 0.000·x», no «− 0.000·x».

@@ -26,6 +26,8 @@ import { fuerzaCorrelacionDispersion } from './motor/magnitudes.js';
 import { formatoP, numeroConMenos, numeroFijo, pConSigno, terminoConSigno, textoP } from '../shared/formato-numero.js';
 import { escaparHTML } from '../shared/html.js';
 import { ANCHO_FIGURA, graficoEnPapel } from './graficos-en-papel.js';
+import { rasterizarSVG } from '../shared/rasterizar.js';
+import { conjuncionY } from '../shared/texto-es.js';
 
 // ========================================
 // EXPORTADOR DEL CAPÍTULO DE RESULTADOS A WORD (APA 7)
@@ -73,32 +75,8 @@ const ExportadorWord = {
     // Rasteriza un SVG a PNG base64 vía canvas a 2x (nitidez de impresión).
     // Word no renderiza SVG inline en HTML, pero sí <img> con data URI PNG.
     // Devuelve Promise<{url,w,h}|null>; ante cualquier fallo resuelve null
-    // (la figura se omite sin romper el documento).
-    _rasterizar(svgStr, w, h) {
-        return new Promise(resolve => {
-            try {
-                if (typeof Image === 'undefined' || typeof document === 'undefined') return resolve(null);
-                const blob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const img = new Image();
-                img.onload = () => {
-                    try {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = w * 2; canvas.height = h * 2;
-                        const c = canvas.getContext('2d');
-                        c.fillStyle = '#ffffff';
-                        c.fillRect(0, 0, canvas.width, canvas.height);
-                        c.scale(2, 2);
-                        c.drawImage(img, 0, 0, w, h);
-                        URL.revokeObjectURL(url);
-                        resolve({ url: canvas.toDataURL('image/png'), w, h });
-                    } catch (e) { URL.revokeObjectURL(url); resolve(null); }
-                };
-                img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-                img.src = url;
-            } catch (e) { resolve(null); }
-        });
-    },
+    // (la figura se omite sin romper el documento). (2027.01.17) La de shared/rasterizar.js, que usan también las tarjetas.
+    _rasterizar(svgStr, w, h) { return rasterizarSVG(svgStr, w, h); },
     // Figura APA 7: "Figura N" en negrita, título en cursiva, gráfico vectorial
     // centrado y Nota opcional. Numeración independiente de las tablas.
     _figura(idContenedor, titulo, nota) {
@@ -190,7 +168,7 @@ const ExportadorWord = {
         const ic = resultado.intervaloConfianza;
         const sig = A.pruebaHipotesis(resultado).decision === 'rechazar';   // (2026.12.17) la decisión del motor, con su α
         const intro = `El estudio de la relación entre ${et1} ${I._conj(et2)} ${et2} resulta relevante para la psicología, pues aporta evidencia empírica sobre la asociación entre constructos centrales del funcionamiento psicológico y orienta futuras intervenciones e investigaciones en la población de interés.`;
-        const objetivo = marco ? marco.objetivoGeneral : `Determinar la relación entre ${et1} y ${et2}.`;
+        const objetivo = marco ? marco.objetivoGeneral : `Determinar la relación entre ${et1} ${conjuncionY(et2)} ${et2}.`;
         const instr = (i1 && i2) ? ` Las variables se midieron mediante ${i1} (${et1}) y ${i2} (${et2}).` : ` Las variables se midieron mediante [INSTRUMENTO DE LA V1 (AUTOR, AÑO); confiabilidad α = __] y [INSTRUMENTO DE LA V2 (AUTOR, AÑO); α = __].`;
         const metodos = `Investigación de tipo básica, enfoque cuantitativo, diseño no experimental, alcance correlacional y corte transversal, con una muestra de ${n} participantes.${instr} El análisis comprendió pruebas de normalidad, el coeficiente de ${esSp ? 'Spearman' : 'Pearson'} y la corrección de Holm para los objetivos específicos.`;
         let resul = `${resultado.normalidad1.normal && resultado.normalidad2.normal ? 'Ambas variables cumplieron el supuesto de normalidad' : 'Al menos una variable se desvió de la normalidad'}, por lo que se aplicó ${esSp ? 'Spearman' : 'Pearson'}. Se obtuvo ${sim}(${gl}) = ${resultado.coeficiente.toFixed(3)}, ${fp(resultado.pValor)}${ic ? `, IC ${Math.round(100 * (ic.nivel || 0.95))}% [${ic.inferior.toFixed(2)}, ${ic.superior.toFixed(2)}]` : ''}, correlación ${resultado.interpretacion.fuerza} ${resultado.interpretacion.direccion}.`;
@@ -383,7 +361,7 @@ const ExportadorWord = {
         const d1 = resultado.descriptivas1, d2 = resultado.descriptivas2;
         if (d1 && d2) {
             const fmt = x => Number.isFinite(x) ? x.toFixed(2) : '—';
-            h += this._tablaAPA(`Estadísticos descriptivos de ${et1} y ${et2}`,
+            h += this._tablaAPA(`Estadísticos descriptivos de ${et1} ${conjuncionY(et2)} ${et2}`,
                 ['Estadístico', et1, et2],
                 [['N', resultado.n, resultado.n],
                  ['Media (M)', fmt(d1.media), fmt(d2.media)],
@@ -420,7 +398,7 @@ const ExportadorWord = {
         const n1 = resultado.normalidad1, n2 = resultado.normalidad2;
         const fp = p => formatoP(p);   // la normalidad se decide con .05, uno de los umbrales que respeta
         h += this._seccion('Prueba de normalidad');
-        h += this._tablaAPA(`Prueba de normalidad de ${et1} y ${et2}`,
+        h += this._tablaAPA(`Prueba de normalidad de ${et1} ${conjuncionY(et2)} ${et2}`,
             ['Variable', 'Prueba', 'Estadístico', 'p', 'Decisión'],
             [[et1, n1.prueba, n1.estadistico.toFixed(3), fp(n1.pValor), n1.normal ? 'Normal' : 'No normal'],
              [et2, n2.prueba, n2.estadistico.toFixed(3), fp(n2.pValor), n2.normal ? 'Normal' : 'No normal']],
@@ -440,15 +418,15 @@ const ExportadorWord = {
         // ---- Correlación principal ----
         const esSp = I._esSpearman(resultado.tipoCorrelacion);
         const ic = resultado.intervaloConfianza;
-        h += this._seccion(`Análisis correlacional entre ${et1} y ${et2}`);
-        h += this._tablaAPA(`Correlación entre ${et1} y ${et2}`,
+        h += this._seccion(`Análisis correlacional entre ${et1} ${conjuncionY(et2)} ${et2}`);
+        h += this._tablaAPA(`Correlación entre ${et1} ${conjuncionY(et2)} ${et2}`,
             ['n', 'Método', 'Coeficiente', 'p', `IC ${Math.round(100 * ((ic && ic.nivel) || 0.95))}%`, 'Magnitud'],
             [[resultado.n, esSp ? 'Spearman (ρ)' : 'Pearson (r)', resultado.coeficiente.toFixed(3), fp(resultado.pValor),
               ic ? `[${ic.inferior.toFixed(3)}, ${ic.superior.toFixed(3)}]` : '—',
               `${resultado.interpretacion.fuerza} (${resultado.interpretacion.direccion})`]],
             null);
         h += this._p(I.generarInterpretacionCorrelacion(et1, et2, resultado));
-        h += this._figura('graficoDispersion', `Diagrama de dispersión entre ${et1} y ${et2}`,
+        h += this._figura('graficoDispersion', `Diagrama de dispersión entre ${et1} ${conjuncionY(et2)} ${et2}`,
             'Incluye la recta de regresión por mínimos cuadrados y la banda de confianza al 95%.');
         {
             const rr = resultado.coeficiente, fuerzaTxt = fuerzaCorrelacionDispersion(rr);   // (2026.12.24) la banda única
@@ -470,7 +448,7 @@ const ExportadorWord = {
             if (marco && marco.hipotesis) {
                 h += this._p(`El contraste enfrenta la hipótesis nula (H₀: ${marco.hipotesis.hipotesisNula}) con la hipótesis de investigación (H₁: ${marco.hipotesis.hipotesisInvestigador}).`);
             } else {
-                h += this._p(`El contraste enfrenta la hipótesis nula H₀ (no existe relación entre ${et1} y ${et2}; el coeficiente poblacional es cero) con la hipótesis alterna H₁ (existe relación entre ambas variables).`);
+                h += this._p(`El contraste enfrenta la hipótesis nula H₀ (no existe relación entre ${et1} ${conjuncionY(et2)} ${et2}; el coeficiente poblacional es cero) con la hipótesis alterna H₁ (existe relación entre ambas variables).`);
             }
             h += this._tablaAPA('Resumen del contraste de hipótesis para la relación principal',
                 ['Elemento', 'Valor'],
@@ -699,8 +677,8 @@ const ExportadorWord = {
                             `${CG._fp(R.normalidad[i].pValor)} (${R.normalidad[i].normal ? 'normal' : 'no normal'})`]),
                         `Prueba de Levene centrada en la media para homogeneidad de varianzas: F(${R.levene.gl[0]}, ${R.levene.gl[1]}) = ${CG._fx(R.levene.estadistico, 3)}, p ${CG._pTxt(R.levene.pValor)} (${R.levene.homogeneas ? 'varianzas homogéneas' : 'varianzas no homogéneas'}).`);
                     h += this._tablaAPA(`Contraste de ${R.etNum} según ${R.etGrupo}`,
-                        ['Prueba', 'Estadístico', 'gl', 'p', `Efecto (${P.efecto.nombre})`, 'Magnitud', 'Decisión'],
-                        [[P.nombre, CG._fx(P.estadistico, 3), glTxt, CG._fp(P.pValor), CG._fx(P.efecto.valor, 3), P.magnitud,
+                        ['Prueba', 'Estadístico', 'gl', 'p', CG._efectoCabecera(P), 'Magnitud', 'Decisión'],
+                        [[P.nombre, CG._fx(P.estadistico, 3), glTxt, CG._fp(P.pValor), CG._efectoTxt(P), P.magnitud,
                           P.significativa ? 'Diferencias significativas' : 'Sin diferencias significativas']],
                         `La prueba se eligió porque ${R.razon}.`);
                     // (2026.12.20) El post-hoc y la interpretación de cada comparación: hasta la 2026.12.19 estaban en una función

@@ -28,8 +28,25 @@ export const SERIES_EN_PAPEL = Object.freeze({
     '#60a5fa': '#1d4ed8', '#f87171': '#b91c1c', '#34d399': '#047857', '#fbbf24': '#a16207',
     '#c084fc': '#7e22ce', '#22d3ee': '#0e7490', '#fb923c': '#c2410c', '#a3e635': '#4d7c0f',
 });
+/**
+ * (2027.01.17) La paleta categórica de los gráficos nuevos (el de perfil de las medidas repetidas y los que vengan): ocho tonos
+ * en un orden fijo, cada uno con su paso para el fondo oscuro de la página y el suyo para el papel. Validados como conjunto con
+ * las seis comprobaciones de la guía de visualización (validate_palette.js): luminosidad OKLCH en la banda de cada modo,
+ * croma ≥ 0,1, separación con daltonismo ≥ 8 ΔE entre vecinos (y los tres primeros, entre todos los pares) y ≥ 15 sin él,
+ * contra la superficie de las tarjetas (#131c2e) y contra el blanco. En papel, tres de ellos quedan por debajo de 3:1 del
+ * blanco: por eso estos gráficos llevan además etiquetas directas, marcadores de formas distintas y una tabla.
+ */
+export const CATEGORICA = Object.freeze([
+    Object.freeze({ pantalla: '#3987e5', papel: '#2a78d6' }), Object.freeze({ pantalla: '#d95926', papel: '#eb6834' }),
+    Object.freeze({ pantalla: '#199e70', papel: '#1baf7a' }), Object.freeze({ pantalla: '#c98500', papel: '#eda100' }),
+    Object.freeze({ pantalla: '#d55181', papel: '#e87ba4' }), Object.freeze({ pantalla: '#008300', papel: '#008300' }),
+    Object.freeze({ pantalla: '#9085e9', papel: '#6250d6' }), Object.freeze({ pantalla: '#e66767', papel: '#e34948' })
+]);
+/** De cada tono de la pantalla, el suyo en papel. */
+const CATEGORICA_EN_PAPEL = Object.freeze(Object.fromEntries(CATEGORICA.map(c => [c.pantalla, c.papel])));
+
 /** El color en papel de una serie, o null si no es una de ellas. @param {string | null} c @returns {string | null} */
-const serieEnPapel = c => /** @type {Record<string, string>} */ (SERIES_EN_PAPEL)[(c || '').trim().toLowerCase()] || null;
+const serieEnPapel = c => { const k = (c || '').trim().toLowerCase(); return /** @type {Record<string, string>} */ (SERIES_EN_PAPEL)[k] || /** @type {Record<string, string>} */ (CATEGORICA_EN_PAPEL)[k] || null; };
 
 /** ¿Lleva un elemento uno de esos rellenos claros, escrito en él? @param {Element} el */
 const conRellenoClaro = el => RELLENOS_CLAROS.includes((el.getAttribute('fill') || '').trim().toLowerCase());

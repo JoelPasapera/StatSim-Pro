@@ -1,6 +1,6 @@
 // tests/run.js — batería de StatSim Pro. Desde la raíz del proyecto:
 //     npm test              → modo rápido (pruebas de Node + escenarios; unos dos minutos)
-//     npm run test:completo → todo (añade mutaciones, sondas, fuzz y los dieciocho oráculos en Python; el de Excel, si hay openpyxl)
+//     npm run test:completo → todo (añade mutaciones, sondas, fuzz y los veintiocho oráculos en Python; el de Excel, si hay openpyxl)
 // Los bloques independientes se ejecutan EN PARALELO (antes iban uno detrás de otro).
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -107,6 +107,11 @@ if (completo) {
     if (incluye('extra')) tareas.push(correr(process.execPath, ['montecarlo/invarianza-ordinal-multifactor.mjs', '100'], aqui).then(rM => {
         registrar('Monte Carlo de la invarianza ordinal multifactor (2 factores, 3 grupos, 3 y 5 categorías)', rM, (() => { try { const r = JSON.parse(rM.out.trim().split('\n')[0]); return `DIFFTEST ${Object.values(r.rechazo).map(v => (100 * v).toFixed(0) + ' %').join(' / ')}, EE ×${Object.values(r.razonEE).join('–')}`; } catch (e) { return ''; } })());
     }));
+    // (2027.01.18) Monte Carlo de la imputación múltiple y del EM: solo Node
+    if (incluye('extra')) tareas.push(correr(process.execPath, ['montecarlo/imputacion.mjs', '300'], aqui).then(rM => {
+        const fallos = rM.out.match(/^FALLO.*$/gm) || [];
+        registrar('Monte Carlo de la imputación múltiple (300 réplicas en dos escenarios MAR: sesgo por lista, del EM, de norm y de PMM; cobertura de los IC de Rubin)', { ...rM, ok: rM.ok && !fallos.length, out: fallos.length ? fallos.join('\n') : rM.out }, (() => { try { const r = JSON.parse(rM.out.trim().split('\n')[0]); return `por lista ${r.A.sesgoLista.toFixed(2)}, EM ${r.A.sesgoEM.toFixed(3)}, norm ${r.A.sesgoIM.toFixed(3)} (IC ${(100 * r.A.coberturaMedia).toFixed(1)} %), PMM ${r.B.sesgoIM.toFixed(3)} (IC ${(100 * r.B.coberturaMedia).toFixed(1)} %)`; } catch (e) { return ''; } })());
+    }));
     // Monte Carlo del WLSMV: solo Node, así que corre también sin Python
     if (incluye('extra')) tareas.push(correr(process.execPath, ['montecarlo/wlsmv.mjs', '600'], aqui).then(rM => {
         registrar('Monte Carlo del WLSMV (600 réplicas: Γ, EE robustos, tasa de rechazo, sesgo)', rM, (() => { try { const r = JSON.parse(rM.out.trim().split('\n')[0]); return `rechazo ${(100 * r.tasaRechazo).toFixed(1)} %, Γ ×${r.razonGammaMedia.toFixed(3)}, EE ×[${r.razonEE.map(v => v.toFixed(2)).join(', ')}]`; } catch (e) { return ''; } })());
@@ -162,7 +167,7 @@ if (completo) {
     if (incluye('oraculos')) tareas.push((async () => {
         const py = await python();
         if (!py) { filas.push('· oráculos omitidos (hace falta Python 3 con NumPy y SciPy)'); return; }
-        const [r0, r1, rA, rO, rB, rF, rS, rC, rI, rFo, rDf, rDc, rNb, rCf, rIn, rNo, rSe] = await Promise.all([correr(py, ['analizador_oraculo.py'], path.join(aqui, 'oracle')), correr(process.execPath, ['referencias.js'], path.join(aqui, 'oracle')), correr(py, ['aiken_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['ordinal_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['bootstrap_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['afe_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['sem_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['concordancia_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['invarianza_oraculo.py'], path.join(aqui, 'oracle')),
+        const [r0, r1, rA, rO, rB, rF, rS, rC, rI, rFo, rDf, rDc, rNb, rCf, rIn, rNo, rSe, rRe, rAs, rMe, rBa, rDe, rPe, rPo, rRoc, rTri, rMn] = await Promise.all([correr(py, ['analizador_oraculo.py'], path.join(aqui, 'oracle')), correr(process.execPath, ['referencias.js'], path.join(aqui, 'oracle')), correr(py, ['aiken_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['ordinal_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['bootstrap_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['afe_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['sem_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['concordancia_oraculo.py'], path.join(aqui, 'oracle')), correr(py, ['invarianza_oraculo.py'], path.join(aqui, 'oracle')),
             correr(process.execPath, ['formas_generar.mjs'], path.join(aqui, 'oracle')).then(g => (g.ok ? correr(py, ['formas_oraculo.py'], path.join(aqui, 'oracle')) : g)),
             correr(py, ['forma_oraculo.py'], path.join(aqui, 'oracle')),
             correr(py, ['forma_confirmacion_oraculo.py'], path.join(aqui, 'oracle')),
@@ -170,7 +175,17 @@ if (completo) {
             correr(py, ['cribado_oraculo.py'], path.join(aqui, 'oracle')),
             correr(py, ['inferencia_oraculo.py'], path.join(aqui, 'oracle')),
             correr(py, ['normalidad_oraculo.py'], path.join(aqui, 'oracle')),
-            correr(py, ['separacion_oraculo.py'], path.join(aqui, 'oracle'))]);   // `correr` devuelve { ok, out, ms }
+            correr(py, ['separacion_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['relacionadas_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['asociacion_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['mediacion_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['baremos_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['depuracion_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['perdidos_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['potencia_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['roc_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['tri_oraculo.py'], path.join(aqui, 'oracle')),
+            correr(py, ['multinivel_oraculo.py'], path.join(aqui, 'oracle'))]);   // `correr` devuelve { ok, out, ms }
         registrar('oráculo del Analizador (fixture regenerado con SciPy)', r0, (r0.out.match(/\d+ bloques/) || [''])[0]);
         registrar('oráculo de la V de Aiken (convolución verificada por enumeración)', rA, (rA.out.match(/\d+ casos \(\d+ verificados por enumeración\)/) || [''])[0]);
         registrar('oráculo ordinal (Φ con mpmath, Φ₂ verificada con Owen, policóricas, α y ω ordinales)', rO, (rO.out.match(/\d+ Φ₂.*$/m) || [''])[0]);
@@ -187,6 +202,16 @@ if (completo) {
         registrar('oráculo de la inferencia (grupos y su protocolo con el ANOVA de Welch y los post-hoc, regresión con los mínimos cuadrados exactos en racionales, logística y Poisson con Newton en decimal de 50 cifras, ANCOVA, MANOVA, metaanálisis, Δχ² del SEM e inferencia de la correlación con su potencia exacta, en SciPy y R)', rIn, (rIn.out.match(/^inferencia_fixture.*$/m) || [''])[0].slice(0, 120));
         registrar('oráculo de la normalidad (Shapiro-Wilk en SciPy; Kolmogórov-Smirnov: D en SciPy y p de nortest::lillie.test)', rNo, (rNo.out.match(/^normalidad_fixture.*$/m) || [''])[0].slice(0, 120));
         registrar('oráculo de la separación (¿estimación finita en la logística y Poisson? Programación lineal con HiGHS de SciPy)', rSe, (rSe.out.match(/^separacion_fixture.*$/m) || [''])[0].slice(0, 120));
+        registrar('oráculo de las muestras relacionadas (t pareada, Wilcoxon, medidas repetidas con Mauchly y ε, Friedman, McNemar, Cochran, ANOVA mixto de tipo III y M de Box en SciPy y NumPy)', rRe, (rRe.out.match(/^relacionadas_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la asociación (intervalos por no centralidad con nct, ncf y ncx2; Fisher exacta por enumeración; residuos de Haberman; correlación parcial y semiparcial)', rAs, (rAs.out.match(/^asociacion_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la mediación y la moderación (modelos 1, 4, 6, 7 y 14 de PROCESS con lstsq, Johnson-Neyman por rejilla y el bootstrap con el mismo sfc32)', rMe, (rMe.out.match(/^mediacion_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de los baremos (percentileofscore, norm.ppf, digitize de los eneatipos y quantile de tipo 7)', rBa, (rBa.out.match(/^baremos_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la depuración (duplicados por tuplas, groupby del longstring, IRV, z y Mahalanobis con solve y chi2.sf)', rDe, (rDe.out.match(/^depuracion_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de los datos perdidos (EM de la normal multivariante igual al máximo directo con L-BFGS-B, MCAR de Little y reglas de Rubin con los gl de Barnard y Rubin)', rPe, (rPe.out.match(/^perdidos_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la potencia (nct, ncf, ncx2 y la densidad exacta de r con quad; los n uno a uno; la mediación por Monte Carlo con los generadores del programa bit a bit)', rPo, (rPo.out.match(/^potencia_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la curva ROC (AUC por mannwhitneyu, DeLong por la matriz ψ completa, Youden y Wilson a mano)', rRoc, (rRoc.out.match(/^roc_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo de la TRI y el DIF (Rasch, 2PL y GRM por máxima verosimilitud marginal DIRECTA con L-BFGS-B, sin EM; la logística ordinal del DIF con BFGS)', rTri, (rTri.out.match(/^tri_fixture.*$/m) || [''])[0].slice(0, 140));
+        registrar('oráculo del modelo multinivel (la REML con las matrices completas, sin Sherman–Morrison, y Newton con el hessiano exacto; Satterthwaite, la mezcla de χ² y los R² de Nakagawa)', rMn, (rMn.out.match(/^multinivel_fixture.*$/m) || [''])[0].slice(0, 140));
         // (2026.12.31) el de Excel, si Python tiene openpyxl (no viene con NumPy ni SciPy): sin él se omite y se dice. Las pruebas
         // de Node (integration/xlsx.test.js) comparan igual con lo que openpyxl leyó al generar xlsx_fixture.json: lo que
         // falta sin openpyxl es volver a leerlo ahora

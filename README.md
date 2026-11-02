@@ -10,7 +10,7 @@ StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investiga
 
 <p align="center">
   <a href="https://joelpasapera.github.io/StatSim-Pro/" title="Abrir StatSim Pro en el navegador">
-    <img src="docs/img/abrir-statsim-pro.svg" width="440" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
+    <img src="abrir-statsim-pro.svg" width="440" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
   </a>
 </p>
 
@@ -39,7 +39,7 @@ StatSim Pro acompaña las dos mitades del trabajo: la teórica (Explorador → B
 | 🔭 **Explorador** | Te ayuda a elegir el tema: compara, subtema por subtema, cuánto se habla de él en las noticias con cuánto se ha investigado, y trae un árbol de unos 500 temas de la psicología y un mapa mundial de salud mental. |
 | 🔎 **Buscador** | Busca antecedentes a la vez en diez fuentes, los criba por relevancia con IA y arma la matriz de revisión con referencias APA, el protocolo de búsqueda, el diagrama PRISMA y un metaanálisis de correlaciones. Dentro está el **Redactor**, que escribe el marco teórico con esa matriz. |
 | 🎲 **Simulador** | Genera bases sintéticas con las propiedades que pidas (fiabilidad, correlaciones y su forma, diferencias por grupo, mediación y moderación, medidas repetidas, estructura factorial, desenlaces, jueces e imperfecciones) y comprueba cada una en un informe «pedido vs. obtenido». |
-| 🔬 **Analizador** | Analiza tu base o la simulada: descriptivos, normalidad, correlación, regresión, comparación de grupos, χ², fiabilidad, psicometría (V de Aiken, AFE, concordancia, invarianza), ecuaciones estructurales y la forma de una relación; con gráficos, el capítulo en Word y los resultados para imprimir. |
+| 🔬 **Analizador** | Analiza tu base o la simulada: la depura y trata sus datos perdidos (Little, imputación múltiple), y hace descriptivos, normalidad, correlación (también parcial), regresión, comparación de grupos, medidas repetidas (pre-post, ondas, ANOVA mixto), χ² con la exacta de Fisher, mediación y moderación (PROCESS), fiabilidad, psicometría (V de Aiken, AFE, concordancia, invarianza, baremos, curva ROC, teoría de respuesta al ítem y DIF), modelos multinivel, ecuaciones estructurales, la forma de una relación y la potencia y el tamaño de muestra; con tamaños del efecto e intervalos, gráficos, el capítulo en Word, la sintaxis equivalente en R y SPSS y los resultados para imprimir. |
 | 📂 **Ejemplos** | Cinco estudios completos hechos con la propia página, con todos sus archivos y una guía que te señala cada paso o lo hace por ti. |
 | ❔ **Ayuda** | Qué hace cada sección, **Guardar** y **Abrir proyecto** y **Recargar sin caché** (si tras una actualización la página no carga lo nuevo). |
 
@@ -80,7 +80,7 @@ Los resultados arrojados por **StatSim Pro** fueron comparados directamente con 
 
 ![Pruebas de normalidad en StatSim Pro y en SPSS](https://github.com/JoelPasapera/StatSim-Pro.github.io/blob/fec7b57c8f97627c3b8cb247d32ca96407bb5d67/Evidencia%20%5BSPSS%5D%20-%20Prueba%20de%20normalidad.png)
 
-Además de la comparación con SPSS, cada módulo estadístico se verifica contra **casos con solución conocida** (valores de tabla, ejemplos resueltos a mano y recuperación exacta de coeficientes sintéticos), incluyendo estudios de calibración por simulación (p. ej., 300 réplicas normales para confirmar la tasa nominal de falsos positivos de Lilliefors ≈ 5 %), y contra **referencias independientes**: dieciocho oráculos en Python (SciPy, NumPy, scikit-learn y mpmath), las salidas publicadas de R (`lm`, `glm`, `oneway.test`, `kruskal.test`), ReadStat para los archivos de SPSS y openpyxl para los de Excel. Más de mil pruebas automáticas corren antes de cada versión (ver [🧪 Pruebas](#-pruebas)).
+Además de la comparación con SPSS, cada módulo estadístico se verifica contra **casos con solución conocida** (valores de tabla, ejemplos resueltos a mano y recuperación exacta de coeficientes sintéticos), incluyendo estudios de calibración por simulación (p. ej., 300 réplicas normales para confirmar la tasa nominal de falsos positivos de Lilliefors ≈ 5 %), y contra **referencias independientes**: veintiocho oráculos en Python (SciPy, NumPy, scikit-learn y mpmath), las salidas publicadas de R (`lm`, `glm`, `oneway.test`, `kruskal.test`), ReadStat para los archivos de SPSS y openpyxl para los de Excel. Más de mil pruebas automáticas corren antes de cada versión (ver [🧪 Pruebas](#-pruebas)).
 
 ### 🧪 Verificación integrada (autotest)
 
@@ -223,8 +223,19 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 - ✅ **Correlación bivariada** (Pearson/Spearman elegido automáticamente según normalidad; bilateral o unilateral) con IC 95 %, interpretación de fuerza y dirección; con tres variables o más, **matriz de correlaciones** (método por par según normalidad, p corregidos por Holm)
 - ✅ **Regresión** junto a la correlación: simple, con la forma funcional que mejor ajusta; **múltiple** con tabla completa de coeficientes, VIF, normalidad de residuos y **efecto crudo vs. ajustado** del predictor focal; con interacción o término cuadrático; **logística** si la dependiente es binaria y **de Poisson** si es un conteo
 - ✅ **Lectura causal honesta**: la sección “De la correlación al control estadístico” explica las tres condiciones causales y por qué un diseño transversal aporta asociación ajustada, necesaria pero no suficiente
-- ✅ **Comparación entre grupos con protocolo automático**: la app evalúa normalidad por grupo + Levene y elige sola — t de Student, **t de Welch** o U de Mann-Whitney (2 grupos); ANOVA, **ANOVA de Welch** o Kruskal-Wallis (3+), con **post-hoc por pares y corrección de Holm**, el mismo protocolo en la vista principal, la pestaña de grupos, el Word y la criba sociodemográfica — explicando siempre *por qué* eligió esa prueba, con tamaños del efecto (d, r, η², ε²) y su magnitud; **ANCOVA** y **MANOVA** opcionales mediante preguntas guiadas
-- ✅ **Asociación de categóricas** (Chi² con V de Cramér)
+- ✅ **Comparación entre grupos con protocolo automático**: la app evalúa normalidad por grupo + Levene y elige sola — t de Student, **t de Welch** o U de Mann-Whitney (2 grupos); ANOVA, **ANOVA de Welch** o Kruskal-Wallis (3+), con **post-hoc por pares y corrección de Holm**, el mismo protocolo en la vista principal, la pestaña de grupos, el Word y la criba sociodemográfica — explicando siempre *por qué* eligió esa prueba, con tamaños del efecto (d, r, η², ε²) y su magnitud, **con su intervalo de confianza** (el de la d y la g de Hedges, por la t no central; el de η², por la F no central, con la ω²), como pide APA 7; **ANCOVA** y **MANOVA** opcionales mediante preguntas guiadas
+- ✅ **Asociación de categóricas**: χ² con la **V de Cramér y su intervalo**, la **prueba exacta de Fisher** (exacta recorriendo todas las tablas posibles o, si son demasiadas, por Monte Carlo con semilla), que **decide cuando las esperadas son bajas** (regla de Cochran), los **residuos tipificados corregidos** de Haberman (qué combinaciones se apartan de la independencia, también con Bonferroni) y la razón de odds de una tabla 2 × 2
+- ✅ **Medidas repetidas y muestras relacionadas** (tarjeta 8): las mismas personas medidas dos o más veces —antes y después, varias ondas (las del Simulador se reconocen solas)— o en dos o más condiciones, con su protocolo: **t para muestras relacionadas** o **Wilcoxon** (dos medidas); **ANOVA de medidas repetidas** con la esfericidad de **Mauchly** y las correcciones de **Greenhouse-Geisser** y **Huynh-Feldt**, o **Friedman** (tres o más); **McNemar** y la **Q de Cochran** (respuestas sí/no); y el **ANOVA mixto** con un factor entre sujetos (el diseño con grupo de control: su interacción, con los efectos simples), con Levene y la M de Box; tamaños del efecto con intervalo (dz, biserial de rangos, η² parcial y **η² generalizada**), comparaciones por pares con Holm, la otra rama como comprobación, el **gráfico de perfil** con intervalos intra sujetos (Cousineau-Morey), la redacción APA y su Word
+- ✅ **Correlación parcial y semiparcial** (tarjeta 9): la relación de dos variables descontando una o más de control, con su intervalo y la parte de la varianza que solo explica X
+- ✅ **Mediación y moderación** con los modelos de **PROCESS** de Hayes (tarjeta 10): moderación (1) con los efectos condicionales, la **región de Johnson-Neyman** y las pendientes simples; mediación simple o en paralelo (4), en serie (6) y mediación moderada (7 y 14, con el **índice de mediación moderada**); los efectos indirectos con su **intervalo bootstrap** (5 000 remuestras con semilla, en segundo plano, con progreso y cancelación), el **diagrama de rutas** con los coeficientes, la redacción APA y su Word
+- ✅ **Antes de analizar: depuración de la base**: duplicados, identificadores repetidos, valores fuera de la escala de respuesta, casos con demasiadas respuestas en blanco, **respuestas descuidadas** (cadenas de respuestas iguales y la misma respuesta en todo) y **atípicos** univariados (|z| > 3,29) y multivariados (**Mahalanobis**); cada caso con su motivo, tú decides cuáles salen, y la base depurada se descarga o se usa en el Analizador (con vuelta a la original)
+- ✅ **Antes de analizar: datos perdidos**: cuántos faltan y dónde, sus **patrones**, la **prueba MCAR de Little**, las estimaciones del **EM** y una recomendación; y la **imputación múltiple** (PMM o norm, con semilla, en segundo plano) con las medias y correlaciones combinadas por las **reglas de Rubin** y las bases imputadas en CSV y **.sav** (con la variable `Imputation_` que SPSS reconoce)
+- ✅ **Baremos** (tarjeta 11): percentiles, **T normalizada, eneatipos y decatipos** de cada puntuación, niveles por percentiles y, si un grupo puntúa distinto, **baremos diferenciados**
+- ✅ **Validez de criterio: curva ROC** (tarjeta 12): el **área bajo la curva** con su intervalo de DeLong, el **punto de corte óptimo** (Youden) con su sensibilidad, especificidad y valores predictivos (intervalos de Wilson), la tabla de cortes y la curva
+- ✅ **Potencia y tamaño de muestra** (tarjeta 13, sin base): el tamaño a priori, la potencia con tu n o el efecto mínimo detectable para la t, la correlación, el ANOVA, la χ² y la regresión, **con los mismos números que G*Power 3.1**, y la **mediación simple por Monte Carlo**
+- ✅ **Teoría de respuesta al ítem y DIF** (tarjeta 14): el **modelo de respuesta graduada** (ítems Likert), el **2PL** o el de **Rasch** (sí/no), con la discriminación y los umbrales de cada ítem, la **información del test**, la fiabilidad marginal y las puntuaciones θ (en un CSV o añadidas a tu base); y el **funcionamiento diferencial de los ítems** entre grupos por regresión logística, con la clasificación de Jodoin y Gierl. Los números coinciden con los de **mirt** en R en sus primeras cifras (la misma cuadratura y el mismo algoritmo EM)
+- ✅ **Modelos multinivel** (tarjeta 15): cuando las personas están agrupadas (aulas, colegios, hospitales), la **correlación intraclase** y el **efecto de diseño** del modelo nulo y los efectos de los predictores de la persona y del grupo (que reconoce solos), con su centrado y los **gl de Satterthwaite**, como **lmerTest** y SPSS MIXED
+- ✅ **Sintaxis equivalente en R y SPSS** en las tarjetas nuevas: el código para reproducir cada análisis fuera del programa (o para que tu asesor lo compruebe), con un botón para copiarlo; y la imputación múltiple y la potencia por Monte Carlo, **repartidas entre los núcleos** de tu equipo
 - ✅ **Fiabilidad y consistencia interna**: α de Cronbach con IC 95 %, α estandarizada, **ω total de McDonald**, λ₂ de Guttman y correlación media inter-ítem, con interpretación por umbrales; **α y ω ordinales**, KR-20 e intervalos por bootstrap
 - ✅ **Psicometría de un instrumento**, en tarjetas propias: **V de Aiken** (3), **AFE** (4), **concordancia entre evaluadores** (5), **invarianza de medición** (6) y el **diagnóstico de la forma de una relación** (7), cada una con su redacción APA, sus tablas y su Word; los cálculos largos corren en un Worker, con progreso y cancelación
 - ✅ **Ecuaciones estructurales (SEM)** con sintaxis de lavaan y ejemplos: un **motor de decisión** previo dice si el modelo y la muestra lo permiten; luego, el ajuste con cada índice explicado (qué es, por qué, cómo mejorarlo y cómo reportarlo en APA), el **diagrama de rutas** con los coeficientes estandarizados, la validez convergente y discriminante y la comparación de modelos (inicial, alternativo y final)
@@ -322,7 +333,7 @@ Un simulador psicométrico que entrega **exactamente lo que le pides**, y que ad
 4. **Buscador** → busca antecedentes (con tus propias variantes si quieres), analiza relevancia con IA, llena la matriz y expórtala; el protocolo y el PRISMA se llenan solos
 5. **Redactor** (dentro del Buscador) → usa la matriz del Buscador o impórtala, filtra por relevancia, identifica variables, genera el **marco teórico completo**, pásale el **pase de coherencia** y descárgalo en **Word o PDF APA**
 6. **Simulador** → declara tus pruebas y dimensiones, fija la fiabilidad y las correlaciones objetivo, y genera la base (o salta este paso si tienes la tuya). Revisa el **informe pedido vs. obtenido** y, si vas a enseñar limpieza de datos, activa las **imperfecciones realistas**
-7. **Analizador** → carga tu CSV, Excel o SPSS, o usa los datos generados; etiqueta tus variables; elige el análisis (correlación, comparación de grupos, chi², regresión) y ejecuta; para tu instrumento, usa las tarjetas de psicometría y el SEM
+7. **Analizador** → carga tu CSV, Excel o SPSS, o usa los datos generados; etiqueta tus variables; elige el análisis (correlación, comparación de grupos, chi², regresión) y ejecuta; para tu instrumento, usa las tarjetas de psicometría y el SEM; para un pre-post o varias ondas, la de medidas repetidas; para el «por qué» y el «cuándo», la de mediación y moderación; para los ítems uno a uno, la de TRI y DIF; con personas agrupadas, la de modelos multinivel. Antes de analizar, depura la base y revisa sus datos perdidos; para planificar la muestra (o justificar la que tienes), la de potencia
 8. **Explora el dashboard**: selecciona variables con las casillas, pasa el cursor por la matriz y los diagramas de caja, investiga los atípicos y lee el análisis automático bajo cada gráfico
 9. Exporta el **capítulo de resultados en Word APA** con un clic, o imprime los resultados en PDF
 10. **Ayuda → Guardar proyecto** para seguir otro día, en este u otro navegador
@@ -345,7 +356,7 @@ Desde la raíz del repositorio, con Node 18 o más reciente (y Python 3 con NumP
 
 ```bash
 npm test                    # rápida: las pruebas de Node (unitarias, de integración y de la interfaz) y los escenarios, en paralelo
-npm run test:completo       # todo: añade mutaciones, sondas, fuzz, los dieciocho oráculos en Python, los tipos y Chromium
+npm run test:completo       # todo: añade mutaciones, sondas, fuzz, los veintiocho oráculos en Python, los tipos y Chromium
 npm run ejemplos            # rehace ejemplos/ en Chromium (hace falta Playwright)
 npm run ejemplos:comprobar  # los rehace en una carpeta temporal y los compara con los guardados
 ```
@@ -366,17 +377,21 @@ Lo que prueba cada archivo, en [`tests/README.md`](tests/README.md).
 StatSim-Pro/
 ├── index.html            # la cáscara: cabecera, pestañas y secciones
 ├── version.json          # la versión publicada (la página la compara al arrancar)
+├── abrir-statsim-pro.svg # el botón del README que abre la página publicada
 ├── src/
 │   ├── main.js           # el arranque, la navegación por #hash y la carga de las secciones
 │   ├── version.js        # la versión única del sitio (controla la caché)
 │   ├── core/             # sin DOM: el núcleo que comparte todo
-│   │   ├── stats/        #   distribuciones, descriptivos, correlación, contrastes, normalidad, MCO, MLG, fiabilidad…
+│   │   ├── stats/        #   distribuciones, descriptivos, correlación, contrastes, normalidad, MCO, MLG, fiabilidad, potencia…
 │   │   ├── linalg/       #   Cholesky, Gauss-Jordan, Jacobi, QR de Householder, símplex
-│   │   ├── random/       #   mulberry32, sfc32, Box-Muller, Fisher–Yates
+│   │   ├── random/       #   mulberry32, sfc32, Box-Muller, Fisher–Yates, Gamma
 │   │   └── data/         #   la base columnar, las celdas y los perdidos, las codificaciones, sav/, xlsx/ y zip/
-│   ├── shared/           # lo que comparten las secciones: eventos, estado, statviz.js, CSV, HTML seguro, impresión, IA…
+│   ├── shared/           # lo que comparten las secciones: eventos, estado, statviz.js, CSV, HTML seguro, impresión, IA,
+│   │                     #   el grupo de Workers…
 │   ├── simulador/        # dominio/ (el generador, sin DOM), worker/ (el Worker) y ui/ (una pieza por tabla)
-│   ├── analizador/       # estadistica.js (el orquestador) sobre motor/ (los cálculos), psicometria/, relaciones/,
+│   ├── analizador/       # estadistica.js (el orquestador) sobre motor/ (los cálculos), psicometria/, relaciones/, relacionadas/,
+│   │                     #   depuracion/, perdidos/, roc/, potencia/, tri/, multinivel/, informe/ (el Word APA de las
+│   │                     #   tarjetas, sus curvas y la sintaxis de R y SPSS),
 │   │                     #   el SEM (sem-motor.js, sem-ui.js, sem-diagrama.js), la regresión, los gráficos, el Word y ui/
 │   ├── buscador/         # fuentes/ (Scopus, ScienceDirect, Web of Science, PubMed, SciELO, ALICIA, Scholar), antecedentes/,
 │   │                     #   protocolo.js, prisma.js, meta-analisis.js y ranking.js
@@ -385,10 +400,11 @@ StatSim-Pro/
 │   ├── ejemplos/         # la pestaña «Ejemplos» y hazlo/ («Muéstrame» y «Hazlo por mí»)
 │   └── proyecto/         # el .statsim: guardar y abrir el proyecto completo
 ├── workers/relevo-wos.js # el relevo de Web of Science (Cloudflare Worker; se despliega aparte)
-├── assets/               # css/ (por componentes), data/ (países e ISO del mapa), img/, video/ y vendor/
+├── assets/               # css/ (por componentes), data/ (países e ISO del mapa), img/ (y img/documentacion/: la
+│                         #   infografía y las capturas de SPSS, que el sitio no carga), video/ y vendor/
 ├── ejemplos/             # los cinco casos hechos por la página, con todo lo que descargó, e indice.json
-├── tests/                # unit/, integration/, ui/, oracle/, fuzz/, montecarlo/, navegador/ y run.js
-├── docs/                 # la documentación (abajo) e img/ (las imágenes del README)
+├── tests/                # unit/, integration/, ui/, oracle/, fuzz/, montecarlo/, navegador/, rendimiento/ y run.js
+├── docs/                 # solo los documentos de guía (abajo): nada del sitio
 └── Teoria/               # notas de estadística (qué es «Sig.» en SPSS)
 ```
 
@@ -405,6 +421,7 @@ Reglas que mantienen la estructura escalable: `core` no importa de nadie; `share
 | [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) | Las capas, las reglas de dependencia, las convenciones y el plan de la refactorización a módulos |
 | [docs/ESTADO-MIGRACION.md](docs/ESTADO-MIGRACION.md) | Dónde quedó cada archivo del proyecto original |
 | [docs/WEB-OF-SCIENCE.md](docs/WEB-OF-SCIENCE.md) | Cómo conectar Web of Science: tu clave o el relevo del sitio |
+| [docs/EVALUACION-WASM.md](docs/EVALUACION-WASM.md) | Si conviene escribir los cálculos pesados en C++ y WebAssembly: lo que se midió y por qué no, por ahora |
 | [docs/PLAN-PSICOMETRIA.md](docs/PLAN-PSICOMETRIA.md) y [docs/PLAN-RELACIONES.md](docs/PLAN-RELACIONES.md) | Los planes de la psicometría y del *Atlas de relaciones*, paso a paso |
 | [tests/README.md](tests/README.md) | Las pruebas, una por una |
 | [ejemplos/README.md](ejemplos/README.md) | Los cinco casos de ejemplo: qué trae cada carpeta, cómo se hicieron y cómo se comprueban |
@@ -427,7 +444,7 @@ StatSim Pro se distribuye con la [licencia Apache 2.0](LICENSE.txt). Quien parti
 
 <p align="center">
   <a href="https://joelpasapera.github.io/StatSim-Pro/" title="Abrir StatSim Pro en el navegador">
-    <img src="docs/img/abrir-statsim-pro.svg" width="360" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
+    <img src="abrir-statsim-pro.svg" width="360" alt="▶ Abrir StatSim Pro (joelpasapera.github.io/StatSim-Pro)">
   </a>
 </p>
 

@@ -3,6 +3,7 @@
 // Word. El botón «Diagnosticar» solo lleva el par en atributos de datos: lo atiende la tarjeta 7 (diagnostico-forma-ui).
 import { claveParForma } from './cribado-forma.js';
 import { formatoP } from '../../shared/formato-numero.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fp = p => formatoP(p);
@@ -26,8 +27,8 @@ export function avisoForma(formas, a, b, etA, etB) {
     if (!r || !r.noLineal) return '';
     const pTxt = r.pAjustada < 0.001 ? 'p < .001' : `p = ${fp(r.pAjustada)}`;
     const texto = r.tipo === 'no-monotona'
-        ? `La relación entre ${esc(etA)} y ${esc(etB)} <strong>cambia de sentido</strong> (cribado de forma, ${pTxt} con Holm): ni r ni ρ la describen bien; revisa su forma antes de interpretarla.`
-        : `La relación entre ${esc(etA)} y ${esc(etB)} es <strong>curva pero monótona</strong> (cribado de forma, ${pTxt} con Holm): la ρ de Spearman la describe mejor que r.`;
+        ? `La relación entre ${esc(etA)} ${conjuncionY(etB)} ${esc(etB)} <strong>cambia de sentido</strong> (cribado de forma, ${pTxt} con Holm): ni r ni ρ la describen bien; revisa su forma antes de interpretarla.`
+        : `La relación entre ${esc(etA)} ${conjuncionY(etB)} ${esc(etB)} es <strong>curva pero monótona</strong> (cribado de forma, ${pTxt} con Holm): la ρ de Spearman la describe mejor que r.`;
     return `<div class="orden-guia" role="note" style="margin:0.6rem 0 0;"><span class="orden-guia-titulo">Forma de la relación:</span><span class="orden-nota">${texto} ${boton(r)}</span></div>`;
 }
 export function mostrarAvisoForma(idContenedor, formas, a, b, etA, etB) {
@@ -54,6 +55,6 @@ export function notaMatriz(usadas) {
 export function textoObjetivosForma(formas, seleccionados) {
     const marcados = (seleccionados || []).map(s => ({ s, r: resultadoDe(formas, s.columnaX, s.columnaY) })).filter(x => x.r && x.r.noLineal);
     if (!marcados.length) return '';
-    const lista = marcados.map(({ s, r }) => `${s.etiquetaX || s.columnaX} y ${s.etiquetaY || s.columnaY} (${r.tipo === 'no-monotona' ? 'cambia de sentido' : 'curva monótona'})`);
+    const lista = marcados.map(({ s, r }) => `${s.etiquetaX || s.columnaX} ${conjuncionY(s.etiquetaY || s.columnaY)} ${s.etiquetaY || s.columnaY} (${r.tipo === 'no-monotona' ? 'cambia de sentido' : 'curva monótona'})`);
     return `El cribado de forma señaló que ${marcados.length === 1 ? 'la relación entre' : 'las relaciones entre'} ${lista.join('; ')} no ${marcados.length === 1 ? 'es lineal' : 'son lineales'}; su coeficiente debe interpretarse con esa salvedad.`;
 }

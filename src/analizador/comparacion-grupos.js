@@ -149,6 +149,7 @@ const ComparacionGrupos = {
         const prueba = this._fmtPrueba(P);
         prueba.significativa = P.significativa;
         prueba.magnitud = this._magnitud(prueba.efecto.nombre, prueba.efecto.valor);
+        prueba.efecto.ic = P.efectoIC;   // (2027.01.17) el intervalo del tamaño del efecto (d o η²), por no centralidad
 
         // Post-hoc (solo 3+ grupos y global significativo): pares con Holm y el modelo de error de la prueba global.
         const postHoc = P.postHoc ? P.postHoc.pares.map(p => ({
@@ -252,6 +253,17 @@ const ComparacionGrupos = {
 
     _fp(p) { return formatoP(p, { alfa: this._alfa() }); },
     _fx(x, d = 2) { return formatoNumero(x, d); },   // (2026.12.22) ±∞ como «∞» (grupos constantes y distintos), no «—»
+    // (2027.01.20, revisión) Un coeficiente acotado entre −1 y 1 (η², ε², ω², r) sin el cero inicial, como pide APA («.512»);
+    // la d y la g de Hedges, que no lo están, con él («0.512»).
+    _coefTxt(nombre, x, d = 3) { const t = this._fx(x, d); return ['η²', 'ε²', 'ω²', 'r'].includes(nombre) ? t.replace(/^([−-]?)0\./, '$1.') : t; },
+    // (2027.01.17) El tamaño del efecto con su intervalo, para las tablas de la pestaña y del Word: «0.512 [0.10, 0.92]» (d),
+    // «.120 [.02, .25]» (η²).
+    _efectoTxt(P) {
+        const ic = P.efecto.ic, nombre = P.efecto.nombre;
+        return this._coefTxt(nombre, P.efecto.valor, 3) + (ic && Number.isFinite(ic.inferior) ? ` [${this._coefTxt(nombre, ic.inferior, 2)}, ${this._coefTxt(nombre, ic.superior, 2)}]` : '');
+    },
+    // y la cabecera de su columna
+    _efectoCabecera(P) { return `Efecto (${P.efecto.nombre})${P.efecto.ic ? ' [IC 95 %]' : ''}`; },
 
     _onAnalizar() {
         const colG = (document.getElementById('cgGrupo') || {}).value;
@@ -301,8 +313,8 @@ const ComparacionGrupos = {
         const glTxt = this._glTxt(P);
         html += `<h4 style="margin:0.6rem 0 0.2rem;">Prueba aplicada: ${P.nombre}</h4>`
             + `<p class="help-text" style="margin:0 0 0.3rem;">Elegida porque ${R.razon}.</p>`
-            + tabla(fila(['Estadístico', 'gl', 'p', `Efecto (${P.efecto.nombre})`, 'Magnitud', 'Decisión'], true)
-                + fila([this._fx(P.estadistico, 3), glTxt || '—', this._fp(P.pValor), this._fx(P.efecto.valor, 3), P.magnitud,
+            + tabla(fila(['Estadístico', 'gl', 'p', this._efectoCabecera(P), 'Magnitud', 'Decisión'], true)
+                + fila([this._fx(P.estadistico, 3), glTxt || '—', this._fp(P.pValor), this._efectoTxt(P), P.magnitud,
                         P.significativa ? '<b>Diferencias significativas</b>' : 'Sin diferencias significativas']));
 
         if (R.postHoc) {
@@ -331,7 +343,7 @@ const ComparacionGrupos = {
             + (P.significativa
                 ? `estadísticamente significativa (p ${this._pTxt(P.pValor)}; α = ${alfa}): existen diferencias reales entre los grupos en ${R.etNum}. `
                 : `no significativa (p ${this._pTxt(P.pValor)}; α = ${alfa}): los datos no evidencian diferencias entre los grupos en ${R.etNum}. `)
-            + `El tamaño del efecto (${P.efecto.nombre} = ${this._fx(P.efecto.valor, 3)}) indica una magnitud ${P.magnitud}, `
+            + `El tamaño del efecto (${P.efecto.nombre} = ${this._coefTxt(P.efecto.nombre, P.efecto.valor, 3)}${P.efecto.ic && Number.isFinite(P.efecto.ic.inferior) ? `, IC 95 % [${this._coefTxt(P.efecto.nombre, P.efecto.ic.inferior, 2)}, ${this._coefTxt(P.efecto.nombre, P.efecto.ic.superior, 2)}]${P.efecto.ic.clave === 'eta2' ? `; ω² = ${this._coefTxt('ω²', P.efecto.ic.omega2, 3)}, menos sesgada` : `; g de Hedges = ${this._fx(P.efecto.ic.g, 3)}`}` : ''}) indica una magnitud ${P.magnitud}, `
             + `es decir, la relevancia práctica de la diferencia observada más allá de su significancia.`;
         if (R.postHoc) {
             const sig = R.postHoc.filter(p => p.sig);

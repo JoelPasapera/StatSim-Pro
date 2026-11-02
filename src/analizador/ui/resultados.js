@@ -10,7 +10,10 @@ import { asociacionCramerV } from '../motor/magnitudes.js';   // (2026.12.24) la
 import { desplazarHacia } from '../../shared/tabla-datos.js';
 import { mostrarToast } from '../../shared/toast.js';
 import { formatoMitades, formatoNumero, textoP } from '../../shared/formato-numero.js';
+import { cuantilNormal } from '../../core/stats/normal.js';
 import { markdownAHtml } from '../../shared/markdown.js';
+import { escaparHTML } from '../../shared/html.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 function mostrarChiCuadrado(var1, var2, resultado) {
     const container = document.getElementById('resultadosChiCuadrado');
@@ -22,13 +25,39 @@ function mostrarChiCuadrado(var1, var2, resultado) {
         `<tr><td><strong>${resultado.categorias1[i]}</strong></td>${fila.map(o => `<td>${o}</td>`).join('')}<td><strong>${resultado.totalFila[i]}</strong></td></tr>`
     ).join('');
     const totalFinal = `<tr><td><strong>Total</strong></td>${resultado.totalColumna.map(t => `<td><strong>${t}</strong></td>`).join('')}<td><strong>${resultado.n}</strong></td></tr>`;
-    const avisoEsperadas = resultado.esperadasBajas > 0
-        ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">⚠️ ${resultado.esperadasBajas} casilla(s) tienen una frecuencia esperada menor que 5; la prueba de chi-cuadrado puede no ser fiable (considera la prueba exacta de Fisher).</p>`
-        : '';
-    const pTexto = textoP(resultado.pValor, { alfa: AnalizadorEstadistico.alfaEstudio() });
+    // (2027.01.17) con esperadas bajas (regla de Cochran: más del 20 % menores que 5 o alguna menor que 1) decide la exacta de
+    // Fisher, que ahora se calcula; hasta la 2027.01.16 solo se recomendaba
+    const avisoEsperadas = resultado.usarFisher
+        ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">⚠️ ${resultado.esperadasBajas} casilla(s) tienen una frecuencia esperada menor que 5 (más del 20 % de la tabla, o alguna menor que 1): la aproximación de la chi-cuadrado no es fiable, y la decisión se toma con la prueba exacta de Fisher.</p>`
+        : resultado.esperadasBajas > 0
+            ? `<p class="result-subtitle" style="color: #b45309; margin-top: 0.5rem;">⚠️ ${resultado.esperadasBajas} casilla(s) tienen una frecuencia esperada menor que 5, no más del 20 % de la tabla: la chi-cuadrado sigue siendo válida (regla de Cochran), y la prueba exacta de Fisher, abajo, sirve de comprobación.</p>`
+            : '';
+    const alfa = AnalizadorEstadistico.alfaEstudio(), F = resultado.fisher;
+    // (2027.01.20, revisión) sin Fisher (F null) cuando no hace falta: todas las esperadas ≥ 5 en una tabla grande
+    const pTexto = textoP(resultado.pValor, { alfa }), pFisher = F ? textoP(F.pValor, { alfa }) : '';
+    const metodoFisher = !F ? '' : F.metodo === 'exacta' ? 'exacta' : `Monte Carlo, ${F.B.toLocaleString('es')} tablas, semilla ${F.semilla}; EE = ${F.ee.toFixed(4)}`;
+    const prueba = resultado.usarFisher && F ? `prueba exacta de Fisher, ${pFisher}` : `χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}`;
+    // (2027.01.20, revisión) la V, acotada entre 0 y 1, sin el cero inicial (APA): «.245»
+    const v3 = (/** @type {number} */ v) => v.toFixed(3).replace(/^0\./, '.');
+    const icV = resultado.cramerVIC && Number.isFinite(resultado.cramerVIC.inferior) ? ` [IC 95 %: ${v3(resultado.cramerVIC.inferior)}, ${v3(resultado.cramerVIC.superior)}]` : '';
     const interpretacion = significativa
-        ? `Existe una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}). La V de Cramér (${resultado.cramerV.toFixed(3)}) indica una ${asociacionCramerV(resultado.cramerV)}. Las dos variables no son independientes.`
-        : `No se halló una asociación estadísticamente significativa entre ${var1} y ${var2} (χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(2)}, ${pTexto}); las variables pueden considerarse independientes.`;
+        ? `Existe una asociación estadísticamente significativa entre ${var1} ${conjuncionY(var2)} ${var2} (${prueba}). La V de Cramér (${v3(resultado.cramerV)}${icV}) indica una ${asociacionCramerV(resultado.cramerV)}. Las dos variables no son independientes; los residuos corregidos señalan las combinaciones que más se apartan de la independencia.`
+        : `No se halló una asociación estadísticamente significativa entre ${var1} ${conjuncionY(var2)} ${var2} (${prueba}); las variables pueden considerarse independientes.`;
+    // los residuos tipificados corregidos (Haberman, 1973): |z| > 1.96, la casilla se aparta de la independencia; con la
+    // corrección de Bonferroni para todas las casillas (Beasley y Schumacker, 1995), el valor crítico más exigente
+    const casillas = resultado.categorias1.length * resultado.categorias2.length, zBonf = cuantilNormal(1 - 0.025 / casillas);
+    const filasResiduos = resultado.residuos.map((fila, i) => `<tr><td><strong>${resultado.categorias1[i]}</strong></td>${fila.map(z => {
+        const fuerte = Math.abs(z) > zBonf, marcado = Math.abs(z) > 1.96;
+        return `<td${marcado ? ' style="font-weight:700;"' : ''}>${formatoNumero(z, 2).replace('-', '−')}${fuerte ? ' *' : ''}</td>`;
+    }).join('')}</tr>`).join('');
+    const tablaResiduos = `<h5 style="margin: 0.8rem 0 0.5rem; font-weight: 600;">Residuos tipificados corregidos (Haberman)</h5>
+                <table class="result-table"><tr><th>${var1} \\ ${var2}</th>${resultado.categorias2.map(c => `<th>${c}</th>`).join('')}</tr>${filasResiduos}</table>
+                <p class="result-subtitle" style="margin-top: 0.3rem;">En negrita, |z| > 1.96: la combinación aparece más (positivo) o menos (negativo) de lo que se esperaría si las variables fueran independientes. Con *, también con la corrección de Bonferroni para las ${casillas} casillas (|z| > ${zBonf.toFixed(2)}).</p>`;
+    // (2027.01.20, revisión) la OR dice qué categoría compara con cuál: las odds de la primera columna en la primera fila,
+    // entre las de la segunda fila (a·d / b·c)
+    const [f1, f2] = resultado.categorias1, [c1, c2] = resultado.categorias2;
+    const queOR = F && F.dosPorDos ? ` <span class="help-text">(las odds de ${escaparHTML(String(c1))}, frente a ${escaparHTML(String(c2))}, en ${escaparHTML(String(f1))} entre las de ${escaparHTML(String(f2))})</span>` : '';
+    const dosPorDos = F && F.dosPorDos ? `<tr><td>Razón de odds (tabla 2 × 2):</td><td><strong>OR = ${formatoNumero(F.dosPorDos.or, 2)}</strong> [IC 95 %: ${formatoNumero(F.dosPorDos.inferior, 2)}, ${formatoNumero(F.dosPorDos.superior, 2)}]${F.dosPorDos.corregida ? ' (con ½ en cada casilla: hay ceros)' : ''}${queOR}</td></tr>` : '';
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Asociación de Variables Categóricas (Chi-cuadrado)</h3>
@@ -41,12 +70,15 @@ function mostrarChiCuadrado(var1, var2, resultado) {
                     ${totalFinal}
                 </table>
                 ${avisoEsperadas}
+                ${tablaResiduos}
             </div>
             <div class="result-box">
                 <table class="result-table">
                     <tr><td>Chi-cuadrado de Pearson:</td><td><strong>χ²(${resultado.gl}) = ${resultado.chiCuadrado.toFixed(3)}</strong></td></tr>
-                    <tr><td>p-valor:</td><td><strong>${fmtPApp(resultado.pValor, AnalizadorEstadistico.alfaEstudio())}</strong></td></tr>
-                    <tr><td>V de Cramér (tamaño del efecto):</td><td><strong>${resultado.cramerV.toFixed(3)}</strong> (${asociacionCramerV(resultado.cramerV)})</td></tr>
+                    <tr><td>p-valor:</td><td><strong>${fmtPApp(resultado.pValor, AnalizadorEstadistico.alfaEstudio())}</strong>${resultado.usarFisher ? ' (no fiable: esperadas bajas)' : ''}</td></tr>
+                    <tr><td>Prueba exacta de Fisher:</td><td>${F ? `<strong>${pFisher}</strong> (${metodoFisher})${resultado.usarFisher ? ' — <strong>la que decide</strong>' : ''}` : 'no hace falta: todas las frecuencias esperadas son 5 o más y la χ² es válida (en una tabla tan grande, su Monte Carlo solo tardaría)'}</td></tr>
+                    <tr><td>V de Cramér (tamaño del efecto):</td><td><strong>${v3(resultado.cramerV)}</strong>${icV} (${asociacionCramerV(resultado.cramerV)})</td></tr>
+                    ${dosPorDos}
                     <tr><td>N:</td><td>${resultado.n}</td></tr>
                     <tr><td>Decisión sobre H₀:</td><td class="${significativa ? 'decision-reject' : 'decision-accept'}"><strong>${significativa ? 'SE RECHAZA H₀' : 'NO SE RECHAZA H₀'}</strong></td></tr>
                 </table>
@@ -641,7 +673,7 @@ function mostrarDispersion(var1, var2, resultado) {
     container.innerHTML = `
         <div class="result-section">
             <h3 class="section-title">Diagrama de Dispersión</h3>
-            <p class="result-subtitle">Relación entre ${var1} y ${var2}, con la recta de regresión por mínimos cuadrados y el coeficiente de determinación R². Permite valorar visualmente la forma, dirección y dispersión de la asociación.</p>
+            <p class="result-subtitle">Relación entre ${var1} ${conjuncionY(var2)} ${var2}, con la recta de regresión por mínimos cuadrados y el coeficiente de determinación R². Permite valorar visualmente la forma, dirección y dispersión de la asociación.</p>
             ${marcoDeGrafico('graficoDispersion')}
         </div>`;
     container.style.display = 'block';

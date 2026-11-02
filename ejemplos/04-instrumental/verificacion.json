@@ -1,6 +1,6 @@
 {
   "caso": "04-instrumental",
-  "version": "2027.01.16",
+  "version": "2027.01.20",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
@@ -14441,12 +14441,12 @@
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 19761,
-      "sha256": "0d068dd788e6d9dc063654779ca329d8a29950ccc45d4b8b1090620cc3fe1a55",
+      "sha256": "4a8d028d15487bb65f49fe0562118a2d0b6ffc802c86d03633226a2abd5dcbd5",
       "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
-      "bytes": 50358,
-      "sha256": "3cb1f292e7191ce7a003dc568e4238ada24b61382ddda9e681ba160fd2154566",
+      "bytes": 50356,
+      "sha256": "279529ca99959ff406ba492ec0b5367cbaa5674795cb1848004c0e160f9a5381",
       "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
@@ -14460,10 +14460,10 @@
       "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 73050,
-      "sha256": "129e55a831c0c194387180f8eeedbf810ac38026b0ad56afa0bf606e2e929148",
+      "bytes": 73046,
+      "sha256": "06d03222f61108928f2f32a82ad0ec16386dc9894b93fc3200e5f0a9e1dbeb59",
       "paginas": 2,
-      "impreso": "5a6ba0afbd7c11332bc5df4e4127286b1ef6132caff561af915ee4dd616c67dd",
+      "impreso": "cd4a2f44ad6fe608849b322407d2d85980957d6ab0bf2c936ac240f860aeead6",
       "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-validez-de-contenido/valoraciones_claridad.csv": {
@@ -14507,8 +14507,8 @@
       "descripcion": "La invarianza de medición redactada en APA, con sus tablas: botón «Word» de la tarjeta."
     },
     "analizador/4-capitulo/capitulo_resultados_APA.docx": {
-      "bytes": 958517,
-      "sha256": "e22d1bc9d6bbe7d5d59cd98887240ee35d2f39ef5356f842cc280e49cc110647",
+      "bytes": 958513,
+      "sha256": "e9a0257c881c39ce231c29f0f5f76c6c0dd5ecd2bcb1e790b80e3d377ddd5029",
       "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/4-capitulo/resultados_analisis.txt": {
@@ -14517,15 +14517,15 @@
       "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/4-capitulo/resultados.pdf": {
-      "bytes": 1511169,
-      "sha256": "ecba47e610d4073e35eeac1b4da0d1e9540c818898ff54afc989b424123356be",
+      "bytes": 1511166,
+      "sha256": "6811e4055bef902afb7a6eaf388d42ccd6ed74d28dee830dbef700c518221762",
       "paginas": 39,
-      "impreso": "1d1e03d6a62c587109a3091e9c5629811d97891160cdfa69d811d09973831f77",
+      "impreso": "5bb760e548f2227777ab06cdbc4fd89a3c9c1eb2071b789a9aacb10a1b87f96e",
       "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 24646,
-      "sha256": "62d83be6e17c2cb28934d45055bd32ed2da9aa5efbab2d46ff8d00f129a865fe",
+      "bytes": 24647,
+      "sha256": "8edf8bc000cefa03a52d7a47d1071cbade2d7995d40dfd0867f8563e304afa00",
       "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }

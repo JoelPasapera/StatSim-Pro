@@ -443,3 +443,20 @@ test('(2027.01.11, revisión) un título más ancho que el gráfico, en dos lín
         assert.deepEqual([x.r.texto, x.r.lineas.length], ['sin tocar', 0]);
     }
 });
+
+test('(2027.01.17) la paleta categórica de los gráficos nuevos: ocho tonos distintos, cada uno con su paso en papel, el mismo en el Word (graficoEnPapel) y al imprimir (impresion.css)', async () => {
+    const { CATEGORICA } = await import('../../src/analizador/graficos-en-papel.js');
+    assert.equal(CATEGORICA.length, 8);
+    assert.equal(new Set(CATEGORICA.map(c => c.pantalla)).size, 8, 'ocho tonos de pantalla distintos');
+    assert.equal(new Set(CATEGORICA.map(c => c.papel)).size, 8, 'y ocho de papel');
+    const css = fs.readFileSync(new URL('../../assets/css/componentes/impresion.css', import.meta.url), 'utf8');
+    for (const { pantalla, papel } of CATEGORICA) {
+        if (pantalla === papel) continue;   // el verde es el mismo en los dos modos
+        for (const a of ['stroke', 'fill']) assert.ok(css.includes(`svg [${a}="${pantalla}"] { ${a}: ${papel} !important; }`), `impresion.css: ${pantalla} (${a}) en ${papel}`);
+    }
+    assert.ok(css.includes('svg [stroke="#131c2e"] { stroke: #ffffff !important; }'), 'el anillo de los marcadores (la superficie de la tarjeta), blanco en papel');
+    const env = crearEntorno('<html><body></body></html>');
+    env.document.body.innerHTML = `<svg viewBox="0 0 10 10"><path stroke="${CATEGORICA[1].pantalla}" fill="${CATEGORICA[2].pantalla}"></path></svg>`;
+    const papel = graficoEnPapel(/** @type {any} */ (env.document.querySelector('svg')));
+    assert.deepEqual([papel.querySelector('path').getAttribute('stroke'), papel.querySelector('path').getAttribute('fill')], [CATEGORICA[1].papel, CATEGORICA[2].papel]);
+});

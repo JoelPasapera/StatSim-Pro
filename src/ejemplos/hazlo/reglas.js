@@ -21,6 +21,7 @@
 // comparaciones de grupos, una tarjeta tras las descargas del análisis… Sin DOM.
 
 import { accionEjecutable, papelDelSEM, queNoPuede, tieneCapitulo } from './planes.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 /**
  * @typedef {import('./planes.js').AccionDelGuion} AccionDelGuion
@@ -35,7 +36,7 @@ export const TARJETAS_DE_UNA_VEZ = Object.freeze(['compararGrupos', 'calcularAFE
 export const LO_QUE_TRAE_EL_PROYECTO = Object.freeze(['usarBaseDelSimulador', 'describirInvestigacion']);
 
 /** Unos textos, en una frase: «a», «a y b», «a, b y c». @param {Array<string | number>} xs */
-const unir = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+const unir = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${conjuncionY(String(xs[xs.length - 1]))} ${xs[xs.length - 1]}`);
 /** Las acciones de un guion, por su nombre. @param {AccionDelGuion[]} g */
 const nombres = g => g.map(a => a.accion).join(', ') || 'nada';
 /** «el paso 3», «los pasos 3 y 4». @param {number[]} pasos (distintos, en orden) */

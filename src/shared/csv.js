@@ -101,4 +101,17 @@ function conFormulaOriginal(s) {
     return s.startsWith("'") && esFormula(s.slice(1)) ? s.slice(1) : s;
 }
 
-export { parsearLineaCSV, parsearLineaCSVCon, escapeAttr, campoCSV, sinFormula, conFormulaOriginal };
+/**
+ * (2027.01.19) Un valor como celda de un CSV en español (punto y coma, coma decimal; el de los resultados del Analizador que
+ * se abren en Excel): vacía si falta o no es un número finito; los números, con coma decimal; el resto, como campo de CSV.
+ * Antes, la depuración, los datos perdidos y la curva ROC tenían cada una su copia.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function celdaCSVEs(v) {
+    if (v === undefined || v === null || (typeof v === 'string' && v.trim() === '')) return '';
+    if (typeof v === 'number') return Number.isFinite(v) ? String(v).replace('.', ',') : '';
+    return campoCSV(v, ';');
+}
+
+export { parsearLineaCSV, parsearLineaCSVCon, escapeAttr, campoCSV, celdaCSVEs, sinFormula, conFormulaOriginal };

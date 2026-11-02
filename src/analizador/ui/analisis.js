@@ -390,11 +390,13 @@ function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     }
     // (2026.12.22) «un ANOVA de un factor», el nombre de SPSS (hasta la 2026.12.21, «una ANOVA de una vía» aquí y «ANOVA de un
     // factor» en la pestaña de grupos y el Word); con grupos constantes y distintos, F = ∞
+    // (2027.01.17) los tamaños del efecto con su intervalo (APA 7): el de η² por la F no central, con la ω², y el de la d por la t
+    const icEta = resultado.efectoIC && Number.isFinite(resultado.efectoIC.inferior) ? `, IC 95 % [${formatearRApa(resultado.efectoIC.inferior)}, ${formatearRApa(resultado.efectoIC.superior)}], ω² = ${formatearRApa(resultado.efectoIC.omega2)}` : '';
     if (prueba.prueba === 'ANOVA de un factor') {
-        return `Un ANOVA de un factor comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${prueba.glDentro}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}.`;
+        return `Un ANOVA de un factor comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${prueba.glDentro}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}${icEta}.`;
     }
     if (prueba.prueba === 'ANOVA de Welch') {   // (2026.12.20) gl del error fraccionarios, con dos decimales como los de la t de Welch
-        return `Un ANOVA de Welch comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${formatoNumero(prueba.glDentro, 2)}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}.`;
+        return `Un ANOVA de Welch comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: F(${prueba.glEntre}, ${formatoNumero(prueba.glDentro, 2)}) = ${formatoNumero(prueba.F, 2)}, ${pTexto}, η² = ${formatearRApa(prueba.etaCuadrado)}${icEta}.`;
     }
     if (prueba.prueba === 'Kruskal-Wallis') {
         return `La prueba de Kruskal-Wallis comparó ${varCuantitativa} entre los grupos de ${varAgrupacion}: H(${prueba.gl}) = ${prueba.H.toFixed(2)}, ${pTexto}, ε² = ${formatearRApa(prueba.epsilonCuadrado)}.`;
@@ -403,7 +405,8 @@ function lineaApaComparacion(varCuantitativa, varAgrupacion, resultado) {
     const decimalesGl = prueba.prueba.includes('Welch') ? 2 : 0;
     const d = resultado.tamanoEfectoRangos
         ? `, r de rangos = ${formatearRApa(resultado.tamanoEfectoRangos.r)}`
-        : (resultado.tamanoEfecto ? `, d de Cohen = ${formatearRApa(resultado.tamanoEfecto.d)}` : '');
+        // (2027.01.20, revisión) la d no está acotada: con el cero inicial («0.45», no «.45»), como la t
+        : (resultado.tamanoEfecto ? `, d de Cohen = ${formatoNumero(resultado.tamanoEfecto.d, 2)}${resultado.tamanoEfectoIC && Number.isFinite(resultado.tamanoEfectoIC.inferior) ? `, IC 95 % [${formatoNumero(resultado.tamanoEfectoIC.inferior, 2)}, ${formatoNumero(resultado.tamanoEfectoIC.superior, 2)}]` : ''}` : '');
     return `Se comparó ${varCuantitativa} entre los grupos de ${varAgrupacion} mediante la ${prueba.prueba}: t(${formatoNumero(prueba.gl, decimalesGl)}) = ${formatoNumero(prueba.estadistico, 2)}, ${pTexto}${d}.`;
 }
 

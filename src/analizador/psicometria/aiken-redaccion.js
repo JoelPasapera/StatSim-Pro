@@ -3,6 +3,7 @@
 // exportador del capítulo de resultados) y el CSV de resultados.
 import { CRITERIOS_V0 } from './aiken.js';
 import { formatoP } from '../../shared/formato-numero.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 // APA: los estadísticos acotados entre 0 y 1 van sin cero inicial (.85); p con tres decimales o «< .001»
 export const f2 = x => (Number.isFinite(x) ? x.toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
@@ -11,7 +12,7 @@ const pct = c => `${String(Math.round(c * 1000) / 10).replace('.', ',')} %`;
 export const ROTULO_DECISION = { valido: 'Válido', revisar: 'Revisar', no_valido: 'No válido' };
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-const lista = xs => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`;
+const lista = xs => xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${conjuncionY(xs[xs.length - 1])} ${xs[xs.length - 1]}`;
 const listaMinuscula = xs => lista(xs.map(x => x.toLowerCase()));
 const itemsDe = (filas, decision) => filas.filter(x => x.decision === decision).map(x => x.etiqueta);
 // Nombra ítems en prosa: «el ítem 4» / «los ítems 3 y 6» con la numeración por defecto; con etiquetas propias

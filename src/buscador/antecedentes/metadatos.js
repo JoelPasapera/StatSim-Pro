@@ -2,6 +2,7 @@
 // Origen: buscador/antecedentes.js (Fase 6: partición por responsabilidad, sin cambios de comportamiento).
 
 import { escaparHTML } from '../../shared/html.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 export const metodosAntecedentesMetadatos = {
 
@@ -129,8 +130,8 @@ export const metodosAntecedentesMetadatos = {
         const a = autores.map(n => this._autorAPA(n));
         if (!a.length) return '';
         if (a.length === 1) return a[0];
-        if (a.length === 2) return `${a[0]} y ${a[1]}`;
-        if (a.length <= 20) return `${a.slice(0, -1).join(', ')} y ${a[a.length - 1]}`;
+        if (a.length === 2) return `${a[0]} ${conjuncionY(a[1])} ${a[1]}`;
+        if (a.length <= 20) return `${a.slice(0, -1).join(', ')} ${conjuncionY(a[a.length - 1])} ${a[a.length - 1]}`;
         return `${a.slice(0, 19).join(', ')}, ... ${a[a.length - 1]}`;
     },
 

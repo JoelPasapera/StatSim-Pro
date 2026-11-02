@@ -104,6 +104,17 @@
     svg [stroke="#22d3ee"] { stroke: #0e7490 !important; } svg [fill="#22d3ee"] { fill: #0e7490 !important; }
     svg [stroke="#fb923c"] { stroke: #c2410c !important; } svg [fill="#fb923c"] { fill: #c2410c !important; }
     svg [stroke="#a3e635"] { stroke: #4d7c0f !important; } svg [fill="#a3e635"] { fill: #4d7c0f !important; }
+    /* (2027.01.17) la paleta categórica de los gráficos nuevos (graficos-en-papel.js, CATEGORICA): de su paso para la pantalla
+       oscura al suyo para el papel */
+    svg [stroke="#3987e5"] { stroke: #2a78d6 !important; } svg [fill="#3987e5"] { fill: #2a78d6 !important; }
+    svg [stroke="#d95926"] { stroke: #eb6834 !important; } svg [fill="#d95926"] { fill: #eb6834 !important; }
+    svg [stroke="#199e70"] { stroke: #1baf7a !important; } svg [fill="#199e70"] { fill: #1baf7a !important; }
+    svg [stroke="#c98500"] { stroke: #eda100 !important; } svg [fill="#c98500"] { fill: #eda100 !important; }
+    svg [stroke="#d55181"] { stroke: #e87ba4 !important; } svg [fill="#d55181"] { fill: #e87ba4 !important; }
+    svg [stroke="#9085e9"] { stroke: #6250d6 !important; } svg [fill="#9085e9"] { fill: #6250d6 !important; }
+    svg [stroke="#e66767"] { stroke: #e34948 !important; } svg [fill="#e66767"] { fill: #e34948 !important; }
+    /* y el anillo de sus marcadores, del color de la superficie de la tarjeta: en papel, blanco */
+    svg [stroke="#131c2e"] { stroke: #ffffff !important; }
     .chart-desc { color: #3b414c !important; }
     .analisis-grafico { border-top-color: var(--color-border) !important; }
     .analisis-grafico h5 { color: #8a6300 !important; }

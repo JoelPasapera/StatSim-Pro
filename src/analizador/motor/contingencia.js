@@ -4,6 +4,20 @@
 // del estudio. (2026.12.24, fase F6, paso 4) Antes, el cálculo entero dentro de estadistica.js.
 import { esPerdido } from '../../core/data/celdas.js';
 import { pruebaIndependencia } from '../../core/stats/contingencia.js';
+import { fisherExacta, fisherSiEnumerable, residuosCorregidos } from '../../core/stats/exactas.js';
+import { intervaloCramerV } from '../../core/stats/efectos.js';
+
+/**
+ * (2027.01.17) ¿Decide la exacta de Fisher en lugar de la χ²? Con la regla de Cochran (1954), la de SPSS y la de los
+ * manuales: la aproximación de la χ² no vale si más del 20 % de las casillas tienen una esperada menor que 5 o alguna, menor
+ * que 1. Hasta la 2027.01.16 la vista lo advertía y decidía igual con la χ².
+ * @param {number[][]} esperadas
+ * @returns {boolean}
+ */
+export function decideFisher(esperadas) {
+    const todas = esperadas.flat();
+    return todas.filter(e => e < 5).length > 0.2 * todas.length || todas.some(e => e < 1);
+}
 
 /** Máximo de categorías por variable: con más, la variable no es categórica (una continua, un identificador). */
 export const MAX_CATEGORIAS = 15;
@@ -23,8 +37,9 @@ function categorias(valores) {
 /**
  * χ² de independencia entre dos variables categóricas, emparejadas por posición (hasta la más corta de las dos): un caso
  * con alguna de las dos perdida (sin valor, NaN o texto vacío) no cuenta, y cada valor es una categoría por su texto.
- * Devuelve las categorías, las frecuencias observadas y esperadas, los totales, n, χ², gl, p, la V de Cramér, cuántas
- * esperadas son menores que 5 y la decisión con `alfa`. Lanza un error con menos de 2 casos, con menos de 2 categorías en
+ * Devuelve las categorías, las frecuencias observadas y esperadas, los totales, n, χ², gl, p, la V de Cramér (y, desde la
+ * 2027.01.17, su intervalo), cuántas esperadas son menores que 5, los residuos corregidos, la exacta de Fisher, si decide
+ * ella (decideFisher) y la decisión con `alfa` (con el p de la prueba que decide). Lanza un error con menos de 2 casos, con menos de 2 categorías en
  * alguna variable o con más de MAX_CATEGORIAS.
  * @param {ArrayLike<unknown>} valores1
  * @param {ArrayLike<unknown>} valores2
@@ -61,6 +76,14 @@ export function chiCuadradoIndependencia(valores1, valores2, alfa) {
         fila[j] = /** @type {number} */ (fila[j]) + 1;
     });
     const P = pruebaIndependencia(observadas);
+    // (2027.01.17) la exacta de Fisher (exacta si las tablas posibles son pocas; si no, Monte Carlo con semilla), los residuos
+    // tipificados corregidos de Haberman, el intervalo de la V de Cramér (por la χ² no central) y, en una 2 × 2, la razón de odds
+    // (2027.01.20, revisión) con todas las esperadas ≥ 5 en una tabla mayor que 2 × 2, la χ² basta: Fisher solo si se enumera
+    // enseguida (si no, null: su Monte Carlo costaba de medio segundo a dos en cada χ²)
+    const necesaria = P.esperadasBajas > 0 || (f === 2 && c === 2);
+    const fisher = necesaria ? fisherExacta(observadas) : fisherSiEnumerable(observadas), usarFisher = decideFisher(P.esperadas);
+    const ic = intervaloCramerV(P.chiCuadrado, P.gl, P.n, Math.min(f, c));
+    const pDecision = usarFisher && fisher ? fisher.pValor : P.pValor;
     return {
         categorias1,
         categorias2,
@@ -73,7 +96,11 @@ export function chiCuadradoIndependencia(valores1, valores2, alfa) {
         gl: P.gl,
         pValor: P.pValor,
         cramerV: P.cramerV,
+        cramerVIC: { inferior: ic.inferior, superior: ic.superior, nivel: ic.nivel },
         esperadasBajas: P.esperadasBajas,
-        decision: P.pValor < alfa ? 'rechazar' : 'no_rechazar'
+        residuos: residuosCorregidos(observadas),
+        fisher,
+        usarFisher,
+        decision: pDecision < alfa ? 'rechazar' : 'no_rechazar'
     };
 }

@@ -42,6 +42,54 @@ export function magnitudEta2(v) {
 }
 
 /**
+ * (2027.01.17) La g de Cohen de la prueba de McNemar (la distancia de la proporción de los que cambian en un sentido a ½; en
+ * valor absoluto): .05, .15 y .25 (Cohen, 1988, cap. 5).
+ * @param {number} g
+ * @returns {MagnitudEfecto}
+ */
+export function magnitudGCohen(g) {
+    const a = Math.abs(g);
+    return a < 0.05 ? 'trivial' : a < 0.15 ? 'pequeño' : a < 0.25 ? 'mediano' : 'grande';
+}
+
+/**
+ * (2027.01.18) f de Cohen (el ANOVA; en valor absoluto): .10, .25 y .40 (Cohen, 1988, cap. 8).
+ * @param {number} f
+ * @returns {MagnitudEfecto}
+ */
+export function magnitudF(f) {
+    const a = Math.abs(f);
+    return a < 0.1 ? 'trivial' : a < 0.25 ? 'pequeño' : a < 0.4 ? 'mediano' : 'grande';
+}
+
+/**
+ * (2027.01.18) w de Cohen (la χ²; en valor absoluto): .10, .30 y .50 (Cohen, 1988, cap. 7), las mismas bandas que r.
+ * @param {number} w
+ * @returns {MagnitudEfecto}
+ */
+export function magnitudW(w) { return magnitudR(w); }
+
+/**
+ * (2027.01.18) f² de Cohen (la regresión múltiple): .02, .15 y .35 (Cohen, 1988, cap. 9).
+ * @param {number} f2
+ * @returns {MagnitudEfecto}
+ */
+export function magnitudF2(f2) {
+    const a = Math.abs(f2);
+    return a < 0.02 ? 'trivial' : a < 0.15 ? 'pequeño' : a < 0.35 ? 'mediano' : 'grande';
+}
+
+/**
+ * (2027.01.18) La discriminación de un área bajo la curva ROC (Hosmer, Lemeshow y Sturdivant, 2013, p. 177): .5 o menos, nula;
+ * menos de .7, pobre; desde .7, aceptable; desde .8, excelente; desde .9, sobresaliente.
+ * @param {number} auc
+ * @returns {'nula' | 'pobre' | 'aceptable' | 'excelente' | 'sobresaliente'}
+ */
+export function discriminacionAUC(auc) {
+    return !(auc > 0.5) ? 'nula' : auc < 0.7 ? 'pobre' : auc < 0.8 ? 'aceptable' : auc < 0.9 ? 'excelente' : 'sobresaliente';
+}
+
+/**
  * Fuerza de una correlación (en valor absoluto), la de la redacción del análisis de dos variables: .10, .30, .50, .70 y .90.
  * @param {number} r
  * @returns {'nula o muy débil' | 'débil' | 'moderada' | 'moderada-fuerte' | 'fuerte' | 'muy fuerte'}

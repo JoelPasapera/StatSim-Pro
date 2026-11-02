@@ -13,6 +13,7 @@ import { mostrarToast } from '../../shared/toast.js';
 import { cuantilOrdenado } from '../../core/stats/orden.js';
 import { aNumero, esPerdido } from '../../core/data/celdas.js';
 import { textoP } from '../../shared/formato-numero.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 // ========================================
 // TABLA SOCIODEMOGRÁFICA Y NIVELES (bajo/medio/alto)
@@ -171,7 +172,7 @@ function construirLineaAPA(var1, var2, resultado) {
     const relacion = significativa
         ? `una correlación ${resultado.interpretacion.direccion} estadísticamente significativa`
         : `una correlación ${resultado.interpretacion.direccion} no significativa`;
-    return `Se halló ${relacion} entre ${var1} y ${var2}, ${simbolo}(${resultado.gl}) = ${formatearRApa(resultado.coeficiente)}, ${formatearPApa(resultado.pValor)}${icTexto}; r² = ${formatearRApa(resultado.r2)}.`;
+    return `Se halló ${relacion} entre ${var1} ${conjuncionY(var2)} ${var2}, ${simbolo}(${resultado.gl}) = ${formatearRApa(resultado.coeficiente)}, ${formatearPApa(resultado.pValor)}${icTexto}; r² = ${formatearRApa(resultado.r2)}.`;
 }
 
 function mostrarReporteAPA(var1, var2, resultado) {

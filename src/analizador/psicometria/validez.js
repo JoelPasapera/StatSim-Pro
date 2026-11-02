@@ -4,6 +4,7 @@
 //   · criterio de Fornell–Larcker: √AVE de cada factor mayor que su correlación con cualquier otro;
 //   · HTMT (Henseler, Ringle y Sarstedt, 2015): media de las correlaciones entre ítems de factores distintos dividida
 //     por la media geométrica de las correlaciones medias entre ítems de cada factor (< .85 estricto, < .90 liberal).
+import { conjuncionY } from '../../shared/texto-es.js';
 export const UMBRALES_VALIDEZ = { CR: 0.70, AVE: 0.50, HTMT: 0.85, HTMTLiberal: 0.90 };
 
 // factores: [{ nombre, items: [..], lambdas: [..], thetas: [..] }] (estandarizados); correlaciones: matriz m×m entre
@@ -46,7 +47,7 @@ export const REFERENCIAS_VALIDEZ = [
 ];
 
 export function redactarValidez(v) {
-    const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+    const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${conjuncionY(xs[xs.length - 1])} ${xs[xs.length - 1]}`);
     const F = v.porFactor, rango = xs => (Math.min(...xs) === Math.max(...xs) ? `fue ${f2(xs[0])}` : `osciló entre ${f2(Math.min(...xs))} y ${f2(Math.max(...xs))}`);
     const partes = [`La validez convergente se examinó con la fiabilidad compuesta (CR; Raykov, 1997) y la varianza media extraída (AVE; Fornell y Larcker, 1981): la CR ${rango(F.map(f => f.CR))} (criterio ≥ .70) y la AVE ${rango(F.map(f => f.AVE))} (criterio ≥ .50).`];
     const bajaCR = F.filter(f => f.CR < UMBRALES_VALIDEZ.CR).map(f => f.nombre), bajaAVE = F.filter(f => f.AVE < UMBRALES_VALIDEZ.AVE);

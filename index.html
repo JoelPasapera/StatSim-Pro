@@ -1494,6 +1494,12 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                     </p>
                 </div>
                 
+                <!-- Depuración de la base (antes de analizar): la monta src/analizador/depuracion/depuracion-ui.js -->
+                <div id="depuracionContainer" class="card"></div>
+
+                <!-- Datos perdidos (antes de analizar): la monta src/analizador/perdidos/perdidos-ui.js -->
+                <div id="perdidosContainer" class="card"></div>
+
                 <!-- Configuración de Investigación -->
                 <div class="card solo-pantalla">
                     <h3 class="card-title">1. Configuración de la Investigación</h3>
@@ -1628,6 +1634,30 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
                 </div>
 
                 <div id="cgSlot"></div>
+
+                <!-- Medidas repetidas y muestras relacionadas: la monta src/analizador/relacionadas/relacionadas-ui.js -->
+                <div id="relacionadasContainer" class="card"></div>
+
+                <!-- Correlación parcial y semiparcial: la monta src/analizador/relaciones/correlacion-parcial-ui.js -->
+                <div id="parcialContainer" class="card"></div>
+
+                <!-- Mediación y moderación (modelos de PROCESS): la monta src/analizador/relaciones/mediacion-ui.js -->
+                <div id="mediacionContainer" class="card"></div>
+
+                <!-- Baremos (normas de interpretación): la monta src/analizador/psicometria/baremos-ui.js -->
+                <div id="baremosContainer" class="card"></div>
+
+                <!-- Validez de criterio (curva ROC): la monta src/analizador/roc/roc-ui.js -->
+                <div id="rocContainer" class="card"></div>
+
+                <!-- Potencia y tamaño de muestra: la monta src/analizador/potencia/potencia-ui.js -->
+                <div id="potenciaContainer" class="card"></div>
+
+                <!-- Teoría de respuesta al ítem (TRI) y DIF: la monta src/analizador/tri/tri-ui.js -->
+                <div id="triContainer" class="card"></div>
+
+                <!-- Modelos multinivel (intercepto aleatorio): la monta src/analizador/multinivel/multinivel-ui.js -->
+                <div id="multinivelContainer" class="card"></div>
 
                 <!-- Agregar dentro de la sección analizador, después del título principal -->
                 <div class="chart-grid" id="contenedorGraficos">
@@ -2008,7 +2038,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
     <!-- ============================================================
          VERSIONADO DE SCRIPTS (anti-caché de GitHub Pages / CDN)
          Cada vez que actualices un archivo .js, INCREMENTA su ?v=N
-         (ej: src/main.js?v=2027.01.16). Eso obliga a navegadores y CDN
+         (ej: src/main.js?v=2027.01.20). Eso obliga a navegadores y CDN
          a descargar la versión nueva al instante. Sin esto, la caché
          puede servir archivos viejos hasta ~10 minutos o más.
          ============================================================ -->
@@ -2017,7 +2047,7 @@ y las dos d. Las correlaciones que implican los coeficientes sustituyen a las de
          mismas versiones) -->
     <!-- Arranque modular: src/main.js carga todo el código propio (módulos ES bajo src/). Al publicar cambios:
          sube VERSION en src/version.js y este ?v=. -->
-    <script type="module" src="src/main.js?v=2027.01.16"></script>
+    <script type="module" src="src/main.js?v=2027.01.20"></script>
 
     <!-- Etiquetas humanas de variables (estilo SPSS) -->
 

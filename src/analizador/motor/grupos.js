@@ -216,6 +216,7 @@ export function compararDosGrupos(grupo1, grupo2, etiqueta1, etiqueta2, alfa) {
         prueba,
         parametrica,
         tamanoEfecto: efectoD(grupo1, grupo2),
+        tamanoEfectoIC: P.efectoIC,   // (2027.01.17) el intervalo de la d (por la t no central), con la g de Hedges
         rangosMedios: rangosMedios([grupo1, grupo2]),
         // el tamaño del efecto de la prueba no paramétrica: r de rangos = |z|/√N (Cohen: .10 pequeño, .30 mediano, .50 grande)
         tamanoEfectoRangos: (!parametrica && typeof z === 'number' && Number.isFinite(z)) ? (() => {
@@ -250,6 +251,7 @@ export function compararVariosGrupos(grupos, etiquetas, alfa) {
         levene: formatoLevene(P.levene),
         prueba,
         parametrica: P.rama === 'parametrica',
+        efectoIC: P.efectoIC,   // (2027.01.17) el intervalo de η² (por la F no central) y la ω²
         rangosMedios: rangosMedios(grupos),
         decision,
         postHoc: decision === 'rechazar' && P.postHoc ? formatoPostHoc(P.postHoc, etiquetas) : null,

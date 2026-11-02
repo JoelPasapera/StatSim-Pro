@@ -57,7 +57,7 @@ const PLANTILLA = () => `
         Categorías: κ de Cohen o de Fleiss; puntuaciones continuas: coeficiente de correlación intraclase (CCI).</p>
     <div class="rejilla-psico">
         <div class="form-group">
-            ${guia('Qué columnas son los evaluadores: una columna por evaluador y una fila por sujeto. Las columnas Juez1_X, Juez2_X… (como las del Simulador) se agrupan solas.')}
+            ${guia('Qué columnas son los evaluadores: una columna por evaluador y una fila por sujeto. Las columnas Juez1_X, Juez2_X… (como las del Simulador) se agrupan automáticamente.')}
             <label for="concConjunto">Evaluadores</label>
             <div style="display:flex; gap:0.5rem;"><select id="concConjunto" class="input"><option value="">Carga una base primero</option></select>
                 <button type="button" id="concActualizar" class="btn btn-outline" title="Actualizar con la base cargada" aria-label="Actualizar la lista de evaluadores">↻</button></div>

@@ -3,6 +3,7 @@
 
 import { fuentesBuscador } from './base.js';
 import { leerXlsx } from '../../core/data/xlsx/lector.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 export const metodosRedactorTeoricoFuentes = {
     async _onArchivo(file) {
@@ -234,7 +235,7 @@ export const metodosRedactorTeoricoFuentes = {
         const y = anio || 's. f.';
         if (!aps.length) return '';
         if (aps.length === 1) return `(${aps[0]}, ${y})`;
-        if (aps.length === 2) return `(${aps[0]} y ${aps[1]}, ${y})`;
+        if (aps.length === 2) return `(${aps[0]} ${conjuncionY(aps[1])} ${aps[1]}, ${y})`;
         return `(${aps[0]} et al., ${y})`;
     },
 
@@ -431,7 +432,7 @@ export const metodosRedactorTeoricoFuentes = {
             return `(${palabras.slice(0, 2).join(' ')}, ${anio})`;
         }
         if (apellidos.length === 1) return `(${apellidos[0]}, ${anio})`;
-        if (apellidos.length === 2) return `(${apellidos[0]} y ${apellidos[1]}, ${anio})`;
+        if (apellidos.length === 2) return `(${apellidos[0]} ${conjuncionY(apellidos[1])} ${apellidos[1]}, ${anio})`;
         return `(${apellidos[0]} et al., ${anio})`;
     },
 
@@ -474,7 +475,7 @@ export const metodosRedactorTeoricoFuentes = {
             return `("${t}", ${anio})`;
         }
         if (autores.length === 1) return `(${autores[0]}, ${anio})`;
-        if (autores.length === 2) return `(${autores[0]} y ${autores[1]}, ${anio})`;
+        if (autores.length === 2) return `(${autores[0]} ${conjuncionY(autores[1])} ${autores[1]}, ${anio})`;
         return `(${autores[0]} et al., ${anio})`;
     },
 

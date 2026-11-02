@@ -16,6 +16,7 @@ import { determinante } from '../core/linalg/gauss.js';
 import { ajustarMlg } from '../core/stats/mlg.js';
 import { formatoP, numeroConMenos, pConSigno, terminoConSigno } from '../shared/formato-numero.js';
 import { codificacionBinaria } from './motor/dependiente-binaria.js';
+import { conjuncionY } from '../shared/texto-es.js';
 
 // ========================================
 // ANÁLISIS MULTIVARIADO — StatSim Pro
@@ -442,8 +443,8 @@ const RegresionMultiple = {
             : this._textoAncovaSinEfecto(R)} Compara las columnas de medias: la <i>cruda</i> es lo observado; la <i>ajustada</i>, lo esperable con todos al mismo nivel de ${R.etCov}.</p>`;
         if (R.pendientes) {
             h += R.pendientes.paralelas
-                ? `<p class="help-text" style="font-size:0.85em;margin-top:0.3rem;">Supuesto de pendientes paralelas: satisfecho (F(${R.pendientes.gl[0]}, ${R.pendientes.gl[1]}) = ${this._fx(R.pendientes.F, 2)}, p ${this._pTxt(R.pendientes.pValor)}). ¿Por qué importa? El ajuste solo tiene sentido si la relación entre ${R.etCov} y ${R.etY} es la misma en todos los grupos; si cada grupo tuviera su propia pendiente, no existiría UNA respuesta ajustada válida para todos los niveles de la covariable.</p>`
-                : `<p style="margin:0.4rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ <b>Supuesto de pendientes paralelas violado</b> (p ${this._pTxt(R.pendientes.pValor)}): la relación entre ${R.etCov} y ${R.etY} difiere entre grupos, así que las medias ajustadas deben tomarse con cautela — la diferencia entre grupos <i>depende</i> del nivel de la covariable (una interacción, no un efecto uniforme). Interpreta la moderación en lugar del ANCOVA clásico.</p>`;
+                ? `<p class="help-text" style="font-size:0.85em;margin-top:0.3rem;">Supuesto de pendientes paralelas: satisfecho (F(${R.pendientes.gl[0]}, ${R.pendientes.gl[1]}) = ${this._fx(R.pendientes.F, 2)}, p ${this._pTxt(R.pendientes.pValor)}). ¿Por qué importa? El ajuste solo tiene sentido si la relación entre ${R.etCov} ${conjuncionY(R.etY)} ${R.etY} es la misma en todos los grupos; si cada grupo tuviera su propia pendiente, no existiría UNA respuesta ajustada válida para todos los niveles de la covariable.</p>`
+                : `<p style="margin:0.4rem 0 0;padding:0.5rem 0.7rem;background:#fff8e1;border-left:3px solid #f0ad4e;border-radius:0.3rem;font-size:0.88em;">⚠️ <b>Supuesto de pendientes paralelas violado</b> (p ${this._pTxt(R.pendientes.pValor)}): la relación entre ${R.etCov} ${conjuncionY(R.etY)} ${R.etY} difiere entre grupos, así que las medias ajustadas deben tomarse con cautela — la diferencia entre grupos <i>depende</i> del nivel de la covariable (una interacción, no un efecto uniforme). Interpreta la moderación en lugar del ANCOVA clásico.</p>`;
         }
         return h;
     },
@@ -780,7 +781,7 @@ const RegresionMultiple = {
             if (R.error) return R;
             // (2027.01.01) lo que se pidió y esta familia no aplica, dicho (antes se ignoraba en silencio)
             const sinAplicar = [opciones.interaccion && 'la interacción', opciones.cuadratico && 'el término cuadrático', opciones.poisson && 'el modelo de Poisson'].filter(Boolean);
-            if (sinAplicar.length) avisos.push(`Con una variable dependiente de dos valores se ajustó la regresión logística con los efectos principales: ${sinAplicar.length > 1 ? `${sinAplicar.slice(0, -1).join(', ')} y ${sinAplicar[sinAplicar.length - 1]}` : sinAplicar[0]} no se ${sinAplicar.length > 1 ? 'aplican' : 'aplica'} a esta familia.`);
+            if (sinAplicar.length) avisos.push(`Con una variable dependiente de dos valores se ajustó la regresión logística con los efectos principales: ${sinAplicar.length > 1 ? `${sinAplicar.slice(0, -1).join(', ')} ${conjuncionY(sinAplicar[sinAplicar.length - 1])} ${sinAplicar[sinAplicar.length - 1]}` : sinAplicar[0]} no se ${sinAplicar.length > 1 ? 'aplican' : 'aplica'} a esta familia.`);
             R.etY = etY || colY; R.etsX = ets; R.avisos = [...avisos, ...(R.avisosAjuste || [])];   // (2026.12.22) con los del ajuste (separación casi completa)
             R.notaFamilia = 'La variable dependiente es binaria: se ajustó una regresión logística múltiple (los coeficientes se interpretan como razones de probabilidades, OR).'
                 + (LY.binaria ? ' ' + this._fraseEvento(LY.binaria, etY || colY) : '');
@@ -1005,7 +1006,7 @@ const RegresionMultiple = {
                 : `presenta el menor AIC; su rival más cercano (${rival.nombre}) queda a ΔAIC = ${this._fx(d, 1)}, es decir, con ${zona(d)}`}. En términos de ajuste, el ganador explica el ${(100 * g.R2).toFixed(1)} % de la variabilidad de ${MM.etY} (R² = ${this._fx(g.R2, 3)})${Math.abs(g.R2 - rival.R2) < 0.01 ? `, prácticamente lo mismo que ${rival.nombre} (R² = ${this._fx(rival.R2, 3)}) — otra señal de que la complejidad extra no compra ajuste real` : ` frente al ${(100 * rival.R2).toFixed(1)} % de ${rival.nombre}`}.</p>`;
         }
         h += `<p style="margin:0.4rem 0 0;"><b>Implicación práctica:</b> ${g.nombre === 'Lineal'
-            ? `la relación entre ${MM.etX} y ${MM.etY} se describe adecuadamente con una recta, lo que valida el uso del coeficiente de correlación lineal como resumen fiel de la asociación.`
+            ? `la relación entre ${MM.etX} ${conjuncionY(MM.etY)} ${MM.etY} se describe adecuadamente con una recta, lo que valida el uso del coeficiente de correlación lineal como resumen fiel de la asociación.`
             : this._implicacionCurva(MM)}</p>`;
         return h;
     },
@@ -1014,8 +1015,8 @@ const RegresionMultiple = {
     // del apoyo (Burnham y Anderson), así que son indicios por confirmar; desde 4, curvatura.
     _implicacionCurva(MM) {
         const g = MM.ganador, l = MM.candidatos.find(c => c.nombre === 'Lineal');
-        if (l && l.dAIC < 4) return `la relación entre ${MM.etX} y ${MM.etY} muestra indicios de curvatura (forma ${g.nombre.toLowerCase()}), aunque la recta, a ΔAIC = ${this._fx(l.dAIC, 1)}, conserva parte del apoyo: conviene confirmarla (por ejemplo, con el diagnóstico de la forma de la relación) antes de apoyar en ella las conclusiones; mientras tanto, el coeficiente de correlación lineal sigue siendo un resumen razonable.`;
-        return `la relación entre ${MM.etX} y ${MM.etY} presenta curvatura (forma ${g.nombre.toLowerCase()})${l ? `, y la recta queda a ΔAIC = ${this._fx(l.dAIC, 1)} de ella` : ''}: el coeficiente de correlación lineal subestima la intensidad real del vínculo, y las conclusiones deben apoyarse en esta forma funcional.`;
+        if (l && l.dAIC < 4) return `la relación entre ${MM.etX} ${conjuncionY(MM.etY)} ${MM.etY} muestra indicios de curvatura (forma ${g.nombre.toLowerCase()}), aunque la recta, a ΔAIC = ${this._fx(l.dAIC, 1)}, conserva parte del apoyo: conviene confirmarla (por ejemplo, con el diagnóstico de la forma de la relación) antes de apoyar en ella las conclusiones; mientras tanto, el coeficiente de correlación lineal sigue siendo un resumen razonable.`;
+        return `la relación entre ${MM.etX} ${conjuncionY(MM.etY)} ${MM.etY} presenta curvatura (forma ${g.nombre.toLowerCase()})${l ? `, y la recta queda a ΔAIC = ${this._fx(l.dAIC, 1)} de ella` : ''}: el coeficiente de correlación lineal subestima la intensidad real del vínculo, y las conclusiones deben apoyarse en esta forma funcional.`;
     },
 
     // Interpretación en lenguaje llano (compartida con el Word).

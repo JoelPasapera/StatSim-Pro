@@ -15,6 +15,7 @@ import { accionEjecutable, descargasDelAnalisis, descargasQueLleva, loQueBorraOt
 import { Detenido, ejecutarPlan, mostrarPlan, seccionFinal } from './conductor.js';
 import { dejarSenalados, quitarSenalado } from './resaltado.js';
 import { estadoDelPaso, pasosEnPalabras } from '../catalogo.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 /**
  * @typedef {import('../catalogo.js').Ejemplo} Ejemplo
@@ -288,7 +289,7 @@ export function loQueYaLlevan(e, pasos, vigentes) {
 }
 
 /** Unos textos, en una frase: «a», «a y b», «a, b y c». @param {string[]} xs */
-const unir = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+const unir = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${conjuncionY(xs[xs.length - 1])} ${xs[xs.length - 1]}`);
 /** Con minúscula inicial (un título dentro de una frase). @param {string} t */
 const minuscula = t => t.charAt(0).toLowerCase() + t.slice(1);
 /** Con mayúscula inicial (un mensaje al empezar una frase). @param {string} t */

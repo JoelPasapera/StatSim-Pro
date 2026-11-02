@@ -483,5 +483,16 @@ function restaurarDatos({ filas, etiquetas, estructura, origen, codigosDeCategor
     return datos;
 }
 
-export { estadoDeLosDatos, restaurarDatos };
+// (2027.01.18) Otras filas con las mismas columnas (la base depurada de la tarjeta de depuración, o la original al volver a
+// ella) o (2027.01.19) con columnas añadidas (θ y su error típico, de la tarjeta de la TRI): se cargan como una base nueva (lo
+// calculado con la anterior se olvida en todas las tarjetas), con los códigos de las categorías, las etiquetas y el origen de
+// la que está en uso.
+function reemplazarFilas(filas) {
+    AnalizadorEstadistico.cargarDatos(filas, { codigosDeCategorias: AnalizadorEstadistico.todosLosCodigos() });
+    const datos = AnalizadorEstadistico.obtenerDatos();
+    mostrarDatosCargados(datos);
+    return datos;
+}
+
+export { estadoDeLosDatos, restaurarDatos, reemplazarFilas };
 export { actualizarEtiquetasAnalisis, cargarDatosGenerados, cargarArchivo, cargarArchivo as cargarArchivoCSV, cargarBytesSav, cargarBytesXlsx, cargarTextoCSV, alCambiarHojaXlsx, tipoDeArchivo, mostrarDatosCargados, obtenerColumnasNumericas, poblarSelectsVariables, limpiarResultados, obtenerColumnasCategoricas };

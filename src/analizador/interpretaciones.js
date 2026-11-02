@@ -5,6 +5,7 @@ import { CribaCorrelaciones } from './criba-correlaciones.js';
 import { formatoNumero, textoP } from '../shared/formato-numero.js';
 import { magnitudR } from './motor/magnitudes.js';
 import { indiceGrupoMayor } from './motor/grupos.js';
+import { conjuncionY } from '../shared/texto-es.js';
 
 // ========================================
 // MÓDULO DE INTERPRETACIONES ESTADÍSTICAS
@@ -71,7 +72,7 @@ const InterpretacionesEstadisticas = {
         let texto = '';
 
         // 1) Método y justificación de su elección
-        texto += `Se evaluó el supuesto de normalidad de ${var1} y ${var2} mediante la prueba de ${prueba}, `;
+        texto += `Se evaluó el supuesto de normalidad de ${var1} ${conjuncionY(var2)} ${var2} mediante la prueba de ${prueba}, `;
         texto += esShapiro
             ? `seleccionada por tratarse de una muestra pequeña (n = ${n} < 50), contexto en el que Shapiro-Wilk presenta la mayor potencia estadística para detectar desviaciones de la normalidad (Razali y Wah, 2011). `
             : `seleccionada por el tamaño de la muestra (n = ${n} ≥ 50), rango en el que Kolmogorov-Smirnov con la corrección de Lilliefors es el procedimiento de referencia. `;
@@ -133,9 +134,9 @@ const InterpretacionesEstadisticas = {
 
         // 1) Método aplicado (corregido: reconoce 'Spearman (Rho)')
         if (esSpearman) {
-            texto += `Dado que al menos una de las variables incumplió el supuesto de normalidad, se calculó el coeficiente de correlación de Spearman (ρ), que evalúa la relación monotónica entre ${var1} y ${var2} a partir de sus rangos. `;
+            texto += `Dado que al menos una de las variables incumplió el supuesto de normalidad, se calculó el coeficiente de correlación de Spearman (ρ), que evalúa la relación monotónica entre ${var1} ${conjuncionY(var2)} ${var2} a partir de sus rangos. `;
         } else {
-            texto += `Dado que ambas variables cumplieron el supuesto de normalidad, se calculó el coeficiente de correlación de Pearson (r), que evalúa la relación lineal entre ${var1} y ${var2}. `;
+            texto += `Dado que ambas variables cumplieron el supuesto de normalidad, se calculó el coeficiente de correlación de Pearson (r), que evalúa la relación lineal entre ${var1} ${conjuncionY(var2)} ${var2}. `;
         }
 
         // 2) Reporte del resultado (estilo APA, con IC si está disponible)
@@ -180,7 +181,7 @@ const InterpretacionesEstadisticas = {
         if (esSpearman) {
             texto += `Asimismo, ρ² = ${this._fmtNum(r2, 3)} indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de la varianza de sus RANGOS (al ser un índice basado en rangos, no debe leerse como varianza explicada en sentido lineal estricto). `;
         } else {
-            texto += `Asimismo, el coeficiente de determinación r² = ${this._fmtNum(r2, 3)} indica que ${var1} y ${var2} comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza; el ${(100 - r2 * 100).toFixed(1)}% restante obedece a otros factores no contemplados en este análisis bivariado. `;
+            texto += `Asimismo, el coeficiente de determinación r² = ${this._fmtNum(r2, 3)} indica que ${var1} ${conjuncionY(var2)} ${var2} comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza; el ${(100 - r2 * 100).toFixed(1)}% restante obedece a otros factores no contemplados en este análisis bivariado. `;
         }
 
         // 6) Intervalo de confianza: precisión y coherencia con la decisión. (2026.12.30) La frase depende de las dos: antes
@@ -238,7 +239,7 @@ const InterpretacionesEstadisticas = {
         let texto = '';
 
         // 1) Planteamiento formal
-        texto += `En el marco de la prueba de hipótesis se contrastó H₀: ${simboloPob} = 0 (la correlación poblacional entre ${var1} y ${var2} es nula) `;
+        texto += `En el marco de la prueba de hipótesis se contrastó H₀: ${simboloPob} = 0 (la correlación poblacional entre ${var1} ${conjuncionY(var2)} ${var2} es nula) `;
         texto += esBilateral
             ? `frente a H₁: ${simboloPob} ≠ 0 (existe correlación, en cualquier dirección), mediante una prueba bilateral `
             : `frente a H₁ direccional (${simboloPob} ${coef >= 0 ? '>' : '<'} 0), mediante una prueba unilateral `;
@@ -250,13 +251,13 @@ const InterpretacionesEstadisticas = {
 
         if (prueba.decision === 'rechazar') {
             texto += `el p-valor resulta inferior al nivel de significancia (${this._fmtP(pValor, alpha)}, frente a α = ${alpha}), por lo que SE RECHAZA H₀. `;
-            texto += `Se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre ${var1} y ${var2} en la población es distinta de cero. `;
+            texto += `Se concluye que existe evidencia estadísticamente suficiente para afirmar que la correlación entre ${var1} ${conjuncionY(var2)} ${var2} en la población es distinta de cero. `;
             // Salvaguardas profesionales
             texto += `Dos precisiones son obligadas en un reporte riguroso. Primera: significancia estadística no equivale a relevancia práctica; la importancia del hallazgo debe juzgarse por el tamaño del efecto (|${simboloMuestral}| = ${this._fmtNum(coefAbs, 2)}) y no por el p-valor. `;
             texto += `Segunda: correlación no implica causalidad; este resultado documenta covariación sistemática, pero la dirección causal solo podría establecerse con un diseño experimental o longitudinal apropiado. `;
         } else {
             texto += `el p-valor no es inferior al nivel de significancia (${this._fmtP(pValor, alpha)}, frente a α = ${alpha}), por lo que NO SE RECHAZA H₀. `;
-            texto += `Se concluye que no existe evidencia suficiente para afirmar que la correlación poblacional entre ${var1} y ${var2} sea distinta de cero. `;
+            texto += `Se concluye que no existe evidencia suficiente para afirmar que la correlación poblacional entre ${var1} ${conjuncionY(var2)} ${var2} sea distinta de cero. `;
             texto += `Cabe precisar que esta decisión no equivale a la aceptación de H₀; la prueba no demuestra que la correlación sea exactamente nula, solo que los datos no permiten descartarlo. `;
 
             if (coefAbs < 0.1) {
@@ -569,7 +570,7 @@ const InterpretacionesEstadisticas = {
         d += `. `;
 
         if (pruebaHip.decision === 'rechazar') {
-            d += `Dado que el p-valor es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre ${var1} y ${var2}${contexto}.\n\n`;
+            d += `Dado que el p-valor es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), se rechaza la hipótesis nula: **existe una relación estadísticamente significativa** entre ${var1} ${conjuncionY(var2)} ${var2}${contexto}.\n\n`;
             d += `La magnitud corresponde a una correlación **${resultado.interpretacion.fuerza}** de dirección **${resultado.interpretacion.direccion}** (tamaño del efecto ${this._benchmarkCohen(coefAbs)} según Cohen, 1988), lo que indica que ${resultado.interpretacion.direccion === 'positiva'
                 ? 'a medida que aumenta una variable, la otra tiende a aumentar'
                 : 'a medida que aumenta una variable, la otra tiende a disminuir'}. `;
@@ -577,7 +578,7 @@ const InterpretacionesEstadisticas = {
                 ? `El coeficiente al cuadrado (ρ² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de la varianza de sus rangos.\n\n`
                 : `El coeficiente de determinación (r² = ${this._fmtNum(r2)}) indica que las variables comparten aproximadamente el ${(r2 * 100).toFixed(1)}% de su varianza.\n\n`;
         } else {
-            d += `Dado que el p-valor no es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), no se rechaza la hipótesis nula: **no existe evidencia suficiente** de una relación estadísticamente significativa entre ${var1} y ${var2}${contexto}. `;
+            d += `Dado que el p-valor no es inferior a α (${this._fmtP(resultado.pValor, pruebaHip.alpha)} frente a α = ${pruebaHip.alpha}), no se rechaza la hipótesis nula: **no existe evidencia suficiente** de una relación estadísticamente significativa entre ${var1} ${conjuncionY(var2)} ${var2}${contexto}. `;
             d += `Cabe recordar que no rechazar H₀ no equivale a demostrar que la correlación poblacional sea nula`;
             d += (poder !== null && poder < 0.8)
                 ? `; no puede descartarse un error de Tipo II.\n\n`
@@ -630,7 +631,7 @@ const InterpretacionesEstadisticas = {
         // (apropiado para Mann-Whitney); d de Cohen en el caso paramétrico.
         const efTexto = resultado.tamanoEfectoRangos
             ? `r de rangos = ${resultado.tamanoEfectoRangos.r.toFixed(2)}, tamaño ${resultado.tamanoEfectoRangos.interpretacion}`
-            : `d de Cohen = ${formatoNumero(ef.d, 2)}, tamaño ${ef.interpretacion}`;
+            : `d de Cohen = ${formatoNumero(ef.d, 2)}${resultado.tamanoEfectoIC && Number.isFinite(resultado.tamanoEfectoIC.inferior) ? ` (IC 95 % [${formatoNumero(resultado.tamanoEfectoIC.inferior, 2)}, ${formatoNumero(resultado.tamanoEfectoIC.superior, 2)}])` : ''}, tamaño ${ef.interpretacion}`;
 
         if (significativa) {
             return `Existe una diferencia estadísticamente significativa en ${varCuantitativa} entre los grupos de ${varAgrupacion} (${prueba.prueba}, ${pTexto}). ${direccion} La magnitud de la diferencia corresponde a ${efTexto}. Una diferencia significativa no implica causalidad cuando los grupos no se asignaron al azar.`;

@@ -3,6 +3,7 @@
 import { REF_NUBE, CABECERA_NUBE, filasNube, notaNube, parrafoNube } from './nube-redaccion.js';
 import { REF_CONFIRMACION, CABECERA_CAMBIO, filasCambio, notaCambio, CABECERA_EQUIVALENCIA, filasEquivalencia, notaEquivalencia, parrafoConfirmacion } from './confirmacion-forma-redaccion.js';
 import { formatoP, textoP } from '../../shared/formato-numero.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const f2 = x => (Number.isFinite(x) ? (Math.abs(x) < 0.005 ? 0 : x).toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const f3 = x => (Number.isFinite(x) ? x.toFixed(3).replace(/^(-?)0\./, '$1.') : '—');
@@ -52,7 +53,7 @@ export function citada(referencia, texto) {
 const giroTexto = (g, nx) => `${g.tipo === 'máximo' ? 'un máximo' : 'un mínimo'} hacia ${nx} ≈ ${fnum(g.x, 1)}`;
 export function redactarParrafo(d, nx, ny) {
     const c = d.coeficientes, m = d.mejor, lin = d.modelos.find(q => q.id === 'lineal'), cte = d.modelos.find(q => q.id === 'constante'), partes = [];
-    partes.push(`Para describir la forma de la relación entre ${nx} y ${ny} (n = ${d.n}) se compararon diez formas candidatas mediante el AICc (Hurvich y Tsai, 1989), con pesos de Akaike (Burnham y Anderson, 2002).`);
+    partes.push(`Para describir la forma de la relación entre ${nx} ${conjuncionY(ny)} ${ny} (n = ${d.n}) se compararon diez formas candidatas mediante el AICc (Hurvich y Tsai, 1989), con pesos de Akaike (Burnham y Anderson, 2002).`);
     // la prueba de relación, descrita según cómo se calculó (base completa, o submuestra combinada por Bonferroni)
     const pruebaRelacion = d.pruebas.submuestra ? 'prueba por permutaciones con el mínimo p de Westfall y Young, 1993, sobre una submuestra, combinada por Bonferroni con la r de la base completa' : 'prueba por permutaciones con el mínimo p de Westfall y Young, 1993';
     const g = d.descripcion.grupo, coef = d.coefRecomendado, pg = pPermAPA({ p: d.pruebas.relacion.p, B: d.pruebas.B }), pnl = pPermAPA({ p: d.pruebas.noLineal.p, B: d.pruebas.B });
@@ -103,12 +104,12 @@ function tablaWord(numero, titulo, cab, filas, nota) {
         <p style="margin:4pt 0 0;font-size:10pt;line-height:150%;"><i>Nota.</i> ${esc(nota)}</p>`;
 }
 export function documentoWord(d, nx, ny) {
-    const cuerpo = `<p style="margin:0 0 8pt;line-height:200%;text-align:center;"><b>Forma de la relación entre ${esc(nx)} y ${esc(ny)}</b></p>
+    const cuerpo = `<p style="margin:0 0 8pt;line-height:200%;text-align:center;"><b>Forma de la relación entre ${esc(nx)} ${conjuncionY(ny)} ${esc(ny)}</b></p>
         <p style="margin:0;line-height:200%;text-align:justify;text-indent:0.5in;">${esc(redactarParrafo(d, nx, ny))}</p>
-        ${tablaWord(1, `Coeficientes de asociación entre ${nx} y ${ny}`, CABECERA_COEFICIENTES, filasCoeficientes(d), notaCoeficientes(d))}
-        ${tablaWord(2, `Comparación de formas de la relación entre ${nx} y ${ny}`, CABECERA_MODELOS, filasModelos(d), notaModelos(d))}
-        ${(t3 => (t3 ? tablaWord(3, `${t3.titulo}: ${nx} y ${ny}`, t3.cabecera, t3.filas, t3.nota) : ''))(tablaConfirmacion(d, nx))}
-        ${d.nube ? `<p style="margin:12pt 0 0;line-height:200%;text-align:justify;text-indent:0.5in;">${esc(parrafoNube(d.nube, nx, ny, d.categoria))}</p>${tablaWord(tablaConfirmacion(d, nx) ? 4 : 3, `Diagnóstico de la nube de puntos: ${nx} y ${ny}`, CABECERA_NUBE, filasNube(d.nube, nx, ny), notaNube(d.nube))}` : ''}
+        ${tablaWord(1, `Coeficientes de asociación entre ${nx} ${conjuncionY(ny)} ${ny}`, CABECERA_COEFICIENTES, filasCoeficientes(d), notaCoeficientes(d))}
+        ${tablaWord(2, `Comparación de formas de la relación entre ${nx} ${conjuncionY(ny)} ${ny}`, CABECERA_MODELOS, filasModelos(d), notaModelos(d))}
+        ${(t3 => (t3 ? tablaWord(3, `${t3.titulo}: ${nx} ${conjuncionY(ny)} ${ny}`, t3.cabecera, t3.filas, t3.nota) : ''))(tablaConfirmacion(d, nx))}
+        ${d.nube ? `<p style="margin:12pt 0 0;line-height:200%;text-align:justify;text-indent:0.5in;">${esc(parrafoNube(d.nube, nx, ny, d.categoria))}</p>${tablaWord(tablaConfirmacion(d, nx) ? 4 : 3, `Diagnóstico de la nube de puntos: ${nx} ${conjuncionY(ny)} ${ny}`, CABECERA_NUBE, filasNube(d.nube, nx, ny), notaNube(d.nube))}` : ''}
         <p style="margin:18pt 0 8pt;line-height:200%;text-align:center;"><b>Referencias</b></p>${referenciasDiagnostico(d, nx, ny).map(x => `<p style="margin:0;line-height:200%;padding-left:0.5in;text-indent:-0.5in;">${x}</p>`).join('')}`;
     return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="utf-8"><title>Forma de la relación</title><!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->

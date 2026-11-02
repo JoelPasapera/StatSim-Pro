@@ -14,6 +14,7 @@ import { descargarBlob } from '../shared/descargas.js';
 import { mostrarToast } from '../shared/toast.js';
 import { bus, EVENTOS } from '../shared/eventos.js';
 import { VERSION } from '../version.js';
+import { conjuncionY } from '../shared/texto-es.js';
 
 let ocupado = false;
 /** (2027.01.02) Lo que se dice si se pide otro mientras se abre o se guarda uno (antes no se decía nada). */
@@ -25,7 +26,7 @@ function fechaCorta(f) {
 }
 
 /** Una lista en español: «a», «a y b», «a, b y c». @param {string[]} l */
-const enumerar = l => (l.length > 1 ? `${l.slice(0, -1).join(', ')} y ${l[l.length - 1]}` : l[0] || '');
+const enumerar = l => (l.length > 1 ? `${l.slice(0, -1).join(', ')} ${conjuncionY(l[l.length - 1])} ${l[l.length - 1]}` : l[0] || '');
 
 /**
  * Guarda el proyecto: lo que tiene cada sección, en un .statsim que se descarga.

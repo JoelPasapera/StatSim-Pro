@@ -80,6 +80,25 @@ export function raizBrent(f, a, b, tol = 1e-14, maxIter = 200) {
 }
 
 /**
+ * (2027.01.19) Los pasos de la bisección como generador: entrega cada punto que hay que evaluar y recibe su valor
+ * (`next(f(x))`); al terminar, devuelve el punto medio del intervalo final. Así hay una sola bisección para quien evalúa
+ * en el acto (biseccion) y para quien espera el valor (la búsqueda del tamaño de muestra de la mediación, con la potencia
+ * repartida entre varios Workers).
+ * @param {number} objetivo
+ * @param {number} lo
+ * @param {number} hi
+ * @param {number} iteraciones
+ * @returns {Generator<number, number, number>}
+ */
+export function* pasosBiseccion(objetivo, lo, hi, iteraciones) {
+    for (let k = 0; k < iteraciones; k++) {
+        const medio = (lo + hi) / 2;
+        if ((yield medio) < objetivo) lo = medio; else hi = medio;
+    }
+    return (lo + hi) / 2;
+}
+
+/**
  * Bisección de una función creciente en [lo, hi]: en cada paso, si f(medio) < objetivo, la raíz está a la derecha. Tras
  * `iteraciones` mitades (el número de pasos fija la precisión: (hi − lo)/2ⁿ), el punto medio del intervalo final.
  * @param {(x: number) => number} f  creciente en [lo, hi]
@@ -90,11 +109,10 @@ export function raizBrent(f, a, b, tol = 1e-14, maxIter = 200) {
  * @returns {number}
  */
 export function biseccion(f, objetivo, lo, hi, iteraciones) {
-    for (let k = 0; k < iteraciones; k++) {
-        const medio = (lo + hi) / 2;
-        if (f(medio) < objetivo) lo = medio; else hi = medio;
-    }
-    return (lo + hi) / 2;
+    const pasos = pasosBiseccion(objetivo, lo, hi, iteraciones);
+    let r = pasos.next();
+    while (!r.done) r = pasos.next(f(r.value));
+    return r.value;
 }
 
 /**

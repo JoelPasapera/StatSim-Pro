@@ -3,12 +3,13 @@
 import { interpretarKMO } from './afe.js';
 import { formatoP } from '../../shared/formato-numero.js';
 import { campoCSV } from '../../shared/csv.js';
+import { conjuncionY } from '../../shared/texto-es.js';
 
 export const f2 = x => (Number.isFinite(x) ? x.toFixed(2).replace(/^(-?)0\./, '$1.') : '—');
 const f2c = x => (Number.isFinite(x) ? x.toFixed(2) : '—');   // χ² y porcentajes (pueden superar 1)
 export const fp = p => formatoP(p);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`);
+const lista = xs => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} ${conjuncionY(xs[xs.length - 1])} ${xs[xs.length - 1]}`);
 const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;
 export const nombreFactor = j => `F${j + 1}`;
 const NOMBRE_CORRELACION = { pearson: 'de Pearson', policorica: 'policóricas' };

@@ -1,6 +1,6 @@
 {
   "caso": "03-predictivo",
-  "version": "2027.01.16",
+  "version": "2027.01.20",
   "fecha": "2026-10-21T12:00:00-05:00",
   "entorno": {
     "navegador": "Chromium 141.0.7390.37 (linux)",
@@ -1806,12 +1806,12 @@
     },
     "simulador/base_datos_simulada.sav": {
       "bytes": 28296,
-      "sha256": "ebc5e5c483bb025d5ad3579475f537604eecd0d2b5c2f041a5e7606a3855fdba",
+      "sha256": "514f1d8a731aaec1243f29102095694affbd4dc1a06b7331566169b0af32bc4e",
       "descripcion": "La base en SPSS, con las etiquetas de variable y de valor y el nivel de medida: botón «SPSS (.sav)»."
     },
     "simulador/base_datos_simulada.xlsx": {
       "bytes": 65450,
-      "sha256": "03d94401201a8bc5040c5a7c50d495b2a7bab62117f1a2fba0d4aae26fe0fd56",
+      "sha256": "c27bb041f11320f1e30b4eb9ff8f7766a99d30216be6c94a15cb7449f48942a4",
       "descripcion": "La base en Excel, con tres hojas (Datos, Diccionario e Informe): botón «Excel (.xlsx)»."
     },
     "simulador/informe_pedido_vs_obtenido.csv": {
@@ -1825,15 +1825,15 @@
       "descripcion": "La configuración completa del Simulador (el archivo maestro), como la exporta «Exportar todo». Se abre con «Importar todo»."
     },
     "simulador/verificacion_de_la_base.pdf": {
-      "bytes": 78799,
-      "sha256": "ac1cabac661305d9e3dded5dc86588a44396ecfa955d8cd3ee4e3ba3d8e059bf",
+      "bytes": 78797,
+      "sha256": "7e5a2c53dc6574c7711867e88cd02bc83c81a02e7ed73db88ac0321b43cd0c95",
       "paginas": 3,
-      "impreso": "f8828955f24f90513875c4fef22584200c5aaa197bce31b5996e00dd3f7016c8",
+      "impreso": "225d54542073c550413ea363ab368c705631646648e6f87c4ce5844f50d41f90",
       "descripcion": "La verificación de la base impresa en PDF (avisos, pedido vs. obtenido y resumen): botón «Imprimir o guardar en PDF» del Simulador."
     },
     "analizador/1-regresion-multiple/capitulo_resultados_APA.docx": {
-      "bytes": 895289,
-      "sha256": "36f577bac848025a3bb42f244b987485ed8e5370b9afc8fca9f7cec0990d3688",
+      "bytes": 895423,
+      "sha256": "cee1497d704edd4ba1984b8214a0eaa1170254fe04a0ab5355fed8cf9ede9c71",
       "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/1-regresion-multiple/resultados_analisis.txt": {
@@ -1842,15 +1842,15 @@
       "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/1-regresion-multiple/resultados.pdf": {
-      "bytes": 1291188,
-      "sha256": "d85018b1c448292d6fafcee651230a26ea9a8522b846e29d2703242d7000d33e",
+      "bytes": 1291186,
+      "sha256": "96a56d52ff7eafc8393963b99b05aa4aa44a4dfef1325e40bb4243a3353d7c09",
       "paginas": 33,
-      "impreso": "f22f0629af1b5205d9ebb63dc8a0776a620bdd0a253e83e7865a0dc0874b1194",
+      "impreso": "6cb340fd073ba58ba7a1ccb428b7fe345abc57ecee8e481edbc6b100bee4c695",
       "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "analizador/2-regresion-logistica/capitulo_resultados_APA.docx": {
-      "bytes": 902886,
-      "sha256": "e5c80163bea14b916b42dfedfe821c92ebddbc0e6a349fbf3bc21e82ae706553",
+      "bytes": 903020,
+      "sha256": "ceca46ef7b7643deb7c053a8a65962d9c8b81847e5c380ee14c933cd1838a403",
       "descripcion": "El capítulo de resultados en Word (APA 7) de la correlación analizada: botón «Exportar capítulo a Word». Se abre en Microsoft Word (LibreOffice y Google Docs no leen la técnica con que se arma)."
     },
     "analizador/2-regresion-logistica/resultados_analisis.txt": {
@@ -1859,15 +1859,15 @@
       "descripcion": "Los resultados en texto plano: botón «Descargar resultados»."
     },
     "analizador/2-regresion-logistica/resultados.pdf": {
-      "bytes": 1288162,
-      "sha256": "53a5fef6ace1fddd002d2d83f9076b9536ca37a127d21f3635558e41861e42b1",
+      "bytes": 1288160,
+      "sha256": "f7c9e54b43a2ba07b43a179846c7d6719c033832a21c2b85610a6b33e8b2d05a",
       "paginas": 33,
-      "impreso": "b74980b5b357b7cfed2ab64aa4e38993010df7381aafa31d6f612d884a90a018",
+      "impreso": "50ff357dfd35c4399e8e74f58b856d0fa189e632ebc03113f3ce64e249753c62",
       "descripcion": "La página de resultados impresa en PDF (solo los resultados, sin los controles): botón «Imprimir o guardar en PDF» del Analizador."
     },
     "proyecto.statsim": {
-      "bytes": 33052,
-      "sha256": "16bb987fcbb910d0218c6db313b1515b0ab1de1321185ac361be3c9b36284b15",
+      "bytes": 33051,
+      "sha256": "00c8e0c86dab4abcd1f4ff1c418c7cce6f9b3f405e1705731c8219710af79ca3",
       "descripcion": "El proyecto completo (configuración y base del Simulador, datos del Analizador y lo demás que había en la página): Ayuda → «Guardar proyecto». Se abre con Ayuda → «Abrir proyecto»."
     }
   }

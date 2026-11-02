@@ -91,6 +91,21 @@ function recortarNombre(texto, maximo) {
 }
 
 /**
+ * (2027.01.19) El nombre válido para SPSS de una columna, sin mirar los demás: el que le da el .sav del programa si no choca
+ * con otro (los caracteres que SPSS no admite, «_»; una «V» delante si no empieza por una letra; hasta 64 bytes; las
+ * palabras reservadas, con «_» detrás). Lo usa también la sintaxis equivalente de SPSS del Analizador.
+ * @param {unknown} original
+ * @returns {string}
+ */
+export function nombreVariableSav(original) {
+    let n = String(original ?? '').normalize('NFC').trim().replace(/[^\p{L}\p{N}_.@#$]/gu, '_');
+    if (!/^\p{L}/u.test(n)) n = 'V' + n;
+    n = recortarNombre(n, 64).replace(/\.+$/, '');
+    if (RESERVADAS.has(n.toUpperCase())) n += '_';
+    return n;
+}
+
+/**
  * Un nombre de variable válido para SPSS y distinto de los ya usados (sin distinguir mayúsculas).
  * (2026.12.29, revisión) Con un contador por nombre base (`siguientes`): repetir la búsqueda desde «_2» para cada variable
  * que comparte la base era cuadrático (6000 variables «Pregunta_N…» tardaban 28 s). Da los mismos nombres: los sufijos
@@ -101,11 +116,8 @@ function recortarNombre(texto, maximo) {
  * @returns {string}
  */
 function nombreValido(original, usados, siguientes = new Map()) {
-    let n = String(original ?? '').normalize('NFC').trim().replace(/[^\p{L}\p{N}_.@#$]/gu, '_');
-    if (!/^\p{L}/u.test(n)) n = 'V' + n;
-    n = recortarNombre(n, 64).replace(/\.+$/, '');
-    if (RESERVADAS.has(n.toUpperCase())) n += '_';
-    const base = n, clave = base.toUpperCase();
+    const base = nombreVariableSav(original), clave = base.toUpperCase();
+    let n = base;
     let k = siguientes.get(clave) || 2;
     while (usados.has(n.toUpperCase())) {
         const sufijo = '_' + k++;

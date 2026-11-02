@@ -64,6 +64,25 @@ export function cuantilF(p, d1, d2) {
 }
 
 /**
+ * (2027.01.18) Cuantil de la χ² con gl grados de libertad: el x con P(X ≤ x) = p. Como en cuantilF, por encima de la mediana
+ * se invierte la cola superior (gammaRegularizadaQ), calculada sin restar. Lo usa la potencia de la χ² (core/stats/potencia.js).
+ * @param {number} p
+ * @param {number} gl
+ * @returns {number}
+ */
+export function cuantilChi2(p, gl) {
+    if (p === 0) return 0;
+    if (p === 1) return Infinity;
+    if (!(p > 0 && p < 1) || !(gl > 0)) return NaN;
+    const superior = p > 0.5, q = 1 - p;
+    const g = superior ? (/** @type {number} */ x) => gammaRegularizadaQ(gl / 2, x / 2) - q : (/** @type {number} */ x) => (1 - gammaRegularizadaQ(gl / 2, x / 2)) - p;
+    let hi = Math.max(1, gl);
+    while (g(hi) > 0 === superior && hi < 1e300) hi *= 2;
+    const r = raizBrent(g, 0, hi, 0);
+    return r ? r.x : NaN;
+}
+
+/**
  * p bilateral de la t de Student: P(|T| ≥ |t|) = I_{df/(df + t²)}(df/2, 1/2).
  * @param {number} t
  * @param {number} df
