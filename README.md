@@ -6,6 +6,10 @@ Lo que más me gusta de esto es que no es necesario que el usuario conozca el no
 
 Una persona sabe que quiere comparar dos grupos, determinar si dos variables se relacionan o comprobar si su instrumento funciona. No necesariamente sabe qué procedimiento estadístico debe utilizar, mi propuesta parte precisamente de esa idea.
 
+¿Porque statsim pro es diferente a otras herramientas?
+- Por que, en lugar de recibir al usuario con un conjunto de herramientas, lo recibes con una pregunta. Ya que elimina la barrera cognitiva de que el usuario no necesita traducir inicialmente su problema a terminología estadística.
+- Se deja lo mas importante a la vista, eso evita convertir la portada en un catálogo.
+
 StatSim Pro no solo calcula. Explica y te acompaña. De la pregunta de investigación al resultado, te ayuda a decidir qué hacer, te explica por qué y convierte el análisis en un proceso guiado, comprensible y defendible. Ahí está la diferencia respecto a otras herramientas como SPSS, R o Jamovi. StatSim Pro no busca competir contra ellas, sino acompañar al investigador de otra manera. Mientras otras herramientas te dan una respuesta, StatSim Pro te enseña por qué esa respuesta es la correcta. Te enseña el camino, no solo el resultado.
 
 **Suite estadística y metodológica completa para tesis de psicología y ciencias sociales — 100 % en tu navegador.**
